@@ -156,7 +156,9 @@
     "preflight:generate-path-waypoints": "node --test \"chart v 1.4/chart/modules/generate-path-waypoints.test.mjs\"",
     "test:generate-path-waypoints": "npm run preflight:generate-path-waypoints",
     "preflight:order-stable-label-hover-dom": "node \"chart v 1.4/chart/modules/order-stable-label-hover-dom.test.mjs\"",
-    "test:order-stable-label-hover-dom": "npm run preflight:order-stable-label-hover-dom"
+    "test:order-stable-label-hover-dom": "npm run preflight:order-stable-label-hover-dom",
+    "preflight:text-measure-canvas-pool": "node --test \"chart v 1.4/chart/modules/text-measure-canvas-pool.test.mjs\"",
+    "test:text-measure-canvas-pool": "npm run preflight:text-measure-canvas-pool"
   },
   "dependencies": {
     "dukascopy-node": "^1.46.3",

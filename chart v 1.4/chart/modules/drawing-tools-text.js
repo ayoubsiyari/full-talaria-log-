@@ -120,6 +120,28 @@ function buildDrawingTextCanvasFont(text, fontSize, fontFamily, fontWeight, font
     return `${resolved.fontStyle} ${weight} ${fontSize}px ${resolved.fontFamily}`;
 }
 
+let _drawingTextMeasureCanvas = null;
+let _drawingTextMeasureCtx = null;
+
+function isDrawingTextMeasureCanvasPoolEnabled() {
+    return typeof window === 'undefined'
+        || window.__TALARIA_DISABLE_TEXT_MEASURE_CANVAS_POOL_V1 !== true;
+}
+
+function getDrawingTextMeasureContext() {
+    if (!isDrawingTextMeasureCanvasPoolEnabled()) {
+        const canvas = document.createElement('canvas');
+        return canvas.getContext('2d');
+    }
+    if (!_drawingTextMeasureCtx) {
+        _drawingTextMeasureCanvas = document.createElement('canvas');
+        _drawingTextMeasureCanvas.width = 1;
+        _drawingTextMeasureCanvas.height = 1;
+        _drawingTextMeasureCtx = _drawingTextMeasureCanvas.getContext('2d');
+    }
+    return _drawingTextMeasureCtx;
+}
+
 /** Apply resolved font family, weight, RTL direction, and italic skew to SVG text. */
 function applyDrawingTextElementPresentation(textEl, opts = {}) {
     if (!textEl) return null;
@@ -463,8 +485,7 @@ function measurePlainTextLineWidth(line, drawing, scales, sampleText) {
         : 1;
     const fs = Math.max(6, (Number(drawing.style?.fontSize) || 14) * sf);
     const style = drawing.style || {};
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
+    const ctx = getDrawingTextMeasureContext();
     ctx.font = buildDrawingTextCanvasFont(sampleText, fs, style.fontFamily, style.fontWeight, style.fontStyle);
     try {
         return ctx.measureText(line || '').width;
@@ -697,8 +718,7 @@ function measurePlainTextBlockWidth(drawing, scales) {
             style.fontStyle
         )
         : String(display.text || '').split('\n');
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
+    const ctx = getDrawingTextMeasureContext();
     let maxW = 0;
     lines.forEach((line) => {
         ctx.font = buildDrawingTextCanvasFont(display.text, fs, style.fontFamily, style.fontWeight, style.fontStyle);
@@ -1125,8 +1145,7 @@ class TextTool extends BaseDrawing {
 
     /** Word-wrap plain text to fit maxWidth (px); preserves explicit newlines. */
     static wrapTextLines(rawText, maxWidth, fontSize, fontFamily, fontWeight, fontStyle) {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
+        const ctx = getDrawingTextMeasureContext();
         ctx.font = buildDrawingTextCanvasFont(rawText, fontSize, fontFamily, fontWeight, fontStyle);
         const measure = (str) => {
             try { return ctx.measureText(str || '').width; } catch (e) { return (str || '').length * fontSize * 0.55; }
@@ -1866,8 +1885,7 @@ class NoteBoxTool extends BaseDrawing {
         const maxBubbleWidth = this.style.maxWidth || 200;
         const innerMaxW = Math.max(20, maxBubbleWidth - padding * 2);
 
-        const _nbCanvas = document.createElement('canvas');
-        const _nbCtx = _nbCanvas.getContext('2d');
+        const _nbCtx = getDrawingTextMeasureContext();
         _nbCtx.font = buildDrawingTextCanvasFont(this.text, scaledFontSize, this.style.fontFamily || 'Roboto, sans-serif', this.style.fontWeight, this.style.fontStyle);
         const measureWidth = (str) => {
             try { return _nbCtx.measureText(str || '').width || ((str || '').length * scaledFontSize * 0.6); }
@@ -2333,8 +2351,7 @@ class AnchoredTextTool extends BaseDrawing {
         const innerMaxW = Math.max(20, maxBubbleWidth - padding * 2);
         const anchoredDisplay = resolveTextToolDisplay(this.text);
 
-        const _atCanvas = document.createElement('canvas');
-        const _atCtx = _atCanvas.getContext('2d');
+        const _atCtx = getDrawingTextMeasureContext();
         _atCtx.font = buildDrawingTextCanvasFont(this.text, scaledFontSize, this.style.fontFamily || 'Roboto, sans-serif', this.style.fontWeight, this.style.fontStyle);
         const measureWidth = (str) => {
             try { return _atCtx.measureText(str || '').width || ((str || '').length * scaledFontSize * 0.6); }
@@ -2716,8 +2733,7 @@ class NoteTool extends BaseDrawing {
         const noteMaxWidth = this.style.maxWidth || 260;
 
         // Helper: measure single-line text width via canvas (reliable, no DOM dependency)
-        const _nCanvas = document.createElement('canvas');
-        const _nCtx = _nCanvas.getContext('2d');
+        const _nCtx = getDrawingTextMeasureContext();
         _nCtx.font = buildDrawingTextCanvasFont(this.text, scaledFontSize, this.style.fontFamily || 'Arial, sans-serif', this.style.fontWeight, this.style.fontStyle);
         const measureWidth = (str) => {
             try { return _nCtx.measureText(str || '').width || ((str || '').length * scaledFontSize * 0.6); }
@@ -3201,8 +3217,7 @@ class PriceNoteTool extends BaseDrawing {
         const priceText = Number.isFinite(p1.y) ? p1.y.toFixed(decimals) : '';
 
         const padding = 6;
-        const _nCanvas = document.createElement('canvas');
-        const _nCtx = _nCanvas.getContext('2d');
+        const _nCtx = getDrawingTextMeasureContext();
         _nCtx.font = buildDrawingTextCanvasFont(this.text, scaledFontSize, this.style.fontFamily || 'Roboto, sans-serif', this.style.fontWeight, this.style.fontStyle);
         let textWidth = 60;
         try {
@@ -3350,8 +3365,7 @@ class PinTool extends BaseDrawing {
             const padding = 14;
             const maxBubbleWidth = this.style.maxWidth || 180;
             const innerMaxW = Math.max(20, maxBubbleWidth - padding * 2);
-            const _pinCanvas = document.createElement('canvas');
-            const _pinCtx = _pinCanvas.getContext('2d');
+            const _pinCtx = getDrawingTextMeasureContext();
             _pinCtx.font = buildDrawingTextCanvasFont(this.text, scaledFontSize, this.style.fontFamily, this.style.fontWeight, this.style.fontStyle);
             const measureWidth = (str) => {
                 try { return _pinCtx.measureText(str || '').width || ((str || '').length * scaledFontSize * 0.6); }
@@ -3971,8 +3985,7 @@ class CalloutTool extends BaseDrawing {
         const _cFontWeight = this.style.fontWeight || 'normal';
         const _cFontStyle = this.style.fontStyle || 'normal';
         const calloutDisplay = resolveTextToolDisplay(this.text);
-        const _measCanvas = document.createElement('canvas');
-        const _measCtx = _measCanvas.getContext('2d');
+        const _measCtx = getDrawingTextMeasureContext();
         _measCtx.font = buildDrawingTextCanvasFont(calloutDisplay.text, _cFontSize, _cFontFamily, _cFontWeight, _cFontStyle);
         const measureW = (str) => {
             try { return _measCtx.measureText(str || '').width || (str.length * _cFontSize * 0.6); }
@@ -4335,8 +4348,7 @@ class CommentTool extends BaseDrawing {
         const _cFontWeight = this.style.fontWeight || 'normal';
         const _cFontStyle = this.style.fontStyle || 'normal';
         const commentDisplay = resolveTextToolDisplay(this.text);
-        const _measCanvas = document.createElement('canvas');
-        const _measCtx = _measCanvas.getContext('2d');
+        const _measCtx = getDrawingTextMeasureContext();
         _measCtx.font = buildDrawingTextCanvasFont(commentDisplay.text, _cFontSize, _cFontFamily, _cFontWeight, _cFontStyle);
         const measureW = (str) => {
             try { return _measCtx.measureText(str || '').width || ((str || '').length * _cFontSize * 0.6); }
@@ -5107,8 +5119,7 @@ class Signpost2Tool extends BaseDrawing {
         const padding = 10;
         const maxBubbleWidth = this.style.maxWidth || 180;
         const innerMaxW = Math.max(20, maxBubbleWidth - padding * 2);
-        const _spCanvas = document.createElement('canvas');
-        const _spCtx = _spCanvas.getContext('2d');
+        const _spCtx = getDrawingTextMeasureContext();
         _spCtx.font = buildDrawingTextCanvasFont(this.text, scaledFontSize, this.style.fontFamily, this.style.fontWeight, this.style.fontStyle);
         const measureWidth = (str) => {
             try { return _spCtx.measureText(str || '').width || ((str || '').length * scaledFontSize * 0.6); }
