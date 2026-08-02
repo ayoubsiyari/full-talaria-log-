@@ -34,7 +34,8 @@ cache keys. Deliberately excluded from the session blob to avoid quota exhaustio
 | Active symbol | Yes | `chartView.fileId` | none (landed as RESTORE-A) |
 | Timeframe (host) | Yes | `chartView.timeframe` | none |
 | Replay playhead | Yes | `replay.currentIndex` + `replayTimestamp` | see §4 |
-| Speed knob | Yes | `replay.speed`, `tickElapsedMs`, `playbackMode` | step knob unverified |
+| Speed knob | Yes | `replay.speed`, `tickElapsedMs`, `playbackMode` | none |
+| Step knob | n/a | — | there is no step *setting*: `replayStepForward` / `replayStepBackward` are momentary actions that move the playhead, which is itself persisted. Nothing to restore. |
 | Indicators + settings | Yes | `payload.indicators` | none |
 | Drawing tools | Yes | `chart_drawings` API | see §3 — already market-time |
 | Open positions | Yes | `open_positions` | see §5 |
@@ -46,8 +47,37 @@ cache keys. Deliberately excluded from the session blob to avoid quota exhaustio
 | **Per-panel symbol / timeframe** | **No** | — | **gap** |
 | **Chart type** | **No** | — | **gap** |
 | **Scale / zoom** | **No** | — | **gap** — `chartView` carries only timeframe and fileId |
-| **Pinned items and timeframes** | Unverified | `favorites-manager.js` exists | needs a pass |
-| **Timezone selection** | Unverified | `timezone-manager.js` exists | needs a pass |
+| Pinned indicators | Yes | `indicatorPinStorage.js` | none |
+| Pinned goto items | Yes | `loadGotoState().pinned` | none |
+| Pinned drawing-tool favourites | Yes | `favorites-manager.js` (+ toolbar position, visibility) | none |
+| **Pinned timeframes** (`tfPinned`) | **Was: no** | now `toolbarPinStorage.js` | closed — see §2a |
+| **Pinned drawing tools** (`toolPinned`) | **Was: no** | now `toolbarPinStorage.js` | closed — see §2a |
+| Timezone selection | Yes | `timezone-manager.js` via `userStorage`, `saveTimezone`/load on init | none |
+
+### 2a. Toolbar pins — closed
+
+"Pinned items and timeframes" turned out to be four separate surfaces, three of
+which already persisted. The two that did not were `tfPinned` and `toolPinned` in
+`TalariaV8bLive.jsx`: plain `useState` with hardcoded arrays, mutated by the pin
+buttons, never read from or written to storage. Every refresh reset the toolbar to
+factory pins.
+
+Now persisted through `toolbarPinStorage.js`, following `indicatorPinStorage.js`.
+One difference matters and has its own cell: these two have **non-empty defaults**,
+so "nothing stored yet" and "user unpinned everything" are different states. The
+loaders return `null` for absent and let the caller supply the default, rather than
+collapsing both to `[]` — otherwise unpinning the whole toolbar would resurrect the
+factory pins on the next refresh, which is its own bug.
+
+Gate `test:toolbar-pin-restore`, 12 cells: defaults on absent, anti-vacuity that the
+stored value differs from the default, both green paths, the emptied-toolbar case,
+a mutant that restores the pre-fix hardcoded line and loses the edit, corrupt-storage
+degradation, cap and dedupe normalisation, and three binding cells against the JSX.
+
+**This does not reach users until `dist-v9` is rebuilt with an explicit `BUILD_ID`** —
+the same circular consequence as the gold-font row.
+
+### 2b. The remaining concentration
 
 The concentration is the multichart layout. The session backup is **host-scoped by
 construction** — `_writeTradingSessionLocalBackup` refuses to write `fileId` when
