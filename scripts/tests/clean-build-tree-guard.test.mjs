@@ -135,6 +135,39 @@ test('CLEANTREE: the waiver costs a stated reason, not a flag', () => {
   assert.equal(ok.clean, false, 'a waived build is not a clean build and must not report as one');
 });
 
+test('BINDING: build:chart-v9 reaches the guard before anything that writes', () => {
+  // Present is not bound. The guard could be perfect and never run.
+  const pkg = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8'));
+  const build = pkg.scripts['build:chart-v9'];
+  assert.ok(build, 'RESOLVER_ABSENT_FROM_TREE: build:chart-v9 is gone');
+  assert.match(build, /preflight:clean-build-tree/, 'the build no longer runs the guard');
+  assert.ok(
+    build.indexOf('preflight:clean-build-tree') < build.indexOf('build:live'),
+    'the guard must run before the step that writes',
+  );
+  assert.match(pkg.scripts['preflight:clean-build-tree'], /clean-build-tree-guard\.mjs/);
+});
+
+test('BINDING: the first writer refuses on its own, not only via the npm chain', () => {
+  // build:live can be invoked directly from the design package, bypassing the
+  // root script entirely. The guard has to live in the writer for that path.
+  const src = fs.readFileSync(
+    path.join(REPO, 'chart v 1.4/talaria-design/scripts/bump-dist-v9-cache.mjs'),
+    'utf8',
+  );
+  assert.match(src, /assertCleanBuildInputs/, 'the writer does not call the guard');
+  const call = src.indexOf('assertCleanBuildInputs(');
+  const firstWrite = src.indexOf('fs.writeFileSync');
+  const mainAt = src.indexOf('function main()');
+  assert.ok(call > mainAt, 'the guard must be called from main()');
+  assert.ok(
+    call < src.indexOf('bumpChartScriptsInHtml(', mainAt),
+    'the guard must run before the first stamping call in main()',
+  );
+  assert.ok(firstWrite > 0, 'sanity: this script does write files');
+  assert.match(src, /DirtyTreeRefusal/, 'the refusal must be mapped to exit 2, not rethrown as a crash');
+});
+
 test('CLEANTREE: no git working tree is unverifiable, not clean', (t) => {
   // Docker and CI build from source copied out of a commit: there is no working
   // tree that could carry another lane's edits. Refusing there would break every
