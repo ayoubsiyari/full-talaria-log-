@@ -72,6 +72,19 @@ function _m28ReplayHiddenPauseV1Enabled() {
 }
 
 /**
+ * M20-Q6 — the scheduler registry is bounded by live timers rather than by how
+ * long the session has been running (default ON).
+ *
+ * Kill-switch: window.__TALARIA_DISABLE_M20Q6_POOL_V1 = <truthy> restores the
+ * legacy registry, which keeps an entry for every timer the session ever
+ * scheduled and rescans that whole array on every clear.
+ * Read per call (never sampled at init); climbs self → parent → top.
+ */
+function _m20Q6SchedulerPoolV1Enabled() {
+    return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_M20Q6_POOL_V1');
+}
+
+/**
  * HYG-2 — at most one live timer per managed key (default ON).
  * Kill-switch: window.__TALARIA_MIRROR_INTERVAL_GUARD_V1 = <truthy> restores the
  * legacy behaviour where a re-entered setup path installs a second copy of the
@@ -4752,6 +4765,10 @@ class ReplaySystem {
         return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_M20_PREFIX_SLICE_V1');
     }
 
+    _qw3ResampleCacheKeepEnabled() {
+        return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_QW3_RESAMPLE_CACHE_KEEP_V1');
+    }
+
     /**
      * M20-Q9 stage-1 — reusable growing OWNED prefix for static playhead cuts.
      *
@@ -4826,6 +4843,7 @@ class ReplaySystem {
      */
     _m20Q9DropConsumerResampleCache(consumerChart) {
         if (!consumerChart || !this._m20Q9PrefixSliceFixEnabled()) return;
+        if (this._qw3ResampleCacheKeepEnabled()) return;
         const pipeline = consumerChart.dataPipeline;
         if (pipeline && typeof pipeline.invalidateResampleCache === 'function') {
             pipeline.invalidateResampleCache();
@@ -10511,6 +10529,9 @@ if (_m20Q6LifecycleRuntimeEnabled()) {
     const m20Q6PageStates = new WeakMap();
     const m20Q6TargetBridges = new WeakMap();
     const m20Q6ConstructionStack = [];
+    // Deep enough to cover the timers in flight at any instant during replay,
+    // shallow enough that the pool itself is not the leak it replaces.
+    const M20Q6_SCHEDULER_POOL_CAP = 256;
 
     const m20Q6EffectMethods = [
         'attachButtonEvents',
@@ -10766,26 +10787,93 @@ if (_m20Q6LifecycleRuntimeEnabled()) {
         }
     }
 
+    /**
+     * The label is only ever read while draining an entry that is still pending,
+     * so building it eagerly spends a string on every timer the session
+     * schedules. Pooled entries carry a serial instead and render on demand.
+     */
+    function m20Q6SchedulerLabel(entry) {
+        if (!entry) return 'scheduler';
+        if (entry.label != null) return entry.label;
+        return `${entry.schedulerKind}:${entry.serial}`;
+    }
+
+    /**
+     * Release a settled entry back to the pool.
+     *
+     * Settled entries are dead weight the moment they settle: every reader
+     * counts or clears pending entries only, and drain discards the rest
+     * wholesale. Dropping them as they settle is what keeps the array
+     * proportional to live timers rather than to session length, and it is also
+     * what stops the clear path rescanning an ever-growing array.
+     *
+     * Removal is a swap with the tail, so it costs the same whether the array
+     * holds ten entries or ten thousand. That reorders the survivors, which is
+     * sound because every reader either counts them or clears them all.
+     */
+    function m20Q6ReleaseScheduler(state, entry) {
+        if (!state || !entry) return;
+        const list = state.schedulers;
+        const slot = entry.slot;
+        if (!(slot >= 0) || list[slot] !== entry) return;
+        const last = list.pop();
+        if (last !== entry) {
+            list[slot] = last;
+            last.slot = slot;
+        }
+        entry.slot = -1;
+        // Drop the references a settled entry no longer needs, so a pooled
+        // entry cannot pin a scope or a stale handle.
+        entry.scope = null;
+        entry.clear = null;
+        entry.handle = null;
+        if (state.schedulerPool.length < M20Q6_SCHEDULER_POOL_CAP) {
+            state.schedulerPool.push(entry);
+        }
+    }
+
     function m20Q6TrackScheduler(state, scope, kind, callback, delay, rest, original) {
         if (typeof callback !== 'function') {
             return original.call(scope, callback, delay, ...rest);
         }
+        const pooled = _m20Q6SchedulerPoolV1Enabled();
         const oneShot = kind === 'timeout' || kind === 'raf' || kind === 'microtask';
-        const entry = {
+        const entry = (pooled && state.schedulerPool.pop()) || {
             kind: 'scheduler',
-            label: `${kind}:${state.schedulers.length}`,
+            label: null,
+            serial: 0,
             schedulerKind: kind,
-            scope,
+            scope: null,
             handle: null,
             pending: true,
             uncertain: true,
             clear: null,
+            slot: -1,
         };
+        entry.kind = 'scheduler';
+        // Unpooled keeps the legacy label verbatim, including its use of the
+        // array length as the serial; pooled cannot, because the array no longer
+        // counts every timer ever scheduled.
+        entry.label = pooled ? null : `${kind}:${state.schedulers.length}`;
+        entry.serial = state.schedulerSerial++;
+        entry.schedulerKind = kind;
+        entry.scope = scope;
+        entry.handle = null;
+        entry.pending = true;
+        entry.uncertain = true;
+        entry.clear = null;
         const wrapped = function m20Q6InertableScheduledCallback(...args) {
-            if (oneShot) entry.pending = false;
+            if (oneShot) {
+                entry.pending = false;
+                // Released before the callback runs, not after: the callback can
+                // schedule more work, and a one-shot that has fired can never be
+                // cleared or drained again.
+                if (pooled) m20Q6ReleaseScheduler(state, entry);
+            }
             if (!state.acceptCallbacks) return undefined;
             return m20Q6CaptureEffects(state, () => callback.apply(this, args));
         };
+        entry.slot = state.schedulers.length;
         state.schedulers.push(entry);
         let handle;
         if (kind === 'raf') {
@@ -10840,9 +10928,15 @@ if (_m20Q6LifecycleRuntimeEnabled()) {
             const record = { target: scope, name, hadOwn: !!descriptor, descriptor, wrapper: null };
             record.wrapper = function m20Q6CapturedClear(handle) {
                 const result = original.call(scope, handle);
-                for (const entry of state.schedulers) {
+                const pooled = _m20Q6SchedulerPoolV1Enabled();
+                const list = state.schedulers;
+                // Backwards, because releasing swaps the tail into the current
+                // slot; anything moved down has already been visited.
+                for (let i = list.length - 1; i >= 0; i--) {
+                    const entry = list[i];
                     if (entry.scope === scope && entry.schedulerKind === kind && entry.handle === handle) {
                         entry.pending = false;
+                        if (pooled) m20Q6ReleaseScheduler(state, entry);
                     }
                 }
                 return result;
@@ -11043,6 +11137,8 @@ if (_m20Q6LifecycleRuntimeEnabled()) {
             captureOwnerRoot: null,
             events: [],
             schedulers: [],
+            schedulerSerial: 0,
+            schedulerPool: [],
             managers: [],
             page: null,
             lastReport: null,
@@ -11125,7 +11221,9 @@ if (_m20Q6LifecycleRuntimeEnabled()) {
         };
 
         for (const entry of [...state.schedulers].reverse()) {
-            if (entry.pending) attempt(entry.label, () => m20Q6ClearSchedulerEntry(entry));
+            if (entry.pending) {
+                attempt(m20Q6SchedulerLabel(entry), () => m20Q6ClearSchedulerEntry(entry));
+            }
         }
 
         const timerFields = [
