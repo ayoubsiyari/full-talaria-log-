@@ -15357,6 +15357,60 @@
 
         }
 
+        .replay-realistic-chip {
+
+            flex-shrink: 0;
+
+            margin-right: 6px;
+
+            padding: 2px 6px;
+
+            border: 1px solid rgba(148, 163, 184, 0.35);
+
+            border-radius: 3px;
+
+            background: transparent;
+
+            color: rgba(203, 213, 245, 0.85);
+
+            font-size: 10px;
+
+            font-weight: 700;
+
+            letter-spacing: 0.04em;
+
+            cursor: pointer;
+
+            transition: background 0.12s, border-color 0.12s, color 0.12s;
+
+        }
+
+        .replay-realistic-chip:hover {
+
+            border-color: rgba(148, 163, 184, 0.6);
+
+            color: #ffffff;
+
+        }
+
+        .replay-realistic-chip.active {
+
+            border-color: rgba(74, 106, 255, 0.8);
+
+            background: rgba(74, 106, 255, 0.18);
+
+            color: #ffffff;
+
+        }
+
+        body.light-mode .replay-realistic-chip {
+
+            border-color: rgba(15, 23, 42, 0.25);
+
+            color: #0f172a;
+
+        }
+
 
 
         .speed-slider-track-container {
@@ -41405,6 +41459,13 @@
 
                         </div>
 
+                        <!-- ORDER-01B: real time is a position on both knobs
+                             (one step a second, one second a step), so it is a
+                             preset rather than a rung the ladder has to carry. -->
+                        <button type="button" id="replayRealisticChip" class="replay-realistic-chip"
+                            title="Real time — one second of market time per second"
+                            aria-pressed="false">REAL</button>
+
                         <div class="speed-slider-track-container">
 
                             <div class="speed-slider-ticks">
@@ -51503,6 +51564,8 @@
 
                 }
 
+                const step = talariaStepSeconds();
+
                 return {
 
                     values: values,
@@ -51515,15 +51578,90 @@
 
                     rates: values.map(function (v) {
 
-                        return v === 'REALISTIC'
-                            ? '(real time)'
-                            : ('(' + v + ' bar' + (v === 1 ? '' : 's') + '/sec)');
+                        // ORDER-01B: a rung is steps per wall-second, so the
+                        // rate it delivers depends on the step beside it. Bars
+                        // per second is only the whole story while a step is
+                        // one bar, which is where the engine starts.
+                        if (v === 'REALISTIC') return '(real time)';
+                        if (!step) return '(' + v + ' bar' + (v === 1 ? '' : 's') + '/sec)';
+                        return '(' + talariaMarketSpan(v * step) + ' of market/sec)';
 
                     })
 
                 };
 
             }
+
+            /**
+             * ORDER-01B — the steps the engine will serve, and which of them
+             * this mode can actually render.
+             *
+             * Read, never invented. The step menu is the same question the
+             * INTERVAL slider asks lower down the file, and both ask the
+             * engine: a shell that filters its own list is the fourth ladder,
+             * and the fourth ladder is what kept 60x on screen.
+             */
+            function talariaStepMenu() {
+
+                const rs = window.chart && window.chart.replaySystem;
+
+                try {
+
+                    if (rs && typeof rs.getStepMenu === 'function') {
+
+                        const menu = rs.getStepMenu();
+
+                        if (Array.isArray(menu) && menu.length) return menu;
+
+                    }
+
+                } catch (_e) { /* fall through to no menu */ }
+
+                return [];
+
+            }
+
+            window.__talariaStepMenu = talariaStepMenu;
+
+            /** Market seconds one step covers, or null before the engine exists. */
+            function talariaStepSeconds() {
+
+                const rs = window.chart && window.chart.replaySystem;
+
+                try {
+
+                    if (rs && typeof rs.getStepSeconds === 'function') {
+
+                        const seconds = Number(rs.getStepSeconds());
+
+                        if (Number.isFinite(seconds) && seconds > 0) return seconds;
+
+                    }
+
+                } catch (_e) { /* fall through to bars per second */ }
+
+                return null;
+
+            }
+
+            /** "1m", "10m", "4h" — a span of market time, in the toolbar's vocabulary. */
+            function talariaMarketSpan(seconds) {
+
+                const n = Math.round(Number(seconds));
+
+                if (!Number.isFinite(n) || n <= 0) return '0s';
+
+                if (n % 86400 === 0) return (n / 86400) + 'd';
+
+                if (n % 3600 === 0) return (n / 3600) + 'h';
+
+                if (n % 60 === 0) return (n / 60) + 'm';
+
+                return n + 's';
+
+            }
+
+            window.__talariaMarketSpan = talariaMarketSpan;
 
             // ORDER-01 §5: the offered speeds are 1-10 bars per second in
             // candle mode, and the same ten plus REALISTIC in tick mode.
@@ -51590,12 +51728,100 @@
 
             window.__talariaRefreshSpeedLadder = refreshSpeedLadderUI;
 
+            /**
+             * ORDER-01B — the REAL chip.
+             *
+             * The preset moves both knobs, so the chip cannot just set a
+             * speed and it cannot own the state either: the engine decides
+             * whether the two knobs are sitting on real time, and the chip
+             * only reports what it is told. A chip that tracked its own
+             * pressed flag would go on claiming real time after the user
+             * moved the slider off it.
+             */
+            const realisticChip = document.getElementById('replayRealisticChip');
+
+            function syncRealisticChip() {
+
+                if (!realisticChip) return;
+
+                const rs = window.chart && window.chart.replaySystem;
+
+                let live = false;
+
+                let active = false;
+
+                try {
+
+                    live = !!(rs && typeof rs.isRealisticPresetActive === 'function'
+                        && typeof rs.applyRealisticPreset === 'function');
+
+                    active = live && rs.isRealisticPresetActive();
+
+                } catch (_e) { live = false; active = false; }
+
+                // With the step knob switched off there is no preset to apply,
+                // and a chip that does nothing is worse than no chip.
+                realisticChip.style.display = live ? '' : 'none';
+
+                realisticChip.classList.toggle('active', !!active);
+
+                realisticChip.setAttribute('aria-pressed', active ? 'true' : 'false');
+
+            }
+
+            window.__talariaSyncRealisticChip = syncRealisticChip;
+
+            if (realisticChip) {
+
+                realisticChip.addEventListener('click', function (ev) {
+
+                    ev.stopPropagation();
+
+                    const rs = window.chart && window.chart.replaySystem;
+
+                    if (!rs || typeof rs.applyRealisticPreset !== 'function') return;
+
+                    try { rs.applyRealisticPreset(); } catch (_e) { return; }
+
+                    // The preset can move the playback mode, the speed and the
+                    // step, so every control that reads any of them refreshes.
+                    refreshSpeedLadderUI();
+
+                    if (typeof window._replayIntervalRebuild === 'function') {
+
+                        window._replayIntervalRebuild();
+
+                    }
+
+                    syncRealisticChip();
+
+                });
+
+                setInterval(syncRealisticChip, 500);
+
+                syncRealisticChip();
+
+            }
+
             document.addEventListener('click', function (e) {
 
                 const opt = e.target && e.target.closest && e.target.closest('.replay-mode-option');
 
                 // After the toggle has actually flipped the mode, not before.
-                if (opt) setTimeout(refreshSpeedLadderUI, 0);
+                if (opt) setTimeout(function () {
+
+                    refreshSpeedLadderUI();
+
+                    // The mode decides which steps can be rendered — the drawn
+                    // path serves sub-bar steps and the candle path does not —
+                    // so the step menu is rebuilt alongside the ladder.
+                    if (typeof window._replayIntervalRebuild === 'function') {
+
+                        window._replayIntervalRebuild();
+
+                    }
+
+                }, 0);
 
             }, true);
 
@@ -51697,7 +51923,34 @@
 
             window.updateSpeedDisplay = function(speed) {
 
-                const index = speedValues.indexOf(speed);
+                let index = speedValues.indexOf(speed);
+
+                if (index === -1) {
+
+                    // A speed the ladder no longer carries — a stored 60x, or
+                    // REALISTIC from before it became a preset. Migrating is
+                    // the engine's call; without this the slider silently
+                    // keeps displaying whatever it showed last while the
+                    // engine runs at something else.
+                    const rs = window.chart && window.chart.replaySystem;
+
+                    try {
+
+                        if (rs && typeof rs.migrateStoredSpeed === 'function') {
+
+                            index = speedValues.indexOf(rs.migrateStoredSpeed(speed));
+
+                        }
+
+                    } catch (_e) { index = -1; }
+
+                    if (typeof window.__talariaSyncRealisticChip === 'function') {
+
+                        try { window.__talariaSyncRealisticChip(); } catch (_e) {}
+
+                    }
+
+                }
 
                 if (index !== -1) {
 
@@ -60790,15 +61043,68 @@ setTimeout(function(){
 
 
 
+        /**
+         * ORDER-01B — the step knob is this slider.
+         *
+         * INTERVAL and "step" are one number: both write the same
+         * `stepTimeframeOverride`, and two controls for one number is how a
+         * cadence ends up derived from one and the playhead advanced by the
+         * other. So rather than adding a second knob beside it, this one now
+         * offers what the engine offers — divisors of the chart timeframe,
+         * including the sub-minute steps this local table never had — and
+         * drops the steps the current mode cannot render.
+         */
+        function engineStepIntervals() {
+
+            if (typeof window.__talariaStepMenu !== 'function') return null;
+
+            var menu;
+
+            try { menu = window.__talariaStepMenu(); } catch (_e) { return null; }
+
+            if (!Array.isArray(menu) || !menu.length) return null;
+
+            var offered = menu.filter(function(entry) {
+
+                return entry && entry.enabled && entry.label;
+
+            });
+
+            if (!offered.length) return null;
+
+            return offered.map(function(entry) {
+
+                return {
+
+                    tf: String(entry.label).toLowerCase(),
+
+                    ms: entry.seconds * 1000,
+
+                    label: entry.label,
+
+                    seconds: entry.seconds
+
+                };
+
+            });
+
+        }
+
         function rebuildIntervals() {
 
             var chartMs = getChartTfMs();
 
-            activeIntervals = ALL_INTERVALS.filter(function(iv) {
+            activeIntervals = engineStepIntervals();
 
-                return iv.ms <= chartMs;
+            if (!activeIntervals) {
 
-            });
+                activeIntervals = ALL_INTERVALS.filter(function(iv) {
+
+                    return iv.ms <= chartMs;
+
+                });
+
+            }
 
             if (activeIntervals.length === 0) activeIntervals = [ALL_INTERVALS[0]];
 
@@ -60982,6 +61288,22 @@ setTimeout(function(){
                     rs._replayIntervalRawCandles = Math.max(1, Math.round(resolvedIv.ms / rawMs));
 
                 }
+
+            }
+
+            // ORDER-01B: the speed label reads "N steps a second" against the
+            // step beside it, so changing the step changes what the ladder
+            // promises. Refresh it here rather than leaving the toolbar
+            // quoting a market rate that is no longer the one being run.
+            if (typeof window.__talariaRefreshSpeedLadder === 'function') {
+
+                try { window.__talariaRefreshSpeedLadder(); } catch (_e) {}
+
+            }
+
+            if (typeof window.__talariaSyncRealisticChip === 'function') {
+
+                try { window.__talariaSyncRealisticChip(); } catch (_e) {}
 
             }
 

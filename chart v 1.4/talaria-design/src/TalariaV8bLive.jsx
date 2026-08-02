@@ -12333,6 +12333,18 @@ const TalariaV8bLive = () => {
   const [replayOpts, setReplayOpts] = useState(false);
   const [replayMode, setReplayMode] = useState("candle");
   const [replayInterval, setReplayInterval] = useState("Auto");
+  /**
+   * ORDER-01B — the two replay knobs, as the engine describes them.
+   *
+   * The toolbar used to hold its own ladder and its own interval list. That is
+   * how it went on offering 60x for a week after the engine stopped serving
+   * it, and it is why a sub-minute step could not be picked here at all. Both
+   * lists are now read from the engine and cached in state; the literals below
+   * are only for the window before `window.chart.replaySystem` exists.
+   */
+  const [replaySpeedSteps, setReplaySpeedSteps] = useState([1,2,3,4,5,6,7,8,9,10]);
+  const [replayStepMenu, setReplayStepMenu] = useState([]);
+  const [replayRealistic, setReplayRealistic] = useState(false);
   const [rollback, setRollback] = useState(false);
   /** Replay active + session forbids rewind — disables Rollback on the bar (synced in nav-integrity effect). */
   const [replayRollbackBlocked, setReplayRollbackBlocked] = useState(false);
@@ -13599,7 +13611,22 @@ const TalariaV8bLive = () => {
     if (!rs) return;
     const desiredInterval = replayIntervalToLegacyValue(interval);
     const explicitInterval = interval && interval !== "Auto";
-    const desiredMode = explicitInterval ? "candle" : (mode === "candle" ? "candle" : "tick");
+    // ORDER-01B: an explicit step used to imply candle mode, because every
+    // step the popup could offer was at least one bar. A sub-bar step is the
+    // opposite case — only the drawn path renders one — so forcing candle
+    // there would leave the user watching a frozen candle and a crawling clock.
+    let subBarStep = false;
+    try {
+      if (explicitInterval && typeof rs.timeframeToMs === "function"
+        && typeof rs.isStepBelowDataFloor === "function") {
+        const stepMs = rs.timeframeToMs(desiredInterval);
+        subBarStep = Number.isFinite(stepMs) && stepMs > 0
+          && rs.isStepBelowDataFloor(stepMs / 1000);
+      }
+    } catch (_e) { subBarStep = false; }
+    const desiredMode = subBarStep
+      ? "tick"
+      : (explicitInterval ? "candle" : (mode === "candle" ? "candle" : "tick"));
     try {
       if (typeof rs.setPlaybackMode === "function") {
         const curMode = typeof rs.getPlaybackMode === "function"
@@ -13643,16 +13670,34 @@ const TalariaV8bLive = () => {
     return null;
   };
 
-  const replayIntervalOptions = useMemo(() => {
+  /**
+   * ORDER-01B — INTERVAL *is* the step knob.
+   *
+   * Both write the same `stepTimeframeOverride`, so a second control beside
+   * this one would be two sources of truth for one number. The engine's menu
+   * carries the sub-minute steps this local list never had, and marks the ones
+   * the current mode cannot render — a one-second step needs the drawn path,
+   * which is tick mode until that path is wired into candle.
+   */
+  const replayIntervalEntries = useMemo(() => {
+    if (replayStepMenu.length) {
+      return [{ label: "Auto", enabled: true, reason: null },
+        ...replayStepMenu.map((e) => ({
+          label: e.label, enabled: e.enabled !== false, reason: e.reason || null,
+        }))];
+    }
     const all = ["1m", "5m", "15m", "30m", "1h", "4h", "1D", "1W"];
     const curMin = timeframeToMinutes(tf);
-    if (!curMin) return ["Auto", ...all];
-    const smallerOrEqual = all.filter((x) => {
-      const v = timeframeToMinutes(x);
-      return Number.isFinite(v) && v <= curMin;
-    });
-    return ["Auto", ...smallerOrEqual];
-  }, [tf]);
+    const usable = curMin
+      ? all.filter((x) => { const v = timeframeToMinutes(x); return Number.isFinite(v) && v <= curMin; })
+      : all;
+    return ["Auto", ...usable].map((label) => ({ label, enabled: true, reason: null }));
+  }, [tf, replayStepMenu]);
+
+  /** The labels a user may actually end up on. */
+  const replayIntervalOptions = useMemo(
+    () => replayIntervalEntries.filter((e) => e.enabled).map((e) => e.label),
+    [replayIntervalEntries]);
 
   // Instant sync when replay play/pause changes (Space, legacy toolbar, V9 button).
   useEffect(() => {
@@ -13685,12 +13730,33 @@ const TalariaV8bLive = () => {
         // REALISTIC is a speed but not a number, so a finite-only check would
         // let the toolbar keep showing a numeric rung while the engine runs 1:1.
         if ((Number.isFinite(rs.speed) || rs.speed === 'REALISTIC') && rs.speed !== speed) setSpeed(rs.speed);
+        // ORDER-01B: both knobs, from the engine. The step menu changes with
+        // the playback mode and with the loaded inventory, so it is polled
+        // rather than read once at mount.
+        try {
+          if (typeof rs.getSpeedLadderBarsPerSecond === 'function') {
+            const ladder = rs.getPlaybackMode?.() === 'tick' && typeof rs.getTickSpeedLadder === 'function'
+              ? rs.getTickSpeedLadder()
+              : rs.getSpeedLadderBarsPerSecond();
+            if (Array.isArray(ladder) && ladder.length
+              && ladder.join() !== replaySpeedSteps.join()) setReplaySpeedSteps(ladder);
+          }
+          if (typeof rs.getStepMenu === 'function') {
+            const menu = rs.getStepMenu();
+            if (Array.isArray(menu)
+              && menu.map(e=>`${e.label}:${e.enabled}`).join() !== replayStepMenu.map(e=>`${e.label}:${e.enabled}`).join()) {
+              setReplayStepMenu(menu);
+            }
+          }
+          const real = typeof rs.isRealisticPresetActive === 'function' && rs.isRealisticPresetActive();
+          if (!!real !== replayRealistic) setReplayRealistic(!!real);
+        } catch (e) { /* engine mid-teardown; keep the last good menu */ }
       }
     };
     const id = setInterval(sync, 250);
     return () => { cancelled = true; clearInterval(id); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing, replayPlayStarting, replayMode, speed]);
+  }, [playing, replayPlayStarting, replayMode, speed, replaySpeedSteps, replayStepMenu, replayRealistic]);
 
   // Push V9 mode changes into the replaySystem (skip if user just synced from rs).
   useEffect(() => {
@@ -37343,25 +37409,26 @@ const TalariaV8bLive = () => {
                       {isA&&<svg width={9} height={7} viewBox="0 0 9 7"><path d="M1,3.5 L3.5,6 L8,1" stroke={c.acL} strokeWidth={1.7} fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                     </button>);
                   })}
-                  {replayMode === "candle" ? (
-                    <>
-                      <div style={{height:1,margin:"3px 10px",background:`linear-gradient(90deg,transparent,${c.brL},transparent)`}}/>
-                      <div style={{padding:"4px 10px 2px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.08em"}}>INTERVAL</div>
-                      <div style={{padding:"4px 10px 8px",display:"flex",gap:4,flexWrap:"wrap"}}>
-                        {replayIntervalOptions.map(t=>{const isA=replayInterval===t,isH=hov===`ri-${t}`;return(
-                          <div key={t} onClick={(e)=>{e.stopPropagation();const nextMode=t!=="Auto"?"candle":replayMode;if(t!=="Auto")setReplayMode("candle");setReplayInterval(t);applyReplayControlsToEngine(getReplaySystem(), nextMode, t);closePopup(setReplayOpts,"replayOpts");}}
-                            onMouseEnter={()=>setHov(`ri-${t}`)} onMouseLeave={()=>setHov(null)}
-                            style={{padding:"3px 8px",position:"relative",background:isA?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",color:isA?c.acL:isH?c.tx:c.ts,fontSize:10,fontWeight:700,fontFamily:F,cursor:"default",transition:"background 0.12s",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                            {t}
-                            {isA&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
-                            {!isA&&isH&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`,pointerEvents:"none"}}/>}
-                          </div>);
-                        })}
-                      </div>
-                    </>
-                  ) : (
-                    <div style={{paddingBottom: 6}} />
-                  )}
+                  {/* ORDER-01B: the step applies to both modes now — it is how
+                      far the playhead moves, not a candle-only setting — and a
+                      step the current mode cannot render is shown greyed with
+                      the reason rather than quietly dropped. */}
+                  <>
+                    <div style={{height:1,margin:"3px 10px",background:`linear-gradient(90deg,transparent,${c.brL},transparent)`}}/>
+                    <div style={{padding:"4px 10px 2px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.08em"}}>STEP</div>
+                    <div style={{padding:"4px 10px 8px",display:"flex",gap:4,flexWrap:"wrap"}}>
+                      {replayIntervalEntries.map(({label:t,enabled,reason})=>{const isA=replayInterval===t,isH=enabled&&hov===`ri-${t}`;return(
+                        <div key={t} title={enabled?undefined:"Needs the drawn path — switch to Tick"}
+                          onClick={(e)=>{e.stopPropagation();if(!enabled)return;setReplayInterval(t);applyReplayControlsToEngine(getReplaySystem(), replayMode, t);closePopup(setReplayOpts,"replayOpts");}}
+                          onMouseEnter={()=>{if(enabled)setHov(`ri-${t}`);}} onMouseLeave={()=>setHov(null)}
+                          style={{padding:"3px 8px",position:"relative",background:isA?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",color:!enabled?c.tm:isA?c.acL:isH?c.tx:c.ts,opacity:enabled?1:0.45,fontSize:10,fontWeight:700,fontFamily:F,cursor:"default",transition:"background 0.12s",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                          {t}
+                          {isA&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
+                          {!isA&&isH&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`,pointerEvents:"none"}}/>}
+                        </div>);
+                      })}
+                    </div>
+                  </>
                 </div>
               </div>}
             </div>
@@ -37407,10 +37474,12 @@ const TalariaV8bLive = () => {
                 opacity:replayPlayStarting?0.95:(playing?(hov==="rp-play"?1:0.7):undefined)}}/>
             </button>
             {/* Speed */}
-            {/* Speed — ORDER-01 §5: exactly 1–10 bars/sec in candle mode, the
-                same ten plus REALISTIC in tick mode. Nothing above 10, nothing
-                between. The 15-step ladder this replaced went to 100×. */}
-            {(()=>{const steps=replayMode==="tick"?[1,2,3,4,5,6,7,8,9,10,"REALISTIC"]:[1,2,3,4,5,6,7,8,9,10];const last=steps.length-1;const rIdx=steps.indexOf("REALISTIC");const si=speed==="REALISTIC"?(rIdx<0?last:rIdx):steps.reduce((best,v,i)=>(typeof v==="number"&&Math.abs(v-speed)<Math.abs(steps[best]-speed))?i:best,0);const pct=si/last*100;return(
+            {/* Speed — ORDER-01 §5 fixed the ladder at 1–10; ORDER-01B says
+                what a rung means: steps per wall-second. How far a step goes
+                is the STEP control in the popup, and real time is the two of
+                them together, which is the REAL chip rather than a rung. The
+                ladder is whatever the engine offers. */}
+            {(()=>{const steps=replaySpeedSteps;const last=Math.max(1,steps.length-1);const rIdx=steps.indexOf("REALISTIC");const si=speed==="REALISTIC"?(rIdx<0?last:rIdx):steps.reduce((best,v,i)=>(typeof v==="number"&&Math.abs(v-speed)<Math.abs(steps[best]-speed))?i:best,0);const pct=si/last*100;return(
             <div style={{display:"flex",alignItems:"center",gap:6,padding:"0 6px",width:140,flexShrink:0}}>
               <span style={{fontSize:14,fontWeight:800,color:c.acL,fontVariantNumeric:"tabular-nums",width:40,flexShrink:0,textAlign:"right",userSelect:"none",letterSpacing:"-0.02em",transition:"transform 0.1s ease",transform:hov==="rp-spd-dn"?`scale(1.18) translateY(-2px)`:`translateY(-2px)`,display:"inline-block",paddingRight:2,boxSizing:"border-box"}}>{steps[si]==="REALISTIC"?<span style={{fontSize:11,fontWeight:800,color:c.acL,letterSpacing:"0.02em"}}>REAL</span>:<>{steps[si]}<span style={{fontSize:16,fontWeight:800,color:c.acL,marginLeft:1}}>×</span></>}</span>
               <div style={{position:"relative",width:88,height:36,display:"flex",alignItems:"center"}}>
@@ -37426,6 +37495,18 @@ const TalariaV8bLive = () => {
                   onPointerUp={()=>setHov(null)} onPointerLeave={()=>setHov(null)}
                   style={{position:"absolute",left:-10,right:-10,width:"calc(100% + 20px)",height:"100%",opacity:0,cursor:"default",margin:0}}/>
               </div>
+              {/* REAL — one market second per wall second. It sets both knobs,
+                  so it reports the engine's answer rather than a pressed flag
+                  of its own, which would go on claiming real time after the
+                  user moved the slider off it. */}
+              <button type="button" title="Real time — one second of market time per second"
+                aria-pressed={replayRealistic?"true":"false"}
+                onClick={(e)=>{e.stopPropagation();const rs=getReplaySystem();if(!rs||typeof rs.applyRealisticPreset!=="function")return;try{rs.applyRealisticPreset();}catch(_e){return;}
+                  setSpeed(rs.speed);setReplayRealistic(!!rs.isRealisticPresetActive?.());
+                  if(typeof rs.getStepLabel==="function"){try{setReplayInterval(rs.getStepLabel());}catch(_e2){}}
+                  if(typeof rs.getPlaybackMode==="function")setReplayMode(rs.getPlaybackMode());}}
+                onMouseEnter={()=>setHov("rp-real")} onMouseLeave={()=>setHov(null)}
+                style={{flexShrink:0,padding:"2px 5px",border:`1px solid ${replayRealistic?c.acL:c.brL}`,background:replayRealistic?"rgba(74,106,255,0.18)":hov==="rp-real"?c.hv:"transparent",color:replayRealistic?c.acL:hov==="rp-real"?c.tx:c.ts,fontSize:9,fontWeight:800,fontFamily:F,letterSpacing:"0.04em",cursor:"default",transition:"background 0.12s,color 0.12s,border-color 0.12s"}}>REAL</button>
             </div>);})()}
             {/* Next candle (step forward) — if replay isn't active, open
                 the V9 cut-line for the user to pick a start. Otherwise

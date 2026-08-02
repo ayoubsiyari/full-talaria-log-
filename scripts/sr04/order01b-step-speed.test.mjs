@@ -58,6 +58,8 @@ const METHODS = [
     '\n    isStepBelowDataFloor(seconds = this.getStepSeconds()) {',
     '\n    getStepRouting() {',
     '\n    getStepLabel(seconds = this.getStepSeconds()) {',
+    '\n    getStepMenu() {',
+    '\n    canServeStep(seconds) {',
     '\n    getStepSeconds() {',
     '\n    setStepSeconds(seconds) {',
     '\n    _order01bHasExplicitStep() {',
@@ -137,6 +139,10 @@ function build({ mutate = (s) => s, tfSeconds = 60, rawSeconds = 60, flags = {} 
     engine._speedGovDemandBarsPerSecond = function () { return Number(this.speed) || 1; };
     engine._mode = 'candle';
     engine.getPlaybackMode = function () { return this._mode; };
+    engine.setPlaybackMode = function (mode) {
+        this._mode = mode === 'candle' ? 'candle' : 'tick';
+        this._modeSwitches = (this._modeSwitches || 0) + 1;
+    };
     // The shipped setSpeed re-arms timers and touches the toolbar. The preset's
     // contract is which values the two knobs end up holding, so the scene keeps
     // the normalising assignment and drops the DOM.
@@ -503,6 +509,42 @@ test('S9 the tick ladder is the same ten, with no string on it', () => {
         'a rung that is not a speed forces every consumer to branch on a string');
 });
 
+test('S9 the preset lands on the path that can draw it', () => {
+    // One market second per wall second is a sub-bar step on every inventory
+    // the product loads, and only the drawn path renders one. This is why
+    // REALISTIC lived in tick mode; it still goes there, but as a consequence
+    // of the step rather than as a rung the user gets demoted off.
+    const { engine } = build({ tfSeconds: 60, rawSeconds: 60 });
+    engine._mode = 'candle';
+    assert.equal(engine.applyRealisticPreset(), true);
+    assert.equal(engine.getPlaybackMode(), 'tick');
+    assert.equal(engine.getMarketSecondsPerWallSecond(), 1);
+});
+
+test('S9 the preset leaves a mode that can already serve it alone', () => {
+    const { engine } = build({ tfSeconds: 60, rawSeconds: 1 });
+    engine._mode = 'candle';
+    engine.applyRealisticPreset();
+    assert.equal(engine.getPlaybackMode(), 'candle',
+        'with one-second inventory the candle path steps a second at a time by itself');
+    assert.equal(engine._modeSwitches, undefined, 'and nothing was switched');
+});
+
+test('S9 MUTANT: applying the preset blind strands it on the candle path', () => {
+    const { engine } = build({
+        tfSeconds: 60,
+        rawSeconds: 60,
+        mutate: (s) => s.replace(
+            "if (!this.canServeStep(1) && typeof this.setPlaybackMode === 'function') {",
+            'if (false) {'),
+    });
+    engine._mode = 'candle';
+    engine.applyRealisticPreset();
+    assert.equal(engine.getPlaybackMode(), 'candle',
+        'the mutant must leave the user on the path that cannot draw a sub-bar step; '
+        + 'if it does not, the routing cell proves nothing');
+});
+
 test('S9 the preset is one market second per wall second', () => {
     const { engine } = build({ tfSeconds: 60 });
     engine.speed = 10;
@@ -549,6 +591,72 @@ test('S9 MUTANT: migrating REALISTIC as a bare number loses the step', () => {
     engine.migrateStoredSpeed('REALISTIC');
     assert.equal(engine.getStepSeconds(), 60,
         'the mutant must leave the step at one bar; if not, S9 proves nothing');
+});
+
+// ---------------------------------------------------------------------------
+// S11 — the menu. One list, so a toolbar cannot answer differently from the
+// engine that has to serve the answer.
+// ---------------------------------------------------------------------------
+
+test('S11 the menu is the offer, labelled, with the current step marked', () => {
+    const { engine } = build({ tfSeconds: 300, rawSeconds: 60 });
+    engine.setStepSeconds(60);
+    const menu = engine.getStepMenu();
+    assert.deepEqual(menu.map((e) => e.seconds), engine.getOfferedStepSeconds());
+    assert.deepEqual(menu.map((e) => e.label), ['1s', '2s', '5s', '10s', '15s', '30s', '1m', '5m']);
+    assert.deepEqual(menu.filter((e) => e.selected).map((e) => e.seconds), [60],
+        'exactly one entry is the step being run');
+});
+
+test('S11 candle mode disables the steps it cannot draw, and says why', () => {
+    const { engine } = build({ tfSeconds: 300, rawSeconds: 60 });
+    engine._mode = 'candle';
+    const menu = engine.getStepMenu();
+    const below = menu.filter((e) => e.seconds < 60);
+    assert.ok(below.length, 'the scene must contain sub-floor steps to be worth asserting');
+    for (const entry of below) {
+        assert.equal(entry.enabled, false, `${entry.label} has no bar to land on`);
+        assert.equal(entry.route, 'puppet');
+        assert.equal(entry.reason, 'below-data-floor',
+            'a control that greys an option without a reason is a control that looks broken');
+    }
+    for (const entry of menu.filter((e) => e.seconds >= 60)) {
+        assert.equal(entry.enabled, true);
+        assert.equal(entry.route, 'native');
+    }
+});
+
+test('S11 tick mode serves them, because the path is drawn', () => {
+    const { engine } = build({ tfSeconds: 300, rawSeconds: 60 });
+    engine._mode = 'tick';
+    for (const entry of engine.getStepMenu()) {
+        assert.equal(entry.enabled, true, `${entry.label} is drawable in tick mode`);
+        assert.equal(entry.route, entry.seconds < 60 ? 'drawn' : 'native');
+    }
+});
+
+test('S11 the seam flag opens sub-bar steps on the candle path', () => {
+    // E owns wiring the drawn path into candle mode. When it lands, the menu
+    // opens with a flag rather than a second edit to every toolbar.
+    const { engine } = build({
+        tfSeconds: 300,
+        rawSeconds: 60,
+        flags: { __TALARIA_ENABLE_ORDER01B_SUBFLOOR_CANDLE: true },
+    });
+    engine._mode = 'candle';
+    assert.ok(engine.getStepMenu().every((e) => e.enabled));
+});
+
+test('S11 MUTANT: a menu that enables everything hides the unrenderable steps', () => {
+    const { engine } = build({
+        tfSeconds: 300,
+        rawSeconds: 60,
+        mutate: (s) => s.replace("const enabled = route !== 'puppet' || subFloorInCandle;",
+            'const enabled = true;'),
+    });
+    engine._mode = 'candle';
+    assert.ok(engine.getStepMenu().every((e) => e.enabled),
+        'the mutant must offer a step candle mode cannot draw; if not, S11 proves nothing');
 });
 
 // ---------------------------------------------------------------------------

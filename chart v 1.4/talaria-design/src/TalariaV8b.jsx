@@ -536,6 +536,14 @@ const TalariaV8b = () => {
   const [replayOpts, setReplayOpts] = useState(false);
   const [replayMode, setReplayMode] = useState("candle");
   const [replayInterval, setReplayInterval] = useState("Auto");
+  /**
+   * ORDER-01B — the two replay knobs. This surface has no engine behind it, so
+   * the lists are literals; the live toolbar reads the same two from the
+   * engine. What must match is the shape: ten numeric rungs and no string on
+   * the ladder, a step menu that reaches below a minute, and REAL as a chip.
+   */
+  const [replaySpeedSteps] = useState([1,2,3,4,5,6,7,8,9,10]);
+  const [replayRealistic, setReplayRealistic] = useState(false);
   const [rollback, setRollback] = useState(false);
   const [rollbackLineX, setRollbackLineX] = useState(60);
   const [rbDragging, setRbDragging] = useState(false);
@@ -9517,10 +9525,10 @@ const TalariaV8b = () => {
                     </button>);
                   })}
                   <div style={{height:1,margin:"3px 10px",background:`linear-gradient(90deg,transparent,${c.brL},transparent)`}}/>
-                  <div style={{padding:"4px 10px 2px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.08em"}}>INTERVAL</div>
+                  <div style={{padding:"4px 10px 2px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.08em"}}>STEP</div>
                   <div style={{padding:"4px 10px 8px",display:"flex",gap:4,flexWrap:"wrap"}}>
-                    {["Auto","1m","5m","15m","30m"].map(t=>{const isA=replayInterval===t,isH=hov===`ri-${t}`;return(
-                      <div key={t} onClick={()=>setReplayInterval(t)}
+                    {["Auto","1s","5s","15s","30s","1m","5m","15m","30m"].map(t=>{const isA=replayInterval===t,isH=hov===`ri-${t}`;return(
+                      <div key={t} onClick={()=>{setReplayInterval(t);setReplayRealistic(t==="1s"&&speed===1);}}
                         onMouseEnter={()=>setHov(`ri-${t}`)} onMouseLeave={()=>setHov(null)}
                         style={{padding:"3px 8px",position:"relative",background:isA?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",color:isA?c.acL:isH?c.tx:c.ts,fontSize:10,fontWeight:700,fontFamily:F,cursor:"default",transition:"background 0.12s",display:"flex",alignItems:"center",justifyContent:"center"}}>
                         {t}
@@ -9544,10 +9552,11 @@ const TalariaV8b = () => {
                 opacity:playing?(hov==="rp-play"?1:0.7):undefined}}/>
             </button>
             {/* Speed */}
-            {/* Speed — ORDER-01 §5: exactly 1–10 bars/sec in candle mode, the
-                same ten plus REALISTIC in tick mode. Nothing above 10, nothing
-                between. The 15-step ladder this replaced went to 100×. */}
-            {(()=>{const steps=replayMode==="tick"?[1,2,3,4,5,6,7,8,9,10,"REALISTIC"]:[1,2,3,4,5,6,7,8,9,10];const last=steps.length-1;const rIdx=steps.indexOf("REALISTIC");const si=speed==="REALISTIC"?(rIdx<0?last:rIdx):steps.reduce((best,v,i)=>(typeof v==="number"&&Math.abs(v-speed)<Math.abs(steps[best]-speed))?i:best,0);const pct=si/last*100;return(
+            {/* Speed — ORDER-01 §5 fixed the ladder at 1–10; ORDER-01B says
+                what a rung means: steps per wall-second. How far a step goes
+                is the STEP control in the popup, and real time is the two of
+                them together, which is the REAL chip rather than a rung. */}
+            {(()=>{const steps=replaySpeedSteps;const last=Math.max(1,steps.length-1);const rIdx=steps.indexOf("REALISTIC");const si=speed==="REALISTIC"?(rIdx<0?last:rIdx):steps.reduce((best,v,i)=>(typeof v==="number"&&Math.abs(v-speed)<Math.abs(steps[best]-speed))?i:best,0);const pct=si/last*100;return(
             <div style={{display:"flex",alignItems:"center",gap:6,padding:"0 6px",width:140,flexShrink:0}}>
               <span style={{fontSize:14,fontWeight:800,color:c.acL,fontVariantNumeric:"tabular-nums",width:27,flexShrink:0,textAlign:"right",userSelect:"none",letterSpacing:"-0.02em",transition:"transform 0.1s ease",transform:hov==="rp-spd-dn"?`scale(1.18) translateY(-2px)`:`translateY(-2px)`,display:"inline-block"}}>{steps[si]==="REALISTIC"?<span style={{fontSize:11,fontWeight:800,color:c.acL,letterSpacing:"0.02em"}}>REAL</span>:<>{steps[si]}<span style={{fontSize:16,fontWeight:800,color:c.acL,marginLeft:1}}>×</span></>}</span>
               <div style={{position:"relative",width:88,height:36,display:"flex",alignItems:"center"}}>
@@ -9563,6 +9572,13 @@ const TalariaV8b = () => {
                   onPointerUp={()=>setHov(null)} onPointerLeave={()=>setHov(null)}
                   style={{position:"absolute",left:-10,right:-10,width:"calc(100% + 20px)",height:"100%",opacity:0,cursor:"default",margin:0}}/>
               </div>
+              {/* REAL — one market second per wall second: the bottom rung and
+                  a one-second step together, which is what REALISTIC always
+                  meant and could never say as a single ladder position. */}
+              <button type="button" aria-pressed={replayRealistic?"true":"false"}
+                onClick={()=>{setSpeed(1);setReplayInterval("1s");setReplayRealistic(true);}}
+                onMouseEnter={()=>setHov("rp-real")} onMouseLeave={()=>setHov(null)}
+                style={{flexShrink:0,padding:"2px 5px",border:`1px solid ${replayRealistic?c.acL:c.brL}`,background:replayRealistic?"rgba(74,106,255,0.18)":hov==="rp-real"?c.hv:"transparent",color:replayRealistic?c.acL:hov==="rp-real"?c.tx:c.ts,fontSize:9,fontWeight:800,fontFamily:F,letterSpacing:"0.04em",cursor:"default",transition:"background 0.12s,color 0.12s,border-color 0.12s"}}>REAL</button>
             </div>);})()}
             {/* Next candle (step forward) */}
             <button

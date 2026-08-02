@@ -266,13 +266,6 @@ function _order01bStepV1Enabled() {
     return !_speedGovFlagState('__TALARIA_DISABLE_ORDER01B_STEP_V1', false);
 }
 
-/**
- * Timeframe string for a step, in the vocabulary `timeframeToMs` already
- * parses. The step knob writes the same `stepTimeframeOverride` the INTERVAL
- * popup writes — deliberately, so the two controls cannot disagree about what
- * a step is. Two sources of truth for one number is how the cadence ends up
- * derived from one control and the playhead advanced by the other.
- */
 /** FNV-1a over a string. The slow path of `_pathSeed`, kept in one place. */
 function _order01bHashText(text) {
     let hash = 2166136261;
@@ -283,6 +276,13 @@ function _order01bHashText(text) {
     return hash >>> 0;
 }
 
+/**
+ * Timeframe string for a step, in the vocabulary `timeframeToMs` already
+ * parses. The step knob writes the same `stepTimeframeOverride` the INTERVAL
+ * popup writes — deliberately, so the two controls cannot disagree about what
+ * a step is. Two sources of truth for one number is how the cadence ends up
+ * derived from one control and the playhead advanced by the other.
+ */
 function _order01bStepLabel(seconds) {
     const n = Math.round(Number(seconds));
     if (!Number.isFinite(n) || n <= 0) return null;
@@ -5874,6 +5874,47 @@ class ReplaySystem {
     }
 
     /**
+     * The step control, as the toolbars should render it.
+     *
+     * One list, built here, because the thing that put 60x on screen for a
+     * week after the engine stopped offering it was three surfaces each
+     * holding their own copy. A toolbar that asks this question cannot answer
+     * it differently from the engine that has to serve the answer.
+     *
+     * `enabled` is the half a UI cannot work out for itself. A step finer than
+     * the loaded inventory has no bar to land on. Tick mode already draws the
+     * inside of a bar, so it serves one smoothly. Candle mode advances bar to
+     * bar, so the governor holds the market rate honest by waiting longer
+     * between bars — a correct rate delivered in jumps, which is not what
+     * anyone picking a one-second step is asking for. Those steps are offered
+     * and disabled there until the drawn path is wired into candle mode;
+     * `__TALARIA_ENABLE_ORDER01B_SUBFLOOR_CANDLE` turns them on for whoever
+     * lands that seam.
+     */
+    getStepMenu() {
+        const mode = typeof this.getPlaybackMode === 'function'
+            ? this.getPlaybackMode()
+            : 'candle';
+        const floorSeconds = this.getDataFloorSeconds();
+        const current = this.getStepSeconds();
+        const subFloorInCandle = _speedGovFlagState(
+            '__TALARIA_ENABLE_ORDER01B_SUBFLOOR_CANDLE', false);
+        return this.getOfferedStepSeconds().map((seconds) => {
+            const belowFloor = seconds < floorSeconds;
+            const route = !belowFloor ? 'native' : (mode === 'tick' ? 'drawn' : 'puppet');
+            const enabled = route !== 'puppet' || subFloorInCandle;
+            return {
+                seconds,
+                label: this.getStepLabel(seconds),
+                route,
+                enabled,
+                reason: enabled ? null : 'below-data-floor',
+                selected: seconds === current,
+            };
+        });
+    }
+
+    /**
      * Market seconds advanced by one step. Defaults to the chart timeframe,
      * which makes `speed` mean bars per second exactly as it did before the
      * knob existed — the soak at `speed=10, step=TF` is arithmetically the
@@ -5994,13 +6035,29 @@ class ReplaySystem {
         return [...SPEED_GOV_LADDER_BPS, SPEED_GOV_REALISTIC];
     }
 
+    /** Whether the current path can serve a step, per the menu it renders. */
+    canServeStep(seconds) {
+        const n = Number(seconds);
+        const entry = this.getStepMenu().find((e) => e.seconds === n);
+        return !!(entry && entry.enabled);
+    }
+
     /**
      * The REALISTIC preset: one second of market time per wall second, which
      * is what "real time" always meant. It sets both knobs, because that is
      * the only honest way to say it once a speed alone cannot.
+     *
+     * A one-second step is under the data floor on every inventory the product
+     * loads, and only the drawn path renders one smoothly — which is why
+     * REALISTIC lived in tick mode and nowhere else. It still goes there, but
+     * as a consequence of the step rather than as a rung the user has to be
+     * demoted off on the way out.
      */
     applyRealisticPreset() {
         if (!_order01bStepV1Enabled()) return false;
+        if (!this.canServeStep(1) && typeof this.setPlaybackMode === 'function') {
+            this.setPlaybackMode('tick', { restartPlayback: !!this.isPlaying });
+        }
         this.setSpeed(SPEED_GOV_LADDER_BPS[0]);
         return this.setStepSeconds(1);
     }
