@@ -54,20 +54,38 @@ const check = (name, ok, detail) => {
 const LOGIN_SHELL = `<!doctype html><html><head><title>Talaria — Sign in</title></head>`
   + `<body><div id="root"></div>${' '.repeat(29_000)}</body></html>`;
 
+const HEALTHY_BODY = JSON.stringify({
+  signature: 'TALARIA_BUILD_INFO_V1', buildId: '20260802b121', sourceCommitSha: GOOD_SHA,
+  checkpointBuild: true, builtAt: new Date().toISOString(),
+});
+const JSON_NOSTORE = { 'content-type': 'application/json', 'cache-control': 'no-store' };
+
+// Every case asserts the machine-readable PASSPORT3_STATE, not prose. The states exist so
+// that "you pointed me at the wrong origin" can never be mistaken for "the build shipped a
+// broken passport" — asserting on the classification is what holds that line.
 const CASES = {
   'login-shell-200': {
     status: 200,
     headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
     body: LOGIN_SHELL,
-    mustFail: true,
+    exitCode: 3,
+    state: 'WRONG_DOOR_APP_SHELL',
     because: 'HTML under a 200 is the exact live defect',
-    expectReason: /HTML document/i,
+  },
+  'auth-redirect-307': {
+    status: 307,
+    headers: { location: '/login/?next=%2Fchart%2Fbuild-info.json' },
+    body: '',
+    exitCode: 3,
+    state: 'WRONG_DOOR_AUTH',
+    because: 'an auth redirect is what production does, and it is not a verdict on the build',
   },
   'null-sha': {
     status: 200,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+    headers: JSON_NOSTORE,
     body: JSON.stringify({ signature: 'TALARIA_BUILD_INFO_V1', buildId: '20260802b121', sourceCommitSha: null, checkpointBuild: true }),
-    mustFail: true,
+    exitCode: 1,
+    state: 'PASSPORT_FAILED',
     because: 'a null SHA looks like an answer',
     expectReason: /sourceCommitSha/i,
   },
@@ -75,24 +93,54 @@ const CASES = {
     status: 200,
     headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=3600' },
     body: JSON.stringify({ signature: 'TALARIA_BUILD_INFO_V1', buildId: '20260802b121', sourceCommitSha: GOOD_SHA, checkpointBuild: true }),
-    mustFail: true,
+    exitCode: 1,
+    state: 'PASSPORT_FAILED',
     because: 'a cached passport can outlive the bytes it describes',
     expectReason: /Cache-Control/i,
   },
+  'wrong-build': {
+    status: 200,
+    headers: JSON_NOSTORE,
+    body: JSON.stringify({ signature: 'TALARIA_BUILD_INFO_V1', buildId: '20260731b120', sourceCommitSha: GOOD_SHA, checkpointBuild: true }),
+    exitCode: 1,
+    state: 'PASSPORT_FAILED',
+    because: 'a readable passport from a stale deploy is the failure the badge check exists for',
+    expectReason: /buildId matches the cut badge/i,
+  },
   'not-found': {
     status: 404,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+    headers: JSON_NOSTORE,
     body: JSON.stringify({ signature: 'TALARIA_BUILD_INFO_V1', buildId: null, sourceCommitSha: null, checkpointBuild: false }),
-    mustFail: true,
-    because: 'a dev image is not soak-legal',
-    expectReason: /status is 200/i,
+    exitCode: 1,
+    state: 'PASSPORT_ABSENT',
+    because: 'a dev image is not soak-legal, and absent is not the same fault as wrong door',
   },
   'healthy': {
     status: 200,
     headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
-    body: JSON.stringify({ signature: 'TALARIA_BUILD_INFO_V1', buildId: '20260802b121', sourceCommitSha: GOOD_SHA, checkpointBuild: true, builtAt: new Date().toISOString() }),
-    mustFail: false,
+    body: HEALTHY_BODY,
+    exitCode: 0,
+    state: 'VERIFIED',
     because: 'a correct passport must be accepted, or the gate is unusable at the cut',
+  },
+  'healthy-but-unbound': {
+    status: 200,
+    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+    body: HEALTHY_BODY,
+    // Deliberately run with no expectations: readable is not verified.
+    args: [],
+    exitCode: 4,
+    state: 'READABLE_BUT_UNBOUND',
+    because: 'readability without an expected build is what let a stale deploy pass as a seal check',
+  },
+  'healthy-unbound-acknowledged': {
+    status: 200,
+    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+    body: HEALTHY_BODY,
+    args: ['--allow-unbound'],
+    exitCode: 0,
+    state: 'VERIFIED',
+    because: 'an unbound read is allowed only when the operator says so explicitly',
   },
 };
 
@@ -109,21 +157,36 @@ await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const origin = `http://127.0.0.1:${server.address().port}`;
 console.log(`=== passport3-verify self-test against ${origin} ===\n`);
 
+const BOUND = ['--expect-build=20260802b121', `--expect-sha=${GOOD_SHA}`];
+
 for (const [name, c] of Object.entries(CASES)) {
   state.current = name;
-  const r = await run([
-    VERIFIER, '--mode=live', `--origin=${origin}`, '--expect-build=20260802b121',
-  ]);
+  const r = await run([VERIFIER, '--mode=live', `--origin=${origin}`, ...(c.args ?? BOUND)]);
   const out = r.out;
-  const failed = r.status !== 0;
-  check(`${name}: verifier ${c.mustFail ? 'REJECTS' : 'ACCEPTS'} — ${c.because}`,
-    failed === c.mustFail,
-    `exit=${r.status}\n${out.split('\n').filter((l) => l.includes('FAIL')).slice(0, 3).join('\n')}`);
+  const verdict = c.exitCode === 0 ? 'ACCEPTS' : 'REJECTS';
+  check(`${name}: verifier ${verdict} — ${c.because}`,
+    r.status === c.exitCode,
+    `expected exit ${c.exitCode}, got ${r.status}\n${out.split('\n').filter((l) => l.includes('FAIL')).slice(0, 3).join('\n')}`);
+  check(`${name}: classified ${c.state}, so the reason is actionable and not a generic red`,
+    new RegExp(`PASSPORT3_STATE=${c.state}\\b`).test(out),
+    `expected PASSPORT3_STATE=${c.state}; got ${(out.match(/PASSPORT3_STATE=\S+/) || ['(none)'])[0]}`);
   if (c.expectReason) {
-    check(`${name}: and fails for the right reason, not a generic red`,
+    check(`${name}: and names the failing assertion`,
       c.expectReason.test(out),
       `expected /${c.expectReason.source}/ in output`);
   }
+}
+
+// A wrong door must never print a content failure: the whole point is that nothing was read,
+// so any assertion about the passport's contents would be an invention.
+{
+  state.current = 'auth-redirect-307';
+  const r = await run([VERIFIER, '--mode=live', `--origin=${origin}`, ...BOUND]);
+  check('wrong door: reports zero content failures rather than four look-alike reds',
+    /0 passed, 0 failed, 6 not evaluated/.test(r.out),
+    r.out.split('\n').filter((l) => /=====/.test(l)).join(' | '));
+  check('wrong door: says in words that this is not a verdict on the build',
+    /THIS IS NOT A VERDICT ON THE BUILD/.test(r.out));
 }
 
 server.closeAllConnections?.();

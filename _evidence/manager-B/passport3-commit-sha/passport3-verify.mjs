@@ -33,12 +33,26 @@
  *   8. Cache-Control is no-store, so every soak sample re-reads it
  *   9. buildId matches the expected badge when --expect-build is given
  *
+ * WHAT IT REFUSES TO CONFLATE
+ *   A gate that prints the same red for "the build shipped a broken passport" and for "you
+ *   pointed me at the wrong origin" is a gate nobody can act on at 03:00. Before asserting
+ *   anything about content, this triages the door and reports one of:
+ *
+ *     VERIFIED               a real passport, matching the expected badge and SHA
+ *     READABLE_BUT_UNBOUND   a real passport, but this run never checked WHICH build
+ *     PASSPORT_FAILED        a real passport whose contents are wrong — a build defect
+ *     PASSPORT_ABSENT        404: emitter never ran, or artefact missing from the image
+ *     WRONG_DOOR_AUTH        auth redirect to a login page — verdict says nothing about the build
+ *     WRONG_DOOR_APP_SHELL   SPA catch-all served HTML — verdict says nothing about the build
+ *     WRONG_DOOR_REDIRECT    something in front of the route is rewriting the request
+ *
  * Usage:
  *   node passport3-verify.mjs --mode=live --origin=https://host [--expect-build=20260802b121]
- *                             [--expect-sha=<40hex>]
+ *                             [--expect-sha=<40hex>] [--allow-unbound]
  *
- * Exit 0 only if every assertion holds. Run at the cut so the transition is witnessed
- * rather than inferred.
+ * Exit 0 only when the passport is read AND bound to an expected build and SHA.
+ *   0 VERIFIED   1 passport wrong   3 wrong door (not a verdict on the build)   4 unbound
+ * Run at the cut so the transition is witnessed rather than inferred.
  */
 
 const args = Object.fromEntries(
@@ -101,62 +115,154 @@ try {
 
 const ctype = (res.headers.get('content-type') || '').toLowerCase();
 const cacheControl = (res.headers.get('cache-control') || '').toLowerCase();
+const location = res.headers.get('location') || '';
 const bytes = Buffer.byteLength(bodyText, 'utf8');
 
 console.log(`  status=${res.status}  content-type=${ctype || '(none)'}  bytes=${bytes}`);
-console.log(`  cache-control=${cacheControl || '(none)'}\n`);
+console.log(`  cache-control=${cacheControl || '(none)'}`);
+if (location) console.log(`  location=${location}`);
+console.log('');
 
-check('status is 200', res.status === 200, `got ${res.status}`);
+const skipped = [];
+const skip = (name, why) => { console.log(`  ----  ${name}\n          not evaluated: ${why}`); skipped.push(name); };
 
-// The check that would have caught the login shell. A 200 of text/html is the failure C
-// found; it is a distinct state from "missing" and must not collapse into the same red.
+// ---------------------------------------------------------------------------
+// DOOR TRIAGE, run before any content assertion.
+//
+// Per BIND-01: presence is not binding and binding is not correctness. Three
+// failures wear completely different faces and must not print the same red:
+//
+//   WRONG DOOR  something answered, but it was not this endpoint — an auth
+//               redirect or an app shell. Says NOTHING about the build.
+//   ABSENT      this origin owns the route and the passport is not there — the
+//               emitter did not run or the artefact was not copied into the image.
+//   PRESENT     a real passport, now judged on its contents.
+//
+// Without this split, pointing the verifier at the wrong origin prints "status is
+// 200 / body parses as JSON / Cache-Control is no-store" as four failures that read
+// exactly like a build that shipped a broken passport. That is how a required gate
+// starts passing or failing for reasons unrelated to the build.
+// ---------------------------------------------------------------------------
 const looksHtml = /^\s*(<!doctype html|<html[\s>])/i.test(bodyText) || ctype.includes('text/html');
-check('content-type is JSON, not an HTML document', ctype.includes('json') && !looksHtml,
-  looksHtml
-    ? `SERVED AN HTML DOCUMENT UNDER ${res.status} (${bytes} bytes). This is the app-shell/login `
-      + 'catch-all swallowing the route. A reader checking res.ok is satisfied and records a null SHA.'
-    : `content-type was "${ctype}"`);
+const isRedirect = res.status >= 300 && res.status < 400;
+const authRedirect = isRedirect && /login|signin|sign-in|auth/i.test(location);
 
-check('body is not an HTML document', !looksHtml,
-  looksHtml ? `first 120 bytes: ${JSON.stringify(bodyText.slice(0, 120))}` : '');
-
-let info = null;
-try { info = JSON.parse(bodyText); } catch (err) {
-  check('body parses as JSON', false, `${err.message}; first 120 bytes: ${JSON.stringify(bodyText.slice(0, 120))}`);
+let doorState = null;
+let doorWhy = '';
+if (authRedirect) {
+  doorState = 'WRONG_DOOR_AUTH';
+  doorWhy = `this origin answered ${res.status} -> ${location}. The request never reached the passport: it `
+    + 'was intercepted by auth and sent to a login page. A browser or curl FOLLOWS that redirect and '
+    + 'lands on the login shell, which is why this endpoint gets reported as "returns text/html" — the '
+    + 'HTML is the login page, not the passport route. An origin that does this is running a build from '
+    + 'before /chart/build-info.json was added to the auth whitelist.';
+} else if (isRedirect) {
+  doorState = 'WRONG_DOOR_REDIRECT';
+  doorWhy = `this origin answered ${res.status} -> ${location || '(no Location header)'}. The passport route `
+    + 'does not redirect; something in front of it is rewriting the request.';
+} else if (looksHtml) {
+  doorState = 'WRONG_DOOR_APP_SHELL';
+  doorWhy = `served an HTML document under ${res.status} (${bytes} bytes). This is the SPA catch-all `
+    + 'swallowing the route. A reader checking res.ok is satisfied and records a null SHA.';
+} else if (res.status === 404) {
+  doorState = 'PASSPORT_ABSENT';
+  doorWhy = 'the route is not being intercepted and the passport is genuinely not there. This IS a build '
+    + 'defect: the emitter did not run, or build-info.json was not copied into the runtime image.';
+} else if (res.status !== 200) {
+  doorState = 'UNREADABLE_STATUS';
+  doorWhy = `origin answered ${res.status}, which is neither a passport nor a recognised interception.`;
 }
-if (info) {
-  check('body parses as JSON', true);
-  check('signature is TALARIA_BUILD_INFO_V1', info.signature === 'TALARIA_BUILD_INFO_V1',
-    `got ${JSON.stringify(info.signature)}`);
-  check('sourceCommitSha is present and full 40-hex, not null',
-    typeof info.sourceCommitSha === 'string' && SOURCE_SHA_RE.test(info.sourceCommitSha),
-    `got ${JSON.stringify(info.sourceCommitSha)} — a null here is the failure this row exists to remove`);
-  check('checkpointBuild is true', info.checkpointBuild === true, `got ${JSON.stringify(info.checkpointBuild)}`);
-  check('buildId is present', typeof info.buildId === 'string' && info.buildId.length > 0,
-    `got ${JSON.stringify(info.buildId)}`);
-  if (EXPECT_BUILD) {
-    check(`buildId matches the cut badge ${EXPECT_BUILD}`, info.buildId === EXPECT_BUILD,
+
+if (doorState && doorState !== 'PASSPORT_ABSENT') {
+  console.log(`  DIAGNOSIS  ${doorState}\n             ${doorWhy}\n`);
+  skip('status is 200', 'wrong door — not the passport route');
+  skip('content-type is JSON, not an HTML document', 'wrong door — not the passport route');
+  skip('body is not an HTML document', 'wrong door — not the passport route');
+  skip('body parses as JSON', 'wrong door — not the passport route');
+  skip('sourceCommitSha is present and full 40-hex, not null', 'wrong door — not the passport route');
+  skip('Cache-Control is no-store', 'wrong door — not the passport route');
+} else if (doorState === 'PASSPORT_ABSENT') {
+  console.log(`  DIAGNOSIS  ${doorState}\n             ${doorWhy}\n`);
+  check('the passport exists at this origin', false, `got ${res.status} at ${url}`);
+} else {
+  check('status is 200', res.status === 200, `got ${res.status}`);
+
+  check('content-type is JSON, not an HTML document', ctype.includes('json') && !looksHtml,
+    `content-type was "${ctype}"`);
+
+  // An empty body is not an HTML document, so a naive !looksHtml passes on nothing at all.
+  // A check that goes green on zero bytes is the vacuous shape this file exists to refuse.
+  check('body is not an HTML document', !looksHtml && bytes > 0,
+    bytes === 0 ? 'body was empty — nothing was served to inspect' : '');
+
+  let info = null;
+  try { info = JSON.parse(bodyText); } catch (err) {
+    check('body parses as JSON', false, `${err.message}; first 120 bytes: ${JSON.stringify(bodyText.slice(0, 120))}`);
+  }
+  if (info) {
+    check('body parses as JSON', true);
+    check('signature is TALARIA_BUILD_INFO_V1', info.signature === 'TALARIA_BUILD_INFO_V1',
+      `got ${JSON.stringify(info.signature)}`);
+    check('sourceCommitSha is present and full 40-hex, not null',
+      typeof info.sourceCommitSha === 'string' && SOURCE_SHA_RE.test(info.sourceCommitSha),
+      `got ${JSON.stringify(info.sourceCommitSha)} — a null here is the failure this row exists to remove`);
+    check('checkpointBuild is true', info.checkpointBuild === true, `got ${JSON.stringify(info.checkpointBuild)}`);
+    check('buildId is present', typeof info.buildId === 'string' && info.buildId.length > 0,
       `got ${JSON.stringify(info.buildId)}`);
+    if (EXPECT_BUILD) {
+      check(`buildId matches the cut badge ${EXPECT_BUILD}`, info.buildId === EXPECT_BUILD,
+        `got ${JSON.stringify(info.buildId)}`);
+    }
+    if (EXPECT_SHA) {
+      check(`sourceCommitSha matches the train tip ${EXPECT_SHA.slice(0, 12)}…`,
+        String(info.sourceCommitSha).toLowerCase() === String(EXPECT_SHA).toLowerCase(),
+        `got ${JSON.stringify(info.sourceCommitSha)}`);
+    }
   }
-  if (EXPECT_SHA) {
-    check(`sourceCommitSha matches the train tip ${EXPECT_SHA.slice(0, 12)}…`,
-      String(info.sourceCommitSha).toLowerCase() === String(EXPECT_SHA).toLowerCase(),
-      `got ${JSON.stringify(info.sourceCommitSha)}`);
-  }
+
+  check('Cache-Control is no-store', cacheControl.includes('no-store'),
+    `got "${cacheControl}" — a cached passport can keep asserting a SHA after the bytes changed`);
 }
 
-check('Cache-Control is no-store', cacheControl.includes('no-store'),
-  `got "${cacheControl}" — a cached passport can keep asserting a SHA after the bytes changed`);
+// A readable passport is not a verified one. Without an expected badge AND an expected
+// SHA this run proves only that SOME build answers here — a stale deploy serves a
+// perfectly readable passport. The seal step must bind, so refuse to report green unbound.
+const unbound = !fail && !(EXPECT_BUILD && EXPECT_SHA);
 
-console.log(`\n================ PASSPORT-3 LIVE: ${pass} passed, ${fail} failed ================`);
-if (fail) {
+const tail = skipped.length ? `, ${skipped.length} not evaluated` : '';
+console.log(`\n================ PASSPORT-3 LIVE: ${pass} passed, ${fail} failed${tail} ================`);
+
+if (doorState && doorState !== 'PASSPORT_ABSENT') {
+  console.log(`\nTHIS IS NOT A VERDICT ON THE BUILD. Nothing was read from ${url}, so this run says`);
+  console.log('nothing about what the deployed bytes contain — it says the verifier was pointed at an');
+  console.log('origin that does not expose the passport. Point it at the soak target and re-run.');
+} else if (fail) {
   console.log('\nThe soak must not start against this origin. A passport that cannot be read on the');
   console.log('wire is not a passport, and the harness would record a null SHA for ten hours.');
+} else if (unbound) {
+  console.log('\nREADABLE BUT UNBOUND. Every wire assertion holds, but this run was given no');
+  console.log('--expect-build and/or no --expect-sha, so it did not check WHICH build answered.');
+  console.log('Readability is not identity: a stale deploy serves a passport that passes all of the');
+  console.log('above. For the seal, pass both expectations. To accept an unbound read, --allow-unbound.');
 }
+
+// Distinct exit codes so an operator, or a chain, can tell the three apart without reading
+// prose. Any consumer treating non-zero as failure is unaffected.
+//   1 = the build is wrong or the passport is broken   3 = wrong door, verdict not about the build
+//   4 = readable but not bound to an expected build
+const state = doorState
+  ? doorState
+  : fail ? 'PASSPORT_FAILED'
+    : unbound && !args['allow-unbound'] ? 'READABLE_BUT_UNBOUND'
+      : 'VERIFIED';
+console.log(`\nPASSPORT3_STATE=${state}`);
 // Set the code and let the loop drain rather than process.exit()ing on top of undici's
 // still-closing keep-alive socket. On Windows that races libuv and aborts the process with
 // "Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), src\\win\\async.c" AND exit code
 // -1073740791, reproducibly, AFTER printing 11 passed / 0 failed. A gate that prints a green
 // verdict and hands back a crash code is a false red, and it would have failed the cut on a
 // deployment that was correct. C runs this on Windows too.
-process.exitCode = fail ? 1 : 0;
+process.exitCode = state === 'VERIFIED' ? 0
+  : state === 'READABLE_BUT_UNBOUND' ? 4
+    : (state === 'PASSPORT_FAILED' || state === 'PASSPORT_ABSENT') ? 1
+      : 3;
