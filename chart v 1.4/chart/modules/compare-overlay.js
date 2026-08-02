@@ -1098,6 +1098,51 @@ class CompareOverlay {
         pane.yMin = min - padding;
         pane.yMax = max + padding;
     }
+
+    _trackLinkedPaneListener(pane, target, type, handler, options) {
+        if (!pane || !target || typeof target.addEventListener !== 'function' || typeof handler !== 'function') return;
+        target.addEventListener(type, handler, options);
+        if (!Array.isArray(pane._listenerDisposers)) pane._listenerDisposers = [];
+        pane._listenerDisposers.push(() => {
+            try { target.removeEventListener(type, handler, options); } catch (_) {}
+        });
+    }
+
+    _resizeLinkedPaneCanvas(canvas, cssWidth, cssHeight, dpr) {
+        if (!canvas) return false;
+        const scale = Number.isFinite(Number(dpr)) && Number(dpr) > 0 ? Number(dpr) : 1;
+        const physW = Math.max(1, Math.floor(Number(cssWidth) * scale));
+        const physH = Math.max(1, Math.floor(Number(cssHeight) * scale));
+        let changed = false;
+        if (canvas.width !== physW) {
+            canvas.width = physW;
+            changed = true;
+        }
+        if (canvas.height !== physH) {
+            canvas.height = physH;
+            changed = true;
+        }
+        return changed;
+    }
+
+    _releaseLinkedPaneResources(paneId, pane) {
+        if (pane && Array.isArray(pane._listenerDisposers)) {
+            pane._listenerDisposers.forEach((dispose) => {
+                try { dispose(); } catch (_) {}
+            });
+            pane._listenerDisposers = [];
+        }
+        const canvas = document.getElementById(`linkedPane_${paneId}`);
+        if (canvas) {
+            try {
+                canvas.width = 0;
+                canvas.height = 0;
+            } catch (_) {}
+        }
+        if (pane) pane.svg = null;
+        const wrapper = document.getElementById(`linkedPaneWrapper_${paneId}`);
+        if (wrapper) wrapper.remove();
+    }
     
     renderLinkedPanes() {
         if (!this.linkedPanes || this.linkedPanes.length === 0) return;
@@ -1155,8 +1200,7 @@ class CompareOverlay {
                 // Get container width for canvas
                 const containerWidth = container.offsetWidth || this.chart.canvas.width / (window.devicePixelRatio || 1);
                 const dpr = window.devicePixelRatio || 1;
-                canvas.width = containerWidth * dpr;
-                canvas.height = paneHeight * dpr;
+                this._resizeLinkedPaneCanvas(canvas, containerWidth, paneHeight, dpr);
                 canvas.style.cssText = `
                     display: block;
                     width: 100%;
@@ -1346,8 +1390,7 @@ class CompareOverlay {
             const rect = wrapper.getBoundingClientRect();
             if (rect.width > 0 && rect.height > 0) {
                 const dpr = window.devicePixelRatio || 1;
-                canvas.width = rect.width * dpr;
-                canvas.height = rect.height * dpr;
+                this._resizeLinkedPaneCanvas(canvas, rect.width, rect.height, dpr);
                 
                 // Render the pane data
                 this.drawLinkedPane(pane, canvas);
@@ -2100,7 +2143,7 @@ class CompareOverlay {
                 canvas.style.cursor = '';
             }
         };
-        document.addEventListener('mouseup', endDrag);
+        this._trackLinkedPaneListener(pane, document, 'mouseup', endDrag);
         
         // Double-click - reset to auto-scale
         canvas.addEventListener('dblclick', (e) => {
@@ -2403,12 +2446,13 @@ class CompareOverlay {
             this.renderLinkedPanes();
         });
         
-        document.addEventListener('mouseup', () => {
+        const endFreeDrag = () => {
             if (freeDrag.isDragging) {
                 freeDrag.isDragging = false;
                 canvas.style.cursor = '';
             }
-        });
+        };
+        this._trackLinkedPaneListener(pane, document, 'mouseup', endFreeDrag);
     }
     
     /**
@@ -2733,11 +2777,10 @@ class CompareOverlay {
     removeLinkedPane(paneId) {
         const index = this.linkedPanes.findIndex(p => p.id === paneId);
         if (index !== -1) {
+            const pane = this.linkedPanes[index];
             this.linkedPanes.splice(index, 1);
             
-            // Remove DOM elements
-            const wrapper = document.getElementById(`linkedPaneWrapper_${paneId}`);
-            if (wrapper) wrapper.remove();
+            this._releaseLinkedPaneResources(paneId, pane);
             
             this.renderSymbolsList();
             this.updateLinkedPanesLegend();

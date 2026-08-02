@@ -31118,6 +31118,25 @@ class Chart {
         }
         this._managedTimers = [];
 
+        try {
+            if (this._indLayerCanvas) {
+                this._indLayerCanvas.width = 0;
+                this._indLayerCanvas.height = 0;
+            }
+        } catch (_e) { /* ignore */ }
+        this._indLayerCanvas = null;
+        this._indLayerCtx = null;
+        this._indLayerCacheKey = null;
+
+        try {
+            if (this.canvas) {
+                this.canvas.width = 0;
+                this.canvas.height = 0;
+            }
+        } catch (_e) { /* ignore */ }
+        this.ctx = null;
+        this.canvas = null;
+
         // Drop the series references. This is the MEM-1 half of destroy: without it a released
         // engine still pins every resident bar it ever held, and the residency slope never bends.
         this.data = null;
