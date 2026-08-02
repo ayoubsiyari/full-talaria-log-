@@ -199,22 +199,48 @@
         const tailLen = totalLength - tailStart;
         if (tailLen <= 0) return null;
 
+        function isPackedSeries(value) {
+            return !!(value
+                && value.__talariaFloat64Series === true
+                && value.values instanceof Float64Array);
+        }
+
+        function isSeriesLike(value) {
+            return Array.isArray(value) || isPackedSeries(value);
+        }
+
+        function seriesLength(value) {
+            return isPackedSeries(value) ? value.values.length : value.length;
+        }
+
+        function seriesValueAt(value, index) {
+            const v = isPackedSeries(value) ? value.values[index] : value[index];
+            return typeof v === 'number' && Number.isNaN(v) ? null : v;
+        }
+
+        function seriesToArray(value) {
+            const len = seriesLength(value);
+            const out = new Array(len);
+            for (let i = 0; i < len; i++) out[i] = seriesValueAt(value, i);
+            return out;
+        }
+
         function patchArray(dst, src) {
-            if (!Array.isArray(dst) || !Array.isArray(src)) return null;
-            if (src.length !== tailLen) return null;
+            if (!Array.isArray(dst) || !isSeriesLike(src)) return null;
+            if (seriesLength(src) !== tailLen) return null;
             while (dst.length < totalLength) dst.push(null);
             if (dst.length > totalLength) dst.length = totalLength;
             for (let i = fromIndex; i < totalLength; i++) {
-                dst[i] = src[i - tailStart];
+                dst[i] = seriesValueAt(src, i - tailStart);
             }
             return dst;
         }
 
-        if (Array.isArray(fresh)) {
+        if (isSeriesLike(fresh)) {
             if (!Array.isArray(existing)) {
                 // No prior full-length result to patch into — only safe when the
                 // tail covers the whole series.
-                return tailStart === 0 ? fresh : null;
+                return tailStart === 0 ? seriesToArray(fresh) : null;
             }
             return patchArray(existing, fresh) ? existing : null;
         }
@@ -224,12 +250,12 @@
             for (let k = 0; k < keys.length; k++) {
                 const key = keys[k];
                 const src = fresh[key];
-                if (Array.isArray(src)) {
-                    if (src.length === tailLen && Array.isArray(existing[key])) {
+                if (isSeriesLike(src)) {
+                    if (seriesLength(src) === tailLen && Array.isArray(existing[key])) {
                         if (!patchArray(existing[key], src)) return null;
-                    } else if (src.length === tailLen && existing[key] == null && tailStart === 0) {
-                        existing[key] = src;
-                    } else if (src.length !== tailLen) {
+                    } else if (seriesLength(src) === tailLen && existing[key] == null && tailStart === 0) {
+                        existing[key] = seriesToArray(src);
+                    } else if (seriesLength(src) !== tailLen) {
                         // Non-series array payloads (e.g. divergence/zones lists)
                         // are index-based over the tail slice — unsafe to merge.
                         return null;

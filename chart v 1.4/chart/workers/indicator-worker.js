@@ -41,6 +41,48 @@ function unpackBarsCompact(packed) {
     return bars;
 }
 
+function isTransferableNumericSeries(value) {
+    if (!Array.isArray(value)) return false;
+    for (let i = 0; i < value.length; i++) {
+        const v = value[i];
+        if (v == null) continue;
+        if (typeof v !== 'number') return false;
+    }
+    return true;
+}
+
+function packNumericSeriesForTransfer(value, transferables) {
+    const packed = new Float64Array(value.length);
+    for (let i = 0; i < value.length; i++) {
+        const v = value[i];
+        packed[i] = v == null ? Number.NaN : v;
+    }
+    transferables.push(packed.buffer);
+    return { __talariaFloat64Series: true, values: packed };
+}
+
+function packTailResultForTransfer(value, transferables) {
+    if (isTransferableNumericSeries(value)) {
+        return packNumericSeriesForTransfer(value, transferables);
+    }
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+    const out = {};
+    for (const [key, child] of Object.entries(value)) {
+        out[key] = isTransferableNumericSeries(child)
+            ? packNumericSeriesForTransfer(child, transferables)
+            : child;
+    }
+    return out;
+}
+
+function packTailResultsForTransfer(results, transferables) {
+    const packed = {};
+    for (const [indId, result] of Object.entries(results || {})) {
+        packed[indId] = packTailResultForTransfer(result, transferables);
+    }
+    return packed;
+}
+
 function resolveOhlcSourceValue(candle, source) {
     if (!candle) return NaN;
     const o = candle.o != null ? candle.o : candle.open;
@@ -1302,10 +1344,12 @@ self.onmessage = function(e) {
                     results[indId] = null;
                 }
             }
+            const transferables = [];
+            const packedResults = packTailResultsForTransfer(results, transferables);
             self.postMessage({
                 type: 'ALL_RESULTS',
                 id,
-                results,
+                results: packedResults,
                 tail: {
                     tailStart: payload.tailStart | 0,
                     fromIndex: payload.fromIndex | 0,
@@ -1313,7 +1357,7 @@ self.onmessage = function(e) {
                     totalLength: payload.totalLength | 0,
                     tailBars: bars.length
                 }
-            });
+            }, transferables);
         } catch (err) {
             self.postMessage({ type: 'ERROR', id, error: err.message });
         }
