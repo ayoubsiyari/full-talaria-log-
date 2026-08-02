@@ -102,7 +102,9 @@
     "preflight:proc3-unwired-fix-sweep": "node docs/plan3/oracles/proc3-unwired-fix-sweep-v1.mjs",
     "test:proc3-unwired-fix-sweep": "npm run preflight:proc3-unwired-fix-sweep",
     "preflight:frame01-playback-governor": "node docs/plan3/oracles/frame01-playback-governor-v1.mjs",
-    "test:frame01-playback-governor": "npm run preflight:frame01-playback-governor"
+    "test:frame01-playback-governor": "npm run preflight:frame01-playback-governor",
+    "preflight:qw4-soak-diagnostics-hud": "node --test \"chart v 1.4/chart/modules/qw4-soak-diagnostics-hud.test.mjs\"",
+    "test:qw4-soak-diagnostics-hud": "npm run preflight:qw4-soak-diagnostics-hud"
   },
   "dependencies": {
     "dukascopy-node": "^1.46.3",

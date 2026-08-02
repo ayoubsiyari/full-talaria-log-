@@ -2943,6 +2943,194 @@ class Chart {
         return this._mcDiag;
     }
 
+    _qw4SoakHudEnabled() {
+        return _talariaQw4SoakHudEnabled();
+    }
+
+    _qw4SoakHudHostSurface() {
+        if (!this._qw4SoakHudEnabled()) return false;
+        try {
+            if (typeof document !== 'undefined'
+                && document.documentElement?.classList?.contains('multichart-embed')) return false;
+        } catch (_e) { /* ignore */ }
+        return true;
+    }
+
+    _ensureQw4SoakDiagnosticsHud() {
+        if (!this._qw4SoakHudHostSurface()) return null;
+        if (typeof document === 'undefined' || !document.body) return null;
+        if (typeof window !== 'undefined' && window.__talariaQw4SoakHudOwner && window.__talariaQw4SoakHudOwner !== this) {
+            return window.__talariaQw4SoakHudOwner._qw4SoakHudEl || null;
+        }
+        if (typeof window !== 'undefined') window.__talariaQw4SoakHudOwner = this;
+        if (this._qw4SoakHudEl && this._qw4SoakHudEl.isConnected) return this._qw4SoakHudEl;
+
+        const styleId = 'talaria-qw4-soak-hud-style';
+        if (!document.getElementById(styleId)) {
+            const style = document.createElement('style');
+            style.id = styleId;
+            style.textContent = `
+.talaria-qw4-soak-hud {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 2147483000;
+  min-width: 260px;
+  padding: 10px 12px;
+  border: 1px solid rgba(125, 211, 252, 0.35);
+  border-radius: 10px;
+  background: rgba(6, 10, 20, 0.88);
+  color: #d7e8ff;
+  box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+  font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+}
+.talaria-qw4-soak-hud__title {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: #7dd3fc;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.talaria-qw4-soak-hud__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+}
+.talaria-qw4-soak-hud__label { color: #9aa8bc; }
+.talaria-qw4-soak-hud__value { color: #f8fbff; text-align: right; }
+.talaria-qw4-soak-hud__bad { color: #fb7185; }
+.talaria-qw4-soak-hud__ok { color: #86efac; }
+`;
+            document.head?.appendChild(style);
+        }
+
+        const el = document.createElement('section');
+        el.className = 'talaria-qw4-soak-hud';
+        el.setAttribute('aria-label', 'Talaria soak diagnostics');
+        el.setAttribute('aria-live', 'polite');
+        el.innerHTML = `
+<div class="talaria-qw4-soak-hud__title"><span>SOAK HUD</span><span data-qw4="age">0s</span></div>
+<div class="talaria-qw4-soak-hud__row"><span class="talaria-qw4-soak-hud__label">rate</span><span class="talaria-qw4-soak-hud__value" data-qw4="rate">--</span></div>
+<div class="talaria-qw4-soak-hud__row"><span class="talaria-qw4-soak-hud__label">rate hold</span><span class="talaria-qw4-soak-hud__value" data-qw4="hold">--</span></div>
+<div class="talaria-qw4-soak-hud__row"><span class="talaria-qw4-soak-hud__label">heap</span><span class="talaria-qw4-soak-hud__value" data-qw4="heap">--</span></div>
+<div class="talaria-qw4-soak-hud__row"><span class="talaria-qw4-soak-hud__label">frame interval</span><span class="talaria-qw4-soak-hud__value" data-qw4="frame">--</span></div>
+<div class="talaria-qw4-soak-hud__row"><span class="talaria-qw4-soak-hud__label">restore catches</span><span class="talaria-qw4-soak-hud__value" data-qw4="catches">0</span></div>
+`;
+        document.body.appendChild(el);
+        this._qw4SoakHudEl = el;
+        this._qw4SoakHudStartedAt = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+            ? performance.now()
+            : Date.now();
+        this._startQw4FrameSampler();
+        this._updateQw4SoakDiagnosticsHud();
+        this._qw4SoakHudTimer = setInterval(() => this._updateQw4SoakDiagnosticsHud(), 2000);
+        return el;
+    }
+
+    _startQw4FrameSampler() {
+        if (this._qw4FrameSamplerActive || typeof requestAnimationFrame !== 'function') return;
+        this._qw4FrameSamplerActive = true;
+        this._qw4FrameIntervals = [];
+        const step = (ts) => {
+            if (!this._qw4SoakHudEnabled()) {
+                this._qw4FrameSamplerActive = false;
+                return;
+            }
+            if (Number.isFinite(this._qw4LastFrameTs)) {
+                const dt = ts - this._qw4LastFrameTs;
+                if (dt > 0 && dt < 10000) {
+                    this._qw4FrameIntervals.push(dt);
+                    if (this._qw4FrameIntervals.length > 120) this._qw4FrameIntervals.shift();
+                    const sum = this._qw4FrameIntervals.reduce((a, b) => a + b, 0);
+                    this._qw4FrameIntervalMs = sum / this._qw4FrameIntervals.length;
+                }
+            }
+            this._qw4LastFrameTs = ts;
+            requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+    }
+
+    _qw4ReadSoakDiagnosticsSnapshot() {
+        const now = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+            ? performance.now()
+            : Date.now();
+        const gov = typeof window !== 'undefined' ? window.__talariaSpeedGov : null;
+        const effective = Number(typeof window !== 'undefined' ? window.__talariaEffectiveRate : NaN);
+        const target = Number(gov && gov.target);
+        if (!Number.isFinite(this._qw4RateBaseline) && Number.isFinite(effective) && effective > 0) {
+            this._qw4RateBaseline = effective;
+        }
+        const baseline = Number(this._qw4RateBaseline);
+        const rateHoldPct = Number.isFinite(baseline) && baseline > 0 && Number.isFinite(effective)
+            ? Math.abs(effective - baseline) / baseline * 100
+            : null;
+        const memory = typeof performance !== 'undefined' && performance.memory
+            ? performance.memory
+            : null;
+        const heapMiB = memory && Number.isFinite(memory.usedJSHeapSize)
+            ? memory.usedJSHeapSize / 1048576
+            : null;
+        const frameIntervalMs = Number.isFinite(this._qw4FrameIntervalMs) ? this._qw4FrameIntervalMs : null;
+        const restoreCounts = (() => {
+            try {
+                return Object.assign({}, (typeof window !== 'undefined' && window.__talariaReplayRestoreCatchCounts) || {});
+            } catch (_e) {
+                return {};
+            }
+        })();
+        const restoreTotal = Object.values(restoreCounts).reduce((sum, v) => sum + (Number(v) || 0), 0);
+        return {
+            at: Date.now(),
+            ageSeconds: Math.max(0, (now - (this._qw4SoakHudStartedAt || now)) / 1000),
+            effectiveBarsPerSecond: Number.isFinite(effective) ? effective : null,
+            targetBarsPerSecond: Number.isFinite(target) ? target : null,
+            baselineBarsPerSecond: Number.isFinite(baseline) ? baseline : null,
+            rateHoldPct,
+            rateHoldOk: rateHoldPct == null ? null : rateHoldPct <= 5,
+            heapMiB,
+            frameIntervalMs,
+            restoreCatchCounts: restoreCounts,
+            restoreCatchTotal: restoreTotal,
+        };
+    }
+
+    _formatQw4Number(value, digits = 1, suffix = '') {
+        return Number.isFinite(value) ? `${value.toFixed(digits)}${suffix}` : '--';
+    }
+
+    _updateQw4SoakDiagnosticsHud() {
+        const el = this._qw4SoakHudEl;
+        if (!el || !el.isConnected) return;
+        const snap = this._qw4ReadSoakDiagnosticsSnapshot();
+        if (typeof window !== 'undefined') window.__talariaQw4SoakHudSnapshot = snap;
+        const set = (key, value, cls = '') => {
+            const node = el.querySelector(`[data-qw4="${key}"]`);
+            if (!node) return;
+            node.textContent = value;
+            node.classList.remove('talaria-qw4-soak-hud__bad', 'talaria-qw4-soak-hud__ok');
+            if (cls) node.classList.add(cls);
+        };
+        const rate = this._formatQw4Number(snap.effectiveBarsPerSecond, 2, ' b/s');
+        const target = this._formatQw4Number(snap.targetBarsPerSecond, 2, ' tgt');
+        const hold = snap.rateHoldPct == null ? '--' : `${snap.rateHoldPct.toFixed(2)}% vs h0`;
+        const catchLabel = snap.restoreCatchTotal > 0
+            ? Object.entries(snap.restoreCatchCounts).map(([k, v]) => `${k}:${v}`).join(' ')
+            : '0';
+        set('age', `${Math.floor(snap.ageSeconds)}s`);
+        set('rate', `${rate} / ${target}`);
+        set('hold', hold, snap.rateHoldOk === false ? 'talaria-qw4-soak-hud__bad' : (snap.rateHoldOk ? 'talaria-qw4-soak-hud__ok' : ''));
+        set('heap', this._formatQw4Number(snap.heapMiB, 1, ' MiB'));
+        set('frame', this._formatQw4Number(snap.frameIntervalMs, 1, ' ms'));
+        set('catches', catchLabel, snap.restoreCatchTotal > 0 ? 'talaria-qw4-soak-hud__bad' : 'talaria-qw4-soak-hud__ok');
+    }
+
     _mcDiagWrapReplaySystem() {
         const replay = this.replaySystem;
         if (!replay || replay._mcDiagUpdateChartDataWrapped || typeof replay.updateChartData !== 'function') return;
