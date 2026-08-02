@@ -405,6 +405,8 @@ function applyCanonicalMarkToFormingBarFallback(chart, mark) {
     const l = Number(last.l ?? last.low);
     if (Number.isFinite(h)) last.h = Math.max(h, mark);
     if (Number.isFinite(l)) last.l = Math.min(l, mark);
+    last.__talariaFormingSim = true;
+    last.__talariaFormingSimSource = 'canonical-mark-fallback';
 }
 
 /**
@@ -433,6 +435,8 @@ function applyAnimatedCandleToFormingBar(chart, animatedCandle) {
         last.l = Math.min(Number(last.l), Number(animatedCandle.l));
     }
     if (animatedCandle.v != null) last.v = animatedCandle.v;
+    last.__talariaFormingSim = true;
+    last.__talariaFormingSimSource = 'animated-candle';
 }
 
 /**
@@ -487,6 +491,8 @@ function applyCanonicalMarkToFormingBarFallback(chart, mark) {
     const l = Number(last.l ?? last.low);
     if (Number.isFinite(h)) last.h = Math.max(h, mark);
     if (Number.isFinite(l)) last.l = Math.min(l, mark);
+    last.__talariaFormingSim = true;
+    last.__talariaFormingSimSource = 'canonical-mark-fallback';
 }
 
 /**
@@ -515,6 +521,8 @@ function applyAnimatedCandleToFormingBar(chart, animatedCandle) {
         last.l = Math.min(Number(last.l), Number(animatedCandle.l));
     }
     if (animatedCandle.v != null) last.v = animatedCandle.v;
+    last.__talariaFormingSim = true;
+    last.__talariaFormingSimSource = 'animated-candle';
 }
 
 class ReplaySystem {
@@ -4784,9 +4792,13 @@ class ReplaySystem {
             && !chart._b70HasCommittedIndicatorGeneration()) {
             return;
         }
-        chart.renderPending = true;
-        if (typeof chart.render === 'function') {
-            chart.render();
+        if (typeof chart._requestRafPaint === 'function') {
+            chart._requestRafPaint({ flush: !this.isPlaying });
+        } else {
+            chart.renderPending = true;
+            if (!this.isPlaying && typeof chart.render === 'function') {
+                chart.render();
+            }
         }
         if (this.isPlaying) return;
         // Pause/scrub settle: layout + rAF only. Do NOT call getImageData() here —
@@ -7984,7 +7996,13 @@ class ReplaySystem {
                     }
                 }
 
-                if (pc.render) pc.render();
+                if (typeof pc._requestRafPaint === 'function') {
+                    pc._requestRafPaint();
+                } else if (typeof pc.scheduleRender === 'function') {
+                    pc.scheduleRender();
+                } else {
+                    pc.renderPending = true;
+                }
             } catch (error) {
                 // Silent fail during animation to prevent lag
             }
@@ -9264,12 +9282,21 @@ class ReplaySystem {
             // Clearing first still preserves the case the old ordering was protecting: a
             // scheduleRender() raised DURING this paint re-arms the flag and correctly earns its
             // own frame. Same idiom as the rAF coalescer, and as the sibling branch this replaces.
-            if (_mcMirrorPaintCoalesceDisabled() && !(passivePlay || lightPass)) {
+            const shouldUseDirtyPaint = passivePlay || lightPass || this.isPlaying;
+            if (shouldUseDirtyPaint) {
+                if (typeof chart._requestRafPaint === 'function') {
+                    chart._requestRafPaint();
+                } else if (typeof chart.scheduleRender === 'function') {
+                    chart.scheduleRender();
+                } else {
+                    chart.renderPending = true;
+                }
+            } else if (_mcMirrorPaintCoalesceDisabled() && !(passivePlay || lightPass)) {
                 chart.renderPending = true;
             } else {
                 chart.renderPending = false;
             }
-            chart.render();
+            if (!shouldUseDirtyPaint) chart.render();
         }
         const tp = this.tickProgress || 0;
         if (chart.orderManager && typeof chart.orderManager.updatePositions === 'function'
