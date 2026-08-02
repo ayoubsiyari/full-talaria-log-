@@ -21,6 +21,7 @@ import { spawnSync } from 'node:child_process';
 import { launchDetached, inspectRun } from './lib/detach01.mjs';
 import { computeSeal } from './lib/seal.mjs';
 import { readBuildInfo } from './lib/build-info.mjs';
+import { readHostClearance, gradeHostClearance } from './lib/host-clearance.mjs';
 
 const argOf = (n, d) => { const h = process.argv.find((a) => a.startsWith(`--${n}=`)); return h ? h.split('=').slice(1).join('=') : d; };
 const ARM = argOf('arm', '');
@@ -51,6 +52,21 @@ if (process.argv.some((a) => a.startsWith('--expectBadge'))) {
   console.error('  Pin --expectDigest (what the bytes are) and the source commit SHA (which tree made them).');
   process.exit(2);
 }
+
+/**
+ * TOOL-03 HOST CLEARANCE, gated rather than ruled.
+ *
+ * "Separate the measurement host from the dev host" has been the rule for months and was never
+ * enforceable, so an arm ran at 1.2% headroom and the bend it produced had to be explained from a
+ * post-mortem. The floor is checked before anything launches, and the refusal names WHO to close: the
+ * environment is normally the eater, not the lanes (IDE 10.0 GB against 2.1 GB of lanes, measured).
+ *
+ * --minFreeMB / --minFreePercent tune it; --skipHostClearance exists and is deliberately loud, because
+ * a gate with no override gets commented out and a gate whose override is silent gets used by default.
+ */
+const MIN_FREE_MB = Number(argOf('minFreeMB', '8192'));
+const MIN_FREE_PCT = Number(argOf('minFreePercent', '25'));
+const SKIP_HOST_CLEARANCE = process.argv.includes('--skipHostClearance');
 
 const DRY_RUN = process.argv.includes('--dryRun');
 const REHEARSAL = process.argv.includes('--rehearsal');
@@ -284,6 +300,36 @@ async function smokeTransferGate() {
   const sha = String(liveInfo.sourceCommitSha).toLowerCase();
   console.log(`smoke transfers: digest ${smokeDigest} and source commit ${sha.slice(0, 12)} both unchanged since the smoke (badge ${live.badge}, not gated on).`);
   return sha;
+}
+
+/**
+ * HOST CLEARANCE — the last gate before launch, because it is the only one whose answer can change in
+ * the minutes between typing the command and the arm starting.
+ */
+const clearance = readHostClearance();
+const cleared = gradeHostClearance(clearance, { minFreeMB: MIN_FREE_MB, minFreePercent: MIN_FREE_PCT });
+console.log(`host clearance: ${cleared.state} — ${cleared.why}`);
+if (clearance.byOwner) {
+  console.log(`  by owner: IDE ${clearance.byOwner.ide} MB · PO apps ${clearance.byOwner.poApps} MB · lanes ${clearance.byOwner.lanes} MB · other ${clearance.byOwner.other} MB`);
+}
+for (const s of (clearance.staleRunners || [])) console.log(`  stale runner: pid ${s.pid} up ${s.ageHours} h running ${s.script} (${s.mb} MB)`);
+
+if (!cleared.ok) {
+  if (SKIP_HOST_CLEARANCE) {
+    console.warn('\n*** HOST CLEARANCE OVERRIDDEN with --skipHostClearance ***');
+    console.warn(`  ${cleared.why}`);
+    console.warn('  The arm will compete with the environment for the memory it is measuring. Any bend in the');
+    console.warn('  memory series from this run is UNATTRIBUTABLE between the product and the host.');
+  } else {
+    console.error(`\nREFUSED: the host is not clear — ${cleared.why}`);
+    for (const a of (cleared.action || [])) console.error(`  ${a}`);
+    console.error('\n  TOOL-03: the measurement host and the dev host must be separated. This resolves in sequence,');
+    console.error('  not with a second machine — lanes stand down, the PO closes their own applications, stale');
+    console.error('  runners are ended. The gate names them; it deliberately does NOT kill them, because a sweep');
+    console.error('  of this host at 13:07 took a live measurement with it.');
+    console.error('\n  Re-run when clear, or --skipHostClearance to proceed with the caveat recorded.');
+    process.exit(8);
+  }
 }
 
 // --dryRun runs every gate and stops before launching. This is how the gates get exercised, and how the
