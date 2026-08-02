@@ -370,16 +370,23 @@ class CompareOverlay {
         if (!session || typeof session !== 'object') return [];
 
         // Session wizard (BacktestNewSessionModal) stores view-only instruments here — these
-        // are the pairs users expect in "Add symbol to compare", not necessarily every `files` row.
+        // are the pairs users expect first in "Add symbol to compare".
+        //
+        // They are added to the session files rather than replacing them. Supporting rows
+        // carry only a name and no id, so when a name failed to match a dataset the scoped
+        // list came back empty and the picker showed nothing at all — the session's own
+        // trading pairs included, purely because supporting symbols existed.
+        const files = Array.isArray(session.files) ? session.files : [];
         const supporting = session.supporting_tickers || session.supportingTickers;
         if (Array.isArray(supporting) && supporting.length > 0) {
-            return supporting
+            const rows = supporting
                 .map((t) => ({ name: String(t || '').trim() }))
                 .filter((row) => row.name);
+            return rows.concat(files);
         }
 
-        if (Array.isArray(session.files) && session.files.length > 0) {
-            return session.files;
+        if (files.length > 0) {
+            return files;
         }
         return [];
     }
@@ -422,6 +429,14 @@ class CompareOverlay {
                 scoped.push(match);
             }
         });
+
+        // An empty result means every session row failed to resolve, not that the
+        // user has nothing to compare against. Returning it would leave the picker
+        // blank with no way forward, so fall back to the full list exactly as the
+        // no-session case above already does.
+        if (scoped.length === 0) {
+            return this.availableFiles;
+        }
 
         return scoped;
     }

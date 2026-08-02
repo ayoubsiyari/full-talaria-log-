@@ -130,6 +130,8 @@
     "test:replay-restore-viewport-align": "npm run preflight:replay-restore-viewport-align",
     "preflight:session-symbol-exclusivity": "node --test --test-concurrency=1 \"chart v 1.4/chart/modules/session-symbol-exclusivity.test.mjs\"",
     "test:session-symbol-exclusivity": "npm run preflight:session-symbol-exclusivity",
+    "preflight:supporting-symbol-surface": "node --test --test-concurrency=1 \"chart v 1.4/chart/modules/supporting-symbol-surface.test.mjs\"",
+    "test:supporting-symbol-surface": "npm run preflight:supporting-symbol-surface",
     "preflight:generate-path-waypoints": "node --test \"chart v 1.4/chart/modules/generate-path-waypoints.test.mjs\"",
     "test:generate-path-waypoints": "npm run preflight:generate-path-waypoints"
   },

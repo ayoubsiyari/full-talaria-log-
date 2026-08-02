@@ -11323,7 +11323,7 @@ function v9TypeFromCat(cat) {
   return "other";
 }
 
-function v9BuildSessionSymbolEntry(ticker, fileId, assetClass, known = V9_KNOWN_SYMBOL_CATALOG) {
+function v9BuildSessionSymbolEntry(ticker, fileId, assetClass, known = V9_KNOWN_SYMBOL_CATALOG, supporting = false) {
   const rawLabel = String(ticker || "").trim();
   const extracted = extractDatasetTicker(rawLabel) || rawLabel;
   const cleanedTicker = displayChartSessionSymbol(extracted) || extracted;
@@ -11344,6 +11344,9 @@ function v9BuildSessionSymbolEntry(ticker, fileId, assetClass, known = V9_KNOWN_
     cat,
     type: row.type || v9TypeFromCat(cat),
     fileId,
+    // Supporting symbols are view-only context rather than tradable pairs. The
+    // dropdown had no way to tell the two apart, so they rendered identically.
+    supporting: !!supporting,
     ...(badgeAsset ? { badgeAsset } : {}),
   });
 
@@ -11392,13 +11395,21 @@ function v9BuildSessionSymbolEntry(ticker, fileId, assetClass, known = V9_KNOWN_
   });
 }
 
+/**
+ * Supporting symbols read gold wherever they appear. Same value the session
+ * creation picker already uses for the supporting column, so a pair keeps one
+ * colour from the moment it is chosen to the moment it is listed.
+ */
+const V9_SUPPORTING_GOLD = "rgba(232,194,82,0.9)";
+
 const V9_SESSION_CAT_ORDER = ["FOREX", "FUTURES", "CRYPTO", "STOCKS", "BACKTEST"];
 
 /** Session pair list for symbol dropdowns — same source as header MARKETS picker. */
 function v9BuildSessionSymbolGroups(sessionPairs, fallbackSymbol) {
   const items =
     sessionPairs?.length > 0
-      ? sessionPairs.map((p) => v9BuildSessionSymbolEntry(p.ticker, p.fileId, p.assetClass))
+      ? sessionPairs.map((p) =>
+          v9BuildSessionSymbolEntry(p.ticker, p.fileId, p.assetClass, V9_KNOWN_SYMBOL_CATALOG, p.supporting))
       : [v9BuildSessionSymbolEntry(fallbackSymbol, null, null)];
   const byCat = {};
   items.forEach((it) => {
@@ -12879,6 +12890,36 @@ const TalariaV8bLive = () => {
           return out;
         };
 
+        // Supporting symbols are view-only context, not tradable pairs. The wizard
+        // records them as supporting_tickers and additionally marks the instrument
+        // and symbol rows view_only/tradable:false. Keys are slash-stripped because
+        // the ticker list is raw (EURUSD) while pairs are display-formatted
+        // (EUR/USD). Without this the dropdown had no way to tell them apart.
+        const supportingKeys = new Set();
+        const markSupporting = (value) => {
+          const raw = String(value || "").trim();
+          if (!raw) return;
+          const key = v9NormSymKey(extractDatasetTicker(raw) || raw);
+          if (key) supportingKeys.add(key);
+        };
+        const rawSupporting = session.supporting_tickers || session.supportingTickers;
+        if (Array.isArray(rawSupporting)) rawSupporting.forEach(markSupporting);
+        if (Array.isArray(session.symbols)) {
+          session.symbols.forEach((s) => {
+            if (s && (s.view_only === true || s.tradable === false)) {
+              markSupporting(s.symbolName || s.symbol || s.ticker);
+            }
+          });
+        }
+        if (session.instruments && typeof session.instruments === "object") {
+          Object.entries(session.instruments).forEach(([key, info]) => {
+            if (info && (info.view_only === true || info.tradable === false)) {
+              markSupporting(info.symbolName || info.symbol || key);
+            }
+          });
+        }
+        const isSupportingSymbol = (sym) => supportingKeys.has(v9NormSymKey(sym));
+
         const pairs = [];
         const seen = new Set();
         const pushPair = (ticker, fileId, assetClass) => {
@@ -12901,6 +12942,7 @@ const TalariaV8bLive = () => {
             ticker: v9NormalizeToolbarSymbol(cleaned),
             fileId: fid,
             assetClass: acRaw,
+            supporting: isSupportingSymbol(cleaned) || isSupportingSymbol(ticker),
           });
         };
 
@@ -36310,8 +36352,8 @@ const TalariaV8bLive = () => {
                         <div style={{display:"flex",alignItems:"center",position:"relative",minWidth:34,height:14,flexShrink:0}}>
                           <ChartSymbolBadge sym={normalizeSymForBadge(s.id)} asset={chartAssetFromSymbolObj(s)} w={18} h={14} fontFamily={F}/>
                         </div>
-                        <div style={{flex:1,minWidth:0}}>
-                          <div style={{fontSize:12,fontWeight:isAct?700:600,color:isAct?c.acL:isH?c.tx:c.ts,fontFamily:F,lineHeight:1.2}}>{s.id}</div>
+                        <div style={{flex:1,minWidth:0}} title={s.supporting?`${s.id} — supporting symbol (view only)`:undefined}>
+                          <div style={{fontSize:12,fontWeight:isAct?700:600,color:s.supporting?V9_SUPPORTING_GOLD:isAct?c.acL:isH?c.tx:c.ts,fontFamily:F,lineHeight:1.2}}>{s.id}</div>
                           <div style={{fontSize:12,color:c.tm,lineHeight:1.2}}>{s.name}</div>
                         </div>
                         {!isAct && s.fileId != null && focusedPanelId === "A" && (
@@ -41350,8 +41392,8 @@ const TalariaV8bLive = () => {
                           <div style={{ display:"flex", alignItems:"center", position:"relative", minWidth:34, height:14, flexShrink:0 }}>
                             <ChartSymbolBadge sym={normalizeSymForBadge(s.id)} asset={chartAssetFromSymbolObj(s)} w={18} h={14} fontFamily={F}/>
                           </div>
-                          <div style={{ flex:1, minWidth:0 }}>
-                            <div style={{ fontSize:11, fontWeight:isAct?700:600, color:isAct?c.acL:isH?c.tx:c.ts, lineHeight:1.3 }}>{s.id}</div>
+                          <div style={{ flex:1, minWidth:0 }} title={s.supporting?`${s.id} — supporting symbol (view only)`:undefined}>
+                            <div style={{ fontSize:11, fontWeight:isAct?700:600, color:s.supporting?V9_SUPPORTING_GOLD:isAct?c.acL:isH?c.tx:c.ts, lineHeight:1.3 }}>{s.id}</div>
                             <div style={{ fontSize:9, color:c.tm, lineHeight:1.3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.name}</div>
                           </div>
                           {!isAct && s.fileId != null && focusedPanelId === "A" && (
