@@ -216,7 +216,19 @@ async function main() {
         const r = origPlay(...a);
         try {
           const last = window.__canaryPlayLog[window.__canaryPlayLog.length - 1];
-          if (last) last.playingOnReturn = !!this.isPlaying;
+          if (last) {
+            last.playingOnReturn = !!this.isPlaying;
+            // For B. isPlayStarting is set at the head of the deferred-start
+            // block and cleared in the finally of the inner rAF, so it is true
+            // for about two frames and MUST be read synchronously on return.
+            // True: the call reached the deferred start, so the entry point is
+            // live and this is start starvation. False: it left at a guard.
+            last.isPlayStartingOnReturn = !!this.isPlayStarting;
+            // Separates "reached the block but the rAF never ran" — a throttled
+            // or hidden realm — from "never reached the block at all". Both
+            // present as isPlayStarting false once the frames have passed.
+            last.playStartRafScheduled = this._playStartRaf1 != null;
+          }
         } catch (_e) { /* ignore */ }
         return r;
       };
@@ -416,13 +428,27 @@ async function main() {
         const attempts = [];
         for (const n of [1, 2]) {
           const b = head();
-          try { rs.play(); } catch (e) { row[`wrapperThrew${n}`] = String(e && e.message).slice(0, 160); }
+          let startingOnReturn = null;
+          let rafScheduled = null;
+          try {
+            rs.play();
+            // Synchronous, before any await: the deferred-start flag lives for
+            // roughly two frames, so a reading taken after the settle below is
+            // false whether or not the block was reached.
+            startingOnReturn = !!rs.isPlayStarting;
+            rafScheduled = rs._playStartRaf1 != null;
+          } catch (e) { row[`wrapperThrew${n}`] = String(e && e.message).slice(0, 160); }
           await sleepIn(1_200);
           attempts.push({
             attempt: n,
             playing: !!rs.isPlaying,
             timer: !!rs._nextCandleTimer,
             advancedSec: Math.round((head() - b) / 1000),
+            isPlayStartingOnReturn: startingOnReturn,
+            playStartRafScheduled: rafScheduled,
+            // If this is still true after 1.2s the deferred start was entered
+            // and then stranded, which is a third outcome again.
+            isPlayStartingAfterSettle: !!rs.isPlayStarting,
           });
           if (rs.isPlaying) break;
         }
@@ -433,12 +459,23 @@ async function main() {
           const classPlay = proto && proto.play;
           if (typeof classPlay === 'function' && classPlay !== rs.play) {
             const before2 = head();
-            try { classPlay.call(rs); } catch (e) { row.classThrew = String(e && e.message).slice(0, 160); }
+            let classStartingOnReturn = null;
+            let classRafScheduled = null;
+            try {
+              classPlay.call(rs);
+              classStartingOnReturn = !!rs.isPlayStarting;
+              classRafScheduled = rs._playStartRaf1 != null;
+            } catch (e) { row.classThrew = String(e && e.message).slice(0, 160); }
             await sleepIn(1_200);
             row.viaClassMethod = {
               playing: !!rs.isPlaying,
               timer: !!rs._nextCandleTimer,
               advancedSec: Math.round((head() - before2) / 1000),
+              // The control arm: the engine's own play reaching the deferred
+              // block while the instance property does not is the difference
+              // that names the override.
+              isPlayStartingOnReturn: classStartingOnReturn,
+              playStartRafScheduled: classRafScheduled,
             };
           } else {
             row.viaClassMethod = { unavailable: 'no distinct prototype play' };
