@@ -229,6 +229,74 @@ test('O1 the effective rate is published continuously for read-back', () => {
     assert.equal(win.__talariaSpeedGov.mode, 'candle');
 });
 
+// ---------------------------------------------------------------------------
+// §3 read-back. These exist because deleting the publication left 47 of 49
+// cells green: the rest of this file drives the meter through the in-process
+// API, so it measures the meter and the corrector, not the contract a harness
+// actually attaches to. Without these cells the suite is VAC-01 vacuous with
+// respect to §3.
+// ---------------------------------------------------------------------------
+
+test('§3 the read-back reaches every realm a harness attaches to', () => {
+    // A panel inside a host inside an outer frame: parent is not top, and a
+    // harness watching the host reads `parent`.
+    const top = {};
+    const host = { top };
+    const panel = { parent: host, top };
+    const { engine } = build({ win: panel });
+    engine.speed = 10;
+    engine._speedGovPublishEffectiveRate(feed(engine, { bars: 10, overMs: 1000 }));
+    for (const [name, realm] of [['panel', panel], ['host', host], ['top', top]]) {
+        assert.equal(typeof realm.__talariaEffectiveRate, 'number',
+            `${name} cannot read the rate`);
+    }
+});
+
+test('§3 a cross-origin realm does not cost the local read-back', () => {
+    const panel = { get parent() { throw new Error('cross-origin'); } };
+    const { engine } = build({ win: panel });
+    engine.speed = 10;
+    assert.doesNotThrow(() => engine._speedGovPublishEffectiveRate(
+        feed(engine, { bars: 10, overMs: 1000 })));
+    assert.equal(typeof panel.__talariaEffectiveRate, 'number');
+});
+
+test('§3 the published value tracks delivery rather than going stale', () => {
+    // "Continuous read-back" means a harness polling the global sees the rate
+    // change. A publisher that writes once would pass the cell above.
+    const { engine, win } = build();
+    engine.speed = 10;
+    let now = feed(engine, { bars: 10, overMs: 1000 });
+    engine._speedGovPublishEffectiveRate(now);
+    const fast = win.__talariaEffectiveRate;
+    now = feed(engine, { bars: 2, overMs: 4000, startAt: now });
+    engine._speedGovPublishEffectiveRate(now);
+    assert.ok(win.__talariaEffectiveRate < fast,
+        `a collapsing session must show a falling rate, got ${win.__talariaEffectiveRate} after ${fast}`);
+});
+
+test('§3 the playback tick publishes, so nobody has to call the publisher', () => {
+    // The soak polls a global; it never invokes the engine. If the tick path
+    // stopped publishing, every cell above would still pass.
+    // Anchor on the definition. `_runCandlePlaybackTick(` alone matches its
+    // first call site, and the block scooped up from there belongs to some
+    // other method entirely.
+    const tick = src.match(/\n    _runCandlePlaybackTick\(\) \{[\s\S]*?\n    \}/);
+    assert.ok(tick, 'the candle playback tick must exist');
+    assert.ok(tick[0].includes('_speedGovPublishEffectiveRate'),
+        'the tick must publish, or the read-back only updates when something else asks');
+});
+
+test('§3 MUTANT: deleting the publication goes red', () => {
+    const { engine, win } = build({
+        mutate: (s) => s.replace('w.__talariaEffectiveRate = effective;', '/* removed */'),
+    });
+    engine.speed = 10;
+    engine._speedGovPublishEffectiveRate(feed(engine, { bars: 10, overMs: 1000 }));
+    assert.equal(win.__talariaEffectiveRate, undefined,
+        'the mutant must remove the global; if not, these cells prove nothing');
+});
+
 test('O1 the rate window slides, so an old burst cannot hold the number up', () => {
     const { engine } = build();
     feed(engine, { bars: 50, overMs: 500, startAt: 1000 });

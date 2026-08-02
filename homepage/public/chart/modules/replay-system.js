@@ -5658,10 +5658,16 @@ class ReplaySystem {
             }
         };
         publish(window);
-        try {
-            if (window.top && window.top !== window) publish(window.top);
-        } catch (_e) {
-            // Unreachable top; local read-back is enough.
+        // Climb every realm a harness might attach to. A panel inside a host
+        // inside an outer frame has a `parent` that is not `top`, and a
+        // harness watching the host would have read nothing.
+        for (const hop of ['parent', 'top']) {
+            try {
+                const w = window[hop];
+                if (w && w !== window) publish(w);
+            } catch (_e) {
+                // Cross-origin realm; the own-window write still stands.
+            }
         }
         return effective;
     }
