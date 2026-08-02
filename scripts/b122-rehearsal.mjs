@@ -28,6 +28,7 @@ import path from 'node:path';
 import { spawn, execFileSync } from 'node:child_process';
 import { computeSeal } from './lib/seal.mjs';
 import { readBuildInfo } from './lib/build-info.mjs';
+import { checkSpeed01Served, capabilityDigest, readSpeed01Runtime, gradeRuntimeLadder } from './lib/served-capability.mjs';
 
 const EV = 'c:\\Users\\user\\Desktop\\talaria1\\_evidence\\manager-C';
 const ORIGIN = (process.env.TEST_VPS_URL || 'http://31.97.192.82:3000').replace(/\/$/, '');
@@ -54,6 +55,26 @@ if (seal.badge !== CONFIRM_BADGE) {
   console.error(`\nREFUSED: you named ${CONFIRM_BADGE}; the origin serves ${seal.badge}.`);
   process.exit(2);
 }
+/**
+ * THE FIX MUST BE IN THE BYTES, checked before a browser is opened.
+ *
+ * The seal says which bytes; it does not say what is in them, and the ladder lives in replay-system.js
+ * which SEAL_PATHS does not even cover. We have been burned twice by the right code sitting one layer
+ * short of where it is read: roster switches present in the tree and absent from the build, and a b122
+ * deploy read mid-flight while one file was still the old copy.
+ */
+const cap = await checkSpeed01Served(ORIGIN);
+log(`SPEED-01 in served bytes: ${cap.state}${cap.bytes ? ` (${cap.bytes.toLocaleString()} B, ${cap.servedPctOfLocal}% of local mirror)` : ''}`);
+if (!cap.ok) {
+  console.error(`\nREFUSED: the served build does not carry SPEED-01 — ${cap.state}.`);
+  if (cap.state === 'SPA_FALLBACK') console.error('  The origin answered 200 with HTML: this path does not exist and the server returned the app shell.');
+  if (cap.state === 'MISSING_MARKERS') console.error(`  Missing: ${cap.missing.join(', ')}`);
+  console.error('  Measuring a build without the ladder at "10 bars/s" would produce a real-looking artifact about the wrong build.');
+  process.exit(4);
+}
+const capDigest = await capabilityDigest(ORIGIN);
+log(`capability digest ${capDigest.digest.slice(0, 16)} over ${capDigest.files.length} engine files the seal does not cover`);
+
 if (!info.ok || !/^[a-f0-9]{40}$/.test(String(info.sourceCommitSha || ''))) {
   console.error(`\nREFUSED: the origin does not expose a usable source commit (state ${info.state}).`);
   console.error('  A rehearsal that cannot pass --expectSha has not rehearsed the thing most likely to fail.');
@@ -149,6 +170,18 @@ const checks = [];
 const gate = (name, pass, detail) => { checks.push({ name, pass, detail }); console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`); };
 
 console.log('');
+gate('SPEED-01 is present in the SERVED bytes', cap.ok, `${cap.state}, ${cap.present.length}/5 markers, ${cap.bytes?.toLocaleString()} B`);
+/**
+ * And present in the PAGE, which is a different claim. A service worker can serve a cached copy, so the
+ * origin having the ladder does not establish that the tab is running it. Read off the live object from
+ * the segment-start record the soak writes.
+ */
+const runtimeLadder = segStarts.map((s) => s.speed01Runtime).filter(Boolean);
+const ladderGrade = runtimeLadder.length ? gradeRuntimeLadder(runtimeLadder[0]) : { ok: false, why: 'the run recorded no runtime ladder reading' };
+gate('the ladder is live in the PAGE, not just on the origin', ladderGrade.ok, ladderGrade.why || `via ${runtimeLadder[0]?.ladderSource ?? 'snap fn + target getter'}`);
+const swServed = runtimeLadder[0]?.resource?.fromServiceWorker;
+gate('replay-system.js was not served from a stale service-worker cache', swServed !== true, swServed === true ? 'SERVED FROM SERVICE WORKER — the page may be running cached bytes' : `transferSize ${runtimeLadder[0]?.resource?.transferSize ?? 'unread'}`);
+
 gate('the run produced samples', samples.length >= 3, `${samples.length} samples`);
 gate('the seal was pinned by BOTH digest and source commit', args.some((a) => a.startsWith('--expectDigest=')) && args.some((a) => a.startsWith('--expectSha=')), 'both flags present on the child command line');
 gate('every sample re-verified the seal and it held', samples.length > 0 && samples.every((s) => s.sealHeld !== false), `${samples.filter((s) => s.sealHeld !== false).length}/${samples.length}`);

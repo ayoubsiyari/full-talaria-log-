@@ -37,6 +37,7 @@ import { readFootprint } from './lib/footprint.mjs';
 import { perBarFields, evaluateGauges } from './lib/soak-gauges.mjs';
 import { readBuildInfo, shaChanged } from './lib/build-info.mjs';
 import { computeSeal } from './lib/seal.mjs';
+import { checkSpeed01Served, capabilityDigest, readSpeed01Runtime } from './lib/served-capability.mjs';
 import { deliveredRate, evaluateRateHold, readEffectiveRateReadback } from './lib/rate-hold.mjs';
 import { pauseProbe } from './lib/pause-probe.mjs';
 import { readStorageCensus, diffStorage } from './lib/storage-census.mjs';
@@ -301,6 +302,22 @@ if (REQUIRE_SHA || EXPECT_SHA) {
 }
 const pinnedSha = buildInfo.ok ? buildInfo.sourceCommitSha : null;
 
+/**
+ * SPEED-01 must be in the served bytes before the arm starts, and the engine files the seal does not
+ * cover get their own pinned digest. Refused at boot rather than annotated, on the same reasoning as the
+ * speed gate: an arm that runs to completion against a build without the fix produces a real-looking
+ * artifact about the wrong build, and nothing downstream can tell.
+ */
+const capCheck = await checkSpeed01Served(SEAL_ORIGIN);
+if (!capCheck.ok) {
+  console.error(`REFUSING TO START: the served build does not carry SPEED-01 — ${capCheck.state}.`);
+  if (capCheck.state === 'SPA_FALLBACK') console.error('  200 with HTML: the path does not exist and the origin returned the app shell, so a marker check means nothing.');
+  if (capCheck.state === 'MISSING_MARKERS') console.error(`  Missing: ${capCheck.missing.join(', ')}`);
+  process.exit(7);
+}
+const pinnedCapability = await capabilityDigest(SEAL_ORIGIN);
+const pinnedCapabilityDigest = pinnedCapability.digest;
+
 const run = openRun({
   name: `sealed-soak-${ARM}`,
   out: OUT,
@@ -421,6 +438,10 @@ try {
         effectiveSpeed: eff,
         effectiveSpeedRoute: effRead.route,
         effectiveSpeedRoutes: effRead.routes ?? null,
+        // Read off the LIVE object, because served bytes and executed bytes differ when a service worker
+        // sits between them. Recorded at segment start rather than every sample: it cannot change without
+        // a reload, and the capability digest below covers the bytes changing underneath a running arm.
+        speed01Runtime: await readSpeed01Runtime(session.page.mainFrame()).catch(() => null),
         loafInstall: { ...loafInstall, viaProductBytes: false, how: 'Page.addScriptToEvaluateOnNewDocument plus live-frame evaluate. The served bytes are untouched and the digest is unchanged.' },
         panels: panels.length,
         timeframes: panels.map((p) => p.tf),
@@ -495,6 +516,17 @@ try {
     // SHA catches a different source. Neither implies the other, so both, every sample.
     const nowInfo = await readBuildInfo(SEAL_ORIGIN);
     const shaDrift = shaChanged(pinnedSha, nowInfo);
+    /**
+     * THE THIRD IDENTITY, and it closes a hole in my own seal.
+     *
+     * SEAL_PATHS covers six files and not one of them is replay-system.js, order-manager.js or
+     * chart-indicators-full.js - the three files carrying most of the roster. So the digest I have been
+     * re-verifying every sample for weeks would not have noticed the replay engine itself being replaced
+     * mid-run. Kept separate from the seal digest rather than folded into it, because that digest has to
+     * keep agreeing with build-passport and two tools disagreeing about one build has cost us once.
+     */
+    const nowCap = await capabilityDigest(SEAL_ORIGIN).catch(() => ({ digest: null, ok: false }));
+    const capabilityHeld = nowCap.digest != null && nowCap.digest === pinnedCapabilityDigest;
 
     // MANIFEST ADDITIONS, all harness-side. None of these touch the served bytes, so the digest above is
     // the digest of the build a user gets. An instrument that changed it would defeat SOAK-SEAL through
@@ -601,8 +633,18 @@ try {
       sourceCommitHeld: pinnedSha ? shaDrift === null : null,
       sourceCommitNote: shaDrift,
       sealNote: sealHeld ? null : 'BUILD CHANGED UNDER THE RUN. Every sample from here belongs to a different build and must not be pooled with earlier ones.',
+      capabilityDigestNow: nowCap.digest,
+      capabilityHeld,
+      capabilityNote: capabilityHeld ? null : 'THE ENGINE FILES MOVED and the seal digest cannot see them — replay-system.js, order-manager.js or chart-indicators-full.js changed under the run.',
     });
 
+    // Treated exactly like a seal break, because that is what it is: the seal simply never covered these
+    // files. A mid-run change to the replay engine would otherwise have been completely silent.
+    if (!capabilityHeld) {
+      run.note({ __void: true, segment, why: `Engine files changed mid-run: capability digest ${pinnedCapabilityDigest} -> ${nowCap.digest}. These are NOT in SEAL_PATHS, so the seal held while the replay engine was replaced.` });
+      log('CAPABILITY DIGEST BROKEN — stopping');
+      break;
+    }
     if (!sealHeld) {
       run.note({ __void: true, segment, why: `Served build changed mid-run: ${seal.digest} -> ${nowSeal.digest}. Stopping rather than producing a series across two builds.` });
       log('SEAL BROKEN — stopping');
