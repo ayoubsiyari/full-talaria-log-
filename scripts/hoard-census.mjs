@@ -63,6 +63,7 @@ const MIN_ENTRIES = Number(arg('minEntries', '64'));
 const NODE_CAP = Number(arg('nodeCap', '120000'));
 const DEPTH_CAP = Number(arg('depthCap', '10'));
 const TIME_BUDGET_MS = Number(arg('timeBudgetMs', '10000'));
+const INDICATOR_ARM = arg('indicators', 'conf05');
 const OUT = arg('out', `_evidence/manager-C/hoard-census-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
 
 const log = (m) => console.log(`[hoard-census ${new Date().toISOString().slice(11, 19)}] ${m}`);
@@ -120,6 +121,23 @@ export const WALK = ({ minEntries, nodeCap, depthCap, timeBudgetMs }) => {
           try { const b = rs && rs.fullRawData && rs.fullRawData[rs.currentIndex]; return b ? (b.t ?? b.time ?? null) : null; } catch (_) { return null; }
         })(),
         isPlaying: rs ? !!rs.isPlaying : null,
+        // EVICTION STATE. Without these the bar counts cannot be read: both trims stand down when a
+        // whole-history indicator is active, and EVICT-03 additionally cannot fire below
+        // CONTEXT+SLACK = 7,048. Omitting sessionStartIndex from the first census meant I could not say
+        // whether the pre-session bound would even have applied.
+        sessionStartIndex: rs && Number.isFinite(rs.sessionStartIndex) ? rs.sessionStartIndex : null,
+        preSessionEvictedBars: rs && Number.isFinite(rs._preSessionEvictedBars) ? rs._preSessionEvictedBars : null,
+        hasWholeHistoryIndicator: (() => {
+          try { return rs && typeof rs._hasWholeHistoryIndicator === 'function' ? rs._hasWholeHistoryIndicator() : null; } catch (_) { return 'threw'; }
+        })(),
+        activeIndicatorTypes: (() => {
+          try {
+            const act = chart && chart.indicators && chart.indicators.active;
+            return Array.isArray(act) ? act.map((i) => String((i && i.type) || '?').toLowerCase()) : null;
+          } catch (_) { return null; }
+        })(),
+        evict03CanFire: rs && Number.isFinite(rs.currentIndex) ? (rs.currentIndex >= 7048) : null,
+        preSessionTrimCanFire: rs && Number.isFinite(rs.sessionStartIndex) ? (rs.sessionStartIndex - 1000 >= 1) : null,
       };
     } catch (e) { rec.error = String(e).slice(0, 120); }
 
@@ -300,14 +318,19 @@ export function diffMoments(a, b) {
 async function main() {
   const seal = await computeSeal(ORIGIN).catch((e) => ({ error: String(e).slice(0, 120) }));
   const info = await readBuildInfo(ORIGIN).catch((e) => ({ error: String(e).slice(0, 120) }));
+  // INDICATOR ARM. E's CONF-05 pair contains `vwap`, which is in WHOLE_HISTORY_INDICATOR_TYPES, so it
+  // disables BOTH residency trims. `--indicators=rolling` swaps the anchored slot for a rolling one so
+  // price retention can be separated from indicator retention; only the vwap slot changes.
+  const ROLLING_PAIR = [['ema', { period: 20, source: 'close' }], ['rsi', { period: 14 }]];
   const eSel = loadConf05Indicators();
+  const pairs = INDICATOR_ARM === 'rolling' ? ROLLING_PAIR : eSel.pairs;
   const walkOpts = { minEntries: MIN_ENTRIES, nodeCap: NODE_CAP, depthCap: DEPTH_CAP, timeBudgetMs: TIME_BUDGET_MS };
 
   const artifact = {
     signature: 'HOARD-CENSUS-V1',
     startedAt: new Date().toISOString(),
     identity: { buildId: seal.badge ?? null, sealDigest: seal.digest ?? null, sourceCommit: info.sourceCommitSha ?? null, origin: ORIGIN },
-    condition: { speed: SPEED, panels: 4, indicatorsPerPanel: 2, trades: 0, warmMs: WARM_MS },
+    condition: { speed: SPEED, panels: 4, indicatorsPerPanel: 2, trades: 0, warmMs: WARM_MS, indicatorArm: INDICATOR_ARM, indicatorPairs: pairs },
     evictionWindow: { EVICT_CONTEXT_BARS: 5000, EVICT_SLACK_BARS: 2048, firesOncePlayheadExceeds: 7048 },
     scope: {
       blindTo: 'non-V8 arenas; ~41% of per-bar growth measured outside V8 (blink_gc 20.0%, partition_alloc 16.7%)',
@@ -319,7 +342,7 @@ async function main() {
   let session = null;
   try {
     log(`booting CONF-01 speed ${SPEED} against ${ORIGIN} (${seal.badge ?? '?'})`);
-    session = await bootConf01Session({ indicators: eSel.pairs, replaySpeed: SPEED, placeOrder: false, label: 'hoard-census' });
+    session = await bootConf01Session({ indicators: pairs, replaySpeed: SPEED, placeOrder: false, label: 'hoard-census' });
     const page = session.page;
     const browser = session.browser;
     const cdp = await page.createCDPSession();
