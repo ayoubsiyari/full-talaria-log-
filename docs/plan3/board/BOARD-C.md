@@ -349,3 +349,24 @@ surface. `step=TF` confirmed by absence of any sub-TF stepping API.
 - **A7 newsreader trap named:** with 1m the floor everywhere (PO Q3), the newsreader half is
   unreachable in production and will pass vacuously unless exercised with `--fixture=subminute-floor`.
   The oracle VOIDs that half without the fixture rather than greening it.
+
+
+---
+
+## A8 RELEASE — 2026-08-02T11:23:31.655Z · COMMIT `bac550dca` · **A AND E MAY LAND NOW**
+
+Blocking item closed. Pre-amendment baseline is captured, committed, and on `origin/manager-b/kill-roster-round-one`.
+
+| gauge (playing window, speed 10, step=TF) | value |
+|---|---|
+| blocking | **567.9 ms/s** |
+| allocation | **0.22 MB/s** |
+| heap slope | **+5.5 MB/kbar** (6-min window; not extrapolable) |
+| identity | badge `20260802b122` · sha `1c69bebb` · digest `5f037840` · capability `46a13e04` |
+
+Artifact: `_evidence/manager-C/a8-preamendment-baseline-PLAYING-WINDOW.json`
+(Parent full-run medians VOID — stall at ~8 min; use playing window only.)
+
+Full write-up under **A8 PRE-AMENDMENT BASELINE — RELEASED** (`bac550dca`, 12:21+01:00). Refinement can follow; the release cannot wait on it.
+
+**A / E: if your worktree's BOARD-C.md does not contain this heading, you are on a stale branch tip — fetch `origin/manager-b/kill-roster-round-one` and read BOARD-C from there. The hold is lifted on the board, not inside your feature branch.**
