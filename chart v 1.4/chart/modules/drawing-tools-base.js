@@ -758,6 +758,11 @@ function _isVpHandleCanvasRoutingFixEnabled() {
     return typeof window === 'undefined' || window.__TALARIA_DISABLE_VP_HANDLE_CANVAS_ROUTING_FIX !== true;
 }
 
+/** Arena reclaim: axis-highlight clipPaths release with the drawing (unset = fix ON). */
+function _isAxisHighlightClipReleaseEnabled() {
+    return typeof window === 'undefined' || window.__TALARIA_DISABLE_AXIS_HIGHLIGHT_CLIP_RELEASE_V1 !== true;
+}
+
 function _getEffectiveCandleIndexClampTypes() {
     const out = new Set(CANDLE_INDEX_CLAMPED_TYPES);
     if (_isRc3ClampPolicyEnabled()) {
@@ -2983,6 +2988,9 @@ class BaseDrawing {
         if (this.chart?.svg) {
             this.chart.svg.selectAll(`.axis-highlight-group[data-drawing-id="${this.id}"]`).remove();
             this.chart.svg.selectAll(`.drawings-labels [data-id="${this.id}"]`).remove();
+            if (_isAxisHighlightClipReleaseEnabled()) {
+                this.chart.svg.select(`#axis-highlight-clip-${this.id}`).remove();
+            }
         }
         // Clear canvas-based zones only if this drawing had set them.
         // Guard: never call scheduleRender from inside a render cycle (would cause

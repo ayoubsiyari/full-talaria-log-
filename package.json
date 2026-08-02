@@ -163,7 +163,9 @@
     "preflight:order-stable-label-hover-dom": "node \"chart v 1.4/chart/modules/order-stable-label-hover-dom.test.mjs\"",
     "test:order-stable-label-hover-dom": "npm run preflight:order-stable-label-hover-dom",
     "preflight:text-measure-canvas-pool": "node --test \"chart v 1.4/chart/modules/text-measure-canvas-pool.test.mjs\"",
-    "test:text-measure-canvas-pool": "npm run preflight:text-measure-canvas-pool"
+    "test:text-measure-canvas-pool": "npm run preflight:text-measure-canvas-pool",
+    "preflight:axis-highlight-clip-release": "node --test \"chart v 1.4/chart/modules/axis-highlight-clip-release.test.mjs\"",
+    "test:axis-highlight-clip-release": "npm run preflight:axis-highlight-clip-release"
   },
   "dependencies": {
     "dukascopy-node": "^1.46.3",
