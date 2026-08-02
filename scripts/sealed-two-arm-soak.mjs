@@ -40,7 +40,9 @@ import { readBuildInfo, shaChanged } from './lib/build-info.mjs';
 import { computeSeal } from './lib/seal.mjs';
 import { checkSpeed01Served, capabilityDigest, readSpeed01Runtime } from './lib/served-capability.mjs';
 import { deliveredRate, evaluateRateHold, readEffectiveRateReadback } from './lib/rate-hold.mjs';
-import { pauseProbe } from './lib/pause-probe.mjs';
+import { forcedGcPauseProbe } from './lib/forced-gc-pause-probe.mjs';
+import { arenaColumns } from './lib/arena-columns.mjs';
+import { collectMemoryDump } from './process-memory-census.mjs';
 import { readStorageCensus, diffStorage } from './lib/storage-census.mjs';
 import { offlineToggle } from './lib/offline-toggle.mjs';
 import { readHostHealth } from './lib/host-health.mjs';
@@ -137,6 +139,41 @@ function tfSeconds(tf) {
   const unit = m[2] || 'm';
   const mult = { s: 1, m: 60, h: 3600, d: 86400, w: 604800 }[unit];
   return mult ? n * mult : null;
+}
+
+/**
+ * ARENA-COLUMNS (checklist item 1) on E's memory-infra dump path, flattened to soak-row columns.
+ *
+ * The total passed in is the SAME `footprintTotalMB` gauge every published figure uses, so TOTAL-01's
+ * total row and the memory series cannot drift apart. A dump failure returns null columns with the
+ * total still present rather than omitting the columns, because a row that changes shape mid-run is
+ * how a series quietly stops being one series.
+ */
+async function readArenaColumns(browser, totalPrivateMB = null) {
+  let browserCdp = null;
+  try {
+    browserCdp = await browser.target().createCDPSession();
+    const byPid = await collectMemoryDump(browserCdp);
+    let heaviest = null;
+    for (const [pid, roots] of byPid) {
+      const score = (roots?.v8 || 0) + (roots?.partition_alloc || 0) + (roots?.blink_gc || 0);
+      if (!heaviest || score > heaviest.score) heaviest = { pid, score, roots };
+    }
+    return {
+      ...arenaColumns(heaviest?.roots || null, { totalPrivateMB }),
+      arenaDumpPid: heaviest?.pid ?? null,
+      arenaDumpProcesses: byPid.size,
+    };
+  } catch (e) {
+    return {
+      ...arenaColumns(null, { totalPrivateMB }),
+      arenaDumpPid: null,
+      arenaDumpProcesses: 0,
+      arenaDumpError: String(e?.message || e).slice(0, 140),
+    };
+  } finally {
+    try { if (browserCdp) await browserCdp.detach(); } catch (_) { /* session already gone */ }
+  }
 }
 
 /** Liveness by playhead, with bar count recorded alongside so the two routes can be compared. */
@@ -485,6 +522,7 @@ try {
     let blocking = {};
     let frameRate = {};
     let footprint = {};
+    let arenas = {};
     try {
       before = await readPanels(session.page);
       // The liveness window already costs 20 s of wall clock. Blocking is observed ACROSS it rather than
@@ -493,6 +531,9 @@ try {
     frameRate = await measureFrameRate(session.page.mainFrame(), 3000);
     after = await readPanels(session.page);
       footprint = await readFootprint(session.browser);
+      // ARENA-COLUMNS (item 1): per-arena columns on the same 3-min cadence as the memory series, in
+      // this row format. A dump failure degrades to null columns rather than dropping the sample.
+      arenas = await readArenaColumns(session.browser, footprint.footprintTotalMB);
     } catch (err) {
       log(`sample read failed (${String(err).slice(0, 80)}) — treating as a dead browser and resuming`);
     }
@@ -626,6 +667,8 @@ try {
       closedTrades: closed,
       // MEMORY — the reason this run exists.
       ...footprint,
+      // ARENA-COLUMNS + TOTAL-01 + the COV-01 remainder, flat beside footprintTotalMB.
+      ...arenas,
       ...perBarFields(footprint.footprintTotalMB, residentBars, prevSample),
       localSlopeNote: 'localSlopeMbPerKbar is the consecutive-sample slope and is the figure comparable to the published 23.98 / 24.55 / 25.35 MB/kbar. footprintPerKbarLEVEL is NOT - it carries the fixed baseline and falls as bars accumulate. The run-level slope comes from a fit over all samples, not from either field.',
       // LAG — same host, same cadence, so the scorecard has a before/after that is not two computers.
@@ -720,9 +763,10 @@ try {
     // recorded so RATE-HOLD can exclude it rather than read a deliberate pause as a stall.
     if (!r3ProbeDone && r3.verdict && r3.verdict !== 'INSUFFICIENT' && session?.page) {
       r3ProbeDone = true;
-      log('pause-probe at the R3 checkpoint — separating froth from hoard');
-      const probe = await pauseProbe(session.page, {
+      log('forced-GC pause-probe at the R3 checkpoint — separating froth from hoard');
+      const probe = await forcedGcPauseProbe(session.page, {
         readFootprint: () => readFootprint(session.browser),
+        readArenas: () => readArenaColumns(session.browser),
         label: `r3-checkpoint-${ARM}`,
         log,
       }).catch((e) => ({ verdict: 'VOID', why: `probe threw: ${String(e).slice(0, 160)}` }));
@@ -763,9 +807,10 @@ try {
   // END-OF-ARM PAUSE-PROBE, before the snapshot: the snapshot is a stop-the-world event and would drain
   // the very froth the probe exists to measure. Order matters and is deliberate.
   if (session?.page) {
-    log('end-of-arm pause-probe');
-    const endProbe = await pauseProbe(session.page, {
+    log('end-of-arm forced-GC pause-probe');
+    const endProbe = await forcedGcPauseProbe(session.page, {
       readFootprint: () => readFootprint(session.browser),
+      readArenas: () => readArenaColumns(session.browser),
       label: `end-of-arm-${ARM}`,
       log,
     }).catch((e) => ({ verdict: 'VOID', why: `probe threw: ${String(e).slice(0, 160)}` }));

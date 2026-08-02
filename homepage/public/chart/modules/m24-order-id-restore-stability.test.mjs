@@ -100,8 +100,8 @@ assert.equal(
 delete global.window;
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(MODULE_DIR, '..', '..', '..', '..');
-const CHART_JS = path.join(ROOT, 'homepage', 'public', 'chart', 'chart.js');
+const ROOT = path.resolve(MODULE_DIR, '..', '..', '..');
+const CHART_JS = path.join(ROOT, 'chart v 1.4', 'chart', 'chart.js');
 const CHART_SOURCE = fs.readFileSync(CHART_JS, 'utf8');
 
 function chartMethodSource(name) {

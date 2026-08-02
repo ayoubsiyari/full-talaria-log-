@@ -54,12 +54,13 @@
 
 import fs from 'fs';
 import path from 'path';
-import { bootConf01Session } from './lib/conf01-session.mjs';
+import { bootConf01Session, keepConf01Playing } from './lib/conf01-session.mjs';
 import { loadConf05Indicators } from './lib/conf05-indicators.mjs';
 import { readFootprint } from './lib/footprint.mjs';
 import { pauseProbe } from './lib/pause-probe.mjs';
 import { computeSeal } from './lib/seal.mjs';
 import { readBuildInfo } from './lib/build-info.mjs';
+import { startServer as startHarnessServer } from '../chart v 1.4/chart/multichart-prod/harness/serve.mjs';
 
 const arg = (k, d) => {
   const hit = process.argv.find((a) => a.startsWith(`--${k}=`));
@@ -73,6 +74,7 @@ const LEG_MS = Number(arg('legMs', '420000'));
 const FROTH_MS = Number(arg('frothMs', '60000'));
 const OUT = arg('out', `_evidence/manager-C/qw3-floor-census-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
 const DISABLE_QW3 = /^(1|true|yes|on)$/i.test(String(arg('disableQw3', 'false')));
+const LOCAL_HARNESS = /^(1|true|yes|on)$/i.test(String(arg('localHarness', 'false')));
 
 const QW3_FLAG = '__TALARIA_DISABLE_QW3_RESAMPLE_CACHE_KEEP_V1';
 const CONTROL_FLAG = '__TALARIA_DISABLE_M20_PREFIX_SLICE_V1';
@@ -272,28 +274,36 @@ export function gradeBinding(counters, caps) {
 
 async function main() {
   const started = new Date().toISOString();
-  const seal = await computeSeal(ORIGIN).catch((e) => ({ error: String(e).slice(0, 120) }));
-  const info = await readBuildInfo(ORIGIN).catch((e) => ({ error: String(e).slice(0, 120) }));
+  let harness = null;
+  const origin = await (async () => {
+    if (!LOCAL_HARNESS) return ORIGIN;
+    harness = await startHarnessServer(0);
+    return harness.url;
+  })();
+  const seal = await computeSeal(origin).catch((e) => ({ error: String(e).slice(0, 120) }));
+  const info = await readBuildInfo(origin).catch((e) => ({ error: String(e).slice(0, 120) }));
   const eSel = loadConf05Indicators();
 
   const artifact = {
     signature: 'QW3-FLOOR-CENSUS-V1',
     startedAt: started,
-    identity: { buildId: seal.badge ?? null, sealDigest: seal.digest ?? null, sourceCommit: info.sourceCommitSha ?? null, origin: ORIGIN },
-    condition: { speed: SPEED, panels: 4, indicatorsPerPanel: 2, trades: 0, warmMs: WARM_MS, legMs: LEG_MS, drain: `pause-and-wait ${FROTH_MS / 1000}s, no forced GC`, qw3ResampleCacheKeepDisabled: DISABLE_QW3 },
+    identity: { buildId: seal.badge ?? null, sealDigest: seal.digest ?? null, sourceCommit: info.sourceCommitSha ?? null, origin },
+    condition: { speed: SPEED, panels: 4, indicatorsPerPanel: 2, trades: 0, warmMs: WARM_MS, legMs: LEG_MS, drain: `pause-and-wait ${FROTH_MS / 1000}s, no forced GC`, qw3ResampleCacheKeepDisabled: DISABLE_QW3, localHarness: LOCAL_HARNESS },
     flags: { qw3: QW3_FLAG, control: CONTROL_FLAG },
     steps: [],
   };
 
   let session = null;
   try {
-    log(`booting CONF-01 at speed ${SPEED} against ${ORIGIN} (build ${seal.badge ?? '?'})`);
+    log(`booting CONF-01 at speed ${SPEED} against ${origin} (build ${seal.badge ?? '?'}) ${DISABLE_QW3 ? 'with QW3_RESAMPLE_CACHE_KEEP disabled' : ''}`);
     session = await bootConf01Session({
       indicators: eSel.pairs,
       replaySpeed: SPEED,
       placeOrder: false,
       label: DISABLE_QW3 ? 'qw3-floor-census-off' : 'qw3-floor-census-on',
       disableFlags: DISABLE_QW3 ? [QW3_FLAG] : [],
+      originOverride: origin,
+      skipLogin: LOCAL_HARNESS,
     });
     const page = session.page;
     const browser = session.browser;
@@ -328,8 +338,14 @@ async function main() {
     log(`BIND-01: ${artifact.binding.state} — qw3Reads=${artifact.binding.qw3Reads} controlReads=${artifact.binding.ctlReads}`);
 
     // ---- play leg
+    log('resume after drain 1');
+    artifact.resumeAfterDrainA = await keepConf01Playing(page, SPEED).catch((e) => ({ error: String(e).slice(0, 300) }));
+    const phLegStart = await readPlayhead(page);
+    artifact.playheadLegStart = phLegStart;
     log(`play leg ${LEG_MS / 1000}s`);
     await new Promise((r) => setTimeout(r, LEG_MS));
+    const phLegEnd = await readPlayhead(page);
+    artifact.playheadLegEnd = phLegEnd;
 
     // ---- DRAIN 2 + census B
     log('drain 2');
@@ -349,6 +365,7 @@ async function main() {
     log(`ERROR ${artifact.error.split('\n')[0]}`);
   } finally {
     try { if (session && session.browser) await session.browser.close(); } catch (_) {}
+    try { if (harness) await harness.close(); } catch (_) {}
     fs.mkdirSync(path.dirname(OUT), { recursive: true });
     fs.writeFileSync(OUT, JSON.stringify(artifact, null, 2));
     log(`artifact -> ${OUT}`);
