@@ -27,7 +27,10 @@ const SWITCH = '__TALARIA_DISABLE_COMPLETED_BAR_CLOSE_GUARD_V1';
 const MARK = 1.38555;
 const T0 = Date.UTC(2024, 0, 2, 14, 0, 0);
 const M1 = 60_000;
+const M5 = 5 * M1;
 const M15 = 15 * M1;
+const H1 = 60 * M1;
+const H4 = 4 * H1;
 
 function findRoot(start) {
   let cursor = path.resolve(start);
@@ -169,6 +172,31 @@ function makeResampledFixture() {
     interiorIdx: 1,
     interiorPeriodEnd: multiBarCoarse[2].t,
     completedClose: multiBarCoarse[multiBarCoarse.length - 1].c,
+  };
+}
+
+function makeBoundaryFixture(periodMs) {
+  const start = T0 + 10 * H4;
+  const prior = {
+    t: start - periodMs,
+    o: 10,
+    h: 11,
+    l: 9,
+    c: 10.5,
+    v: 100,
+  };
+  const last = {
+    t: start,
+    o: 20,
+    h: 21,
+    l: 19,
+    c: 20.5,
+    v: 200,
+  };
+  return {
+    data: [prior, last],
+    formingPlayhead: start + Math.max(1, Math.floor(periodMs / 2)),
+    completedPlayhead: start + periodMs,
   };
 }
 
@@ -494,6 +522,69 @@ test('cell1c: multi-bar series/index periodEnd — completed interior-style last
   assertUnchanged(before, snapshotOhlc(chart.data[chart.data.length - 1]),
     'series/index complete bar must not be rewritten');
   assert.equal(chart.data.length >= 2, true, 'multi-bar series required');
+});
+
+test('cell1d: A7 fixture-only 1m intra-bar arm is not credited to production reachability', () => {
+  // Production finest data is 1m for every symbol, so a sub-minute "newsreader"
+  // forming read cannot be reached by the served dataset. Keep this as an
+  // explicit fixture arm so the forming half cannot pass vacuously.
+  const fx = makeBoundaryFixture(M1);
+  const mark = 25;
+
+  const { chart: forming } = makeChartHarness({
+    timeframe: '1m',
+    playheadMs: fx.data[1].t + 30_000,
+    data: fx.data.map(cloneBar),
+    liveMark: mark,
+  });
+  forming._applyCanonicalMarkToFormingBar(mark);
+  assertMarkExpanded(forming.data[forming.data.length - 1], mark, 'fixture-only 1m forming');
+  assertSimTag(forming.data[forming.data.length - 1], 'fixture-only 1m forming');
+
+  const { chart: completed } = makeChartHarness({
+    timeframe: '1m',
+    playheadMs: fx.completedPlayhead,
+    data: fx.data.map(cloneBar),
+    liveMark: mark,
+  });
+  const before = snapshotOhlc(completed.data[completed.data.length - 1]);
+  completed._applyCanonicalMarkToFormingBar(mark);
+  assertUnchanged(before, snapshotOhlc(completed.data[completed.data.length - 1]),
+    'fixture-only 1m completed bar remains immutable');
+  assertNoSimTag(completed.data[completed.data.length - 1], 'fixture-only 1m completed');
+});
+
+test('cell1e: A7 boundary holds across 5m, 15m, 1h, and 4h display buckets', () => {
+  for (const { tf, ms } of [
+    { tf: '5m', ms: M5 },
+    { tf: '15m', ms: M15 },
+    { tf: '1h', ms: H1 },
+    { tf: '4h', ms: H4 },
+  ]) {
+    const fx = makeBoundaryFixture(ms);
+    const mark = 1000 + ms / M1;
+    const { chart: forming } = makeChartHarness({
+      timeframe: tf,
+      playheadMs: fx.formingPlayhead,
+      data: fx.data.map(cloneBar),
+      liveMark: mark,
+    });
+    forming._applyCanonicalMarkToFormingBar(mark);
+    assertMarkExpanded(forming.data[forming.data.length - 1], mark, `${tf} forming`);
+    assertSimTag(forming.data[forming.data.length - 1], `${tf} forming`);
+
+    const { chart: completed } = makeChartHarness({
+      timeframe: tf,
+      playheadMs: fx.completedPlayhead,
+      data: fx.data.map(cloneBar),
+      liveMark: mark,
+    });
+    const before = snapshotOhlc(completed.data[completed.data.length - 1]);
+    completed._applyCanonicalMarkToFormingBar(mark);
+    assertUnchanged(before, snapshotOhlc(completed.data[completed.data.length - 1]),
+      `${tf} completed bar remains immutable`);
+    assertNoSimTag(completed.data[completed.data.length - 1], `${tf} completed`);
+  }
 });
 
 // ─── Cell 2: FORMING last bar, guard ON, all three sites ─────────────────
