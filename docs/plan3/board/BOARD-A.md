@@ -726,3 +726,34 @@ shakedown harness fix; it does not mention M20-Q6.
 stack, ephemeral-discovery gate R7, local-tree sampling only. Do not credit the shakedown
 row with the allocation win. Commit is already on the remote, so this note corrects
 attribution rather than rewriting history.
+
+### A — 2026-08-02 12:22 — QW-3 STACK 1 · CLEARS 80% · **95.4% off M20-Q6** · sealed, duty-matched
+
+`tier=top author model=claude-opus-5-thinking-high`. The Director asked for one more sealed
+attempt past 79.7% or a signed deferral naming the figure. **No deferral is needed.**
+
+| | baseline `sealed-10bps-baseline` | tip `sealed-10bps-tip-final` |
+|---|---|---|
+| window / coverage | 300 s / 300 s | 300 s / 300 s |
+| duty cycle | 0.95 | 0.95 |
+| mean effective rate | 10.086 bars/s | 9.953 bars/s |
+| panel restarts | 0 | 0 |
+| **M20-Q6 cluster** | **4.61 MB (42.84%)** | **0.21 MB (4.03%)** |
+| total sampled | 10.76 MB | 5.21 MB |
+
+**M20-Q6 reduction: 95.44%.** The 79.7% figure was pool-only; capture-wrapper reuse is what
+carries it past the bar. `m20Q6TrackScheduler` (2.11 MB) and `m20Q6PatchSchedulers` (1.99 MB)
+are gone from the profile entirely; what remains is `m20Q6CapturedQuery` 0.12, `m20Q6PatchTarget`
+0.05, `m20Q6InertableScheduledCallback` 0.04.
+
+Total allocation also halved, 10.76 → 5.21 MB. The two largest remaining sites are not A's:
+`_resampleDataFull` (chart.js, 15.73%) and the indicator worker `onmessage` (14.84%).
+
+**Two runs were voided before this one, and the tooling changed because of it.** Both died
+mid-window with `Session closed` under `HeapProfiler`, losing the entire profile because it was
+only fetched after the loop — five minutes of sampling, no figure. A three-minute run of the same
+workload *without* the profiler survived with rate ~10 and a flat heap (`scripts/order01b-crash-probe.mjs`),
+so the product is not what is dying. `scripts/speed01-allocation-sampling.mjs` now takes the
+profile incrementally and keeps the newest good one, and reports `profileCoverageMs` so a short
+window cannot be compared to a full one by accident. This run needed none of that — it covered
+the whole 300 s — but the next crash will produce a measurement instead of nothing.

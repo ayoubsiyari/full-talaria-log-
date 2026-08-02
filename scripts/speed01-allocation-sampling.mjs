@@ -176,8 +176,9 @@ async function main() {
   });
 
   const started = new Date().toISOString();
-  const readings = [];
+  let readings = [];
   let profile = null;
+  let profileAtMs = 0;
   let workload = null;
   let restarts = 0;
 
@@ -234,6 +235,27 @@ async function main() {
         + `rate=${r.rate === null ? 'n/a' : r.rate.toFixed(2)} `
         + `gain=${r.gov ? r.gov.gain.toFixed(3) : 'n/a'} heap=${r.heapMb ?? 'n/a'}MB`);
 
+      // Take the profile as we go, not only at the end.
+      //
+      // Two consecutive sealed runs on the merged tip died mid-window with
+      // `Session closed`, and both lost the entire profile because it was only
+      // fetched after the loop: five minutes of sampling produced no figure at
+      // all. `getSamplingProfile` returns the profile accumulated so far and
+      // leaves sampling running, so keeping the newest successful one turns a
+      // renderer death into a shorter measured window instead of no data.
+      // `profileAtMs` records how much of the window the kept profile covers,
+      // because a profile from t+180 of a 300 s run is only comparable to
+      // another sample at the same duty and span.
+      if (Date.now() < deadline) {
+        try {
+          const mid = await cdp.send('HeapProfiler.getSamplingProfile');
+          profile = aggregateSamplingProfile(mid.profile.head);
+          profileAtMs = SAMPLE_MS - Math.max(0, deadline - Date.now());
+        } catch (_e) {
+          // Target gone. The last kept profile stands and the loop exits below.
+        }
+      }
+
       // Replay runs out of loaded bars well inside a five-minute window and
       // simply stops, which turns the tail of the sample into dead air that
       // dilutes every site's share. Rewind and resume so the profiler sees
@@ -246,14 +268,28 @@ async function main() {
       }
     }
 
-    const res = await cdp.send('HeapProfiler.getSamplingProfile');
-    await cdp.send('HeapProfiler.stopSampling').catch(() => {});
-    profile = aggregateSamplingProfile(res.profile.head);
+    try {
+      const res = await cdp.send('HeapProfiler.getSamplingProfile');
+      profile = aggregateSamplingProfile(res.profile.head);
+      profileAtMs = SAMPLE_MS;
+      await cdp.send('HeapProfiler.stopSampling').catch(() => {});
+    } catch (e) {
+      if (!profile) throw e;
+      log(`final profile fetch failed (${e && e.message}); keeping the one taken at `
+        + `t+${Math.round(profileAtMs / 1000)}s`);
+    }
     log(`sampled ${mb(profile.total)} MB across ${profile.sites.length} call frames`);
   } finally {
     await browser.close().catch(() => {});
     if (harness && typeof harness.close === 'function') await harness.close().catch(() => {});
   }
+
+  // Everything below is scoped to the span the kept profile actually covers.
+  // Readings taken after the target died describe a window no allocation was
+  // attributed to, and letting them into the duty figure would understate a
+  // run that was healthy for as long as it was measured.
+  const coveredMs = profileAtMs || SAMPLE_MS;
+  readings = readings.filter((r) => r.atMs <= coveredMs + 1);
 
   const rated = readings.filter((r) => typeof r.rate === 'number' && r.rate > 0);
   const rates = rated.map((r) => r.rate);
@@ -275,6 +311,8 @@ async function main() {
     finishedAt: new Date().toISOString(),
     nominalBarsPerSecond: BARS_PER_SECOND,
     sampleMs: SAMPLE_MS,
+    /** Span the kept profile covers; short of sampleMs when the target died. */
+    profileCoverageMs: coveredMs,
     samplingIntervalBytes: SAMPLING_INTERVAL,
     effectiveRate: {
       mean: mean === null ? null : Number(mean.toFixed(3)),
@@ -299,7 +337,7 @@ async function main() {
       last: [...readings].reverse().find((r) => r.heapMb !== null)?.heapMb ?? null,
     },
     totalSampledMb: profile ? mb(profile.total) : null,
-    allocationMbPerMinute: profile ? Number((mb(profile.total) / (SAMPLE_MS / 60000)).toFixed(2)) : null,
+    allocationMbPerMinute: profile ? Number((mb(profile.total) / (coveredMs / 60000)).toFixed(2)) : null,
     topSites: profile
       ? profile.sites.slice(0, 40).map((s) => ({
         site: s.site,
@@ -322,7 +360,8 @@ async function main() {
     + `of the window (${report.replayLiveness.liveReadings}/${report.replayLiveness.totalReadings} `
     + `readings, ${report.replayLiveness.panelRestarts} panel restart(s))`);
   console.log(`heap: ${report.heapMb.first} MB -> ${report.heapMb.last} MB`);
-  console.log(`allocated: ${report.totalSampledMb} MB (${report.allocationMbPerMinute} MB/min)`);
+  console.log(`allocated: ${report.totalSampledMb} MB (${report.allocationMbPerMinute} MB/min) `
+    + `over ${Math.round(coveredMs / 1000)}s of the ${Math.round(SAMPLE_MS / 1000)}s window`);
   console.log('\ntop allocation sites:');
   for (const s of report.topSites.slice(0, 20)) {
     console.log(`  ${String(s.mb).padStart(8)} MB  ${String(s.pct).padStart(5)}%  ${s.site}`);
