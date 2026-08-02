@@ -452,6 +452,29 @@ test('PANELBIND: scale — bound, the restore effect sends the command', () => {
   assert.doesNotMatch(gridSrc, /chartTypeRestoredRef/, 'the once-per-panel ref still claims to cover only chart type');
 });
 
+test('PANELBIND: host — the only tile in layout "1" is restored too', () => {
+  // The command path needs a bridge and the host has none, so it was skipped.
+  // In layout "1" the host is the ONLY tile, which means single-chart users
+  // restored nothing at all — the common case, not a corner case.
+  const at = gridSrc.indexOf('if (!panelConfigRestoredRef.current.has(HOST_PANEL_ID)) {');
+  assert.ok(at > 0, 'RESOLVER_ABSENT_FROM_TREE: host-tile restore');
+  const block = gridSrc.slice(at, at + 2900);
+  assert.match(block, /loadPanelState\(HOST_PANEL_ID, sid\)/, 'the host does not read its stored slice');
+  assert.match(block, /window\.chart/, 'the host restore does not reach the engine in this realm');
+  assert.match(block, /chartSettings\.chartType = String\(hostStored\.chartType\)/, 'host chart type is not restored');
+  assert.match(block, /ps\.mode = mode;/, 'host scale mode is not restored');
+  assert.match(block, /hostStored\.priceScaleAuto === false/, 'host manual bounds are not gated on auto-scale being off');
+  assert.match(block, /if \(dirty && typeof hostCh\.render === "function"\) hostCh\.render\(\);/, 'the host is not redrawn');
+
+  const unwired = gridSrc.replace('loadPanelState(HOST_PANEL_ID, sid)', 'null');
+  assert.notEqual(unwired, gridSrc, 'ANCHOR_BROKEN: host read not found to mutate');
+  assert.doesNotMatch(
+    unwired.slice(at, at + 2900),
+    /loadPanelState\(HOST_PANEL_ID, sid\)/,
+    'the host cell would pass with the read removed',
+  );
+});
+
 test('PANELBIND: mutants — unwiring either restore is caught', () => {
   // The two binding cells above read the product source. A source assertion
   // that would also pass on unwired source is decoration, so each is re-run

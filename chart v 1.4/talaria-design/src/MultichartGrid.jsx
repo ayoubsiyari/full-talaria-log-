@@ -5229,6 +5229,55 @@ export default function MultichartGrid({
         const mgr = managerRef.current;
         if (!mgr || typeof mgr.sendCommand !== "function") return;
         const sid = panelStateSessionId();
+
+        // The host tile is not an iframe, so it has no bridge to send a command
+        // over and was skipped entirely. That is not a corner case: in layout
+        // "1" the host is the ONLY tile, so single-chart users — the common
+        // case — restored nothing here. Apply to the engine in this realm.
+        if (!panelConfigRestoredRef.current.has(HOST_PANEL_ID)) {
+            let hostStored = null;
+            try { hostStored = loadPanelState(HOST_PANEL_ID, sid); } catch (_) { hostStored = null; }
+            const hostCh = typeof window !== "undefined" ? window.chart : null;
+            if (hostStored && hostCh) {
+                panelConfigRestoredRef.current.add(HOST_PANEL_ID);
+                let dirty = false;
+                try {
+                    if (hostStored.chartType) {
+                        if (!hostCh.chartSettings) hostCh.chartSettings = {};
+                        if (hostCh.chartSettings.chartType !== hostStored.chartType) {
+                            hostCh.chartSettings.chartType = String(hostStored.chartType);
+                            dirty = true;
+                        }
+                    }
+                    const ps = hostCh.priceScale;
+                    if (ps) {
+                        const mode = hostStored.priceScaleMode || null;
+                        if ((mode === "log" || mode === "linear") && ps.mode !== mode) {
+                            ps.mode = mode;
+                            dirty = true;
+                        }
+                        if (typeof hostStored.priceScaleAuto === "boolean"
+                            && ps.autoScale !== hostStored.priceScaleAuto) {
+                            ps.autoScale = hostStored.priceScaleAuto;
+                            dirty = true;
+                        }
+                        // Manual bounds only — see setPriceScale for why an
+                        // auto-scale readout must not be written back.
+                        if (hostStored.priceScaleAuto === false) {
+                            const mn = Number(hostStored.priceScaleMin);
+                            const mx = Number(hostStored.priceScaleMax);
+                            if (Number.isFinite(mn) && Number.isFinite(mx) && mx > mn) {
+                                ps.min = mn;
+                                ps.max = mx;
+                                dirty = true;
+                            }
+                        }
+                    }
+                    if (dirty && typeof hostCh.render === "function") hostCh.render();
+                } catch (_) { /* a lost preference must never break boot */ }
+            }
+        }
+
         readyPanels.forEach((pid) => {
             if (!pid || pid === HOST_PANEL_ID) return;
             if (panelConfigRestoredRef.current.has(pid)) return;
