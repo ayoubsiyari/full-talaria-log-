@@ -25,6 +25,19 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+
+/**
+ * A runner that invokes this file plainly would otherwise see the ALLOC cells go
+ * red for want of a flag, which reads as a product defect and is not one. Re-exec
+ * with the flag instead, so the only red this file can produce is about the path.
+ */
+if (typeof global.gc !== 'function') {
+    const r = spawnSync(process.execPath,
+        ['--expose-gc', '--test', new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')],
+        { stdio: 'inherit' });
+    process.exit(r.status === null ? 1 : r.status);
+}
 
 const RS_A = 'chart v 1.4/chart/modules/replay-system.js';
 const RS_B = 'homepage/public/chart/modules/replay-system.js';

@@ -4,9 +4,10 @@
  * WHAT THIS CERTIFIES, AND WHAT IT DOES NOT.
  * Every cell runs the shipped text of `m20Q6CaptureEffects` and `m20Q6CapturedReplayEffect`,
  * pulled out of replay-system.js by string anchor and evaluated with the patch installers
- * stubbed. It counts CAPTURE SESSIONS — the product's own `session` object, one per established
- * capture — not a proxy such as wall time or call count, because the wrapper is entered twice by
- * design and only the session count distinguishes redundant capture from a cheap pass-through.
+ * stubbed. It counts CAPTURE ESTABLISHMENTS — one per run of the product's own patch installer —
+ * not a proxy such as wall time or call count, because the wrapper is entered twice by design and
+ * only the establishment count distinguishes redundant capture from a cheap pass-through. It was
+ * a count of distinct `session` objects until capture reuse made one session serve a whole state.
  * It does NOT witness listener bookkeeping end to end: the patch installers are stubs, so a cell
  * greening here says the guard admits exactly one session, not that teardown is complete.
  *
@@ -96,15 +97,37 @@ function harness(src, { renderBody = () => {} } = {}) {
 
     const sessions = new Set();
     const noteSession = (_state, _target, session) => { if (session) sessions.add(session); };
+    /**
+     * Captures established, counted separately from session identity.
+     *
+     * Session identity was the counter until capture reuse landed: one session object per
+     * established capture made a Set of them an exact count. Under reuse the state keeps one
+     * session for its whole life, so the Set stops growing and "no capture happened" and "a
+     * capture happened on the reused session" both read as size 1. The installer runs once per
+     * establishment either way, so it is the counter now; the Set still says how many session
+     * objects the machinery built, which is the thing reuse is supposed to hold at one.
+     */
+    const captures = { n: 0 };
 
+    // The capture-reuse work (2c8da303d) gave m20Q6CaptureEffects two more free names: the
+    // module-level `m20Q6ActiveCaptureState` it parks the current state on, and the switch
+    // reader that decides whether the session is reused. Lifted rather than stubbed, so this
+    // harness follows the shipped default instead of pinning a branch of its own choosing.
     const makeCapture = new Function(
         'm20Q6PatchTarget', 'm20Q6PatchSchedulers', 'm20Q6PatchTimezoneManager', 'm20Q6RestoreOwnProperty',
-        `${captureSrc}\nreturn m20Q6CaptureEffects;`,
+        `let m20Q6ActiveCaptureState = null;
+${extractBlock(src, 'function _talariaDisableFlagTruthy(flagName) {')}
+${extractBlock(src, 'function _m20Q6CaptureReuseV1Enabled() {')}
+${extractBlock(src, '    function m20Q6InstallCapturePatches(state, session, extraTargets) {')}
+${captureSrc}
+return m20Q6CaptureEffects;`,
     );
     const captureEffects = makeCapture(
         noteSession,
         noteSession,
-        (state, session) => noteSession(state, null, session),
+        // Last call in m20Q6InstallCapturePatches, so it fires exactly once per established
+        // capture and never for a call the depth guard turned into a pass-through.
+        (state, session) => { captures.n += 1; noteSession(state, null, session); },
         () => {},
     );
 
@@ -144,7 +167,7 @@ function harness(src, { renderBody = () => {} } = {}) {
         return options;
     });
 
-    return { instance, state, sessions, calls, captureEffects };
+    return { instance, state, sessions, calls, captureEffects, captures };
 }
 
 /** Drive one capture with a caller-supplied target whose `id` getter throws. */
@@ -190,7 +213,8 @@ test('nested call captures once, not twice', () => {
     h.instance.updateChartData(true);
     assert.equal(h.calls.updateChartData, 1);
     assert.equal(h.calls.render, 1, 'the inner operation must still run — the guard is a pass-through');
-    assert.equal(h.sessions.size, 1, 'the nested wrapper entry must not establish a second capture');
+    assert.equal(h.captures.n, 1, 'the nested wrapper entry must not establish a second capture');
+    assert.equal(h.sessions.size, 1, 'one capture, one session');
     assert.equal(h.state.captureDepth, 0, 'depth must unwind to zero');
 });
 
@@ -198,7 +222,7 @@ test('a non-nested call still captures', () => {
     const h = harness(diskSrc);
     h.instance._renderReplayChartUpdate();
     assert.equal(h.calls.render, 1);
-    assert.equal(h.sessions.size, 1, 'an unnested effect must establish exactly one capture');
+    assert.equal(h.captures.n, 1, 'an unnested effect must establish exactly one capture');
     assert.equal(h.state.captureDepth, 0);
 });
 
@@ -215,9 +239,9 @@ test('a throw inside the inner call leaves the guard released', () => {
     assert.throws(() => h.instance.updateChartData(true), /inner effect exploded/);
     assert.equal(h.state.captureDepth, 0, 'the guard must not stay latched after a throw');
 
-    const before = h.sessions.size;
+    const before = h.captures.n;
     h.instance._renderReplayChartUpdate();
-    assert.equal(h.sessions.size, before + 1, 'capture must still work on the call after the throw');
+    assert.equal(h.captures.n, before + 1, 'capture must still work on the call after the throw');
 });
 
 test('a throw in the extraTargets scan leaves the guard released (red on pre-change bytes)', () => {
@@ -225,9 +249,9 @@ test('a throw in the extraTargets scan leaves the guard released (red on pre-cha
     assert.notEqual(captureWithHostileTarget(h), null, 'the hostile getter must actually throw');
     assert.equal(h.state.captureDepth, 0, 'the guard must not stay latched after a scan throw');
 
-    const before = h.sessions.size;
+    const before = h.captures.n;
     h.instance._renderReplayChartUpdate();
-    assert.equal(h.sessions.size, before + 1, 'capture must still work after a scan throw');
+    assert.equal(h.captures.n, before + 1, 'capture must still work after a scan throw');
 });
 
 test('the stuck-guard defect reproduces on unmodified HEAD source', () => {
@@ -236,9 +260,9 @@ test('the stuck-guard defect reproduces on unmodified HEAD source', () => {
         const h = harness(headSrc);
         captureWithHostileTarget(h);
         assert.equal(h.state.captureDepth, 0);
-        const before = h.sessions.size;
+        const before = h.captures.n;
         h.instance._renderReplayChartUpdate();
-        assert.equal(h.sessions.size, before + 1);
+        assert.equal(h.captures.n, before + 1);
         return;
     }
 
@@ -246,17 +270,17 @@ test('the stuck-guard defect reproduces on unmodified HEAD source', () => {
     assert.notEqual(captureWithHostileTarget(h), null);
     assert.equal(h.state.captureDepth, 1, 'pre-change bytes wedge the guard on');
 
-    const before = h.sessions.size;
+    const before = h.captures.n;
     h.instance.updateChartData(true);
     assert.equal(h.calls.render, 1, 'the operation still runs — the loss is silent');
-    assert.equal(h.sessions.size, before, 'pre-change bytes capture nothing for the rest of the session');
+    assert.equal(h.captures.n, before, 'pre-change bytes capture nothing for the rest of the session');
 });
 
 test("HEAD already admits one capture per nest — LAG-4's double-capture premise does not reproduce", () => {
     const h = harness(headSrc);
     h.instance.updateChartData(true);
     assert.equal(
-        h.sessions.size,
+        h.captures.n,
         1,
         'the captureDepth gate predates LAG-4; a cell asserting two sessions on HEAD would be false',
     );
@@ -275,6 +299,28 @@ test('the guard reads no flag, so no polarity or strict-equality read can regres
     const block = extractBlock(diskSrc, CAPTURE_ANCHOR);
     assert.equal(block.includes('_talariaDisableFlagTruthy'), false);
     assert.equal(block.includes('=== true'), false, 'a strict read of a switch would break the climb helper');
+
+    // Capture reuse brought a switch into this function. It decides how the session is built,
+    // never whether re-entry is admitted — so the depth return has to come first, or the
+    // re-entrancy contract would inherit the reuse switch's failure modes.
+    const guardAt = block.indexOf('state.captureDepth > 0');
+    const switchAt = block.indexOf('_m20Q6CaptureReuseV1Enabled');
+    assert.notEqual(guardAt, -1, 'the depth guard is gone');
+    if (switchAt !== -1) {
+        assert.ok(guardAt < switchAt, 'the re-entrancy return must precede every switch read');
+    }
+});
+
+test('CONTROL: the counter reaches two when the depth guard is removed', () => {
+    // Without this the cells above would still be green if `captures` could only ever be 1.
+    const ungated = diskSrc.replace(
+        'if (!state || state.captureDepth > 0) {',
+        'if (!state) {',
+    );
+    assert.notEqual(ungated, diskSrc, 'mutation anchor not found');
+    const h = harness(ungated);
+    h.instance.updateChartData(true);
+    assert.equal(h.captures.n, 2, 'the nested entry must establish a second capture once ungated');
 });
 
 test('both mirrors are byte-identical', () => {
