@@ -26,7 +26,11 @@ const argOf = (n, d) => { const h = process.argv.find((a) => a.startsWith(`--${n
 const ARM = argOf('arm', '');
 const DIGEST = argOf('expectDigest', '');
 const HOURS_OVERRIDE = argOf('hours', '');
-const SPEED = argOf('speed', '60');
+// SPEED-01: the ladder is the integers 1..10 as bars per second. Refused here as well as in the soak,
+// because the launcher is what a person actually types and the point of a gate is to fire before the
+// ten hours start, not to be discovered inside them.
+const SPEED_LADDER = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+const SPEED = argOf('speed', '10');
 const ORIGIN = argOf('origin', 'http://31.97.192.82:3000');
 const HEAP_CAP = argOf('heapCapMB', '1024');
 const ALLOW_CONCURRENT = process.argv.includes('--allowConcurrent');
@@ -34,6 +38,13 @@ const ALLOW_CONCURRENT = process.argv.includes('--allowConcurrent');
 // fixed, so a real firing cannot drift between arms by a stray argument.
 // A BADGE IS NOT A BUILD IDENTITY, and the rule is executable rather than advisory: there is no way to
 // pin a run by badge, and asking to is refused by name.
+if (!SPEED_LADDER.includes(Number(SPEED))) {
+  console.error(`REFUSED: --speed=${SPEED} is not on the SPEED-01 ladder.`);
+  console.error(`  Valid speeds are the integers ${SPEED_LADDER[0]}..${SPEED_LADDER[SPEED_LADDER.length - 1]}, in BARS PER SECOND.`);
+  console.error('  Refused rather than clamped because the PRODUCT clamps: migration snaps to the nearest rung, so an');
+  console.error('  out-of-range request yields a healthy run whose every record names a speed it never ran at.');
+  process.exit(6);
+}
 if (process.argv.some((a) => a.startsWith('--expectBadge'))) {
   console.error('REFUSED: there is no --expectBadge. A badge is not a build identity — the origin served');
   console.error('  20260802b121 under two different source commits on 2026-08-01, seven hours apart.');

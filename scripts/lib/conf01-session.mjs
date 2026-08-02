@@ -207,7 +207,10 @@ export async function waitConf01PanelsReady(page, { timeoutMs = 150_000, want = 
 }
 
 export async function bootConf01Session({
-  replaySpeed = 60,
+  // SPEED-01: the ladder is the integers 1..10 as bars/s. 60 is no longer a speed the product offers,
+  // and asking for it does not fail - the engine snaps to the nearest rung and runs 10 while the caller
+  // believes it got 60.
+  replaySpeed = 10,
   headless = true,
   timeframes = HEAP_CYCLE_DISTINCT_TIMEFRAMES,
   settleMs = 10_000,
@@ -426,7 +429,7 @@ export async function bootConf01Session({
  * The count is evidence, not housekeeping: a workload that needs re-seeding to stay
  * alive is a workload whose product does not play.
  */
-export async function keepConf01Playing(page, replaySpeed = 60, { reseekFraction = 0.2 } = {}) {
+export async function keepConf01Playing(page, replaySpeed = 10, { reseekFraction = 0.2 } = {}) {
   let playing = 0;
   let reseeks = 0;
   const perPanel = [];
@@ -811,7 +814,7 @@ export async function measureOrderLoopCost(page, { windowMs = 10_000 } = {}) {
  * timeframe and the selected speed imply. Answers whether a peer respects the
  * speed selector or races through its data at frame rate.
  */
-export async function probePanelAdvanceRates(page, { windowMs = 6_000, replaySpeed = 60 } = {}) {
+export async function probePanelAdvanceRates(page, { windowMs = 6_000, replaySpeed = 10, speedUnit = 'barsPerSecond' } = {}) {
   const tfSeconds = (tf) => {
     const m = String(tf || '').match(/^(\d+)\s*([smhdw])$/i);
     if (!m) return null;
@@ -879,7 +882,21 @@ export async function probePanelAdvanceRates(page, { windowMs = 6_000, replaySpe
     const wallSec = (a.at - (b.at || a.at)) / 1000 || windowMs / 1000;
     const barsPerSec = b.idx != null && a.idx != null ? (a.idx - b.idx) / wallSec : null;
     const tfSec = tfSeconds(a.timeframe);
-    const expectedBarsPerSec = tfSec ? replaySpeed / tfSec : null;
+    /**
+     * SPEED-01 CHANGED THE UNIT, NOT JUST THE RANGE, AND THIS LINE ENCODED THE OLD ONE.
+     *
+     * The old slider was a time multiplier: 60 meant sixty simulated seconds per wall second, so bars/s
+     * was `speed / timeframeSeconds` and 60 on a 1m chart was 1 bar/s. The ladder is now the integers
+     * 1..10 in BARS PER SECOND directly, so the expectation is the speed itself and the conversion runs
+     * the other way. Left as written, every `rateRatio` on a 1m chart would read 60x its true value and
+     * a starved panel would grade as healthy.
+     *
+     * The convention is recorded on the result rather than assumed, because six scripts call this and an
+     * artifact that does not name its unit is the defect I withdrew two headlines for.
+     */
+    const expectedBarsPerSec = speedUnit === 'barsPerSecond'
+      ? replaySpeed
+      : (tfSec ? replaySpeed / tfSec : null);
     const simMsPerSec = b.ts != null && a.ts != null ? (a.ts - b.ts) / wallSec : null;
     return {
       timeframe: a.timeframe,
@@ -897,7 +914,8 @@ export async function probePanelAdvanceRates(page, { windowMs = 6_000, replaySpe
       barsPerFrame: fps && barsPerSec != null ? +(barsPerSec / fps).toFixed(3) : null,
       rateRatio: barsPerSec != null && expectedBarsPerSec ? +(barsPerSec / expectedBarsPerSec).toFixed(2) : null,
       simSecPerWallSec: simMsPerSec != null ? +(simMsPerSec / 1000).toFixed(1) : null,
-      expectedSimSecPerWallSec: replaySpeed,
+      expectedSimSecPerWallSec: speedUnit === 'barsPerSecond' ? (tfSec ? replaySpeed * tfSec : null) : replaySpeed,
+      speedUnit,
       atEnd: a.bars != null && a.idx != null ? a.idx >= a.bars - 2 : null,
     };
   });

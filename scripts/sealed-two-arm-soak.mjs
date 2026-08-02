@@ -51,7 +51,22 @@ const argOf = (n, d) => { const h = process.argv.find((a) => a.startsWith(`--${n
 const ARM = argOf('arm', 'trades');                 // trades | zerotrade
 const HOURS = Number(argOf('hours', '10'));
 const SAMPLE_MS = Number(argOf('sampleMs', '180000'));
-const SPEED = Number(argOf('speed', '60'));
+/**
+ * SPEED-01 ENVELOPE. The ladder is the integers 1 through 10 as BARS PER SECOND — nothing above 10 and
+ * nothing between. The default was 60 for the whole of this harness's life and 60 is no longer a speed
+ * the product offers.
+ *
+ * WHY A STALE VALUE IS WORSE THAN A BROKEN ONE HERE. Migration is a nearest-rung SNAP, not a rejection:
+ * ask for 60 and the engine quietly gives you 10. So a forgotten `--speed=60` does not fail, it runs a
+ * correct ten-hour arm and writes 60 into every record of it. That is the same defect that ran a soak at
+ * 60 under a 5x label - a speed argument silently discarded - and it cost that entire run.
+ *
+ * Note the UNIT changed with the ladder, not just the range. The old number was a time multiplier: 60
+ * meant sixty simulated seconds per wall second, which on a 1m chart is 1 bar/s. The new number is bars
+ * per second directly, so 10 means 10 bars/s - about ten times the old default's delivery, not a sixth.
+ */
+const SPEED_LADDER = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+const SPEED = Number(argOf('speed', '10'));
 const CLOSES_PER_HOUR = Number(argOf('closesPerHour', '20'));
 const ORIGIN = String(argOf('origin', process.env.TEST_VPS_URL || 'http://31.97.192.82:3000')).replace(/\/$/, '');
 const EV = 'c:\\Users\\user\\Desktop\\talaria1\\_evidence\\manager-C';
@@ -72,6 +87,17 @@ const OFFLINE_PROBE = argOf('offlineProbe', '0') === '1';
 // TOOL-01, asserted before anything expensive is opened. A cap that was requested but never applied is
 // worse than no cap, because the launch line in the log looks correct.
 const heapCap = assertHeapCap({ capMB: HEAP_CAP_MB, label: `sealed-soak-${ARM}` });
+
+// SPEED-01, asserted in the same place and for the same reason. Refused here rather than annotated at
+// segment start, because by then a browser is up, the arm has begun, and the only remedy on offer is a
+// warning inside an artifact nobody reads until the run is over.
+if (!SPEED_LADDER.includes(SPEED)) {
+  console.error(`REFUSING TO START: --speed=${argOf('speed', '10')} is not on the SPEED-01 ladder.`);
+  console.error(`  Valid speeds are the integers ${SPEED_LADDER[0]} to ${SPEED_LADDER[SPEED_LADDER.length - 1]}, in BARS PER SECOND. Nothing above ${SPEED_LADDER[SPEED_LADDER.length - 1]}, nothing between.`);
+  console.error('  This is refused rather than clamped BECAUSE the product clamps: migration snaps to the nearest rung,');
+  console.error('  so an out-of-range request returns a working run whose every record names a speed it never ran at.');
+  process.exit(6);
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (m) => console.error(`[soak:${ARM} ${new Date().toISOString()}] ${m}`);
@@ -313,10 +339,32 @@ try {
         placeOrder: ARM !== 'zerotrade',
         label: `sealed-soak-${ARM}`,
       });
-      const eff = await session.page.evaluate(() => {
+      /**
+       * What speed the engine believes it is running, read by several routes with the answering route
+       * recorded. SPEED-01 introduced `getTargetBarsPerSecond()` and normalises there, so a reader that
+       * knows only `rs.speed` can return the pre-migration field, or null, on the very build the ladder
+       * changed under. A null here is not "no mismatch" - it is no verification at all.
+       */
+      const effRead = await session.page.evaluate(() => {
         const rs = window.chart && window.chart.replaySystem;
-        return rs ? (rs.speed ?? rs.playbackSpeed ?? null) : null;
-      }).catch(() => null);
+        if (!rs) return { value: null, route: null, why: 'no replaySystem' };
+        const routes = [
+          ['getTargetBarsPerSecond()', () => (typeof rs.getTargetBarsPerSecond === 'function' ? rs.getTargetBarsPerSecond() : undefined)],
+          ['targetBarsPerSecond', () => rs.targetBarsPerSecond],
+          ['speed', () => rs.speed],
+          ['playbackSpeed', () => rs.playbackSpeed],
+        ];
+        const seen = [];
+        for (const [name, get] of routes) {
+          let v;
+          try { v = get(); } catch (e) { seen.push({ route: name, error: String(e).slice(0, 60) }); continue; }
+          if (v === undefined) { seen.push({ route: name, present: false }); continue; }
+          seen.push({ route: name, present: true, value: Number.isFinite(Number(v)) ? Number(v) : String(v) });
+        }
+        const answered = seen.find((s) => s.present && typeof s.value === 'number');
+        return { value: answered ? answered.value : null, route: answered ? answered.route : null, routes: seen };
+      }).catch((e) => ({ value: null, route: null, why: String(e).slice(0, 100) }));
+      const eff = effRead.value;
       const panels = await readPanels(session.page);
       // CDP injection, per segment because a new browser is a new set of documents. Registered for future
       // documents AND evaluated into the live ones - registration alone reaches nothing that already
@@ -333,14 +381,35 @@ try {
         segment,
         requestedSpeed: SPEED,
         effectiveSpeed: eff,
+        effectiveSpeedRoute: effRead.route,
+        effectiveSpeedRoutes: effRead.routes ?? null,
         loafInstall: { ...loafInstall, viaProductBytes: false, how: 'Page.addScriptToEvaluateOnNewDocument plus live-frame evaluate. The served bytes are untouched and the digest is unchanged.' },
-        speedMismatch: eff != null && Number(eff) !== SPEED ? `Requested ${SPEED}, engine reports ${eff}. Every rate in this segment belongs to ${eff}.` : null,
         panels: panels.length,
         timeframes: panels.map((p) => p.tf),
       });
       if (panels.length < 4) {
         run.note({ __void: true, segment, why: `Only ${panels.length} chart frames at boot; CONF-01 requires 4.` });
         throw new Error('panel gate failed at boot');
+      }
+      /**
+       * The speed gate, now a refusal rather than a note.
+       *
+       * Both branches stop the run, and they are separated because they mean different things. A
+       * MISMATCH means the engine is running a speed I did not ask for, so every rate in the arm
+       * belongs to a condition I did not choose. An UNREADABLE speed means I cannot tell either way,
+       * which on a ten-hour arm is not better - it is the same artifact with the evidence removed.
+       */
+      if (eff != null && Number(eff) !== SPEED) {
+        const why = `Requested ${SPEED} bars/s, engine reports ${eff} (via ${effRead.route}). Every rate in this arm would belong to ${eff}, not ${SPEED}.`;
+        run.note({ __void: true, segment, why, requestedSpeed: SPEED, effectiveSpeed: eff, effectiveSpeedRoutes: effRead.routes ?? null });
+        log(`REFUSING: ${why}`);
+        throw new Error(`speed gate failed: requested ${SPEED}, engine reports ${eff}`);
+      }
+      if (eff == null) {
+        const why = `Could not read the engine's speed by any known route, so the SPEED-01 envelope is unverified. Routes tried: ${JSON.stringify(effRead.routes ?? effRead.why ?? null)}`;
+        run.note({ __void: true, segment, why, requestedSpeed: SPEED, effectiveSpeed: null, effectiveSpeedRoutes: effRead.routes ?? null });
+        log(`REFUSING: ${why}`);
+        throw new Error('speed gate failed: engine speed unreadable');
       }
       log(`segment ${segment} up: ${panels.length} panels, effective speed ${eff}`);
     }
