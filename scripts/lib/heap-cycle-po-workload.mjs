@@ -43,9 +43,26 @@ async function resolvePanelFrame(page, panelId, timeoutMs = 45_000) {
  * Arm one panel chart: indicators + enter replay + play at high speed.
  * Runs inside the panel frame (or host for A).
  */
+/**
+ * SPEED-01: the engine ladder is the integers 1..10 in bars/s, frozen at replay-system.js:190, and
+ * _speedGovNearestRung snaps anything off it to the nearest rung. A default of 60 therefore does not
+ * fail here - it silently becomes 10, and the harness records the request it made rather than the speed
+ * it got. A handed this over and was right that it is worse than a leftover.
+ *
+ * Refused rather than snapped, for the reason A gives: the engine's snap is correct for a user turning a
+ * dial and wrong for a harness, which must learn that its request was refused.
+ */
+const SPEED_LADDER_BPS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+export function assertOnLadder(speed, where) {
+  if (!SPEED_LADDER_BPS.includes(Number(speed))) {
+    throw new Error(`SPEED-01: ${where} requested speed ${speed}, which is off the ladder (${SPEED_LADDER_BPS[0]}..${SPEED_LADDER_BPS[SPEED_LADDER_BPS.length - 1]} bars/s). The engine would snap it to the nearest rung and the artifact would name a speed that never ran.`);
+  }
+  return Number(speed);
+}
+
 async function armPanelChart(frame, {
   indicators = HEAP_CYCLE_PO_INDICATORS,
-  replaySpeed = 60,
+  replaySpeed = 10,
   /** PO hand leaves indicators; clearing/re-adding each cycle under-reads. */
   retainIndicators = false,
 } = {}) {
@@ -95,12 +112,33 @@ async function armPanelChart(frame, {
         if (!rs.isActive && typeof rs.enterReplayMode === 'function') {
           rs.enterReplayMode({ startAtBeginning: true, userInitiated: true });
         }
+        // The request is made, then READ BACK. Both catches here were empty, so a setSpeed that threw
+        // and a governor that snapped were equally invisible: the run continued at some other speed and
+        // the artifact reported the number that was asked for. That is the defect that ran a soak at 60
+        // under a 5x label, and it is the "refusal signal" A asked for.
+        let speedSetError = null;
         if (typeof rs.setSpeed === 'function') {
-          try { rs.setSpeed(speed); } catch (_) {}
+          try { rs.setSpeed(speed); } catch (e) { speedSetError = String(e?.message || e); }
         } else if (rs.speed != null) {
-          try { rs.speed = speed; } catch (_) {}
+          try { rs.speed = speed; } catch (e) { speedSetError = String(e?.message || e); }
+        } else {
+          speedSetError = 'no setSpeed() and no writable speed field';
         }
-        replay = { ok: !!rs.isActive, isActive: !!rs.isActive };
+        let effectiveSpeed = null;
+        let speedRoute = null;
+        for (const [name, get] of [
+          ['getTargetBarsPerSecond()', () => (typeof rs.getTargetBarsPerSecond === 'function' ? rs.getTargetBarsPerSecond() : undefined)],
+          ['targetBarsPerSecond', () => rs.targetBarsPerSecond],
+          ['speed', () => rs.speed],
+        ]) {
+          let v; try { v = get(); } catch (_) { continue; }
+          if (Number.isFinite(Number(v))) { effectiveSpeed = Number(v); speedRoute = name; break; }
+        }
+        replay = {
+          ok: !!rs.isActive, isActive: !!rs.isActive,
+          requestedSpeed: speed, effectiveSpeed, speedRoute, speedSetError,
+          speedHonoured: effectiveSpeed != null ? effectiveSpeed === speed : null,
+        };
       } catch (error) {
         replay = { ok: false, reason: String(error?.message || error) };
       }
@@ -204,7 +242,9 @@ async function waitPanelChartReady(page, panelId, timeoutMs = 45_000) {
 export async function armHeapCyclePoWorkload(page, {
   panelIds = HEAP_CYCLE_PO_PANEL_IDS,
   playHoldMs = 6_000,
-  replaySpeed = 60,
+  // SPEED-01. The second of the two defaults A named; both had to move, since a caller that passes
+  // nothing reaches whichever one is on its path.
+  replaySpeed = 10,
   retainIndicators = false,
   /**
    * PO-exact reproduction needs two indicators per panel and NO order at all: the
@@ -215,6 +255,9 @@ export async function armHeapCyclePoWorkload(page, {
   indicators = HEAP_CYCLE_PO_INDICATORS,
   placeOrder = true,
 } = {}) {
+  // Fixing the default alone would leave the sharper case open: a caller that explicitly passes 60 is
+  // making the same mistake more loudly, and the engine would snap it just as quietly.
+  assertOnLadder(replaySpeed, 'armHeapCyclePoWorkload');
   const perPanel = [];
   const frameById = new Map();
   for (const id of panelIds) {

@@ -158,6 +158,30 @@ gate('footprint read on every sample', samples.length > 0 && samples.every((s) =
 gate('blocking ms/s read', samples.some((s) => Number.isFinite(s.blockingMsPerSec)), `${samples.filter((s) => Number.isFinite(s.blockingMsPerSec)).length} samples`);
 gate('frame rate read (FRAME-01)', frames.length > 0, frames.length ? `mean ${mean(frames)} fps over ${frames.length} samples` : 'NO frame rate on any sample');
 gate('delivered bars/s computed at the new envelope', rates.length > 0, rates.length ? `mean ${mean(rates)} bars/s, requested ${SPEED}` : 'RATE-HOLD had no computable input');
+
+/**
+ * FOUR LIVE PANELS, gated rather than assumed.
+ *
+ * This is the condition the whole rehearsal exists to establish. E measured the frame governor's effect
+ * on delivery and found no cost, at speed 60, with three of four panels reading 0 bars/s - so the result
+ * describes a one-panel workload whatever the panel count says. A run of mine that quietly degraded to
+ * the same condition would produce the same reassuring answer for the same wrong reason.
+ *
+ * Graded on the MEDIAN sample, not on any single one: a panel between bars at the instant of one read is
+ * not a parked panel, and requiring all four live on every sample would fail on the arithmetic of higher
+ * timeframes rather than on the product.
+ */
+const liveCounts = samples.map((s) => s.livePanels).filter(Number.isFinite);
+const medianLive = liveCounts.length ? liveCounts.slice().sort((a, b) => a - b)[Math.floor(liveCounts.length / 2)] : null;
+gate('per-panel delivery was measured at all', liveCounts.length > 0, liveCounts.length ? `${liveCounts.length} samples carry livePanels` : 'no per-panel rates — the run cannot say whether panels were parked');
+gate('four panels were live, not one', medianLive === 4, medianLive == null ? 'unmeasured' : `median ${medianLive} of 4 live (per-sample: ${liveCounts.join(',')})`);
+const perPanelMeans = {};
+for (const s of samples) for (const p of (s.panelRates || [])) {
+  if (!Number.isFinite(p.barsPerSec)) continue;
+  (perPanelMeans[`${p.id} (${p.tf})`] ||= []).push(p.barsPerSec);
+}
+console.log('  per-panel delivered bars/s:');
+for (const [k, v] of Object.entries(perPanelMeans)) console.log(`    ${k.padEnd(22)} ${mean(v)}`);
 if (KILL_AT_MIN > 0) {
   gate('the launcher announced RESUME rather than archiving', resumeAnnounced, resumeAnnounced ? 'RESUMING printed on relaunch' : 'the launcher did not resume');
   gate('the deliberate kill was followed by auto-resume', killedOnce && segStarts.length >= 2, `${segStarts.length} segment starts, killed=${killedOnce}`);

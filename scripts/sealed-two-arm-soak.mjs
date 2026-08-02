@@ -348,6 +348,7 @@ let prevSample = null;
 // RATE-HOLD state. Same reasoning as R3 below: a delivery ratio spanning a browser restart would compare
 // a warmed session against a cold one, so the series is in-process and a resume starts it fresh.
 let prevRateSample = null;
+let prevPanels = null;   // per-panel delivery needs each panel's own previous playhead, not just the host's
 const rateSeries = [];
 let storageAtStart = null;
 let r3ProbeDone = false;
@@ -517,6 +518,36 @@ try {
     if (rate.ok) rateSeries.push({ hours: +((Date.now() - t0) / 3600000).toFixed(4), barsPerSec: rate.barsPerSec, speed: SPEED });
     const rateReadback = await readEffectiveRateReadback(session.page).catch(() => ({ present: false, readError: true }));
 
+    /**
+     * PER-PANEL DELIVERY, because the host-anchored rate above has a blind spot I would otherwise have
+     * carried into the ten hours.
+     *
+     * The comment on the host anchor says a per-panel governor "can hold one panel while starving three"
+     * - and then measures only the panel that would still be running. E measured the frame governor's
+     * effect on delivery and found no cost, with three of four panels reading 0 bars/s; a one-panel
+     * oracle cannot tell that condition apart from a healthy four-panel one. So each panel's own advance
+     * is recorded and the live count travels with every sample.
+     *
+     * Read by PLAYHEAD, not bar count. A 1h panel closes a bar every few minutes of simulated time, so
+     * bar-count advance reports higher timeframes as parked over a short window - a false void my own
+     * probes have hit twice, once reading 1 of 4 panels when the playhead said 4 of 4. If a reading of
+     * "three panels parked" is ever produced here, that is the first thing to rule out.
+     */
+    const panelRates = after.map((p) => {
+      const prevP = (prevPanels || []).find((q) => q.id === p.id);
+      const tfSec = tfSeconds(p.tf);
+      if (!prevP || !tfSec) return { id: p.id, tf: p.tf, barsPerSec: null, why: prevP ? 'timeframe unreadable' : 'first sample' };
+      const r = deliveredRate(
+        { atMs: prevP.atMs, replayTimestamp: prevP.playheadMs, replayIndex: prevP.replayIndex },
+        { atMs: Date.now(), replayTimestamp: p.playheadMs, replayIndex: p.replayIndex },
+        { baseTimeframeSec: tfSec },
+      );
+      return { id: p.id, tf: p.tf, barsPerSec: r.ok ? r.barsPerSec : null, why: r.ok ? null : r.why };
+    });
+    prevPanels = after.map((p) => ({ id: p.id, playheadMs: p.playheadMs, replayIndex: p.replayIndex, atMs: Date.now() }));
+    const livePanels = panelRates.filter((p) => Number.isFinite(p.barsPerSec) && p.barsPerSec > 0).length;
+    const measurablePanels = panelRates.filter((p) => Number.isFinite(p.barsPerSec)).length;
+
     run.append({
       segment,
       hours: +((Date.now() - t0) / 3600000).toFixed(4),
@@ -540,6 +571,13 @@ try {
       // LAG — same host, same cadence, so the scorecard has a before/after that is not two computers.
       ...blocking,
       ...frameRate,
+      // Four live panels is the CONDITION this arm claims to measure, so it is recorded per sample
+      // rather than asserted once at boot. A verdict computed over samples where three panels were
+      // parked is a verdict about a different workload.
+      panelRates,
+      livePanels,
+      measurablePanels,
+      allFourLive: measurablePanels > 0 ? livePanels >= 4 : null,
       // FRAME-01 coupling, stated per sample rather than reconstructed afterwards. If bar advance is
       // tied to paint this ratio pins near a constant; if delivery is independent of the frame cap it
       // wanders. Recorded raw so the question is answerable either way from the artifact alone.
