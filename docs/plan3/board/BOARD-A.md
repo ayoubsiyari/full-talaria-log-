@@ -826,3 +826,96 @@ The `dist-v9` bundle still has to be rebuilt by B for the toolbar to reach the d
 engine, the legacy shell and the V9 source all carry the two controls. Nothing in this landing was
 verified by reading the deployed site, per the origin-build constraint — every figure here is
 against the local tree.
+
+### A — 2026-08-02 17:35 — LAND · read-back closed on a browser reading · QW-3 stack 1 clears · two edge defects fixed
+
+`tier=top author model=claude-opus-5-thinking-high`. Commit `94a41fd50`.
+
+#### The read-back, on a reading rather than an inspection
+
+It has been claimed landed twice and been absent both times, so it is closed here in a browser.
+`scripts/order01b-readback-canary.mjs` boots the product, censuses the **served** engine bytes for
+ORDER-01B markers, arms replay at known knobs, measures the playhead independently of the meter,
+and only then grades `__talariaEffectiveRate`. At `speed=10, step=TF` it is **12/12**: four realms
+playing at 583.36 market-s/wall-s against a 600 target, the scalar naming its unit as
+`market-seconds-per-wall-second` and agreeing with speed × step, and the old bars-per-second
+reading explicitly ruled out. Artifact `order01b-readback-canary-steptf.json`.
+
+The canary separates three verdicts that a single red would have merged: a stale served build
+(`ENGINE_ABSENT_FROM_SERVED_BYTES`), a stopped replay (`REPLAY_STOPPED`), and a wrong publish
+(`PUBLISH_WRONG`). Only the third is about the meter. Both times this was "claimed and absent", an
+inspection would have passed — the disagreement is only visible in served bytes plus a live rate.
+
+#### QW-3 stack 1: 89.6% on a second sealed packet, so no deferral
+
+| Packet | duty | coverage | total | M20-Q6 |
+|---|---|---|---|---|
+| `sealed-10bps-baseline` | 0.95 | 300 s | 10.76 MB | 4.61 MB (42.76%) |
+| `sealed-10bps-tip-final` | 0.95 | 300 s | 5.21 MB | 0.21 MB (4.03%) — 95.4% off |
+| `sealed-10bps-tip-r2` | 0.95 | 300 s | 5.32 MB | 0.48 MB (8.88%) — **89.6% off** |
+
+Two independent sealed packets on the tip, both duty-matched to the baseline and both covering the
+full window. The lower of the two clears the 80% bar by nine points, so **this does not go to the
+PO as a deferral.** The 79.7% figure is the registry-bound row alone; the capture-wrapper reuse
+landed after it and is what moves the stack.
+
+One reporting hazard found while comparing them: the packets say `10.086` and `597.309` for the
+same workload, because the scalar changed unit under ORDER-01B and no packet stated a unit. The
+sampler now records `effectiveRate.unit` per reading from the engine itself, and writes
+`unstated-by-engine` rather than back-filling a guess onto older runs.
+
+#### Two edge defects, both from reading a refused request as proof of absence
+
+`tryRequestForwardDataProbe` reports whether `checkViewportLoadMore` **accepted** a request, which
+a coalesced or cooled-down request does not. That answer reaches `_playWouldBeNoOpAtSessionEnd`,
+which refuses Play outright and tells the user the backtest is over. Measured parked on the last
+loaded bar with `hasMoreRight` true: no timer, no tick, playhead frozen for the whole window. The
+server claiming more bars is now enough to let the loop start and do its own bounded waiting.
+
+The bounded wait written for sub-bar stepping now sits behind **every** edge exit via
+`_handleForwardEdgeWhilePlaying`, so the bar, tick and finest-TF paths get it too, and its counter
+clears on any successful advance rather than only the sub-bar one. It is renamed off the
+`order01b` prefix — an operator disabling a switch called `SUBBAR_PREFETCH` would have silently
+disabled bar-path edge waiting. Kill-switch is now `__TALARIA_DISABLE_LOADED_EDGE_WAIT_V1`.
+
+#### Open, and handed over rather than closed: the host stalls at a sub-bar step
+
+At `step=1s` the host panel never starts, while the three peer panels play correctly at the same
+knobs. This is **not** the meter and not end-of-data. Instrumented at the decision points:
+`play()` is entered clean every time (`active`, not window-blocked, not hidden),
+`_finishPlaybackAtSessionEnd` is never reached, and no timer or interval is ever created. Between
+the first attempt at 7.97 s (index 2010 of **4000** bars, nowhere near an edge) and the next at
+11.2 s, the host's data window is torn down and reseeded to **2000** bars; the harness then retries
+every ~300 ms, and each `play()` cancels the previous deferred two-frame start. Evidence:
+`docs/plan3/evidence/order01b-host-substep-arm-stall.log`.
+
+Whoever picks this up: the reseed is the thing to explain, not the retry loop. `step=TF` on the
+identical layout is green, so it is reachable by setting a sub-bar step and nothing else.
+
+#### Scope audit: two items on the list are not what they look like
+
+**Data-floor routing off the inventory file.** The routing is landed and bound
+(`getStepRouting`, `isStepBelowDataFloor`, `canServeStep`, `getStepMenu`), but the floor comes from
+`_getRawBarPeriodMs()` — the finest *loaded* period — not from a file inventory. There is no
+client-visible inventory to route off: `tile-meta/{tf}` is a per-timeframe tile index, and the
+per-dataset ready-timeframe set lives server-side in the datasets/admin path with no chart-client
+surface. So the gap is real but it is an **API gap, not an engine gap**: a chart on 5m backed by a
+file with 1m ready will draw a 60s step it could have read. It is conservative rather than wrong,
+and closing it needs an endpoint decision that is not mine to take unilaterally.
+
+**Tick-path deletion.** The tick path is still load-bearing: `applyRealisticPreset` falls back to
+`setPlaybackMode('tick')` when `canServeStep(1)` is false, so deleting it removes the fallback that
+makes REALISTIC reachable on timeframes that cannot serve a 1s step. It also straddles the new
+boundary — the drawn path is the renderer E now owns. Not deleted, and I am flagging it rather than
+cutting a fallback out from under a preset.
+
+#### Handover boundary with E
+
+`generatePath` and oracles A1, A4 and A6 are E's, together with the renderer that consumes the
+waypoints — producer and consumer in one lane. The last measurement I took before the move stands
+for the record: **zero retained bytes per bar**, with three mutants (fresh array, restored RNG
+closure, forced string seed) all caught. What remains mine and is landed: speed as steps per
+wall-second, the computed divisor step menu, the REALISTIC chip as a preset, the two-control UI
+with legacy migration, `--step` in the harness, `__talariaEffectiveRate` in market-seconds per
+wall-second, and oracles 1, 2, 5 and 6. Oracles green on this tip: 48 step-speed cells, 11 M20-Q6
+cells, 13 rate-hold cells.
