@@ -42,7 +42,12 @@ const BARS_PER_SECOND = Number(process.env.SPEED01_BPS || 10);
 /** 16 KB: finer than the 32 KB default, so mid-sized per-bar churn is visible. */
 const SAMPLING_INTERVAL = 16 * 1024;
 const READ_EVERY_MS = 15_000;
-const OUT = path.resolve(__dirname, '../docs/plan3/evidence/speed01-allocation-10bps.json');
+// Labelled so the pre-pooling baseline and D's post-pooling re-sample land in
+// separate files; the 80% claim is a comparison and needs both to survive.
+const OUT_LABEL = process.env.SPEED01_LABEL || '10bps';
+const OUT = path.resolve(
+  __dirname, `../docs/plan3/evidence/speed01-allocation-${OUT_LABEL}.json`,
+);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (m) => console.log(`[speed01-alloc] ${new Date().toISOString()} ${m}`);
