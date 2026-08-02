@@ -13445,6 +13445,7 @@ class DrawingToolsManager {
      * Persist lock even when a tool class overrides toJSON() without `locked`.
      */
     _serializeDrawingForStorage(drawing) {
+        this._refreshDrawingTimestampAnchors(drawing);
         const json = (drawing && typeof drawing.toJSON === 'function')
             ? drawing.toJSON()
             : (drawing || {});
@@ -13545,6 +13546,49 @@ class DrawingToolsManager {
         if (this._isDrawingSaveInvalidationV2Enabled() && typeof chart.scheduleRender === 'function') {
             chart.scheduleRender();
         }
+    }
+
+    /**
+     * Single deserialise entry point for every load path.
+     *
+     * The per-tool fromJSON implementations disagree about whether they rebuild
+     * timestampPoints — NoteTool, PriceNoteTool, PriceLabelTool and
+     * PriceLabel2Tool do; TextTool, NoteBoxTool, AnchoredTextTool, PinTool,
+     * TableTool, CalloutTool and CommentTool do not. Keeping the re-attachment
+     * here rather than in the tools is what stops that split from mattering: a
+     * path that skips it silently reverts seven tool types to bar-index
+     * anchoring, which reads as a drawing bug rather than a load bug.
+     */
+    _deserializeDrawingFromPayload(item, conversionData) {
+        const toolInfo = item && this.toolRegistry[item.type];
+        if (!toolInfo) {
+            if (item) console.error(`❌ Unknown tool type: ${item.type}`);
+            return null;
+        }
+        let originalTimestampPoints = null;
+        if (item.coordinateSystem === 'timestamp' && Array.isArray(item.points)) {
+            // These anchors are the source of truth and must never be recomputed
+            // from indices; bars reload and indices shift under them.
+            originalTimestampPoints = item.points.map((p) => ({
+                timestamp: p.timestamp,
+                price: p.price !== undefined ? p.price : p.y,
+            }));
+            item.points = CoordinateUtils.pointsFromTimestamps(
+                originalTimestampPoints,
+                conversionData || this._getDrawingConversionData(),
+                this.chart && this.chart.currentTimeframe,
+                this._getTimestampConversionOptions({ type: item.type }),
+            );
+        }
+        const drawing = toolInfo.class.fromJSON(item, this.chart);
+        if (!drawing) return null;
+        drawing.chart = this.chart;
+        this._applyLoadedDrawingLockState(drawing, item);
+        if (originalTimestampPoints) {
+            drawing.timestampPoints = originalTimestampPoints;
+        }
+        this._syncDrawingPointsFromTimestamps(drawing);
+        return drawing;
     }
 
     /** Restore lock after fromJSON() — many tool classes omit locked in fromJSON. */
@@ -14086,41 +14130,10 @@ class DrawingToolsManager {
             data.forEach((item, index) => {
                 this.normalizeLegacyRangeToolPayload(item);
                 normalizeDashPatterns(item);
-                const toolInfo = this.toolRegistry[item.type];
-                if (toolInfo) {
-                    // IMPORTANT: Preserve original timestamp points before conversion
-                    let originalTimestampPoints = null;
-                    if (item.coordinateSystem === 'timestamp' && item.points) {
-                        // Save the original timestamps - these should NEVER change
-                        originalTimestampPoints = item.points.map(p => ({
-                            timestamp: p.timestamp,
-                            price: p.price || p.y
-                        }));
-                        
-                        // [debug removed]
-                        // Convert to indices for rendering with correct timeframe
-                        item.points = CoordinateUtils.pointsFromTimestamps(
-                            originalTimestampPoints,
-                            conversionData,
-                            this.chart.currentTimeframe,
-                            this._getTimestampConversionOptions({ type: item.type })
-                        );
-                    }
-                    
-                    const drawing = toolInfo.class.fromJSON(item, this.chart);
-                    drawing.chart = this.chart;
-                    this._applyLoadedDrawingLockState(drawing, item);
-                    
-                    // Restore the original timestamp points (critical for timeframe switching)
-                    if (originalTimestampPoints) {
-                        drawing.timestampPoints = originalTimestampPoints;
-                    }
-                    this._syncDrawingPointsFromTimestamps(drawing);
-                    
+                const drawing = this._deserializeDrawingFromPayload(item, conversionData);
+                if (drawing) {
                     this.drawings.push(drawing);
                     this.renderDrawing(drawing);
-                } else {
-                    console.error(`❌ Unknown tool type: ${item.type}`);
                 }
             });
             
@@ -14184,30 +14197,8 @@ class DrawingToolsManager {
             data.forEach((item) => {
                 this.normalizeLegacyRangeToolPayload(item);
                 normalizeDashPatterns(item);
-                const toolInfo = this.toolRegistry[item.type];
-                if (!toolInfo) return;
-
-                let originalTimestampPoints = null;
-                if (item.coordinateSystem === 'timestamp' && item.points) {
-                    originalTimestampPoints = item.points.map(p => ({
-                        timestamp: p.timestamp,
-                        price: p.price || p.y
-                    }));
-                    item.points = CoordinateUtils.pointsFromTimestamps(
-                        originalTimestampPoints,
-                        conversionData,
-                        this.chart.currentTimeframe,
-                        this._getTimestampConversionOptions({ type: item.type })
-                    );
-                }
-
-                const drawing = toolInfo.class.fromJSON(item, this.chart);
-                drawing.chart = this.chart;
-                this._applyLoadedDrawingLockState(drawing, item);
-                if (originalTimestampPoints) {
-                    drawing.timestampPoints = originalTimestampPoints;
-                }
-                this._syncDrawingPointsFromTimestamps(drawing);
+                const drawing = this._deserializeDrawingFromPayload(item, conversionData);
+                if (!drawing) return;
                 this.drawings.push(drawing);
                 this.renderDrawing(drawing);
             });
@@ -14247,14 +14238,11 @@ class DrawingToolsManager {
         try {
             const data = JSON.parse(jsonString);
             this.clearAll();
+            const conversionData = this._getDrawingConversionData();
             data.forEach(item => {
                 this.normalizeLegacyRangeToolPayload(item);
-                const toolInfo = this.toolRegistry[item.type];
-                if (toolInfo) {
-                    const drawing = toolInfo.class.fromJSON(item);
-                    this._applyLoadedDrawingLockState(drawing, item);
-                    this.addDrawing(drawing);
-                }
+                const drawing = this._deserializeDrawingFromPayload(item, conversionData);
+                if (drawing) this.addDrawing(drawing);
             });
         } catch (error) {
             console.error('Failed to import drawings:', error);
