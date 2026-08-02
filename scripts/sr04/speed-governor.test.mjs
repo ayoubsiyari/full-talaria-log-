@@ -85,6 +85,11 @@ const METHODS = [
     '\n    getCandlePlaybackCadence() {',
     '\n    normalizeSpeed(speed) {',
     '\n    migrateStoredSpeed(stored) {',
+    // ORDER-01B reinterprets the ladder as steps per wall-second and the
+    // cadence now asks whether a step has been chosen. Lifted so these cells
+    // exercise the shipped cadence rather than a copy that stops at SPEED-01.
+    '\n    _order01bHasExplicitStep() {',
+    '\n    _hasExplicitReplayStepInterval() {',
 ];
 
 /**
@@ -113,6 +118,7 @@ function build({ win, timers, mutate = (s) => s, source = src } = {}) {
         ${balanced(source, 'function _speedGovV1Enabled(')}
         ${balanced(source, 'function _speedGovFlagState(')}
         ${balanced(source, 'function _speedGovTickDurationV1Enabled(')}
+        ${balanced(source, 'function _order01bStepV1Enabled(')}
         ${balanced(source, 'function _speedGovNearestRung(')}
         ${balanced(source, 'function _speedGovNow(')}
         return {
