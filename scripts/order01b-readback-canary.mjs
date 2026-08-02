@@ -189,6 +189,17 @@ async function main() {
       // Every exit from play() except the kick-oldest window block leaves some
       // trace. Record the entry conditions so the silent one is nameable.
       window.__canaryPlayLog = [];
+      // What is actually on `play` before this wrapper goes on. If something
+      // else already wrapped it, the entry conditions logged below belong to
+      // that wrapper and not to the engine's own play().
+      const proto = Object.getPrototypeOf(rs) || {};
+      window.__canaryPlayIdentity = {
+        ownProperty: Object.prototype.hasOwnProperty.call(rs, 'play'),
+        isPrototypeMethod: rs.play === proto.play,
+        name: rs.play && rs.play.name,
+        head: String(rs.play).replace(/\s+/g, ' ').slice(0, 240),
+        full: String(rs.play),
+      };
       const origPlay = rs.play.bind(rs);
       rs.play = function patchedPlay(...a) {
         try {
@@ -210,25 +221,47 @@ async function main() {
         return r;
       };
       // The refusal is silent, so it has to be caught where it is decided.
+      // Tracing the sequence rather than one predicate: "play() returned early"
+      // and "play() ran and something later paused it" look identical from
+      // outside, and they need different fixes.
       window.__canaryNoOpLog = [];
-      const origNoOp = rs._playWouldBeNoOpAtSessionEnd.bind(rs);
-      rs._playWouldBeNoOpAtSessionEnd = function patchedNoOp(...a) {
-        const answer = origNoOp(...a);
-        try {
-          const c = this.chart && this.chart._serverCursors;
-          window.__canaryNoOpLog.push({
-            at: Math.round(performance.now()),
-            answer: !!answer,
-            index: this.currentIndex,
-            len: Array.isArray(this.fullRawData) ? this.fullRawData.length : null,
-            cursorsPresent: !!c,
-            hasMoreRight: c ? !!c.hasMoreRight : null,
-            panLoading: !!(this.chart && this.chart._panLoading),
-            subBar: typeof this._isSubBarStepMode === 'function' ? this._isSubBarStepMode() : null,
-          });
-        } catch (_e) { /* ignore */ }
-        return answer;
-      };
+      window.__canaryTrace = [];
+      const traced = [
+        'getPlaybackMode', '_shouldUseTickAnimation', '_isReplayPageHidden',
+        '_playWouldBeNoOpAtSessionEnd', '_capturePlaybackViewportLock',
+        'stopAllPlayback', 'startCandleByCandle', 'startTickAnimation',
+        'pause', '_runCandlePlaybackTick', 'simpleStepForward',
+      ];
+      for (const name of traced) {
+        if (typeof rs[name] !== 'function') continue;
+        const orig = rs[name].bind(rs);
+        rs[name] = function tracedFn(...a) {
+          const entry = { at: Math.round(performance.now()), fn: name };
+          window.__canaryTrace.push(entry);
+          let out;
+          try {
+            out = orig(...a);
+          } catch (e) {
+            entry.threw = String((e && e.message) || e).slice(0, 160);
+            throw e;
+          }
+          if (typeof out === 'boolean') entry.returned = out;
+          if (name === '_playWouldBeNoOpAtSessionEnd') {
+            try {
+              const c = this.chart && this.chart._serverCursors;
+              window.__canaryNoOpLog.push({
+                at: entry.at,
+                answer: !!out,
+                index: this.currentIndex,
+                cursorsPresent: !!c,
+                hasMoreRight: c ? !!c.hasMoreRight : null,
+                panLoading: !!(this.chart && this.chart._panLoading),
+              });
+            } catch (_e) { /* ignore */ }
+          }
+          return out;
+        };
+      }
     });
     const workload = await armHeapCyclePoWorkload(page, {
       playHoldMs: 4_000,
@@ -371,19 +404,47 @@ async function main() {
       for (const r of realms) {
         const rs = r.w.chart && r.w.chart.replaySystem;
         if (!rs || rs.isPlaying) continue;
-        const before = Number(rs.currentTime != null ? rs.currentTime : rs.replayTimestamp);
-        try { rs.play(); } catch (e) { out.push({ realm: r.name, threw: String(e && e.message) }); continue; }
-        await sleepIn(1_500);
-        const after = Number(rs.currentTime != null ? rs.currentTime : rs.replayTimestamp);
-        out.push({
-          realm: r.name,
-          playing: !!rs.isPlaying,
-          timer: !!rs._nextCandleTimer,
-          interval: !!rs.playInterval,
-          edgeWaits: rs._loadedEdgeWaits ?? null,
-          advancedSec: Number.isFinite(before) && Number.isFinite(after)
-            ? Math.round((after - before) / 1000) : null,
-        });
+        const head = () => Number(rs.currentTime != null ? rs.currentTime : rs.replayTimestamp);
+        const row = { realm: r.name };
+
+        // Two ways in. If the instance property starts nothing and the class
+        // method on the same object starts playback, then whatever replaced
+        // `play` is not driving this replay system.
+        // Twice, because the first call has a side effect: it asks for forward
+        // data. If attempt two succeeds where one failed, the fix was the data
+        // arriving, not the entry point — and that is a different bug.
+        const attempts = [];
+        for (const n of [1, 2]) {
+          const b = head();
+          try { rs.play(); } catch (e) { row[`wrapperThrew${n}`] = String(e && e.message).slice(0, 160); }
+          await sleepIn(1_200);
+          attempts.push({
+            attempt: n,
+            playing: !!rs.isPlaying,
+            timer: !!rs._nextCandleTimer,
+            advancedSec: Math.round((head() - b) / 1000),
+          });
+          if (rs.isPlaying) break;
+        }
+        row.viaInstanceProperty = attempts;
+
+        if (!rs.isPlaying) {
+          const proto = Object.getPrototypeOf(rs);
+          const classPlay = proto && proto.play;
+          if (typeof classPlay === 'function' && classPlay !== rs.play) {
+            const before2 = head();
+            try { classPlay.call(rs); } catch (e) { row.classThrew = String(e && e.message).slice(0, 160); }
+            await sleepIn(1_200);
+            row.viaClassMethod = {
+              playing: !!rs.isPlaying,
+              timer: !!rs._nextCandleTimer,
+              advancedSec: Math.round((head() - before2) / 1000),
+            };
+          } else {
+            row.viaClassMethod = { unavailable: 'no distinct prototype play' };
+          }
+        }
+        out.push(row);
       }
       return out;
     });
@@ -408,6 +469,17 @@ async function main() {
     });
     observed.patchState = patchState;
     console.log(`\n--- is the instrument still on the thing it was clipped to ---\n        ${JSON.stringify(patchState)}`);
+    const trace = await page.evaluate(() => window.__canaryTrace || []);
+    observed.trace = trace;
+    console.log('\n--- how far into play() the host gets ---');
+    if (!trace.length) console.log('        nothing on the traced path ran at all');
+    const counts = new Map();
+    for (const e of trace) counts.set(e.fn, (counts.get(e.fn) || 0) + 1);
+    for (const [fn, n] of counts) console.log(`        ${String(n).padStart(4)} x ${fn}`);
+    console.log(`        first 14 in order: ${trace.slice(0, 14).map((e) => e.fn).join(' -> ')}`);
+    const playIdentity = await page.evaluate(() => window.__canaryPlayIdentity || null);
+    observed.playIdentity = playIdentity;
+    console.log(`\n--- what 'play' was, before instrumenting it ---\n        ${JSON.stringify(playIdentity)}`);
     const playLog = await page.evaluate(() => window.__canaryPlayLog || []);
     observed.playLog = playLog;
     console.log('\n--- every call to play() on the host ---');
@@ -443,8 +515,24 @@ async function main() {
     }
 
     if (!replayMoved || stalled.length) {
-      verdict = fail('REPLAY_STOPPED',
-        'The playhead stopped, so a read-back of zero is honest and the fault is upstream of the meter. Fix playback at these knobs before grading the rate.');
+      // "The playhead did not move" has more than one cause, and collapsing
+      // them wastes the next reader's night. A realm that will not start
+      // through the entry point the product calls, but starts immediately
+      // through the engine's own method on the same object, is not a stopped
+      // replay — it is an inert override sitting in front of the engine.
+      const inert = (observed.revived || []).filter((r) => {
+        const tries = Array.isArray(r.viaInstanceProperty) ? r.viaInstanceProperty : [];
+        const neverStarted = tries.length > 0 && tries.every((a) => !a.playing);
+        return neverStarted && r.viaClassMethod && r.viaClassMethod.playing === true;
+      });
+      verdict = inert.length
+        ? fail('SHELL_PLAY_OVERRIDE_INERT',
+          `${inert.map((r) => r.realm).join(', ')}: play() as installed on the instance started `
+          + `nothing across ${inert[0].viaInstanceProperty.length} attempts, while the engine's own `
+          + `play on the same object started playback with a live timer. The engine is fine; the `
+          + `entry point in front of it is not. Identity of the override is in observed.playIdentity.`)
+        : fail('REPLAY_STOPPED',
+          'The playhead stopped, so a read-back of zero is honest and the fault is upstream of the meter. Fix playback at these knobs before grading the rate.');
       return;
     }
 
