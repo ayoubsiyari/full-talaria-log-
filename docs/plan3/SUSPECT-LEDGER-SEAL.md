@@ -1,8 +1,10 @@
 # Suspect Ledger — seal publication draft
 
-**Owner: Manager B (integration). Updated: 2026-08-02 12:05+01:00.**
+**Owner: Manager B (integration). Updated: 2026-08-02 23:39+01:00.**
 **Rule: nothing OPEN rides into the soak without the PO's signature on that row.**
-**Vocabulary: `KILLED` = fix Present/Bound/Mirrored/Discriminating (PROC-3 GREEN). `CLEARED` = withdrawn / not guilty / cannot-apply with reason. `OPEN` = still needs work or PO eyes.**
+**Vocabulary: `KILLED` = fix Present/Bound/Mirrored/Discriminating (PROC-3 GREEN). `CLEARED` = withdrawn / not guilty / cannot-apply with reason. `OPEN` = still needs work or PO eyes. `DEFERRED` = real, understood, and deliberately NOT fixed before this seal — requires a PO signature and a written revisit condition, and is never a synonym for CLEARED.**
+
+> `DEFERRED` was added to this vocabulary at 23:40+01:00 on the PO's instruction to publish a deferral here. It is recorded rather than assumed because the previous three-word vocabulary had no way to say "we know, and we are shipping anyway on purpose": such a row could only be filed as CLEARED, which is a lie, or OPEN, which reads as unfinished work. Both bury it.
 
 Source of truth for kill-roster axes: `node docs/plan3/oracles/proc3-unwired-fix-sweep-v1.mjs` on tip.
 This tip's PROC-3 run: **18 roster rows GREEN**; overall status RED only because four deliberate `KNOWN-*` canaries stay RED (that is the gate working, not a product defect).
@@ -85,11 +87,34 @@ Pulled from `docs/plan3/TICKET-STATUS-LEDGER-20260729.md` and `docs/plan3/CANARY
 
 ---
 
+## 4b · Deferred by ruling — known, understood, deliberately not fixed before this seal
+
+These are **not** CLEARED and **not** unfinished work. Each is a defect or hazard we can describe precisely and have chosen, on the record, not to touch before the seal. Every row carries a signature and a revisit condition, so it cannot decay into folklore.
+
+| ID | Owner | Status | PO signature | Revisit condition | Evidence it is latent, not live |
+| --- | --- | --- | --- | --- | --- |
+| `SHELLPLAY-SIBLINGS-BIND-SHAPE` | B | **DEFERRED** | `PO-SIGNED: PO 2026-08-02T22:34Z` — *"leave the nine wrappers … that is the right risk call"* | The day anything replaces the host `ReplaySystem` **in place**, or a twelfth wrapper is added to `MultichartGrid.jsx`. Then it becomes live and wants one mechanical pass with a gate. | Eleven wrappers capture their original as `patchedRs.<m>.bind(patchedRs)`, freezing the receiver at patch time. Can only bite if the instance is replaced while they stay installed; A's b124 artifact records `patchState.sameReplaySystem: true`. Receiver divergence was separately disproved as the `SHELL-PLAY-01` mechanism. |
+
+> Count note: the ruling says "nine wrappers", the row says eleven. Eleven is correct — `enterReplayMode`, `exitReplayMode`, `pause`, `setSpeed`, `setPlaybackMode`, `setStepTimeframe`, `goToReplayTimestamp`, `requestStepForward`, `requestStepBackward`, `stepForward`, `stepBackward`. Nine was my miscount, carried into the ruling before I corrected it at 23:11. The decision is unaffected — it argues *more* strongly for deferring, not less.
+
+---
+
 ## 5 · Seal gate on this ledger
 
-- **Soak-legal only when** section 1 has zero OPEN, section 2 has zero OPEN (or browser cold-load waived by PO), and section 4 every OPEN row carries `PO-SIGNED: <name> <UTC>` or is moved to KILLED/CLEARED.
+- **Soak-legal only when** section 1 has zero OPEN, section 2 has zero OPEN (or browser cold-load waived by PO), section 4 every OPEN row carries `PO-SIGNED: <name> <UTC>` or is moved to KILLED/CLEARED, and **section 4b every DEFERRED row carries both a PO signature and a revisit condition** (a deferral without a revisit condition is an OPEN row wearing a better word).
 - Re-run PROC-3 on the **final tip** the day of the seal; paste the tip SHA and GREEN count into the board when publishing the sealed copy of this file.
 - Do not invent CLEARED. A row without evidence stays OPEN.
 
 **Current tip when this draft was written:** see `git rev-parse HEAD` at commit time.
 **b122 canary (shakedown only, not the seal):** badge `20260802b122`, digest `5f0378407c214999ec822eb6a17e165e`, source `1c69bebb496f1fb3bdf4f90317dae84d1507d427`.
+
+## 6 · Build identities
+
+| Build | Status | Why |
+| --- | --- | --- |
+| `20260802b122` | Shakedown only | Never the seal. Passport above. |
+| `20260802b123` | Superseded | Local stamp; never deployed. |
+| `20260802b124` | **RETIRED — never citable** | Its bundle was compiled from a tree containing uncommitted source, so it cannot be reproduced from the SHA it is stamped with. No measurement taken against b124 can be cited, including A's `order01b-readback-canary-step1s-b124.json`, whose served engine of 545,015 bytes matches no committed state. Retired by the PO 2026-08-02, on the provenance evidence. |
+| `20260802b125` | **NEXT CUT** | Clean tree, explicit `BUILD_ID`, under `CLEAN-TREE-01`. C times it. This build is what unblocks A's canary run and B's `SHELL-PLAY-01` discriminator. Verify with `npm run rebuild-constraint:provenance` after stamping. |
+
+> b124 is retired as an *identity*, not as work: the source rows compiled into it are committed and will recompile into b125. Nothing in `scripts/` or `package.json` pins b124, so retiring it costs no tooling changes — checked, not assumed.

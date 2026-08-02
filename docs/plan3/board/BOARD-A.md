@@ -23,6 +23,8 @@ One line per green, stamped, no batching. `scripts/director-digest.mjs` reads **
 - 22:52 Digest defect found and reported: heading-style board entries were invisible to the parser, so A #20 and #14 read as stalled while both were moving. Not a tag problem.
 - 22:57 COMPETITOR-REFERENCE self arm runs; instrument validated end to end against our own harness. **Correction to my 22:44 line:** no arena probe in this repo sets a device scale factor, so every four-panel number we have published is **dpr 1**, while the advisor's 130-180 MB expectation describes **dpr 2**. At matched dpr 2 our GPU is 142.5 at load and 183.5 at idle+30s, i.e. **inside** that band, not below it. Canvas backing scales exactly 4x (5.25 -> 21.02 MB), confirming the dpr is real. n=1 per arm, replicates owed.
 - 23:00 For B, landed in `scripts/order01b-readback-canary.mjs`: `isPlayStartingOnReturn` now recorded beside `playingOnReturn`, captured **synchronously on return** on all three paths (the play wrapper, both instance-property attempts, and the prototype control arm). It has to be synchronous: `isPlayStarting` is set at the head of the deferred-start block (replay-system.js:5670) and cleared in the finally of the inner rAF (:5705), so it lives about two frames and any post-settle reading is false whether or not the block was reached. Also added `playStartRafScheduled`, which splits B's false case in two: reached the block but the rAF never ran, versus never reached the block.
+- 23:40 **DPR2-IDLE-SLOPE closes as NOT a defect — it is a raster transient, and my own data refutes it.** Two dpr-2 arms, five-point series over five minutes, near-identical: load ~463, **peak ~497 at idle+60s**, then back to a **flat plateau of ~458 from idle+120s onward** (r1 458.25/458.21/458.75/458.98; r2 457.44/455.95/456.07/458.16). `monotonicRise=false` in both. Per the rule I registered before the runs: plateaus inside the window means completion of raster and tile upload, so it does **not** go to the PO. **The hump is 37-39 MB and is essentially all GPU** (37.51 and 37.21 of it). My original +30s observation was the rising edge of that hump.
+- 23:40 Two numbers worth keeping from it. **dpr-2 four-panel GPU steady state is 151.3 MB** (151.51 and 151.12 across runs, 0.4 MB apart) — inside the advisor's 130-180 band, so the GPU side is honest at the dpr the band describes. And **at dpr 2 the plateau does not arrive until ~120s**, so any reading taken at 20-60s overstates by ~38 MB. That is not a caution any more, it is a sampling requirement.
 - 23:20 **DPR2-IDLE-SLOPE opened as a candidate product defect**, not just a settle-window caution. At dpr 2 a four-panel chart sitting idle **rose** 460.33 -> 489.58 MB total and 142.5 -> 183.5 GPU over thirty seconds with nothing asked of it; at dpr 1 the same window **fell** 411.59 -> 396.52. Every number this team has published is dpr 1, and high-DPI is the common case for real users, so if this is a slope it has never once appeared in our measurements. n=1, reproduction in flight, decision rule pre-registered below.
 - 23:12 **Landed `7d5975afa`** — C09-C12 scratch canvas release, 56 lines, four sites, both mirrors, parity verified, kill switch `__TALARIA_DISABLE_SCRATCH_CANVAS_RELEASE_V1`. Mine were the unowned files in the provenance gate.
 - 23:12 **The gate still refuses, and the remaining four are not mine.** `clean-build-tree-guard` now names only b124 build-id residue: `chart v 1.4/chart/index.html`, `legacy-index.html`, `chart/sw.js`, `talaria-design/live/public/sw.js` — all of them `20260802b123` -> `b124` stamps and `SW_VERSION` bumps, i.e. the output of whoever ran the b124 build. C's rebuild needs those committed or stashed. Owner needed, same as mine was.
@@ -1270,8 +1272,38 @@ harness animation still running while nominally idle — countdowns and blink ti
 replay is paused. If the slope reproduces, those two are the next things to eliminate before it is called a
 product defect rather than a probe artefact.
 
-Artifacts will be `_evidence/manager-A/idle-slope-dpr{1,2}-r*.json`, each carrying the full series and a
+Artifacts `_evidence/manager-A/idle-slope-dpr{1,2}-r*.json`, each carrying the full series and a
 `monotonicRise` flag.
+
+---
+
+**RESULT (23:40): it reproduces as a transient and the row closes. Not a defect, not for the PO.**
+
+| sample | dpr2-r1 total | dpr2-r1 GPU | dpr2-r2 total | dpr2-r2 GPU |
+|---|---:|---:|---:|---:|
+| loaded | 466.56 | 145.23 | 460.50 | 145.68 |
+| idle+60s | **498.39** | **189.02** | **495.31** | **188.33** |
+| idle+120s | 458.25 | 151.45 | 457.44 | 153.13 |
+| idle+180s | 458.21 | 151.52 | 455.95 | 151.13 |
+| idle+240s | 458.75 | 151.52 | 456.07 | 151.12 |
+| idle+300s | 458.98 | 151.51 | 458.16 | 151.12 |
+
+Both arms rise to a peak at idle+60s and are back on a flat plateau by idle+120s, holding it for three more
+minutes. `monotonicRise` is false in both. **The hump is 37-39 MB and essentially all of it is GPU** — 37.51
+in r1 and 37.21 in r2 — which is what raster and tile upload finishing looks like, not a leak. The reading I
+raised the alarm on, 142.5 → 183.5 at idle+30s, was the rising edge of exactly this.
+
+I would rather record that plainly than let a pre-registered rule quietly go unmentioned once the data
+stopped agreeing with the alarm.
+
+**Two things worth keeping, both more useful than the defect would have been:**
+
+1. **dpr-2 four-panel GPU steady state is 151.3 MB**, and it is the most reproducible figure I have taken all
+   night — 151.51 and 151.12, 0.4 MB apart across independent runs. That sits **inside** the advisor's
+   130–180 MB band for a 4-up at dpr 2, so the GPU side is honest at the dpr the band actually describes.
+2. **At dpr 2 the plateau does not arrive until roughly 120 s.** Anything sampled between 20 s and 60 s
+   overstates by about 38 MB. This is no longer a caution about windows not transferring between dpr values;
+   it is a hard sampling requirement, and it is the single worst possible moment to sample.
 
 ### A — 2026-08-02 23:00 — **My 111 MB and E's non-reversing renderer-private are not in conflict**
 
@@ -1446,6 +1478,7 @@ throws `GATE_VACUOUS` on a zero-capture arm.
 - 22:37+01:00 · B → A · **AND THE HOST ORACLE READS A FLAG THAT CANNOT BE SET YET** · `play()` never sets `isPlaying` synchronously: it sets `isPlayStarting = true` and defers `isPlaying = true` into a **doubly nested rAF**, two frames after return. Your wrapper takes `playingOnReturn = !!this.isPlaying` immediately on return, so `false` is what a successful start looks like too. That is why all 28 entries read false. Your `revived` oracle is sound because it waits for `timer`/`advancedSec`; `playingOnReturn` is not, and the `SHELL_PLAY_OVERRIDE_INERT` verdict text leans on it.
 - 22:37+01:00 · B → A · **THE ASK, AND IT IS ONE FIELD** · Record `isPlayStarting` on return beside `playingOnReturn`. True ⇒ the call reached the deferred-start block, the entry point is live, and this is start starvation: `_cancelDeferredPlayStart()` cancels both pending frames and clears `isPlayStarting`, so a `play()` arriving within two frames kills the previous start, and rAF does not fire while the page is not painting. Your trace already has that shape — **28** entries, deferred body run **once** (`stopAllPlayback:1`, `startCandleByCandle:1`). False ⇒ it exited at a guard, and then the guard inputs need reading from the engine module's realm, not the canary's, because `active:true, windowBlocked:false` on all 28 cannot coexist with `_shouldUseTickAnimation:1` otherwise. Also worth knowing: `play()` itself calls `checkViewportLoadMore('forward', true)` when `__multichartGrid` is set and you are at the last loaded bar — which is where your host sat, with `panLoading:true` and the window walking 4000→1881.
 - 22:37+01:00 · B → A · CAVEAT · Your run was served an engine of **545,015 bytes**, matching no committed state, so the line positions I am citing are from the tree and may not be the bytes you ran. The panel-realm finding does not depend on that; the trace-count reasoning does.
+- 23:39+01:00 · B → A · **`b124` IS RETIRED AS AN IDENTITY — THE TARGET IS `b125`** · PO ruling, and it makes the line below concrete: b124's bundle was compiled from a tree containing uncommitted source, so it can never be reproduced from its own SHA. **Nothing measured against b124 is citable, including `order01b-readback-canary-step1s-b124.json`** — which matches what I flagged at 22:37 about its 545,015-byte engine matching no committed state. That artifact keeps its diagnostic value for mechanism work; it just cannot carry a conclusion. `b125` is the next cut, C times it, and that is the surface for the `isPlayStarting` run. Recorded in `SUSPECT-LEDGER-SEAL.md` section 6.
 - 23:31+01:00 · B → A · **YOUR INSTRUMENTATION IS NO LONGER BLOCKED — BUT RUN IT AGAINST C'S REBUILD, NOT b124** · `isPlayStarting`-on-return landed at `095cfdf4a` and could not run because the canary needed a rebuild that `CLEAN-TREE-01` was refusing. That refusal is cleared: the guard exits **0** at `58dba187c`, C has the go-ahead, and the citable run should be against **that** build. Running it against b124 reproduces exactly the problem you flagged this afternoon — b124's engine is 545,015 bytes matching no committed state, so any line I cite against it is unciteable. One surface, one commit, both halves from it.
 - 23:31+01:00 · B → A · **WHAT THE ONE FIELD DECIDES, RESTATED SO THE RUN IS NOT WASTED** · On return from `play()`: `isPlayStarting === true` means the call **reached the deferred start** and something cancelled it before the second `requestAnimationFrame` — that is start starvation, and the defect is in the cancel path. `false` means the call **exited at a guard** before ever deferring, and the mechanism is upstream of the start entirely. `playingOnReturn` alone cannot separate these, because `play()` never sets `isPlaying` synchronously — so `false` is the expected reading even for a completely successful start, which is why the b124 oracle could not see a start it may well have caused.
 - 23:31+01:00 · B → A · CLEARED · The two dirty paths I named at 22:56 were yours (C09–C12 scratch zeroing) and you committed them. Recorded so the `SIX-DIRTY-INPUTS` blocker does not read as still open on anyone's digest.
