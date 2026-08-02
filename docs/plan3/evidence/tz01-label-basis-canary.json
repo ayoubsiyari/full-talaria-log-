@@ -1,0 +1,203 @@
+{
+  "generatedAt": "2026-08-02T17:59:29.102Z",
+  "verdict": {
+    "state": "LABEL_BASIS_CORRECT",
+    "why": "tool badge and crosshair agree in 4 zones, and the bar data is zone-independent at a 60000ms step, which is correct for a step that divides an hour"
+  },
+  "results": [
+    {
+      "ok": true,
+      "label": "the served drawing engine carries the shared time formatter",
+      "detail": "present"
+    },
+    {
+      "ok": true,
+      "label": "the drawing badge formatter was reachable in the page",
+      "detail": "via BaseDrawing.prototype"
+    },
+    {
+      "ok": true,
+      "label": "the tool badge and the crosshair name the same time",
+      "detail": "agreed in all 4 zones"
+    },
+    {
+      "ok": true,
+      "label": "the badge actually moves when the zone changes",
+      "detail": "4 distinct clocks across 4 zones: 12:05, 01:05, 21:35, 16:05"
+    },
+    {
+      "ok": true,
+      "label": "the bar array is stable across zone changes",
+      "detail": "identical fingerprints"
+    },
+    {
+      "ok": true,
+      "label": "the loaded timeframe divides an hour, so identical bars is the correct answer",
+      "detail": "step=60000ms"
+    },
+    {
+      "ok": true,
+      "label": "daily bars bucket on UTC midnight in every zone — a known limit, stated not hidden",
+      "detail": "one boundary everywhere: 2026-07-30T00:00:00.000Z"
+    }
+  ],
+  "observed": {
+    "browserTimezone": "Europe/Berlin",
+    "servedEngine": {
+      "fetched": true,
+      "urls": [
+        "http://127.0.0.1:53358/chart/modules/drawing-tools-base.js?v=20260802b123"
+      ],
+      "bytes": 158053,
+      "missing": []
+    },
+    "perZone": [
+      {
+        "tz": "America/New_York",
+        "selected": "America/New_York",
+        "instant": 1785513900000,
+        "instantIso": "2026-07-31T16:05:00.000Z",
+        "crosshair": "Fri 31 Jul '26  12:05",
+        "badge": "31 Jul '26 12:05",
+        "badgeSource": "BaseDrawing.prototype",
+        "bars": {
+          "count": 2011,
+          "firstT": 1785453600000,
+          "lastT": 1785574200000,
+          "stepMs": 60000,
+          "firstOhlc": "0.94782/0.94787/0.94776/0.94782"
+        }
+      },
+      {
+        "tz": "Asia/Tokyo",
+        "selected": "Asia/Tokyo",
+        "instant": 1785513900000,
+        "instantIso": "2026-07-31T16:05:00.000Z",
+        "crosshair": "Sat 1 Aug '26  01:05",
+        "badge": "01 Aug '26 01:05",
+        "badgeSource": "BaseDrawing.prototype",
+        "bars": {
+          "count": 2011,
+          "firstT": 1785453600000,
+          "lastT": 1785574200000,
+          "stepMs": 60000,
+          "firstOhlc": "0.94782/0.94787/0.94776/0.94782"
+        }
+      },
+      {
+        "tz": "Asia/Kolkata",
+        "selected": "Asia/Kolkata",
+        "instant": 1785513900000,
+        "instantIso": "2026-07-31T16:05:00.000Z",
+        "crosshair": "Fri 31 Jul '26  21:35",
+        "badge": "31 Jul '26 21:35",
+        "badgeSource": "BaseDrawing.prototype",
+        "bars": {
+          "count": 2011,
+          "firstT": 1785453600000,
+          "lastT": 1785574200000,
+          "stepMs": 60000,
+          "firstOhlc": "0.94782/0.94787/0.94776/0.94782"
+        }
+      },
+      {
+        "tz": "UTC",
+        "selected": "UTC",
+        "instant": 1785513900000,
+        "instantIso": "2026-07-31T16:05:00.000Z",
+        "crosshair": "Fri 31 Jul '26  16:05",
+        "badge": "31 Jul '26 16:05",
+        "badgeSource": "BaseDrawing.prototype",
+        "bars": {
+          "count": 2011,
+          "firstT": 1785453600000,
+          "lastT": 1785574200000,
+          "stepMs": 60000,
+          "firstOhlc": "0.94782/0.94787/0.94776/0.94782"
+        }
+      }
+    ],
+    "dailyBuckets": {
+      "measured": true,
+      "rows": [
+        {
+          "tz": "America/New_York",
+          "count": 3,
+          "firstT": 1785369600000,
+          "firstIso": "2026-07-30T00:00:00.000Z",
+          "firstClose": 0.94762
+        },
+        {
+          "tz": "Asia/Tokyo",
+          "count": 3,
+          "firstT": 1785369600000,
+          "firstIso": "2026-07-30T00:00:00.000Z",
+          "firstClose": 0.94762
+        },
+        {
+          "tz": "Asia/Kolkata",
+          "count": 3,
+          "firstT": 1785369600000,
+          "firstIso": "2026-07-30T00:00:00.000Z",
+          "firstClose": 0.94762
+        },
+        {
+          "tz": "UTC",
+          "count": 3,
+          "firstT": 1785369600000,
+          "firstIso": "2026-07-30T00:00:00.000Z",
+          "firstClose": 0.94762
+        }
+      ]
+    },
+    "dailyVerdict": "UTC_DAY_IN_EVERY_ZONE",
+    "candles": {
+      "barsIdentical": true,
+      "stepMs": 60000,
+      "subHourly": true,
+      "fingerprints": [
+        {
+          "tz": "America/New_York",
+          "bars": {
+            "count": 2011,
+            "firstT": 1785453600000,
+            "lastT": 1785574200000,
+            "stepMs": 60000,
+            "firstOhlc": "0.94782/0.94787/0.94776/0.94782"
+          }
+        },
+        {
+          "tz": "Asia/Tokyo",
+          "bars": {
+            "count": 2011,
+            "firstT": 1785453600000,
+            "lastT": 1785574200000,
+            "stepMs": 60000,
+            "firstOhlc": "0.94782/0.94787/0.94776/0.94782"
+          }
+        },
+        {
+          "tz": "Asia/Kolkata",
+          "bars": {
+            "count": 2011,
+            "firstT": 1785453600000,
+            "lastT": 1785574200000,
+            "stepMs": 60000,
+            "firstOhlc": "0.94782/0.94787/0.94776/0.94782"
+          }
+        },
+        {
+          "tz": "UTC",
+          "bars": {
+            "count": 2011,
+            "firstT": 1785453600000,
+            "lastT": 1785574200000,
+            "stepMs": 60000,
+            "firstOhlc": "0.94782/0.94787/0.94776/0.94782"
+          }
+        }
+      ],
+      "note": "At daily and above the product buckets on UTC midnight (Math.floor(t / tfMs) * tfMs), so a daily bar is a UTC day in every zone. session-calendar.js implements zone-aware bucketing but is not wired into the live resample, so it does not affect this reading."
+    }
+  }
+}

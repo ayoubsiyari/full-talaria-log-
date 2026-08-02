@@ -2462,6 +2462,38 @@ class BaseDrawing {
     }
     
     /**
+     * A drawing's axis time badge, in the same time basis as the chart.
+     *
+     * These badges read `new Date(t).getHours()`, which is the browser's zone,
+     * while the crosshair and the time axis go through `convertToTimezone`.
+     * With the two disagreeing, the same candle carried two different times:
+     * reported on a 1m session as crosshair `24 Jul 2011 16:04` against a
+     * vertical line reading `24 Jul 2011 22:00` on the very same bar.
+     *
+     * `convertToTimezone` returns a Date whose UTC getters are the selected
+     * zone's wall clock, so the getters here are deliberately `getUTC*`. Using
+     * local getters on that value would apply the browser offset a second time.
+     */
+    formatAxisTimeLabel(timestampMs) {
+        const t = Number(timestampMs);
+        if (!Number.isFinite(t)) return '';
+        const chart = this.chart;
+        const zoned = (chart && typeof chart.convertToTimezone === 'function')
+            ? chart.convertToTimezone(t)
+            : new Date(t);
+        if (!zoned || typeof zoned.getTime !== 'function' || !Number.isFinite(zoned.getTime())) return '';
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const day = String(zoned.getUTCDate()).padStart(2, '0');
+        const month = months[zoned.getUTCMonth()];
+        const year = String(zoned.getUTCFullYear()).slice(-2);
+        // Same clock the crosshair prints, so Settings -> Time format moves both.
+        const clock = (chart && typeof chart._formatSessionClock === 'function')
+            ? chart._formatSessionClock(zoned, false)
+            : `${String(zoned.getUTCHours()).padStart(2, '0')}:${String(zoned.getUTCMinutes()).padStart(2, '0')}`;
+        return `${day} ${month} '${year} ${clock}`;
+    }
+
+    /**
      * Show highlighted labels on price and time axes for drawing points
      * TradingView style: cyan background for time, colored backgrounds for prices
      */
@@ -2700,13 +2732,7 @@ class BaseDrawing {
                 }
                 
                 if (startTime) {
-                    const date = new Date(startTime);
-                    const day = date.getDate().toString().padStart(2, '0');
-                    const month = months[date.getMonth()];
-                    const year = date.getFullYear().toString().slice(-2);
-                    const hours = date.getHours().toString().padStart(2, '0');
-                    const mins = date.getMinutes().toString().padStart(2, '0');
-                    const timeText = `${day} ${month} '${year} ${hours}:${mins}`;
+                    const timeText = this.formatAxisTimeLabel(startTime);
                     
                     this.axisHighlightGroup.append('rect')
                         .attr('class', 'axis-highlight-time-start')
@@ -2757,13 +2783,7 @@ class BaseDrawing {
                 }
                 
                 if (endTime) {
-                    const date = new Date(endTime);
-                    const day = date.getDate().toString().padStart(2, '0');
-                    const month = months[date.getMonth()];
-                    const year = date.getFullYear().toString().slice(-2);
-                    const hours = date.getHours().toString().padStart(2, '0');
-                    const mins = date.getMinutes().toString().padStart(2, '0');
-                    const timeText = `${day} ${month} '${year} ${hours}:${mins}`;
+                    const timeText = this.formatAxisTimeLabel(endTime);
                     
                     this.axisHighlightGroup.append('rect')
                         .attr('class', 'axis-highlight-time-end')
@@ -2884,14 +2904,7 @@ class BaseDrawing {
                         }
                     }
                     if (candleTime !== null) {
-                        const date = new Date(candleTime);
-                        const day = date.getDate().toString().padStart(2, '0');
-                        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                        const month = months[date.getMonth()];
-                        const year = date.getFullYear().toString().slice(-2);
-                        const hours = date.getHours().toString().padStart(2, '0');
-                        const mins = date.getMinutes().toString().padStart(2, '0');
-                        const timeText = `${day} ${month} '${year} ${hours}:${mins}`;
+                        const timeText = this.formatAxisTimeLabel(candleTime);
                         
                         const boxWidth = 100;
                         const boxHeight = 20;

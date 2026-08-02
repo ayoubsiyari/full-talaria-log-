@@ -3779,16 +3779,32 @@ class TableTool extends BaseDrawing {
             return price.toFixed(5);
         };
         
+        // A candle's date and time belong to the chart's selected zone, not to
+        // whichever zone the browser happens to be in. `convertToTimezone`
+        // returns a Date whose UTC fields are that wall clock, so both
+        // formatters below are pinned to UTC to read it back undistorted.
+        const zoned = (timestamp) => (
+            chart && typeof chart.convertToTimezone === 'function'
+                ? chart.convertToTimezone(timestamp)
+                : new Date(timestamp)
+        );
+
         const formatDate = (timestamp) => {
             if (!timestamp) return '-';
-            const d = new Date(timestamp);
-            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            return zoned(timestamp).toLocaleDateString('en-US', {
+                month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC',
+            });
         };
         
         const formatTime = (timestamp) => {
             if (!timestamp) return '';
-            const d = new Date(timestamp);
-            return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+            const d = zoned(timestamp);
+            if (chart && typeof chart._formatSessionClock === 'function') {
+                return chart._formatSessionClock(d, false);
+            }
+            return d.toLocaleTimeString('en-US', {
+                hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC',
+            });
         };
 
         // Build table data from candle
