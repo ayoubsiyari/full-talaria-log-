@@ -1683,6 +1683,54 @@ class OrderManager {
         return String(raw).replace('/', '').toUpperCase();
     }
 
+    _isAnalysisOnlyTicker(ticker = this._getActiveTicker()) {
+        const key = this._normalizeTicker(ticker);
+        if (!key) return false;
+        let session = this.chart?.backtestingSession || null;
+        if (!session && typeof userStorage !== 'undefined') {
+            try {
+                session = JSON.parse(userStorage.getItem('backtestingSession') || '{}');
+            } catch (_e) {
+                session = null;
+            }
+        }
+        if (!session || typeof session !== 'object') return false;
+        const supporting = session.supporting_tickers || session.supportingTickers;
+        if (Array.isArray(supporting) && supporting.some((t) => this._normalizeTicker(t) === key)) {
+            return true;
+        }
+        const rows = [
+            ...(Array.isArray(session.files) ? session.files : []),
+            ...Object.values(session.instruments || {}),
+        ];
+        return rows.some((row) => {
+            if (!row || typeof row !== 'object') return false;
+            const rowKey = this._normalizeTicker(row.ticker || row.symbol || row.name || row.id);
+            return rowKey === key && (row.view_only === true || row.tradable === false);
+        });
+    }
+
+    _showOrderPanelValidationError(message) {
+        const box = typeof document !== 'undefined' ? document.getElementById('orderValidation') : null;
+        if (box) {
+            box.className = 'order-validation order-validation--error';
+            box.innerHTML = `
+                <div class="order-validation__item">
+                    <span class="order-validation__icon">!</span>
+                    <span>${message}</span>
+                </div>`;
+        }
+        try { this.showOrderPanel?.(); } catch (_e) { /* ignore */ }
+        try { this.showNotification?.(message, 'warning', 3200); } catch (_e) { /* ignore */ }
+    }
+
+    _refuseAnalysisOnlyOrderIfNeeded(ticker = this._getActiveTicker()) {
+        if (!this._isAnalysisOnlyTicker(ticker)) return false;
+        const label = String(ticker || 'This symbol').toUpperCase();
+        this._showOrderPanelValidationError(`${label} is analysis-only for this session. Orders can only be placed on the primary trading symbol.`);
+        return true;
+    }
+
     /** Normalize instrument symbol for comparisons (Milestone 8). */
     _normalizeTicker(t) {
         return String(t || '').replace(/[/\s]/g, '').toUpperCase();
@@ -5077,6 +5125,9 @@ class OrderManager {
         return {
             pending_orders: _stampPersistedOrderRecords(safeClone(this.pendingOrders)),
             open_positions: _stampPersistedOrderRecords(safeClone(this.openPositions)),
+            journal: safeClone(this.tradeJournal),
+            journal_complete: true,
+            journal_heavy_fields_omitted: false,
             account_runtime,
             order_counters,
             savedAt: Date.now(),
@@ -8496,9 +8547,29 @@ class OrderManager {
                 return { ...position, ticker: ticker || position?.ticker, symbol: sym, sourceFileId: sourceFileId || position?.sourceFileId };
             })
             : null;
+        const journalRows = Array.isArray(state.journal)
+            ? state.journal.map((trade) => {
+                const ticker = normalizeTradeTicker(trade) || String(trade?.ticker || trade?.symbol || 'UNKNOWN').replace('/', '').toUpperCase();
+                return {
+                    ...trade,
+                    ticker,
+                    symbol: trade?.symbol || ticker,
+                };
+            })
+            : null;
 
         if (pendingOrders) this.pendingOrders = pendingOrders;
         if (openPositions) this.openPositions = openPositions;
+        if (journalRows) {
+            if (typeof this._m19CommitJournalArray === 'function') {
+                this._m19CommitJournalArray(
+                    journalRows,
+                    state.journal_heavy_fields_omitted ? 'runtime-sessionstorage-slim-restore' : 'runtime-sessionstorage-restore',
+                );
+            } else {
+                this.tradeJournal = journalRows; // M19-D-JOURNAL-WRITE:legacy-fallback
+            }
+        }
 
         if (_orderMcRestoreDedupeV1Enabled()) {
             const pending = Array.isArray(this.pendingOrders) ? this.pendingOrders : [];
@@ -9609,11 +9680,15 @@ class OrderManager {
             orderIdCounter: this.orderIdCounter,
             tradeGroupIdCounter: this.tradeGroupIdCounter,
         };
+        const journal = this._m19CloneJournalForHotSessionPersist();
         // Kill → exact B-era deep-clone path (may read heavy fields).
         if (!this._m19PersistTrimV1Enabled()) {
             return {
                 pending_orders: _stampPersistedOrderRecords(safeClone(this.pendingOrders)),
                 open_positions: _stampPersistedOrderRecords(safeClone(this.openPositions)),
+                journal,
+                journal_complete: true,
+                journal_heavy_fields_omitted: false,
                 account_runtime,
                 order_counters,
                 savedAt: Date.now(),
@@ -9623,6 +9698,9 @@ class OrderManager {
         const patch = {
             pending_orders: _stampPersistedOrderRecords(this._m19TrimRecordsForHotPersist(this.pendingOrders)),
             open_positions: _stampPersistedOrderRecords(this._m19TrimRecordsForHotPersist(this.openPositions)),
+            journal,
+            journal_complete: true,
+            journal_heavy_fields_omitted: true,
             account_runtime,
             order_counters,
             savedAt: Date.now(),
@@ -9676,7 +9754,10 @@ class OrderManager {
         if (!state || typeof state !== 'object') return false;
         const pending = Array.isArray(state.pending_orders) ? state.pending_orders.length : 0;
         const open = Array.isArray(state.open_positions) ? state.open_positions.length : 0;
-        return pending > 0 || open > 0;
+        const journal = Array.isArray(state.journal) ? state.journal.length : 0;
+        const ar = state.account_runtime && typeof state.account_runtime === 'object' ? state.account_runtime : null;
+        const hasAccount = !!(ar && ['balance', 'equity', 'initialBalance'].some((k) => Number.isFinite(Number.parseFloat(ar[k]))));
+        return pending > 0 || open > 0 || journal > 0 || hasAccount;
     }
 
     _bootstrapRuntimeOrderPersistenceV1() {
@@ -9705,7 +9786,8 @@ class OrderManager {
             this._runtimeOrderPersistenceBootstrapped = true;
             console.log('[orders-restore] A6-2 bootstrap from sessionStorage:',
                 'pending=', snap.pending_orders?.length || 0,
-                'open=', snap.open_positions?.length || 0);
+                'open=', snap.open_positions?.length || 0,
+                'journal=', snap.journal?.length || 0);
             this.restoreRuntimeOrderStateFromSession(snap);
         };
         tryRestore();
@@ -24747,7 +24829,8 @@ class OrderManager {
                 const chartHeightRaw = ch.h ?? ch.height ?? ch.svg?.attr('height') ?? 0;
                 const chartHeight = Number(chartHeightRaw) || 0;
                 const dragHitOffsetY = self._previewDragHitOffsetY(lineData, event);
-                let clampedY = Math.max(0, Math.min(chartHeight, event.y - dragHitOffsetY));
+                const eventY = self._svgPointerY(ch, event, event.y);
+                let clampedY = Math.max(0, Math.min(chartHeight, eventY - dragHitOffsetY));
                 let newPrice = ch.scales.yScale.invert(clampedY);
 
                 // Tick-grid snap preview Entry / SL / TP lines while dragging so
@@ -24844,6 +24927,13 @@ class OrderManager {
                     const lblProv = lineData.label;
                     if (lblProv === 'SL' || lblProv === 'TP' || (lblProv && /^TP\d+$/.test(String(lblProv)))) {
                         self._oiUpdateProvisionalPrice(newPrice);
+                        if (lblProv && /^TP\d+$/.test(String(lblProv)) && lineData.targetIndex !== undefined) {
+                            self._previewLiveMultiTPAvgOverride = {
+                                targetIndex: lineData.targetIndex,
+                                price: newPrice,
+                            };
+                            if (ch) self._updateMultiTPAvgLines(ch);
+                        }
                     }
                 }
                 
@@ -24989,7 +25079,6 @@ class OrderManager {
                         // Re-render the targets list to update validation and show updated percentages
                         self.renderTPTargets();
 
-                        // Live-update Avg TP line position during drag
                         if (ch) self._updateMultiTPAvgLines(ch);
                     }
                 } else if (lineData.label === 'SL') {
@@ -25184,7 +25273,7 @@ class OrderManager {
                     const multiTPOn = document.getElementById('multipleTPToggle')?.checked;
                     if (multiTPOn) {
                         self.renderTPTargets();
-                        self._updateMultiTPAvgLines(ch);
+                        if (ch) self._updateMultiTPAvgLines(ch);
                     }
                 } else if (lineData.label && lineData.label.startsWith('Entry#') && lineData.isSplitEntry) {
                     // Split entry line drag — sync price back to splitEntries and multiEntryLevels
@@ -25500,6 +25589,7 @@ class OrderManager {
                 if (self.isMultiEntryMode) {
                     self._syncSplitEntriesFromMultiEntryLevels();
                 }
+                self._previewLiveMultiTPAvgOverride = null;
                 // Keep multichart-draft-drag-busy true until snapshot posts (see inner rAF) so the host
                 // does not setDraftPreview(slPrice:0) between drag end and iframe field snapshot.
 
@@ -25680,7 +25770,8 @@ class OrderManager {
                     if (!ch?.scales?.yScale) return;
                     if (event.sourceEvent && ch.updateCrosshair) ch.updateCrosshair(event.sourceEvent);
                     const chartH = Number(ch.h ?? ch.svg?.attr('height') ?? 0) || 0;
-                    const clampedY = Math.max(0, Math.min(chartH, event.y));
+                    const eventY = self._svgPointerY(ch, event, event.y);
+                    const clampedY = Math.max(0, Math.min(chartH, eventY));
                     let newPrice = ch.scales.yScale.invert(clampedY);
                     // Snap multi-TP badge drag to instrument tick grid.
                     const snappedDrag = self._snapOrderPriceToTick(newPrice);
@@ -25761,7 +25852,8 @@ class OrderManager {
 
                 const chartHeightRaw = ch.h ?? ch.height ?? ch.svg?.attr('height') ?? 0;
                 const chartHeight = Number(chartHeightRaw) || 0;
-                let clampedY = Math.max(0, Math.min(chartHeight, event.y));
+                const eventY = self._svgPointerY(ch, event, event.y);
+                let clampedY = Math.max(0, Math.min(chartHeight, eventY));
                 let newPrice = ch.scales.yScale.invert(clampedY);
                 // Snap preview TP/SL badge drag to instrument tick grid BEFORE
                 // the SL-vs-TP clamp so the clamp operates on a valid price.
@@ -27198,6 +27290,38 @@ class OrderManager {
         if (target?.classList?.contains?.('preview-line-hit')) return hitOffsetY;
         if (typeof target?.closest === 'function' && target.closest('.preview-line-hit')) return hitOffsetY;
         return 0;
+    }
+
+    _svgPointerY(chart, eventLike, fallbackY = NaN) {
+        const svgNode = chart?.svg?.node?.();
+        const src = eventLike?.sourceEvent || eventLike || {};
+        const clientY = Number(src.clientY);
+        if (!svgNode || !Number.isFinite(clientY)) {
+            const directY = Number(eventLike?.y);
+            return Number.isFinite(directY) ? directY : fallbackY;
+        }
+        try {
+            if (typeof svgNode.createSVGPoint === 'function' && typeof svgNode.getScreenCTM === 'function') {
+                const matrix = svgNode.getScreenCTM();
+                if (matrix) {
+                    const pt = svgNode.createSVGPoint();
+                    pt.x = Number(src.clientX) || 0;
+                    pt.y = clientY;
+                    const svgCoords = pt.matrixTransform(matrix.inverse());
+                    if (Number.isFinite(svgCoords.y)) return svgCoords.y;
+                }
+            }
+        } catch (_e) { /* fall back to rect scaling */ }
+        try {
+            const rect = svgNode.getBoundingClientRect?.();
+            if (rect && rect.height > 0) {
+                const vb = svgNode.viewBox?.baseVal;
+                const svgH = Number(vb?.height) || Number(svgNode.getAttribute?.('height')) || rect.height;
+                return (clientY - rect.top) * (svgH / rect.height);
+            }
+        } catch (_e) { /* ignore */ }
+        const directY = Number(eventLike?.y);
+        return Number.isFinite(directY) ? directY : fallbackY;
     }
 
     /**
@@ -30601,6 +30725,9 @@ class OrderManager {
         // downstream order-creation paths use the snapped price.
         let entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || currentPrice);
         const activeTicker = this._getActiveTicker();
+        if (this._refuseAnalysisOnlyOrderIfNeeded(activeTicker)) {
+            return { ok: false, reason: 'analysis_only_symbol' };
+        }
         const activeInstrumentSettings = this._getActiveInstrumentSettings();
         
         // Get TP/SL enabled status
@@ -31896,6 +32023,7 @@ class OrderManager {
             alert('No price data available');
             return;
         }
+        if (this._refuseAnalysisOnlyOrderIfNeeded()) return;
 
         const ctxChartTool = this._getOrderContextChart() || this.chart;
         const marketFillTimeMsTool = this._marketFillOpenTimeMs(ctxChartTool, currentCandle);
@@ -32142,6 +32270,7 @@ class OrderManager {
             alert('No price data available');
             return;
         }
+        if (this._refuseAnalysisOnlyOrderIfNeeded()) return;
         
         const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
         const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || currentCandle.c);
@@ -32238,6 +32367,7 @@ class OrderManager {
             alert('No price data available');
             return;
         }
+        if (this._refuseAnalysisOnlyOrderIfNeeded()) return;
         
         const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
         const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || currentCandle.c);
@@ -32334,6 +32464,7 @@ class OrderManager {
             alert('No price data available');
             return;
         }
+        if (this._refuseAnalysisOnlyOrderIfNeeded()) return;
         
         const act = this._getActiveTicker();
         const inst = this._getActiveInstrumentSettings();
@@ -32404,6 +32535,7 @@ class OrderManager {
             alert('No price data available');
             return;
         }
+        if (this._refuseAnalysisOnlyOrderIfNeeded()) return;
         
         const act = this._getActiveTicker();
         const inst = this._getActiveInstrumentSettings();
@@ -36527,7 +36659,7 @@ class OrderManager {
             self._isDraggingOrderLine = true;
             self._draggingManagedOpenLineKind = lineType;
             self._draggingManagedOpenOrderId = order.id;
-            startY = e.clientY;
+            startY = self._svgPointerY(ctx, e, e.clientY);
             try {
                 const lx = parseFloat(label.attr('x'));
                 dragFixedLabelX = Number.isFinite(lx) ? lx : null;
@@ -36609,7 +36741,7 @@ class OrderManager {
             if (!isDragging) return;
             if (ctx.updateCrosshair) ctx.updateCrosshair(e);
             
-            const currentY = e.clientY;
+            const currentY = self._svgPointerY(ctx, e, e.clientY);
             const deltaY = currentY - startY;
             
             // Get current line Y position
@@ -37057,7 +37189,7 @@ class OrderManager {
             self._isDraggingOrderLine = true;
             self._draggingManagedOpenLineKind = 'tp';
             self._draggingManagedOpenOrderId = order.id;
-            startY = e.clientY;
+            startY = self._svgPointerY(ctx, e, e.clientY);
             dragStartPrice = target.price;
             try {
                 const lx = parseFloat(labelBox?.attr?.('x'));
@@ -37081,7 +37213,7 @@ class OrderManager {
             if (!isDragging) return;
             if (ctx.updateCrosshair) ctx.updateCrosshair(e);
             
-            const currentY = e.clientY;
+            const currentY = self._svgPointerY(ctx, e, e.clientY);
             const deltaY = currentY - startY;
             
             // Get current line Y position
@@ -37156,6 +37288,7 @@ class OrderManager {
                 if (!frameId) {
                     frameId = requestAnimationFrame(() => {
                         self._refreshOrderLineVisualsAfterDrag(ctx);
+                        self._updateMultiTPAvgLines(ctx);
                         frameId = null;
                     });
                 }
@@ -37330,8 +37463,7 @@ class OrderManager {
                     .attr('dy', '0.35em').style('pointer-events', 'none');
             }
 
-            const svgRect = ctx.svg.node().getBoundingClientRect();
-            let mouseY = e.clientY - svgRect.top;
+            let mouseY = self._svgPointerY(ctx, e, e.clientY);
             let newPrice = ctx.scales.yScale.invert(mouseY);
             if (dragType === 'tp') {
                 const c = self._clampTpDragPrice(
@@ -37395,8 +37527,7 @@ class OrderManager {
 
             if (!dragType || !ctx.scales?.yScale) return;
 
-            const svgRect = ctx.svg.node().getBoundingClientRect();
-            const mouseY = e.clientY - svgRect.top;
+            const mouseY = self._svgPointerY(ctx, e, e.clientY);
             let newPrice = ctx.scales.yScale.invert(mouseY);
             if (dragType === 'tp') {
                 newPrice = self._clampTpDragPrice(
@@ -37546,8 +37677,7 @@ class OrderManager {
                     .attr('dy', '0.35em').style('pointer-events', 'none');
             }
 
-            const svgRect = ctx.svg.node().getBoundingClientRect();
-            let mouseY = e.clientY - svgRect.top;
+            let mouseY = self._svgPointerY(ctx, e, e.clientY);
             let newPrice = ctx.scales.yScale.invert(mouseY);
             if (dragType === 'tp') {
                 const c = self._clampTpDragPrice(order.type, newPrice, order.openPrice, order.stopLoss, self.pipSize);
@@ -37606,8 +37736,7 @@ class OrderManager {
 
             if (!dragType || !ctx.scales?.yScale) return;
 
-            const svgRect = ctx.svg.node().getBoundingClientRect();
-            const mouseY = e.clientY - svgRect.top;
+            const mouseY = self._svgPointerY(ctx, e, e.clientY);
             let newPrice = ctx.scales.yScale.invert(mouseY);
             if (dragType === 'tp') {
                 newPrice = self._clampTpDragPrice(order.type, newPrice, order.openPrice, order.stopLoss, self.pipSize);
@@ -37721,29 +37850,30 @@ class OrderManager {
             .on('start', function(event) {
                 event.sourceEvent.stopPropagation();
                 g.node().__dragging = true;
-                startY = event.y;
+                startY = self._svgPointerY(chart, event, event.y);
                 const chartW = chart.w || chart.svg.node().getBoundingClientRect().width || 1200;
                 ghostLine = chart.svg.append('line')
                     .attr('class', 'plus-badge-ghost')
                     .attr('x1', 0).attr('x2', chartW)
-                    .attr('y1', event.y).attr('y2', event.y)
+                    .attr('y1', startY).attr('y2', startY)
                     .attr('stroke', color).attr('stroke-width', 1.5)
                     .attr('stroke-dasharray', '6 3').attr('opacity', 0.7);
                 ghostPrice = chart.svg.append('text')
                     .attr('class', 'plus-badge-ghost-price')
-                    .attr('x', 60).attr('y', event.y - 8)
+                    .attr('x', 60).attr('y', startY - 8)
                     .attr('fill', color).attr('font-size', '10px')
                     .attr('font-weight', '600').attr('opacity', 0.9);
                 d3.select(this).style('cursor', 'grabbing');
             })
             .on('drag', function(event) {
                 if (event.sourceEvent && chart?.updateCrosshair) chart.updateCrosshair(event.sourceEvent);
-                if (ghostLine) ghostLine.attr('y1', event.y).attr('y2', event.y);
+                const y = self._svgPointerY(chart, event, event.y);
+                if (ghostLine) ghostLine.attr('y1', y).attr('y2', y);
                 if (ghostPrice) {
                     const yScale = chart.scales?.yScale || chart.yScale;
                     if (yScale?.invert) {
-                        ghostPrice.text(self.formatPrice(yScale.invert(event.y)))
-                            .attr('y', event.y - 8);
+                        ghostPrice.text(self.formatPrice(yScale.invert(y)))
+                            .attr('y', y - 8);
                     }
                 }
             })
@@ -37752,10 +37882,11 @@ class OrderManager {
                 d3.select(this).style('cursor', 'grab');
                 if (ghostLine) { ghostLine.remove(); ghostLine = null; }
                 if (ghostPrice) { ghostPrice.remove(); ghostPrice = null; }
-                if (Math.abs(event.y - startY) < 10) return;
+                const y = self._svgPointerY(chart, event, event.y);
+                if (Math.abs(y - startY) < 10) return;
                 const yScale = chart.scales?.yScale || chart.yScale;
                 if (!yScale?.invert) return;
-                const price = yScale.invert(event.y);
+                const price = yScale.invert(y);
                 if (!price || price <= 0 || !Number.isFinite(price)) return;
                 onDrop(price);
             });
@@ -38211,8 +38342,7 @@ class OrderManager {
 
         const onMouseMove = (e) => {
             if (!isDragging || !ctx.scales?.yScale) return;
-            const svgRect = ctx.svg.node().getBoundingClientRect();
-            const mouseY = e.clientY - svgRect.top;
+            const mouseY = self._svgPointerY(ctx, e, e.clientY);
             const newPrice = ctx.scales.yScale.invert(mouseY);
             const precision = self.getPricePrecision();
             const priceStr = newPrice.toFixed(precision);
@@ -38262,8 +38392,7 @@ class OrderManager {
             if (previewPnlText) previewPnlText.remove();
 
             if (!ctx.scales?.yScale) return;
-            const svgRect = ctx.svg.node().getBoundingClientRect();
-            const mouseY = e.clientY - svgRect.top;
+            const mouseY = self._svgPointerY(ctx, e, e.clientY);
             const newPrice = ctx.scales.yScale.invert(mouseY);
 
             // Validate direction
@@ -38341,6 +38470,10 @@ class OrderManager {
             (ol) => ol.orderId === order.id && !ol.isPending && (ol.chart || this.chart) === chart
         );
         if (alreadyDrawn) return;
+        // Activation can race against mirror/snapshot redraws; remove orphan DOM even
+        // when the in-memory registry no longer knows about the old info box.
+        chart.svg.selectAll(`.order-${order.id}`).remove();
+        chart.svg.selectAll(`.pending-${order.id}`).remove();
 
         const color = order.type === 'BUY' ? '#2962ff' : '#f23645';
         const lineColor = order.type === 'BUY' ? '#2962ff' : '#f23645';
@@ -39341,6 +39474,16 @@ class OrderManager {
                 }
             } else if (g.mode === 'preview') {
                 targets = this.tpTargets || [];
+                const liveTp = this._previewLiveMultiTPAvgOverride;
+                if (
+                    liveTp
+                    && liveTp.targetIndex != null
+                    && Number.isFinite(Number(liveTp.price))
+                    && targets[Number(liveTp.targetIndex)]
+                ) {
+                    const idx = Number(liveTp.targetIndex);
+                    targets = targets.map((t, i) => (i === idx ? { ...t, price: Number(liveTp.price) } : t));
+                }
                 const priced = targets.filter(t => t.price > 0);
                 if (priced.length < 1) { toRemove.push(g.orderId); continue; }
                 targets = priced;
@@ -39977,7 +40120,8 @@ class OrderManager {
                 if (event.sourceEvent && chart.updateCrosshair) chart.updateCrosshair(event.sourceEvent);
                 
                 const chartHeight = chart.h || 500;
-                const clampedY = Math.max(0, Math.min(chartHeight, event.y));
+                const eventY = self._svgPointerY(chart, event, event.y);
+                const clampedY = Math.max(0, Math.min(chartHeight, eventY));
                 let newPrice = chart.scales.yScale.invert(clampedY);
 
                 // Tick-grid snap FIRST so the LIMIT/STOP entry label shows a valid
@@ -40902,7 +41046,6 @@ class OrderManager {
         const ch = dragChart || this.chart;
         let isDragging = false;
         let dragLabelX = null;
-        let avgFrameId = null;
 
         const drag = d3.drag()
             .on('start', function() {
@@ -40923,7 +41066,8 @@ class OrderManager {
                 if (event.sourceEvent && ch.updateCrosshair) ch.updateCrosshair(event.sourceEvent);
                 
                 const chartHeight = ch.h || 500;
-                let clampedY = Math.max(0, Math.min(chartHeight, event.y));
+                const eventY = self._svgPointerY(ch, event, event.y);
+                let clampedY = Math.max(0, Math.min(chartHeight, eventY));
                 let newPrice = ch.scales.yScale.invert(clampedY);
                 // Snap pending TP/SL to the instrument's tick grid before any side-clamp.
                 const snappedDrag = self._snapOrderPriceToTick(newPrice);
@@ -41045,15 +41189,10 @@ class OrderManager {
                 if (target.type === 'SL' || target.type === 'TP') {
                     self._updatePendingTargetChartLabelsLive(target, pendingOrder);
                 }
-                self._drawExecutedOrderConnectors(ch);
                 if (target.type === 'TP' && pendingOrder.tpTargets && pendingOrder.tpTargets.length >= 1) {
-                    if (!avgFrameId) {
-                        avgFrameId = requestAnimationFrame(() => {
-                            self._updateMultiTPAvgLines(ch);
-                            avgFrameId = null;
-                        });
-                    }
+                    self._updateMultiTPAvgLines(ch);
                 }
+                self._drawExecutedOrderConnectors(ch);
                 self._schedulePendingMirrorSync(pendingOrder);
             })
             .on('end', function() {
