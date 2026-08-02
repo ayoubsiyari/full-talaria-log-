@@ -27,7 +27,10 @@ const SWITCH = '__TALARIA_DISABLE_COMPLETED_BAR_CLOSE_GUARD_V1';
 const MARK = 1.38555;
 const T0 = Date.UTC(2024, 0, 2, 14, 0, 0);
 const M1 = 60_000;
+const M5 = 5 * M1;
 const M15 = 15 * M1;
+const H1 = 60 * M1;
+const H4 = 4 * H1;
 
 function findRoot(start) {
   let cursor = path.resolve(start);
@@ -169,6 +172,31 @@ function makeResampledFixture() {
     interiorIdx: 1,
     interiorPeriodEnd: multiBarCoarse[2].t,
     completedClose: multiBarCoarse[multiBarCoarse.length - 1].c,
+  };
+}
+
+function makeBoundaryFixture(periodMs) {
+  const start = T0 + 10 * H4;
+  const prior = {
+    t: start - periodMs,
+    o: 10,
+    h: 11,
+    l: 9,
+    c: 10.5,
+    v: 100,
+  };
+  const last = {
+    t: start,
+    o: 20,
+    h: 21,
+    l: 19,
+    c: 20.5,
+    v: 200,
+  };
+  return {
+    data: [prior, last],
+    formingPlayhead: start + Math.max(1, Math.floor(periodMs / 2)),
+    completedPlayhead: start + periodMs,
   };
 }
 
@@ -376,6 +404,15 @@ function assertMarkExpanded(last, mark, label) {
   assert.ok(last.l <= mark, `${label}: low expanded`);
 }
 
+function assertSimTag(last, label) {
+  assert.equal(last.__talariaFormingSim, true, `${label}: SIM tag present`);
+  assert.equal(typeof last.__talariaFormingSimSource, 'string', `${label}: SIM source present`);
+}
+
+function assertNoSimTag(last, label) {
+  assert.notEqual(last.__talariaFormingSim, true, `${label}: completed bar must not be SIM-tagged`);
+}
+
 // ─── Cell 1: COMPLETED last bar, guard ON, all three sites ───────────────
 
 test('cell1: completed last bar — all three sites leave OHLC unchanged, stamp mark, site1 returns live', () => {
@@ -395,6 +432,7 @@ test('cell1: completed last bar — all three sites leave OHLC unchanged, stamp 
   assert.equal(ret, MARK, 'site1 must still return the live mark (TAL-01798)');
   assert.equal(c1._mcCanonicalReplayMark, MARK, 'site1 stamps _mcCanonicalReplayMark');
   assertUnchanged(before1, snapshotOhlc(c1.data[c1.data.length - 1]), 'site1 must not mutate completed bar');
+  assertNoSimTag(c1.data[c1.data.length - 1], 'site1 completed');
 
   // Site 2: replay-system._applyCanonicalReplayMarkFromDetail
   const c2 = {
@@ -427,6 +465,7 @@ test('cell1: completed last bar — all three sites leave OHLC unchanged, stamp 
   });
   assert.equal(c2._mcCanonicalReplayMark, MARK, 'site2 stamps _mcCanonicalReplayMark');
   assertUnchanged(before2, snapshotOhlc(c2.data[c2.data.length - 1]), 'site2 must not mutate completed bar');
+  assertNoSimTag(c2.data[c2.data.length - 1], 'site2 completed');
 
   // Site 3: bridge fallback (no _applyCanonicalReplayMarkFromDetail)
   const c3 = {
@@ -443,6 +482,7 @@ test('cell1: completed last bar — all three sites leave OHLC unchanged, stamp 
   bridge.apply(c3, MARK);
   assert.equal(c3._mcCanonicalReplayMark, MARK, 'site3 stamps _mcCanonicalReplayMark');
   assertUnchanged(before3, snapshotOhlc(c3.data[c3.data.length - 1]), 'site3 must not mutate completed bar');
+  assertNoSimTag(c3.data[c3.data.length - 1], 'site3 completed');
 
   void beforeLast;
 });
@@ -484,6 +524,69 @@ test('cell1c: multi-bar series/index periodEnd — completed interior-style last
   assert.equal(chart.data.length >= 2, true, 'multi-bar series required');
 });
 
+test('cell1d: A7 fixture-only 1m intra-bar arm is not credited to production reachability', () => {
+  // Production finest data is 1m for every symbol, so a sub-minute "newsreader"
+  // forming read cannot be reached by the served dataset. Keep this as an
+  // explicit fixture arm so the forming half cannot pass vacuously.
+  const fx = makeBoundaryFixture(M1);
+  const mark = 25;
+
+  const { chart: forming } = makeChartHarness({
+    timeframe: '1m',
+    playheadMs: fx.data[1].t + 30_000,
+    data: fx.data.map(cloneBar),
+    liveMark: mark,
+  });
+  forming._applyCanonicalMarkToFormingBar(mark);
+  assertMarkExpanded(forming.data[forming.data.length - 1], mark, 'fixture-only 1m forming');
+  assertSimTag(forming.data[forming.data.length - 1], 'fixture-only 1m forming');
+
+  const { chart: completed } = makeChartHarness({
+    timeframe: '1m',
+    playheadMs: fx.completedPlayhead,
+    data: fx.data.map(cloneBar),
+    liveMark: mark,
+  });
+  const before = snapshotOhlc(completed.data[completed.data.length - 1]);
+  completed._applyCanonicalMarkToFormingBar(mark);
+  assertUnchanged(before, snapshotOhlc(completed.data[completed.data.length - 1]),
+    'fixture-only 1m completed bar remains immutable');
+  assertNoSimTag(completed.data[completed.data.length - 1], 'fixture-only 1m completed');
+});
+
+test('cell1e: A7 boundary holds across 5m, 15m, 1h, and 4h display buckets', () => {
+  for (const { tf, ms } of [
+    { tf: '5m', ms: M5 },
+    { tf: '15m', ms: M15 },
+    { tf: '1h', ms: H1 },
+    { tf: '4h', ms: H4 },
+  ]) {
+    const fx = makeBoundaryFixture(ms);
+    const mark = 1000 + ms / M1;
+    const { chart: forming } = makeChartHarness({
+      timeframe: tf,
+      playheadMs: fx.formingPlayhead,
+      data: fx.data.map(cloneBar),
+      liveMark: mark,
+    });
+    forming._applyCanonicalMarkToFormingBar(mark);
+    assertMarkExpanded(forming.data[forming.data.length - 1], mark, `${tf} forming`);
+    assertSimTag(forming.data[forming.data.length - 1], `${tf} forming`);
+
+    const { chart: completed } = makeChartHarness({
+      timeframe: tf,
+      playheadMs: fx.completedPlayhead,
+      data: fx.data.map(cloneBar),
+      liveMark: mark,
+    });
+    const before = snapshotOhlc(completed.data[completed.data.length - 1]);
+    completed._applyCanonicalMarkToFormingBar(mark);
+    assertUnchanged(before, snapshotOhlc(completed.data[completed.data.length - 1]),
+      `${tf} completed bar remains immutable`);
+    assertNoSimTag(completed.data[completed.data.length - 1], `${tf} completed`);
+  }
+});
+
 // ─── Cell 2: FORMING last bar, guard ON, all three sites ─────────────────
 
 test('cell2: forming last bar — all three sites stamp close and expand h/l', () => {
@@ -503,6 +606,7 @@ test('cell2: forming last bar — all three sites stamp close and expand h/l', (
   const ret = c1.resolveEffectiveCurrentPrice(c1.data);
   assert.equal(ret, mark, 'site1 returns live');
   assertMarkExpanded(c1.data[c1.data.length - 1], mark, 'site1');
+  assertSimTag(c1.data[c1.data.length - 1], 'site1');
 
   // Site 2
   const c2 = {
@@ -522,6 +626,7 @@ test('cell2: forming last bar — all three sites stamp close and expand h/l', (
   });
   assert.equal(c2._mcCanonicalReplayMark, mark);
   assertMarkExpanded(c2.data[c2.data.length - 1], mark, 'site2');
+  assertSimTag(c2.data[c2.data.length - 1], 'site2');
 
   // Site 3 fallback
   const c3 = {
@@ -536,6 +641,7 @@ test('cell2: forming last bar — all three sites stamp close and expand h/l', (
   makeBridgeFn().apply(c3, mark);
   assert.equal(c3._mcCanonicalReplayMark, mark);
   assertMarkExpanded(c3.data[c3.data.length - 1], mark, 'site3');
+  assertSimTag(c3.data[c3.data.length - 1], 'site3');
 });
 
 // ─── Cell 3: INDETERMINATE — write still happens ─────────────────────────
@@ -862,6 +968,7 @@ test('cell7: mirror-path forming bar — animated close write happens', () => {
     'forming mirror tip must mutate');
   assert.equal(chart.data[chart.data.length - 1].c, animClose,
     'animated close stamped on forming bar');
+  assertSimTag(chart.data[chart.data.length - 1], 'site4 mirror forming');
 });
 
 test('cell7b: mirror-path completed bar — animated close write skipped', () => {
@@ -877,6 +984,7 @@ test('cell7b: mirror-path completed bar — animated close write skipped', () =>
   assertUnchanged(before, snapshotOhlc(chart.data[chart.data.length - 1]),
     'completed mirror tip must not mutate OHLC');
   assert.notEqual(chart.data[chart.data.length - 1].c, animClose);
+  assertNoSimTag(chart.data[chart.data.length - 1], 'site4 mirror completed');
 });
 
 // ─── Cell 8: FLAG-01/02 realm reach (B-0195) ─────────────────────────────
@@ -1084,6 +1192,8 @@ test('anchor: helper + kill-switch present; four sites guarded; mirrors byte-ide
   assert.equal(/_applyCanonicalReplayMarkFromDetail\.call\s*\(/.test(replaySrc), false);
   assert.match(replaySrc, /function applyCanonicalMarkToFormingBarFallback\s*\(/);
   assert.match(replaySrc, /function applyAnimatedCandleToFormingBar\s*\(/);
+  assert.match(CHART_SOURCE, /__talariaFormingSim/);
+  assert.match(replaySrc, /__talariaFormingSim/);
   assert.match(BRIDGE_SOURCE, /_applyCanonicalMarkToFormingBar/);
   assert.match(BRIDGE_SOURCE, /__TALARIA_DISABLE_COMPLETED_BAR_CLOSE_GUARD_V1/);
 

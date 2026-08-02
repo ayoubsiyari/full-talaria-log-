@@ -405,6 +405,8 @@ function applyCanonicalMarkToFormingBarFallback(chart, mark) {
     const l = Number(last.l ?? last.low);
     if (Number.isFinite(h)) last.h = Math.max(h, mark);
     if (Number.isFinite(l)) last.l = Math.min(l, mark);
+    last.__talariaFormingSim = true;
+    last.__talariaFormingSimSource = 'canonical-mark-fallback';
 }
 
 /**
@@ -433,6 +435,8 @@ function applyAnimatedCandleToFormingBar(chart, animatedCandle) {
         last.l = Math.min(Number(last.l), Number(animatedCandle.l));
     }
     if (animatedCandle.v != null) last.v = animatedCandle.v;
+    last.__talariaFormingSim = true;
+    last.__talariaFormingSimSource = 'animated-candle';
 }
 
 /**
@@ -487,6 +491,8 @@ function applyCanonicalMarkToFormingBarFallback(chart, mark) {
     const l = Number(last.l ?? last.low);
     if (Number.isFinite(h)) last.h = Math.max(h, mark);
     if (Number.isFinite(l)) last.l = Math.min(l, mark);
+    last.__talariaFormingSim = true;
+    last.__talariaFormingSimSource = 'canonical-mark-fallback';
 }
 
 /**
@@ -515,6 +521,8 @@ function applyAnimatedCandleToFormingBar(chart, animatedCandle) {
         last.l = Math.min(Number(last.l), Number(animatedCandle.l));
     }
     if (animatedCandle.v != null) last.v = animatedCandle.v;
+    last.__talariaFormingSim = true;
+    last.__talariaFormingSimSource = 'animated-candle';
 }
 
 class ReplaySystem {
@@ -4784,9 +4792,13 @@ class ReplaySystem {
             && !chart._b70HasCommittedIndicatorGeneration()) {
             return;
         }
-        chart.renderPending = true;
-        if (typeof chart.render === 'function') {
-            chart.render();
+        if (typeof chart._requestRafPaint === 'function') {
+            chart._requestRafPaint({ flush: !this.isPlaying });
+        } else {
+            chart.renderPending = true;
+            if (!this.isPlaying && typeof chart.render === 'function') {
+                chart.render();
+            }
         }
         if (this.isPlaying) return;
         // Pause/scrub settle: layout + rAF only. Do NOT call getImageData() here —
@@ -7086,6 +7098,97 @@ class ReplaySystem {
             }
         }, tickInterval);
     }
+
+    /**
+     * Derive the current forming candle from existing replay step-clock state.
+     * This produces data only; it does not install a timer, rAF, or paint loop.
+     */
+    _deriveStepClockFormingCandle(target, ticksNeeded) {
+        if (!target || !target.target) return null;
+        const tc = target.target;
+        const count = Math.max(1, Number(ticksNeeded) || this.currentTicksPerCandle || this.ticksPerCandle || 72);
+        const progress = Math.max(0, Math.min(Number(this.tickProgress) || 0, count));
+        const open = Number(tc.o);
+        const close = Number(tc.c);
+        const high = Number(tc.h);
+        const low = Number(tc.l);
+        if (![open, close, high, low].every(Number.isFinite)) return null;
+
+        let currentPrice = close;
+        let currentHigh = high;
+        let currentLow = low;
+        let currentVolume = Number(tc.v) || 0;
+
+        if (progress < count) {
+            if (!target.cachedPath) {
+                target.cachedPath = this.getTickPath(tc);
+            }
+            const pathSpan = Math.max(0, target.cachedPath.length - 1);
+            const tickSpan = Math.max(1, count - 1);
+            const pathIndex = Math.min(
+                pathSpan,
+                Math.floor((Math.max(0, progress - 1) * pathSpan) / tickSpan),
+            );
+            currentPrice = target.cachedPath[pathIndex];
+            currentPrice = Math.max(low, Math.min(high, currentPrice));
+            currentHigh = Math.max(target.high, currentPrice);
+            currentLow = Math.min(target.low, currentPrice);
+
+            const volIdx = Math.min(Math.max(0, progress - 1), count - 1);
+            const vRng = this.createSeededRandom(tc.t + 7919);
+            let prefix = 0;
+            let total = 0;
+            for (let vi = 0; vi < count; vi++) {
+                let tickVol = 0.5 + vRng() * 1.0;
+                if (vRng() < 0.20) tickVol *= 2 + vRng() * 2;
+                total += tickVol;
+                if (vi <= volIdx) {
+                    prefix = total;
+                }
+            }
+            const fraction = total > 0 ? prefix / total : progress / count;
+            currentVolume = target.targetVolume * fraction;
+        }
+
+        const scratch = this._formingCandleScratch || (this._formingCandleScratch = {});
+        scratch.t = target.t;
+        scratch.o = target.open;
+        scratch.h = currentHigh;
+        scratch.l = currentLow;
+        scratch.c = currentPrice;
+        scratch.v = currentVolume;
+        scratch.__talariaFormingSim = true;
+        scratch.__talariaFormingSimSource = 'step-clock';
+        return scratch;
+    }
+
+    skipToBarClose() {
+        if (!this.isActive || !this.isPlaying || !this.animatingCandle) return false;
+        const target = this.animatingCandle;
+        const ticksNeeded = this.currentTicksPerCandle || this.ticksPerCandle || 72;
+        this.tickProgress = ticksNeeded;
+        const rawCandleIntervalMs = this.fullRawData && this.fullRawData.length > 1
+            ? (this.fullRawData[1].t - this.fullRawData[0].t)
+            : 60000;
+        this.tickElapsedMs = Math.max(0, Number(rawCandleIntervalMs) || 0);
+        if (this._isFinestTfReplayCadenceEnabled() && Array.isArray(this.fullRawData)) {
+            const baseT = Number(this.fullRawData[this.currentIndex]?.t);
+            if (Number.isFinite(baseT)) this.replayTimestamp = baseT + this.tickElapsedMs;
+        }
+
+        const formingCandle = this._deriveStepClockFormingCandle(target, ticksNeeded);
+        if (!formingCandle) return false;
+        target.close = formingCandle.c;
+        target.high = formingCandle.h;
+        target.low = formingCandle.l;
+        target.volume = formingCandle.v;
+        target.__talariaFormingSim = true;
+        target.__talariaFormingSimSource = 'step-clock';
+        this._lastStepClockFormingCandle = formingCandle;
+        this.updateChartWithAnimatedCandle();
+        this.completeTickAnimation();
+        return true;
+    }
     
     /**
      * Animate a single tick using CACHED deterministic tick paths
@@ -7133,64 +7236,15 @@ class ReplaySystem {
         }
         
         const target = this.animatingCandle;
-        const tc = target.target; // target candle
-        const open = tc.o;
-        const close = tc.c;
-        const high = tc.h;
-        const low = tc.l;
-        const range = high - low;
-        
-        if (this.tickProgress < ticksNeeded) {
-            // === USE CACHED TICK PATH for deterministic animation ===
-            // Get path from cache (uses candle timestamp as key)
-            if (!target.cachedPath) {
-                target.cachedPath = this.getTickPath(tc);
-            }
-            
-            // Get price from cached path (deterministic across all timeframes)
-            // Frame-budgeted high speeds use fewer ticks; sample the whole cached
-            // path instead of truncating it to the first N points.
-            const pathSpan = Math.max(0, target.cachedPath.length - 1);
-            const tickSpan = Math.max(1, ticksNeeded - 1);
-            const pathIndex = Math.min(
-                pathSpan,
-                Math.floor(((this.tickProgress - 1) * pathSpan) / tickSpan),
-            );
-            let currentPrice = target.cachedPath[pathIndex];
-            
-            // NO random noise - keep it deterministic!
-            // The cached path already has realistic movement built in
-            currentPrice = Math.max(low, Math.min(high, currentPrice));
-            
-            // Update candle values
-            target.close = currentPrice;
-            target.high = Math.max(target.high, currentPrice);
-            target.low = Math.min(target.low, currentPrice);
-            
-            // Volume arrives in bursts, not linearly. A cumulative curve
-            // is generated once per candle so the profile is deterministic.
-            if (!target._volumeCurve) {
-                const vRng = this.createSeededRandom(tc.t + 7919);
-                const curve = new Array(ticksNeeded);
-                let sum = 0;
-                for (let vi = 0; vi < ticksNeeded; vi++) {
-                    let tickVol = 0.5 + vRng() * 1.0;
-                    if (vRng() < 0.20) tickVol *= 2 + vRng() * 2;
-                    sum += tickVol;
-                    curve[vi] = sum;
-                }
-                for (let vi = 0; vi < ticksNeeded; vi++) curve[vi] /= sum;
-                target._volumeCurve = curve;
-            }
-            const volIdx = Math.min(this.tickProgress - 1, ticksNeeded - 1);
-            target.volume = target.targetVolume * target._volumeCurve[volIdx];
-            
-        } else {
-            // Final tick: set exact target values
-            target.close = close;
-            target.high = high;
-            target.low = low;
-            target.volume = tc.v || 0;
+        const formingCandle = this._deriveStepClockFormingCandle(target, ticksNeeded);
+        if (formingCandle) {
+            target.close = formingCandle.c;
+            target.high = formingCandle.h;
+            target.low = formingCandle.l;
+            target.volume = formingCandle.v;
+            target.__talariaFormingSim = true;
+            target.__talariaFormingSimSource = 'step-clock';
+            this._lastStepClockFormingCandle = formingCandle;
         }
         
         // Update chart with animated candle
@@ -7984,7 +8038,13 @@ class ReplaySystem {
                     }
                 }
 
-                if (pc.render) pc.render();
+                if (typeof pc._requestRafPaint === 'function') {
+                    pc._requestRafPaint();
+                } else if (typeof pc.scheduleRender === 'function') {
+                    pc.scheduleRender();
+                } else {
+                    pc.renderPending = true;
+                }
             } catch (error) {
                 // Silent fail during animation to prevent lag
             }
@@ -9264,12 +9324,21 @@ class ReplaySystem {
             // Clearing first still preserves the case the old ordering was protecting: a
             // scheduleRender() raised DURING this paint re-arms the flag and correctly earns its
             // own frame. Same idiom as the rAF coalescer, and as the sibling branch this replaces.
-            if (_mcMirrorPaintCoalesceDisabled() && !(passivePlay || lightPass)) {
+            const shouldUseDirtyPaint = passivePlay || lightPass || this.isPlaying;
+            if (shouldUseDirtyPaint) {
+                if (typeof chart._requestRafPaint === 'function') {
+                    chart._requestRafPaint();
+                } else if (typeof chart.scheduleRender === 'function') {
+                    chart.scheduleRender();
+                } else {
+                    chart.renderPending = true;
+                }
+            } else if (_mcMirrorPaintCoalesceDisabled() && !(passivePlay || lightPass)) {
                 chart.renderPending = true;
             } else {
                 chart.renderPending = false;
             }
-            chart.render();
+            if (!shouldUseDirtyPaint) chart.render();
         }
         const tp = this.tickProgress || 0;
         if (chart.orderManager && typeof chart.orderManager.updatePositions === 'function'
@@ -9824,14 +9893,18 @@ class ReplaySystem {
         }
         if (this.animatingCandle && !this.fastMode && this.getPlaybackMode() === 'tick') {
             const ac = this.animatingCandle;
-            detail.animatedCandle = {
-                t: ac.t,
-                o: ac.open,
-                h: ac.high,
-                l: ac.low,
-                c: ac.close,
-                v: ac.volume || 0,
-            };
+            const frame = this._lastStepClockFormingCandle || (this._formingFrameScratch || (this._formingFrameScratch = {}));
+            if (frame !== this._lastStepClockFormingCandle) {
+                frame.t = ac.t;
+                frame.o = ac.open;
+                frame.h = ac.high;
+                frame.l = ac.low;
+                frame.c = ac.close;
+                frame.v = ac.volume || 0;
+                frame.__talariaFormingSim = ac.__talariaFormingSim === true;
+                frame.__talariaFormingSimSource = ac.__talariaFormingSimSource || 'step-clock';
+            }
+            detail.animatedCandle = frame;
         }
         // Candle-mode frames previously omitted animatedCandle, so coarse peers sought
         // onto a completed TF close (TAL-01798). Always publish the host market mark.
