@@ -211,6 +211,17 @@ export async function bootConf01Session({
   // and asking for it does not fail - the engine snaps to the nearest rung and runs 10 while the caller
   // believes it got 60.
   replaySpeed = 10,
+  /**
+   * ORDER-01B: market seconds per step. `null` leaves the step where the
+   * product puts it — the chart timeframe — which is the condition every
+   * existing gate and the A8 baseline were measured at, so an unchanged caller
+   * boots exactly the run it booted before this parameter existed.
+   *
+   * A speed alone stopped naming a market rate once the step became adjustable:
+   * ten steps of one second and ten steps of one minute are both "speed 10" and
+   * sixty times apart in market time covered.
+   */
+  stepSeconds = null,
   headless = true,
   timeframes = HEAP_CYCLE_DISTINCT_TIMEFRAMES,
   settleMs = 10_000,
@@ -356,6 +367,7 @@ export async function bootConf01Session({
     workload = await armHeapCyclePoWorkload(page, {
       panelIds,
       replaySpeed,
+      stepSeconds,
       playHoldMs: 8_000,
       retainIndicators: true,
       ...(indicators ? { indicators } : {}),
@@ -369,6 +381,7 @@ export async function bootConf01Session({
     workload = await armHeapCyclePoWorkload(page, {
       panelIds,
       replaySpeed,
+      stepSeconds,
       playHoldMs: 8_000,
       retainIndicators: true,
       ...(indicators ? { indicators } : {}),
@@ -407,6 +420,11 @@ export async function bootConf01Session({
       ...compliance,
       buildId,
       replaySpeed,
+      // ORDER-01B: both knobs, and what the engine did with the step. A run
+      // labelled with only a speed cannot be compared against another run.
+      stepSeconds,
+      effectiveStepSeconds: workload.stepSeconds ?? null,
+      stepRefusals: workload.stepRefusals ?? null,
       fileIds: fileChoice.fileIds,
       workloadSummary: {
         indicatorsOk: workload.indicatorsOk,

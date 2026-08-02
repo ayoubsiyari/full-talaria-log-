@@ -18,6 +18,7 @@
  *
  * Usage (puppeteer lives in the main worktree, not here):
  *   $env:NODE_PATH="<main>/node_modules"; node scripts/speed01-allocation-sampling.mjs
+ *   ... --speed=10 --step=60      (ORDER-01B: both knobs; --step absent = chart TF)
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -37,8 +38,23 @@ import { armHeapCyclePoWorkload } from './lib/heap-cycle-po-workload.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+const cliArg = (name) => {
+  const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
+  return hit ? hit.split('=').slice(1).join('=') : null;
+};
+
 const SAMPLE_MS = Number(process.env.SPEED01_SAMPLE_MS || 300_000);
-const BARS_PER_SECOND = Number(process.env.SPEED01_BPS || 10);
+const BARS_PER_SECOND = Number(cliArg('speed') || process.env.SPEED01_BPS || 10);
+/**
+ * ORDER-01B: market seconds per step. Absent means the chart timeframe, which
+ * is the condition the A8 baseline was taken at — an allocation figure is only
+ * comparable to another figure taken at the same two knobs, and the step is the
+ * one that decides how much market time a bar's worth of work covers.
+ *
+ * A refused step is reported rather than swallowed: the alternative is a run
+ * labelled `--step=7` that quietly ran at the timeframe.
+ */
+const STEP_SECONDS = cliArg('step') === null ? null : Number(cliArg('step'));
 /** 16 KB: finer than the 32 KB default, so mid-sized per-bar churn is visible. */
 const SAMPLING_INTERVAL = 16 * 1024;
 const READ_EVERY_MS = 15_000;
@@ -204,12 +220,22 @@ async function main() {
     const cdp = await page.createCDPSession();
     await cdp.send('HeapProfiler.enable');
 
-    log(`arming PO workload at ${BARS_PER_SECOND} bars/s`);
+    log(`arming PO workload at ${BARS_PER_SECOND} steps/s, `
+      + `step=${STEP_SECONDS === null ? 'TF' : `${STEP_SECONDS}s`}`);
     workload = await armHeapCyclePoWorkload(page, {
       playHoldMs: 4_000,
       replaySpeed: BARS_PER_SECOND,
+      stepSeconds: STEP_SECONDS,
       retainIndicators: true,
     });
+    if (workload.stepRefusals && workload.stepRefusals.length) {
+      throw new Error(
+        `ORDER-01B: step ${STEP_SECONDS}s refused on `
+        + `${workload.stepRefusals.map((r) => r.id).join(', ')} `
+        + `(${workload.stepRefusals[0].reason}). A sample labelled with a step it did not `
+        + 'run is worse than no sample.',
+      );
+    }
     if (!workload.armed) {
       throw new Error(
         `workload not armed: replayOk=${workload.replayOk} `
@@ -310,6 +336,15 @@ async function main() {
     startedAt: started,
     finishedAt: new Date().toISOString(),
     nominalBarsPerSecond: BARS_PER_SECOND,
+    /** ORDER-01B: both knobs, so two samples can be told apart. */
+    step: {
+      requestedSeconds: STEP_SECONDS,
+      effectiveSeconds: workload ? workload.stepSeconds ?? null : null,
+      refusals: workload ? workload.stepRefusals ?? [] : [],
+      note: STEP_SECONDS === null
+        ? 'step left at the chart timeframe — the A8 baseline condition'
+        : `step set to ${STEP_SECONDS}s; market rate is ${BARS_PER_SECOND * STEP_SECONDS} market s/wall s`,
+    },
     sampleMs: SAMPLE_MS,
     /** Span the kept profile covers; short of sampleMs when the target died. */
     profileCoverageMs: coveredMs,
@@ -352,7 +387,8 @@ async function main() {
   fs.writeFileSync(OUT, `${JSON.stringify(report, null, 2)}\n`);
 
   console.log('\n===== SPEED-01 allocation sampling =====');
-  console.log(`nominal ${BARS_PER_SECOND} bars/s over ${Math.round(SAMPLE_MS / 1000)}s`);
+  console.log(`nominal ${BARS_PER_SECOND} steps/s at step=`
+    + `${STEP_SECONDS === null ? 'TF' : `${STEP_SECONDS}s`} over ${Math.round(SAMPLE_MS / 1000)}s`);
   console.log(`effective rate: mean=${report.effectiveRate.mean} `
     + `min=${report.effectiveRate.min} max=${report.effectiveRate.max} `
     + `gain=${report.effectiveRate.gainAtEnd} corrections=${report.effectiveRate.corrections}`);

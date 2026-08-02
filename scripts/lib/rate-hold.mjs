@@ -319,8 +319,23 @@ export async function readEffectiveRateReadback(page) {
             keys: Object.keys(val).slice(0, 8),
           };
         }
+        // ORDER-01B: the scalar changed unit. It is market seconds per wall
+        // second once the step knob is live and bars per second behind the
+        // kill-switch, and the governor says which on `__talariaSpeedGov.unit`.
+        // Filing 600 market-s/s as bars/s would read as a sixtyfold overrun,
+        // and the primary-vs-display consistency check above would VOID the
+        // artifact over a unit mismatch that is not in the delivery.
         const n = Number(val);
-        return { present: true, shape: typeof val, marketSecPerWallSec: null, barsPerSec: Number.isFinite(n) ? n : null };
+        const gov = window.__talariaSpeedGov;
+        const unit = gov && typeof gov.unit === 'string' ? gov.unit : null;
+        const isMarket = unit === 'market-seconds-per-wall-second';
+        return {
+          present: true,
+          shape: typeof val,
+          unit: unit || 'unstated',
+          marketSecPerWallSec: isMarket && Number.isFinite(n) ? n : null,
+          barsPerSec: !isMarket && Number.isFinite(n) ? n : null,
+        };
       });
       if (v?.present) out.push({ url: String(fr.url()).slice(0, 90), ...v });
     } catch { /* a frame can navigate mid-read; it is a witness, not the judge */ }

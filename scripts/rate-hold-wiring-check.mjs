@@ -126,6 +126,33 @@ const check = (n, p, d) => { results.push({ name: n, pass: p, detail: d }); cons
   delete global.window;
 }
 
+// 5b. ORDER-01B: the witness must file the scalar under the unit the engine says it is in.
+//     The scalar used to be bars per second and is now market seconds per wall second, so a reader
+//     that assumes the old unit files 600 market-s/s as 600 bars/s — a sixtyfold overrun that never
+//     happened, and one the primary-vs-display consistency check would VOID the whole artifact over.
+{
+  const fakePage = { frames: () => [{ url: () => 'http://x/chart/', evaluate: async (fn) => fn() }] };
+
+  global.window = { __talariaEffectiveRate: 600, __talariaSpeedGov: { unit: 'market-seconds-per-wall-second' } };
+  const market = (await readEffectiveRateReadback(fakePage)).values[0];
+  check('a market-seconds scalar is filed as market seconds, not bars',
+    market.marketSecPerWallSec === 600 && market.barsPerSec === null,
+    `market=${market.marketSecPerWallSec} bars=${market.barsPerSec} unit=${market.unit}`);
+
+  global.window = { __talariaEffectiveRate: 10, __talariaSpeedGov: { unit: 'bars-per-second' } };
+  const bars = (await readEffectiveRateReadback(fakePage)).values[0];
+  check('the switched-off path still reads as bars per second',
+    bars.barsPerSec === 10 && bars.marketSecPerWallSec === null,
+    `market=${bars.marketSecPerWallSec} bars=${bars.barsPerSec} unit=${bars.unit}`);
+
+  global.window = { __talariaEffectiveRate: 10 };
+  const unstated = (await readEffectiveRateReadback(fakePage)).values[0];
+  check('an unstated unit is not promoted to the new one',
+    unstated.barsPerSec === 10 && unstated.unit === 'unstated', `unit=${unstated.unit}`);
+
+  delete global.window;
+}
+
 // 6. Storage diff arithmetic.
 {
   const a = { originUsageMB: 10, localStorageBytesAllRealms: 1000, cacheStorageCount: 2, indexedDbCount: 1, sessionStorageBytesAllRealms: 0 };

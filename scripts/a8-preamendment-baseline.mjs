@@ -30,6 +30,16 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const MINUTES = Number(arg('minutes', '25'));
 const SPEED = Number(arg('speed', '10'));
+/**
+ * ORDER-01B: market seconds per step. Absent means the chart timeframe, which is the condition this
+ * baseline was captured at and the only one a post-amendment run may be compared against without
+ * saying so. The flag exists so the second arm can be driven by the same script: a comparison whose
+ * two arms are taken by different harnesses is comparing the harnesses too.
+ *
+ * On this tree there is nothing to set — sub-TF stepping is the feature being priced — so asking for
+ * a step here is refused rather than ignored.
+ */
+const STEP = arg('step', null) === null ? null : Number(arg('step', null));
 const SAMPLE_EVERY_MS = Number(arg('everyMs', '60000'));
 const ORIGIN = String(arg('origin', process.env.TEST_VPS_URL || 'http://31.97.192.82:3000')).replace(/\/$/, '');
 const EV = 'c:\\Users\\user\\Desktop\\talaria1\\_evidence\\manager-C';
@@ -93,7 +103,7 @@ async function censusAmendmentTokens(origin) {
 
 (async () => {
   const startedAt = new Date().toISOString();
-  console.log(`A8 PRE-AMENDMENT BASELINE  speed=${SPEED} step=TF  ${MINUTES} min  origin ${ORIGIN}`);
+  console.log(`A8 PRE-AMENDMENT BASELINE  speed=${SPEED} step=${STEP === null ? 'TF' : `${STEP}s`}  ${MINUTES} min  origin ${ORIGIN}`);
 
   // ---- identity, before anything can move ------------------------------------------------------
   // computeSeal names the build `badge` and carries no commit; the SHA comes from build-info. Reading
@@ -117,11 +127,13 @@ async function censusAmendmentTokens(origin) {
   let session = null;
   const samples = [];
   let prevPanel = null;
+  let stepProbe = { readable: false };
 
   try {
     session = await bootConf01Session({
       indicators: eSel.pairs,
       replaySpeed: SPEED,
+      stepSeconds: STEP,
       placeOrder: false,          // zero trades: the animation contract is a bar-delivery cost, and a
                                   // trade term would sit on top of the quantity being baselined.
       label: 'a8-preamendment-baseline',
@@ -131,7 +143,7 @@ async function censusAmendmentTokens(origin) {
 
     // step=TF is the pre-amendment condition and there is nothing to set - sub-TF stepping is the
     // feature that does not exist yet. Recorded as an observation so the artifact says so out loud.
-    const stepProbe = await page.evaluate(() => {
+    stepProbe = await page.evaluate(() => {
       const rs = window.chart && window.chart.replaySystem;
       if (!rs) return { readable: false };
       return {
@@ -141,7 +153,18 @@ async function censusAmendmentTokens(origin) {
         timeframe: (window.chart && window.chart.timeframe) || null,
       };
     }).catch(() => ({ readable: false }));
-    console.log(`  step=TF confirmed by absence: sub-TF stepping API present = ${stepProbe.hasSubTimeframeStep === true}`);
+    console.log(`  step=${STEP === null ? 'TF' : `${STEP}s`}; sub-TF stepping API present = ${stepProbe.hasSubTimeframeStep === true}`);
+    if (STEP !== null && stepProbe.hasSubTimeframeStep !== true) {
+      console.error(`REFUSING: --step=${STEP} was asked for and this build has no setStepSeconds. The run `
+        + 'would have executed at the chart timeframe under a label naming a step it never took.');
+      process.exit(4);
+    }
+    const stepHonoured = session.conf01 ? session.conf01.stepRefusals : null;
+    if (STEP !== null && Array.isArray(stepHonoured) && stepHonoured.length) {
+      console.error(`REFUSING: the engine refused step ${STEP}s on `
+        + `${stepHonoured.map((r) => r.id).join(', ')} (${stepHonoured[0].reason}).`);
+      process.exit(5);
+    }
 
     const t0 = Date.now();
     const deadline = t0 + MINUTES * 60_000;
@@ -235,7 +258,20 @@ async function censusAmendmentTokens(origin) {
   const artifact = {
     signature: 'TALARIA_A8_PREAMENDMENT_BASELINE_V1',
     startedAt, finishedAt: new Date().toISOString(),
-    condition: { speed: SPEED, step: 'TF', panels: 4, indicatorsPerPanel: 2, trades: 0, origin: ORIGIN, sampleEveryMs: SAMPLE_EVERY_MS },
+    condition: {
+      speed: SPEED,
+      // ORDER-01B: named, because a speed alone stopped describing a run. The comparison arm has to
+      // be taken at the same two knobs, and 'TF' is the one this baseline was captured at.
+      step: STEP === null ? 'TF' : `${STEP}s`,
+      stepSeconds: STEP,
+      stepApi: {
+        readable: stepProbe.readable === true,
+        setStepSeconds: stepProbe.hasSubTimeframeStep === true,
+        getStepSeconds: stepProbe.hasStepSeconds === true,
+        timeframe: stepProbe.timeframe ?? null,
+      },
+      panels: 4, indicatorsPerPanel: 2, trades: 0, origin: ORIGIN, sampleEveryMs: SAMPLE_EVERY_MS,
+    },
     identity: {
       buildId: seal.badge ?? null,
       sourceCommit: info.sourceCommitSha ?? null,
