@@ -12,7 +12,7 @@ import { startServer } from '../chart v 1.4/chart/multichart-prod/harness/serve.
 import { embedFrames, sleep } from '../chart v 1.4/chart/multichart-prod/harness/harness-lib.mjs';
 import { loadPuppeteer } from './lib/heap-cycle-browser.mjs';
 import { indexHeapSnapshotGraph, buildRetainerParentTree } from './lib/heap-retainer-paths.mjs';
-import { collectAllocatorDetail, pickHeaviestDetail } from './lib/blink-allocator-detail.mjs';
+import { summariseAllocatorDetail, pickHeaviestDetail } from './lib/blink-allocator-detail.mjs';
 
 const MB = 1048576;
 const OUT_DIR = process.argv.find((a) => a.startsWith('--outDir='))?.split('=').slice(1).join('=')
@@ -118,6 +118,54 @@ async function captureSnapshot(page, outFile) {
     mb: +(onDisk / MB).toFixed(1),
     elapsedMs: Date.now() - started,
   };
+}
+
+async function collectAllocatorDetailWithPagePid(browserCdp, page, { settleMs = 1500 } = {}) {
+  const marker = `talaria-arraybuffer-join-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const events = [];
+  const onData = (e) => { if (Array.isArray(e?.value)) events.push(...e.value); };
+  browserCdp.on('Tracing.dataCollected', onData);
+  const complete = new Promise((resolve) => browserCdp.once('Tracing.tracingComplete', resolve));
+  await browserCdp.send('Tracing.start', {
+    transferMode: 'ReportEvents',
+    traceConfig: {
+      includedCategories: [
+        'disabled-by-default-memory-infra',
+        'blink.user_timing',
+        'devtools.timeline',
+      ],
+      memoryDumpConfig: {},
+    },
+  });
+  await page.evaluate((name) => {
+    try { performance.mark(name); } catch (_) {}
+    try { console.timeStamp(name); } catch (_) {}
+  }, marker).catch(() => {});
+  await new Promise((r) => setTimeout(r, 400));
+  await browserCdp.send('Tracing.requestMemoryDump', {
+    deterministic: true,
+    levelOfDetail: 'detailed',
+  });
+  await new Promise((r) => setTimeout(r, settleMs));
+  await browserCdp.send('Tracing.end');
+  await complete;
+  browserCdp.off('Tracing.dataCollected', onData);
+
+  const byPid = new Map();
+  let pageRendererPid = null;
+  for (const e of events) {
+    if (pageRendererPid == null) {
+      const asText = JSON.stringify({
+        name: e.name,
+        cat: e.cat,
+        args: e.args,
+      });
+      if (asText.includes(marker)) pageRendererPid = e.pid;
+    }
+    if (e.ph !== 'v' || !e.args?.dumps?.allocators) continue;
+    byPid.set(e.pid, summariseAllocatorDetail(e.args.dumps.allocators));
+  }
+  return { marker, pageRendererPid, byPid };
 }
 
 function typeName(graph, nodeIndex) {
@@ -271,8 +319,16 @@ try {
   await forceCollect(page);
   const browserCdp = await browser.target().createCDPSession();
   try {
-    const alloc = await collectAllocatorDetail(browserCdp, { settleMs: 1500 });
-    const heavy = pickHeaviestDetail(alloc);
+    const alloc = await collectAllocatorDetailWithPagePid(browserCdp, page, { settleMs: 1500 });
+    const heavy = pickHeaviestDetail(alloc.byPid);
+    const pageDetail = alloc.pageRendererPid != null ? alloc.byPid.get(alloc.pageRendererPid) : null;
+    report.allocatorCoverage = {
+      marker: alloc.marker,
+      pageRendererPid: alloc.pageRendererPid,
+      pagePidHasAllocatorDump: !!pageDetail,
+      heaviestPid: heavy?.pid ?? null,
+      heaviestIsPagePid: !!(heavy && alloc.pageRendererPid != null && heavy.pid === alloc.pageRendererPid),
+    };
     report.heaviestAllocator = heavy ? {
       pid: heavy.pid,
       rootsMB: heavy.detail.rootsMB,
@@ -280,6 +336,14 @@ try {
         .filter((r) => /partitions\/buffer/.test(r.name))
         .slice(0, 20),
       mallocTop: (heavy.detail.childrenByRoot.malloc || []).slice(0, 12),
+    } : null;
+    report.pageAllocator = pageDetail ? {
+      pid: alloc.pageRendererPid,
+      rootsMB: pageDetail.rootsMB,
+      partitionBufferTop: (pageDetail.childrenByRoot.partition_alloc || [])
+        .filter((r) => /partitions\/buffer/.test(r.name))
+        .slice(0, 20),
+      mallocTop: (pageDetail.childrenByRoot.malloc || []).slice(0, 12),
     } : null;
   } finally {
     await browserCdp.detach().catch(() => {});
@@ -305,7 +369,10 @@ console.log(JSON.stringify({
   reportFile,
   snapshot: report.snapshot,
   allocatorRoots: report.heaviestAllocator?.rootsMB || null,
+  allocatorCoverage: report.allocatorCoverage || null,
+  pageAllocatorRoots: report.pageAllocator?.rootsMB || null,
   partitionBufferTop: report.heaviestAllocator?.partitionBufferTop?.slice(0, 8) || null,
+  pagePartitionBufferTop: report.pageAllocator?.partitionBufferTop?.slice(0, 8) || null,
   arrayBufferTop: report.arrayBuffers?.top?.slice(0, 12).map((r) => ({
     type: r.type,
     name: r.name,
