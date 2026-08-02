@@ -123,7 +123,9 @@
     "preflight:def04-multitf-time-sync": "node --test --test-concurrency=1 \"chart v 1.4/chart/modules/def04-multitf-time-sync.test.mjs\"",
     "test:def04-multitf-time-sync": "npm run preflight:def04-multitf-time-sync",
     "preflight:generate-path-waypoints": "node --test \"chart v 1.4/chart/modules/generate-path-waypoints.test.mjs\"",
-    "test:generate-path-waypoints": "npm run preflight:generate-path-waypoints"
+    "test:generate-path-waypoints": "npm run preflight:generate-path-waypoints",
+    "preflight:order-stable-label-hover-dom": "node \"chart v 1.4/chart/modules/order-stable-label-hover-dom.test.mjs\"",
+    "test:order-stable-label-hover-dom": "npm run preflight:order-stable-label-hover-dom"
   },
   "dependencies": {
     "dukascopy-node": "^1.46.3",
