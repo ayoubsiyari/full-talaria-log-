@@ -380,6 +380,34 @@ function resolveBootTimeframeForPanel(panelId, fallbackTf) {
     return fb || null;
 }
 
+/**
+ * TAL-01865: the stored market-time window for a tile, as the boot-URL pair the
+ * manager already knows how to carry.
+ *
+ * `multichart-manager` has read `cfg.restoreStartSec` / `cfg.restoreEndSec`
+ * since the Phase 6.4 session work and turns them into `restoreStart` /
+ * `restoreEnd` on the iframe URL — but nothing in the tree ever SET them. It
+ * was a reader with no writer, so a persisted viewport could never reach a
+ * panel. This is that writer.
+ *
+ * Boot URL rather than a post-ready command on purpose: the window is applied
+ * before the panel's first paint, so the user does not watch it load at the
+ * default zoom and then jump.
+ */
+function resolveBootViewportForPanel(panelId) {
+    if (!panelStatePersistV1Enabled()) return null;
+    try {
+        const stored = loadPanelState(panelId, panelStateSessionId());
+        if (!stored) return null;
+        const s = Number(stored.viewStartSec);
+        const e = Number(stored.viewEndSec);
+        if (!Number.isFinite(s) || !Number.isFinite(e) || e <= s) return null;
+        return { restoreStartSec: s, restoreEndSec: e };
+    } catch (_) {
+        return null;
+    }
+}
+
 function orderMcRestoreDedupeV1Enabled() {
     try {
         return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_ORDER_MC_RESTORE_DEDUPE_V1);
@@ -3245,6 +3273,7 @@ export default function MultichartGrid({
             // pair — do not trust resolveBootFileIdForPanel for retired ids.
             let bootFileId = resolveBootFileIdForPanel(tile.id, effFile);
             let bootTf = resolveBootTimeframeForPanel(tile.id, effTf);
+            let bootViewport = resolveBootViewportForPanel(tile.id);
             if (retiredPanelIdsRef.current.has(tile.id)) {
                 try { clearPersistedPanelFileId(tile.id); } catch (_) {}
                 try { hostSyncedPanelsRef.current.delete(tile.id); } catch (_) {}
@@ -3255,6 +3284,9 @@ export default function MultichartGrid({
                 bootFileId = effFile;
                 // A retired id's stored slice is as poisoned as its file pair.
                 bootTf = effTf;
+                // ...including its window: a recycled slot must not open on the
+                // previous tenant's zoom.
+                bootViewport = null;
                 retiredPanelIdsRef.current.delete(tile.id);
                 try {
                     console.warn(
@@ -3271,6 +3303,7 @@ export default function MultichartGrid({
                 fileId:    bootFileId,
                 sessionId: sessId,
                 mode:      effMode,
+                ...(bootViewport || {}),
             };
             try {
                 m.addChart(cfg, cellEl);
@@ -5184,11 +5217,13 @@ export default function MultichartGrid({
     // A pending panel-state write must not outlive the grid that armed it.
     useEffect(() => () => { cancelPanelStatePersistTimers(); }, []);
 
-    // Restore each tile's stored chart type once its bridge is up. Chart type is
-    // not carried in the boot URL, and the engine's own `chartSettings` is a
-    // single shared key every panel writes, so the last panel to change type
-    // would otherwise decide the type for all of them on the next boot.
-    const chartTypeRestoredRef = useRef(new Set());
+    // Restore each tile's stored chart type and price scale once its bridge is
+    // up. Neither is carried in the boot URL — the window is, via
+    // `restoreStartSec`, but these are not — so they need a command. The engine's
+    // own `chartSettings` is a single shared key every panel writes, so the last
+    // panel to change type would otherwise decide the type for all of them on
+    // the next boot.
+    const panelConfigRestoredRef = useRef(new Set());
     useEffect(() => {
         if (!panelStatePersistV1Enabled()) return;
         const mgr = managerRef.current;
@@ -5196,15 +5231,29 @@ export default function MultichartGrid({
         const sid = panelStateSessionId();
         readyPanels.forEach((pid) => {
             if (!pid || pid === HOST_PANEL_ID) return;
-            if (chartTypeRestoredRef.current.has(pid)) return;
+            if (panelConfigRestoredRef.current.has(pid)) return;
             let stored = null;
             try { stored = loadPanelState(pid, sid); } catch (_) { return; }
             const ct = stored && stored.chartType ? String(stored.chartType) : "";
-            if (!ct) return;
-            chartTypeRestoredRef.current.add(pid);
-            try {
-                mgr.sendCommand(pid, "setChartType", { chartType: ct }).catch(() => {});
-            } catch (_) { /* ignore */ }
+            const hasScale = stored
+                && (stored.priceScaleMode != null || typeof stored.priceScaleAuto === "boolean");
+            if (!ct && !hasScale) return;
+            panelConfigRestoredRef.current.add(pid);
+            if (ct) {
+                try {
+                    mgr.sendCommand(pid, "setChartType", { chartType: ct }).catch(() => {});
+                } catch (_) { /* ignore */ }
+            }
+            if (hasScale) {
+                try {
+                    mgr.sendCommand(pid, "setPriceScale", {
+                        mode: stored.priceScaleMode ?? null,
+                        autoScale: typeof stored.priceScaleAuto === "boolean" ? stored.priceScaleAuto : null,
+                        min: stored.priceScaleMin ?? null,
+                        max: stored.priceScaleMax ?? null,
+                    }).catch(() => {});
+                } catch (_) { /* ignore */ }
+            }
         });
     }, [readyPanels]);
 
@@ -5506,6 +5555,44 @@ export default function MultichartGrid({
                         if (!ch.chartSettings) ch.chartSettings = {};
                         if (ch.chartSettings.chartType === ct) return Promise.resolve(null);
                         ch.chartSettings.chartType = ct;
+                        try { if (typeof ch.render === "function") ch.render(); } catch (_) {}
+                        if (typeof ch.saveSettings === "function") {
+                            try { ch.saveSettings(); } catch (_) {}
+                        }
+                        return Promise.resolve(null);
+                    }
+                    // TAL-01865: price scale is user configuration, not derived
+                    // state, so it survives a refresh. Like chart type it is not
+                    // carried in the boot URL, so it needs a command.
+                    //
+                    // Auto-scale is restored as a MODE, never as bounds: under
+                    // auto-scale, min/max are a readout of whichever bars happen
+                    // to be loaded, and writing a stale readout back would pin
+                    // the scale to yesterday's data. Manual bounds are a choice
+                    // the user made and do come back.
+                    case "setPriceScale": {
+                        const ps = ch.priceScale;
+                        if (!ps) return Promise.reject(new Error("setPriceScale: no price scale"));
+                        let touched = false;
+                        const mode = args.mode ? String(args.mode).toLowerCase() : null;
+                        if ((mode === "log" || mode === "linear") && ps.mode !== mode) {
+                            ps.mode = mode;
+                            touched = true;
+                        }
+                        if (typeof args.autoScale === "boolean" && ps.autoScale !== args.autoScale) {
+                            ps.autoScale = args.autoScale;
+                            touched = true;
+                        }
+                        if (args.autoScale === false) {
+                            const mn = Number(args.min);
+                            const mx = Number(args.max);
+                            if (Number.isFinite(mn) && Number.isFinite(mx) && mx > mn) {
+                                ps.min = mn;
+                                ps.max = mx;
+                                touched = true;
+                            }
+                        }
+                        if (!touched) return Promise.resolve(null);
                         try { if (typeof ch.render === "function") ch.render(); } catch (_) {}
                         if (typeof ch.saveSettings === "function") {
                             try { ch.saveSettings(); } catch (_) {}
