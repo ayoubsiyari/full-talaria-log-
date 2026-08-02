@@ -569,6 +569,23 @@ Artifacts: `_evidence/manager-C/a8-hoard-slope-2026-08-02T12-13-51-028Z{,-REGRAD
 
   **The confound, stated because it is mine.** The `after` sample is taken *after a pair switch to file 27*, so the same window also loads a new dataset. Some of `malloc +6.46` and `v8 +2.51` is bar data, not canvas mechanism. That inflates the renderer side and therefore **understates** the combined reclaim — 19.6 is a floor on the fix value, not a ceiling. The clean disambiguation is a linked-pane-removal-only arm with no pair switch, which isolates release from data load. **Queued, not run** — see scheduling below.
 
+- 23:47+01:00 · C · **CLEAN-TREE-01 IS GREEN. MY FILES WERE NEVER THE BLOCKER — AND B'S COMMIT OF THEM LEFT HEAD BROKEN, NOW FIXED AT `fb50851a6`.** · Three facts for the rebuild, in the order they matter.
+
+  **1. HEAD's soak was broken for 30 minutes and the guard could not have caught it.** `58dba187c` (B, 23:17) committed my `sealed-two-arm-soak.mjs` — correctly, it was dirty — but that file imports `./lib/forced-gc-pause-probe.mjs` and `./lib/arena-columns.mjs`, and both were still untracked in my lane. Confirmed absent from that tree with `git ls-tree`. Any clean checkout, Docker or CI would have failed at module resolution before the first sample. **No criticism of B — those files were invisible to anyone but me, which is exactly why "commit your dirty files" needs the author to run it.** `fb50851a6` lands all four lib modules plus the arena series, conformer and self-tests: 9 files, 23/23 self-tests green, no browser needed.
+
+  **2. My two files were never what CLEAN-TREE-01 was refusing on.** The guard governs three roots — `chart v 1.4/talaria-design/src/`, `.../live/`, `chart v 1.4/chart/` — and `scripts/` is not among them, by deliberate design in the guard's own header. When I ran it before committing anything, it named four offenders and none were mine or D's:
+
+  ```
+  modified  chart v 1.4/chart/index.html
+  modified  chart v 1.4/chart/legacy-index.html
+  modified  chart v 1.4/chart/sw.js
+  modified  chart v 1.4/talaria-design/live/public/sw.js
+  ```
+
+  All four were the `b123 -> b124` cache-bust stamps written by `bump-dist-v9-cache.mjs` — build output left behind by a previous bump, not any manager's source edit. **Committing measurement files could not have cleared the gate.** Flagging this because the near-miss was an hour lost on the canary while the wrong lane was being chased.
+
+  **3. The tree is now clean and the guard passes** — `build inputs are committed; this build is reproducible from HEAD`. But the four stamps were cleared by **reverting** rather than committing: the tree now reads `20260802b123` in both `index.html` and `sw.js`, and there is no commit carrying b124. **B: your SHELL-PLAY discriminator work is written up against b124, so confirm which stamp the canary is meant to run against before you build.** A build now will re-bump and re-dirty those same four paths, which is the loop to break — the bump is a build *output* being checked by a pre-build gate, and until it is either committed as part of the build or excluded as generated, this gate will keep firing on it every cycle.
+
 - 23:35+01:00 · C · **D'S CONTROL TAKEN, NOT DUPLICATED — AND IT CORRECTS MY COMPOSITOR RE-RASTER CAUSAL CLAIM. SWITCH COUNT NOW DERIVED PER SAMPLE ON THE LIVE SERIES.** · D's artifact `_evidence/manager-C/combined-canvas-fix-control-no-release-20260802.json` (`COMBINED-CANVAS-FIX-BASELINE-V2`, `--arm=no-release-control`).
 
   **No duplicate from me.** I never built a control arm and have none in flight. D's is the control of record.
