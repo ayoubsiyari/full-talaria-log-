@@ -112,7 +112,9 @@
     "preflight:qw3-indicator-worker-transfer": "node --test \"chart v 1.4/chart/modules/qw3-indicator-worker-transfer.test.mjs\"",
     "test:qw3-indicator-worker-transfer": "npm run preflight:qw3-indicator-worker-transfer",
     "preflight:forming-renderer-step-clock": "node --test \"chart v 1.4/chart/modules/forming-renderer-step-clock.test.mjs\"",
-    "test:forming-renderer-step-clock": "npm run preflight:forming-renderer-step-clock"
+    "test:forming-renderer-step-clock": "npm run preflight:forming-renderer-step-clock",
+    "preflight:generate-path-waypoints": "node --test \"chart v 1.4/chart/modules/generate-path-waypoints.test.mjs\"",
+    "test:generate-path-waypoints": "npm run preflight:generate-path-waypoints"
   },
   "dependencies": {
     "dukascopy-node": "^1.46.3",

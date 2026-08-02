@@ -7553,8 +7553,9 @@ class ReplaySystem {
 
         const n = this.ticksPerCandle || 72;
         for (const candle of this.fullRawData) {
-            const path = this.generateRandomPath(candle.o, candle.h, candle.l, candle.c, n, candle.t);
-            this.tickPathCache[candle.t] = path;
+            const path = this.generatePath(candle, n);
+            // Diagnostic legacy eager cache only; default A8 path stays scratch-backed.
+            this.tickPathCache[candle.t] = Array.prototype.slice.call(path);
         }
 
         this.tickPathCacheBuilt = true;
@@ -7569,18 +7570,16 @@ class ReplaySystem {
         if (!candle || !candle.t) return null;
 
         const n = this.ticksPerCandle || 72;
-        const cache = this._isTickPathCacheBoundEnabled()
-            ? this._ensureTickPathCacheIndex()
-            : (this.tickPathCache || (this.tickPathCache = {}));
+        if (this._isTickPathCacheBoundEnabled()) {
+            return this.generatePath(candle, n);
+        }
+
+        const cache = this.tickPathCache || (this.tickPathCache = {});
         const cached = cache[candle.t];
         if (cached && cached.length === n) return cached;
 
-        const path = this.generateRandomPath(candle.o, candle.h, candle.l, candle.c, n, candle.t);
-        if (this._isTickPathCacheBoundEnabled()) {
-            this._storeBoundedTickPath(candle.t, path);
-        } else {
-            cache[candle.t] = path;
-        }
+        const path = this.generatePath(candle, n);
+        cache[candle.t] = Array.prototype.slice.call(path);
         return path;
     }
     
@@ -7664,211 +7663,104 @@ class ReplaySystem {
         return currentRaw ? currentRaw.c : null;
     }
     
-    /**
-     * Deterministic intra-candle price path that respects OHLC logic.
-     *
-     * State-machine microstructure tick path.
-     *
-     * Four market states cycle randomly each candle:
-     *   CHOP     – two-sided noise, indecisive
-     *   BURST    – aggressive directional push
-     *   STALL    – absorption / consolidation (tiny moves)
-     *   PULLBACK – counter-trend retrace
-     *
-     * The candle is split into 3 segments between randomised anchors
-     * (e.g. O→L→H→C or O→H→L→C). Each segment runs its own state
-     * machine walk. Seeded RNG keeps it deterministic for pause/resume.
-     */
-    generateRandomPath(open, high, low, close, numTicks, seed = Date.now()) {
-        const rng = this.createSeededRandom(seed);
-        const n = Math.max(2, Math.floor(numTicks) || 2);
+    _pathSeed(symbol, timestamp) {
+        const text = `${symbol || ''}:${Number(timestamp) || 0}`;
+        let hash = 2166136261;
+        for (let i = 0; i < text.length; i++) {
+            hash ^= text.charCodeAt(i);
+            hash = Math.imul(hash, 16777619);
+        }
+        return hash >>> 0;
+    }
 
-        if (![open, high, low, close].every(Number.isFinite)) return new Array(n).fill(open || 0);
+    _collectPathWaypoints(candle, open, close) {
+        const levels = this._pathWaypointScratch || (this._pathWaypointScratch = []);
+        levels.length = 0;
+        levels.push(open);
+        const src = candle && (
+            candle.resolvedEventLevels
+            || candle.__talariaResolvedEventLevels
+            || candle.waypoints
+        );
+        if (Array.isArray(src)) {
+            for (let i = 0; i < src.length; i++) {
+                const raw = typeof src[i] === 'object' && src[i] !== null
+                    ? (src[i].price ?? src[i].level ?? src[i].value)
+                    : src[i];
+                const level = Number(raw);
+                if (Number.isFinite(level)) levels.push(level);
+            }
+        }
+        levels.push(close);
+        return levels;
+    }
+
+    /**
+     * Deterministic waypoint path for forming rendering.
+     * Inputs are resolved event levels already attached to the candle transcript;
+     * this module never reaches into order-resolution state.
+     */
+    generatePath(candle, numTicks, out = null) {
+        const n = Math.max(2, Math.floor(numTicks) || 2);
+        const path = out || this._tickPathScratch || (this._tickPathScratch = []);
+        path.length = n;
+        const open = Number(candle && (candle.o ?? candle.open));
+        const high = Number(candle && (candle.h ?? candle.high));
+        const low = Number(candle && (candle.l ?? candle.low));
+        const close = Number(candle && (candle.c ?? candle.close));
+
+        if (![open, high, low, close].every(Number.isFinite)) {
+            const fallback = Number.isFinite(open) ? open : 0;
+            for (let i = 0; i < n; i++) path[i] = fallback;
+            return path;
+        }
 
         const range = high - low;
         if (range <= 0) {
-            const p = new Array(n);
-            for (let i = 0; i < n; i++) p[i] = open + (close - open) * (i / (n - 1));
-            p[n - 1] = close;
-            return p;
+            for (let i = 0; i < n; i++) path[i] = open + (close - open) * (i / (n - 1));
+            path[n - 1] = close;
+            return path;
         }
 
-        const isBullish = close >= open;
-        const maxStep = range / (n * 0.13);
-        const vol = range * 0.09;
+        const symbol = candle && (candle.symbol || candle.ticker || candle.currentSymbol)
+            || (this.chart && this.chart.currentSymbol)
+            || '';
+        const rng = this.createSeededRandom(this._pathSeed(symbol, candle && candle.t));
+        const amplitude = range * 0.15;
+        const waypoints = this._collectPathWaypoints(candle, open, close);
+        const lastWp = Math.max(1, waypoints.length - 1);
 
-        // Randomised anchor order (not always O→L→H→C)
-        const visitLowFirst = isBullish ? (rng() < 0.60) : (rng() < 0.40);
-        const anchors = visitLowFirst ? [open, low, high, close] : [open, high, low, close];
-
-        // Budget per segment — proportional to distance with random jitter
-        const dists = [];
-        let totalDist = 0;
-        for (let i = 0; i < anchors.length - 1; i++) {
-            const d = Math.abs(anchors[i + 1] - anchors[i]) || range * 0.05;
-            dists.push(d);
-            totalDist += d;
+        for (let w = 0; w < waypoints.length; w++) {
+            const idx = Math.round((w * (n - 1)) / lastWp);
+            path[idx] = Math.max(low, Math.min(high, Number(waypoints[w])));
         }
-        const raw = dists.map(d => (d / totalDist) * n * (0.7 + rng() * 0.6));
-        const rawSum = raw.reduce((a, b) => a + b, 0);
-        const budgets = raw.map(b => Math.max(4, Math.round((b / rawSum) * (n - 1))));
-        let budgetSum = budgets.reduce((a, b) => a + b, 0);
-        while (budgetSum > n - 1) { budgets[budgets.indexOf(Math.max(...budgets))]--; budgetSum--; }
-        while (budgetSum < n - 1) { budgets[budgets.indexOf(Math.min(...budgets))]++; budgetSum++; }
 
-        // State-machine segment generator
-        const segment = (start, end, ticks) => {
-            if (ticks <= 1) return [start, end];
-            const direction = end > start ? 1 : -1;
-            const seg = [start];
-            let px = start;
-            let mom = 0;
-            let state = 0;     // 0=CHOP 1=BURST 2=STALL 3=PULLBACK
-            let stateDur = 0;
-
-            for (let i = 1; i < ticks; i++) {
-                const progress = i / ticks;
-                const rem = ticks - i;
-                const targetDrift = (end - px) / rem;
-
-                stateDur++;
-                const r = rng();
-                if (state === 0) {
-                    if      (r < 0.12 && rem > 4) { state = 1; stateDur = 0; }
-                    else if (r < 0.20 && rem > 3) { state = 2; stateDur = 0; }
-                    else if (r < 0.28 && rem > 5 && progress > 0.08) { state = 3; stateDur = 0; }
-                } else if (state === 1 && stateDur > 2 + r * 3) {
-                    state = r < 0.35 ? 2 : (r < 0.55 ? 3 : 0); stateDur = 0;
-                } else if (state === 2 && stateDur > 1 + r * 3) {
-                    state = r < 0.45 ? 1 : 0; stateDur = 0;
-                } else if (state === 3 && stateDur > 2 + r * 3) {
-                    state = r < 0.3 ? 1 : 0; stateDur = 0;
-                }
-
-                const noise = (rng() - 0.5) * 2;
-                let delta = 0;
-
-                if (state === 0) {        // CHOP — heavier two-sided noise
-                    mom = mom * 0.25 + noise * 0.75;
-                    delta = targetDrift * 0.30 + mom * vol * 0.8 + noise * vol * 0.65;
-                    if (rng() < 0.12) delta += (rng() - 0.5) * vol * 1.4;
-                } else if (state === 1) { // BURST — more aggressive
-                    mom = mom * 0.75 + direction * 0.35;
-                    delta = direction * vol * (1.1 + rng() * 1.6) + targetDrift * 0.20;
-                    delta += noise * vol * 0.25;
-                } else if (state === 2) { // STALL — small but alive
-                    mom *= 0.08;
-                    delta = noise * vol * 0.18 * (0.5 + rng());
-                    if (rng() < 0.15) delta += (rng() - 0.5) * vol * 0.5;
-                } else if (state === 3) { // PULLBACK — wilder counter-trend
-                    mom = mom * 0.45 - direction * 0.55;
-                    delta = -direction * vol * (0.6 + rng() * 1.2) + noise * vol * 0.5;
-                }
-
-                // Random micro-spikes on any state (bid/ask bounce)
-                if (rng() < 0.08) delta += (rng() - 0.5) * vol * 1.8;
-
-                delta += targetDrift * progress * progress * 1.6;
-
-                // Repel from candle boundaries to prevent vibration at edges
-                const edgeDist = range * 0.04;
-                if (px - low < edgeDist && delta < 0)  delta *= 0.15;
-                if (high - px < edgeDist && delta > 0)  delta *= 0.15;
-                if (px <= low + range * 0.005) delta += range * 0.006;
-                if (px >= high - range * 0.005) delta -= range * 0.006;
-
-                delta = Math.max(-maxStep, Math.min(maxStep, delta));
-                px = Math.max(low, Math.min(high, px + delta));
-                seg.push(px);
-            }
-            seg.push(end);
-            return seg;
-        };
-
-        // Build full path from segments
-        const path = [];
-        for (let s = 0; s < anchors.length - 1; s++) {
-            const sub = segment(anchors[s], anchors[s + 1], budgets[s]);
-            if (s === 0) {
-                for (let j = 0; j < sub.length; j++) path.push(sub[j]);
-            } else {
-                for (let j = 1; j < sub.length; j++) path.push(sub[j]);
+        for (let w = 0; w < waypoints.length - 1; w++) {
+            const startIdx = Math.round((w * (n - 1)) / lastWp);
+            const endIdx = Math.round(((w + 1) * (n - 1)) / lastWp);
+            const start = path[startIdx];
+            const end = path[endIdx];
+            const span = Math.max(1, endIdx - startIdx);
+            const segMin = Math.max(low, Math.min(start, end));
+            const segMax = Math.min(high, Math.max(start, end));
+            let walk = 0;
+            for (let i = startIdx + 1; i < endIdx; i++) {
+                const t = (i - startIdx) / span;
+                walk = (walk * 0.55) + ((rng() - 0.5) * 2 * amplitude * 0.45);
+                const taper = Math.sin(Math.PI * t);
+                const base = start + (end - start) * t;
+                path[i] = Math.max(segMin, Math.min(segMax, base + walk * taper));
             }
         }
 
-        // Pad or trim to exact length n
-        while (path.length < n) path.push(close);
-        if (path.length > n) path.length = n;
-        path[n - 1] = close;
-
-        // Smooth ensure high/low are touched
-        let pMin = path[0], pMax = path[0], minI = 0, maxI = 0;
-        for (let i = 1; i < n - 1; i++) {
-            if (path[i] < pMin) { pMin = path[i]; minI = i; }
-            if (path[i] > pMax) { pMax = path[i]; maxI = i; }
-        }
-        const sp = Math.max(4, Math.floor(n * 0.07));
-        if (pMin > low + range * 0.003) {
-            const gap = low - pMin;
-            for (let j = -sp; j <= sp; j++) {
-                const k = minI + j;
-                // Never warp index 0: tick 1 reads path[0]; smoothing it off `open` caused a one-tick flicker at candle open.
-                if (k <= 0 || k >= n - 1) continue;
-                path[k] = Math.max(low, path[k] + gap * (1 - Math.abs(j) / (sp + 1)));
-            }
-        }
-        if (pMax < high - range * 0.003) {
-            const gap = high - pMax;
-            for (let j = -sp; j <= sp; j++) {
-                const k = maxI + j;
-                if (k <= 0 || k >= n - 1) continue;
-                path[k] = Math.min(high, path[k] + gap * (1 - Math.abs(j) / (sp + 1)));
-            }
-        }
-
-        for (let i = 0; i < n; i++) path[i] = Math.max(low, Math.min(high, path[i]));
-        path[n - 1] = close;
         path[0] = open;
-
-        // ── Tick-grid snap ────────────────────────────────────────────────────
-        // Futures/crypto only trade at discrete tick increments (NQ = 0.25, GC = 0.10,
-        // CL = 0.01, BTCUSD = 0.1, USDJPY = 0.001, …). The state-machine walk above
-        // produces continuous floats; without snapping, the forming candle's `close`
-        // slides through values that never exist on a real exchange (e.g. NQ at
-        // `20150.34` or `20151.02`). Snapping here makes the live price LINE advance
-        // in realistic ticks: `20150.25 → 20150.50 → 20150.75 → …`.
-        //
-        // Guards:
-        //   1. Only snap when the chart actually has a registered instrument — the
-        //      fallback tick (`10^-precision`) on unknown symbols would introduce
-        //      float-quantisation noise for data already stored at the native precision.
-        //   2. Keep open/close EXACTLY as provided by the data (path endpoints are
-        //      what everything else references; altering them would desync OHLC stats).
-        //   3. Skip if tick ≥ half the candle range (would collapse the path to a
-        //      single value and kill all intra-candle animation).
-        try {
-            const chart = this.chart;
-            const tick = (chart && typeof chart.getTickSize === 'function') ? chart.getTickSize() : null;
-            const hasRegistrySpec = !!(
-                chart && chart.currentSymbol && typeof window !== 'undefined' && window.marketCalcEngine
-                && (() => {
-                    try {
-                        const calc = window.marketCalcEngine.getCalculator(chart.currentSymbol);
-                        return !!(calc && calc.specs
-                            && (Number.isFinite(calc.specs.tickSize) || Number.isFinite(calc.specs.pipSize)));
-                    } catch (_) { return false; }
-                })()
-            );
-            if (hasRegistrySpec && Number.isFinite(tick) && tick > 0 && tick < range * 0.5) {
-                for (let i = 1; i < n - 1; i++) {
-                    const snapped = Math.round(path[i] / tick) * tick;
-                    // Clamp inside OHLC range after snapping (edge points could round past high/low).
-                    path[i] = Math.max(low, Math.min(high, snapped));
-                }
-            }
-        } catch (_) { /* registry lookup failed — leave path unsnapped */ }
-
+        path[n - 1] = close;
         return path;
+    }
+
+    /** Back-compat wrapper for older harnesses. New product code calls generatePath(candle, n). */
+    generateRandomPath(open, high, low, close, numTicks, seed = Date.now()) {
+        return this.generatePath({ o: open, h: high, l: low, c: close, t: seed }, numTicks);
     }
     
     /**
