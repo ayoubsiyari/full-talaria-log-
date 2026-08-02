@@ -60,13 +60,36 @@ export function assertOnLadder(speed, where) {
   return Number(speed);
 }
 
+/**
+ * ORDER-01B: a run is described by two knobs, not one.
+ *
+ * Speed alone stopped naming a market rate the moment step became adjustable —
+ * `speed 10` is ten *steps* a second, and ten steps of one second and ten steps
+ * of one minute differ by sixty times the market time covered. A harness that
+ * records only the speed would label those two runs identically.
+ *
+ * `null` means "leave the step where the product put it", which is the chart
+ * timeframe. That is the default the A8 baseline was taken at, so an unchanged
+ * caller measures exactly what it measured before.
+ */
+export function assertOnStepLadder(stepSeconds, where) {
+  if (stepSeconds == null) return null;
+  const n = Number(stepSeconds);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error(`ORDER-01B: ${where} requested step ${stepSeconds}, which is not a positive number of market seconds.`);
+  }
+  return n;
+}
+
 async function armPanelChart(frame, {
   indicators = HEAP_CYCLE_PO_INDICATORS,
   replaySpeed = 10,
+  /** Market seconds advanced per step; null leaves the chart timeframe. */
+  stepSeconds = null,
   /** PO hand leaves indicators; clearing/re-adding each cycle under-reads. */
   retainIndicators = false,
 } = {}) {
-  return frame.evaluate(async (indicatorList, speed, retain) => {
+  return frame.evaluate(async (indicatorList, speed, retain, step) => {
     const sleepLocal = (ms) => new Promise((r) => setTimeout(r, ms));
     try { window.alert = () => {}; } catch (_) {}
     const chart = window.chart;
@@ -134,10 +157,49 @@ async function armPanelChart(frame, {
           let v; try { v = get(); } catch (_) { continue; }
           if (Number.isFinite(Number(v))) { effectiveSpeed = Number(v); speedRoute = name; break; }
         }
+        // Same read-back discipline as speed: ask, then find out what the
+        // engine did with it. An off-divisor step is refused rather than
+        // rounded, so a refusal has to reach the artifact instead of leaving
+        // the run labelled with a step it never used.
+        let stepSetError = null;
+        let effectiveStepSeconds = null;
+        if (step != null) {
+          if (typeof rs.setStepSeconds === 'function') {
+            try {
+              if (rs.setStepSeconds(step) === false) {
+                stepSetError = `engine refused step ${step}s as off-divisor`;
+              }
+            } catch (e) { stepSetError = String(e?.message || e); }
+          } else {
+            stepSetError = 'no setStepSeconds(); engine predates ORDER-01B';
+          }
+        }
+        try {
+          if (typeof rs.getStepSeconds === 'function') {
+            const v = Number(rs.getStepSeconds());
+            if (Number.isFinite(v)) effectiveStepSeconds = v;
+          }
+        } catch (_) { /* engine predates ORDER-01B */ }
+
+        let marketSecondsPerWallSecond = null;
+        try {
+          if (typeof rs.getMarketSecondsPerWallSecond === 'function') {
+            const v = Number(rs.getMarketSecondsPerWallSecond());
+            if (Number.isFinite(v)) marketSecondsPerWallSecond = v;
+          }
+        } catch (_) { /* engine predates ORDER-01B */ }
+
         replay = {
           ok: !!rs.isActive, isActive: !!rs.isActive,
           requestedSpeed: speed, effectiveSpeed, speedRoute, speedSetError,
           speedHonoured: effectiveSpeed != null ? effectiveSpeed === speed : null,
+          requestedStepSeconds: step,
+          effectiveStepSeconds,
+          stepSetError,
+          stepHonoured: step == null
+            ? null
+            : (effectiveStepSeconds != null ? effectiveStepSeconds === step : null),
+          marketSecondsPerWallSecond,
         };
       } catch (error) {
         replay = { ok: false, reason: String(error?.message || error) };
@@ -174,7 +236,7 @@ async function armPanelChart(frame, {
       dataBars: Array.isArray(chart.data) ? chart.data.length : 0,
       retainedIndicators: !!retain,
     };
-  }, indicators, replaySpeed, retainIndicators === true);
+  }, indicators, replaySpeed, retainIndicators === true, stepSeconds);
 }
 
 async function placeHostOrder(page) {
@@ -245,6 +307,11 @@ export async function armHeapCyclePoWorkload(page, {
   // SPEED-01. The second of the two defaults A named; both had to move, since a caller that passes
   // nothing reaches whichever one is on its path.
   replaySpeed = 10,
+  /**
+   * ORDER-01B market step. Null keeps the chart timeframe, which is what every
+   * gate measured before the step knob existed.
+   */
+  stepSeconds = null,
   retainIndicators = false,
   /**
    * PO-exact reproduction needs two indicators per panel and NO order at all: the
@@ -258,6 +325,7 @@ export async function armHeapCyclePoWorkload(page, {
   // Fixing the default alone would leave the sharper case open: a caller that explicitly passes 60 is
   // making the same mistake more loudly, and the engine would snap it just as quietly.
   assertOnLadder(replaySpeed, 'armHeapCyclePoWorkload');
+  assertOnStepLadder(stepSeconds, 'armHeapCyclePoWorkload');
   const perPanel = [];
   const frameById = new Map();
   for (const id of panelIds) {
@@ -266,10 +334,10 @@ export async function armHeapCyclePoWorkload(page, {
     frameById.set(id, frame);
     // Prefer chartTarget when available (handles A host vs iframe).
     const target = chartTarget(page, id) || frame;
-    let row = await armPanelChart(target, { replaySpeed, retainIndicators, indicators });
+    let row = await armPanelChart(target, { replaySpeed, stepSeconds, retainIndicators, indicators });
     if (!row.ok) {
       await sleep(200);
-      row = await armPanelChart(target, { replaySpeed, retainIndicators, indicators });
+      row = await armPanelChart(target, { replaySpeed, stepSeconds, retainIndicators, indicators });
     }
     logPoWorkload(
       `arm panel ${id}: ok=${row.ok} ind=${row.indicatorCount} `
@@ -331,6 +399,11 @@ export async function armHeapCyclePoWorkload(page, {
     perPanel,
     playHoldMs,
     replaySpeed,
+    stepSeconds,
+    /** Refusals, so a run that did not get the step it asked for says so. */
+    stepRefusals: perPanel
+      .filter((row) => row.replay && row.replay.stepSetError)
+      .map((row) => ({ id: row.id, reason: row.replay.stepSetError })),
   };
 }
 

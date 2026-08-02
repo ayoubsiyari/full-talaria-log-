@@ -96,12 +96,40 @@ async function browserAlive(browser, page) {
  * The grading, exported so the self-test exercises THIS function rather than a restatement of it. A gate
  * that only exists inside a two-hour run is a gate nobody has ever seen fail.
  */
-export function gradeHoardSlope({ probeA, probeB, advance, barMB = 1024 }) {
+export function gradeHoardSlope({ probeA, probeB, advance, legSamples = [], barMB = 1024 }) {
+  /**
+   * LEG INTEGRITY, added after the first real run walked straight through the stall gate.
+   *
+   * The gate asked whether the playhead moved BETWEEN the drains. It had moved — 2,870 bars — so the
+   * gate passed, while the product had in fact stopped delivering at minute 12 of a 20-minute leg and
+   * sat dead for the last eight. Endpoint advance cannot see a stall in the middle, which is most of
+   * what a stall is. My self-test only ever drove a totally dead leg, so it never caught this.
+   *
+   * A mid-leg stall biases retention DOWNWARD: memory does not accumulate while nothing is delivered.
+   * So the bias has a direction, and the verdict can respect it instead of discarding the run —
+   * a POSITIVE retention finding survives a stall (it would only be larger without one), while a
+   * flat or negative one does not, because a stalled product and a product that retains nothing
+   * produce the same flat floor. That distinction is the whole reason the gate exists.
+   */
+  const rates = legSamples.map((s) => s.marketSecPerWallSec).filter((v) => v != null);
+  const delivering = rates.filter((v) => Number(v) > 0).length;
+  const deliveringFraction = rates.length ? +(delivering / rates.length).toFixed(3) : null;
+  const stalled = rates.length > 0 && delivering < rates.length;
+
   const gates = {
     probeAMeasured: probeA?.verdict === 'MEASURED',
     probeBMeasured: probeB?.verdict === 'MEASURED',
     playheadAdvancedBetweenDrains: advance?.moved === true,
     advance: advance ?? null,
+    legIntegrity: {
+      samples: rates.length,
+      deliveringSamples: delivering,
+      deliveringFraction,
+      stalledMidLeg: stalled,
+      note: stalled
+        ? 'the product stopped delivering during the leg. Endpoint advance still reads positive, which is why the endpoint check alone is not a stall gate.'
+        : null,
+    },
   };
 
   // Order matters: a stall is checked FIRST because a stalled product produces a flat hoard, which is
@@ -113,7 +141,10 @@ export function gradeHoardSlope({ probeA, probeB, advance, barMB = 1024 }) {
     return { gates, verdict: 'VOID', why: `a drain failed to measure a floor (A ${probeA?.verdict}, B ${probeB?.verdict}).` };
   }
 
-  const lastAt = (p) => p.steps[p.steps.length - 1].atMs;
+  const lastStep = (p) => p.steps[p.steps.length - 1];
+  const lastAt = (p) => lastStep(p).atMs;
+  const barsA = lastStep(probeA).residentBars;
+  const barsB = lastStep(probeB).residentBars;
   const hoardA = probeA.hoardFloorMB;
   const hoardB = probeB.hoardFloorMB;
   const hours = (lastAt(probeB) - lastAt(probeA)) / 3_600_000;
@@ -125,11 +156,30 @@ export function gradeHoardSlope({ probeA, probeB, advance, barMB = 1024 }) {
   const hoardSlope = +(deltaHoard / hours).toFixed(1);
   const runningSlope = Number.isFinite(probeA.runningMB) && Number.isFinite(probeB.runningMB)
     ? +((probeB.runningMB - probeA.runningMB) / hours).toFixed(1) : null;
-  const retainedFraction = runningSlope ? +((hoardSlope / runningSlope) * 100).toFixed(1) : null;
+
+  // A ratio against a NEGATIVE running slope is not a percentage of anything. It happens exactly when
+  // the two running readings straddle a stall — the first carries froth, the second has none — and the
+  // first real run published "-99.5% retained", which reads like a finding and means nothing.
+  const retainedFraction = Number.isFinite(runningSlope) && runningSlope > 0
+    ? +((hoardSlope / runningSlope) * 100).toFixed(1) : null;
+  const retainedFractionSuppressed = Number.isFinite(runningSlope) && runningSlope <= 0
+    ? `suppressed: the running slope is ${runningSlope} MB/h. The running readings straddle a stall, so their difference is not a climb and the hoard cannot be expressed as a share of it.`
+    : null;
+
+  // A flat floor and a stalled product are indistinguishable. Only a RISING floor survives a stall.
+  if (stalled && deltaHoard <= 0) {
+    return {
+      gates, verdict: 'VOID',
+      why: `the product stopped delivering during the leg (${delivering}/${rates.length} samples delivering) and the floor did not rise (${deltaHoard} MB). A stalled product and a product that retains nothing produce the same flat floor, so this cannot distinguish them.`,
+    };
+  }
 
   return {
     gates,
     verdict: 'MEASURED',
+    ...(stalled ? {
+      caveat: `THE LEG CONTAINED A STALL: only ${delivering} of ${rates.length} samples were delivering. Retention does not accrue while nothing is delivered, so ${hoardSlope} MB/h is a LOWER BOUND on the wall-clock rate under continuous delivery, and the per-wall-hour form should not be quoted without this sentence.`,
+    } : {}),
     result: {
       hoardA_MB: hoardA,
       hoardB_MB: hoardB,
@@ -138,6 +188,18 @@ export function gradeHoardSlope({ probeA, probeB, advance, barMB = 1024 }) {
       hoardSlopeMBPerHour: hoardSlope,
       runningSlopeMBPerHour: runningSlope,
       retainedPercentOfRunningClimb: retainedFraction,
+      retainedPercentSuppressedBecause: retainedFractionSuppressed,
+      /**
+       * The per-bar form, computed here and NOT in the A8 baseline, because the denominator behaves
+       * differently: both floors are read while PAUSED, so each carries a settled bar count rather
+       * than a sawtoothing instantaneous one. This is the form comparable to the three published
+       * per-kbar figures, and unlike those it is measured on drained floors rather than running totals.
+       */
+      residentBarsAtFloorA: barsA,
+      residentBarsAtFloorB: barsB,
+      deltaResidentBars: Number.isFinite(barsA) && Number.isFinite(barsB) ? barsB - barsA : null,
+      hoardMBPerThousandResidentBars: Number.isFinite(barsA) && Number.isFinite(barsB) && barsB - barsA > 0
+        ? +((deltaHoard / ((barsB - barsA) / 1000))).toFixed(2) : null,
       frothPercentA: probeA.frothPercentOfRunning,
       frothPercentB: probeB.frothPercentOfRunning,
       form: 'TWO-POINT DIFFERENCE, not a fit: no CI, no r2, no runs statistic. Direction and magnitude class only.',
@@ -246,7 +308,7 @@ if (RUN_DIRECTLY) (async () => {
       const probeB = await pauseProbe(page, { readFootprint: readAll, frothWaitMs: FROTH_MS, reclaimWaitMs: RECLAIM_MS, label: 'B-late', log: (m) => console.log(`  ${m}`) });
       artifact.probes.B = probeB;
 
-      const graded = gradeHoardSlope({ probeA, probeB, advance: artifact.playLeg.advance });
+      const graded = gradeHoardSlope({ probeA, probeB, advance: artifact.playLeg.advance, legSamples });
       Object.assign(artifact, graded);
     }
   } catch (e) {

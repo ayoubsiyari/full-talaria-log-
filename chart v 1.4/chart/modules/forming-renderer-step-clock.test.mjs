@@ -77,7 +77,8 @@ test('A5 product wiring: interpolation is derived from the step clock helper', (
   const frameDetail = methodSource(replaySource, '_buildMultichartReplayFrameDetail');
 
   assert.match(helper, /Number\(this\.tickProgress\)/, 'helper must read step-clock progress');
-  assert.match(helper, /target\.cachedPath = this\.getTickPath\(tc\)/, 'helper derives deterministic price path');
+  assert.match(helper, /target\.cachedPath = this\.getRetainedTickPath\(tc,\s*'animatingCandle'\)/,
+    'helper derives deterministic price path into a retained slot');
   assert.match(helper, /__talariaFormingSimSource\s*=\s*'step-clock'/, 'helper stamps SIM source');
   assert.match(helper, /this\._formingCandleScratch/, 'helper must reuse per-panel scratch');
   assert.doesNotMatch(helper, /new Array|\[\.\.\.|\.slice\s*\(|Array\.from\s*\(/,

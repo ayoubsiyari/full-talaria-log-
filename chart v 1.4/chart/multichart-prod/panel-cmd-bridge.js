@@ -822,6 +822,43 @@
     }
 
     /**
+     * ORDER-01B: apply host market-time cursor onto a panel replay system.
+     * Explicit `__TALARIA_DISABLE_GLOBAL_MARKET_TIME_CURSOR_V1 === true` restores
+     * the interim D-016 play-frame timestamp pin.
+     * @returns {boolean} true when cursor market time was applied
+     */
+    function applyMarketTimeCursorFromFrame(rs, args, fallbackTs) {
+        if (!rs || !args || typeof args !== 'object') return false;
+        var cursorDisabled = typeof window !== 'undefined'
+            && window.__TALARIA_DISABLE_GLOBAL_MARKET_TIME_CURSOR_V1 === true;
+        if (!cursorDisabled
+            && args.marketTimeCursor
+            && typeof rs._consumeMarketTimeCursor === 'function') {
+            try {
+                rs._consumeMarketTimeCursor(args);
+                return true;
+            } catch (_c) { /* ignore */ }
+        }
+        if (!cursorDisabled
+            && args.marketTimeCursor
+            && Number.isFinite(Number(args.marketTimeCursor.marketTimeMs))) {
+            rs.replayTimestamp = Number(args.marketTimeCursor.marketTimeMs);
+            return true;
+        }
+        if (args.isPlaying
+            && !(typeof window !== 'undefined'
+                && window.__TALARIA_MC_DISABLE_FINEST_TF_REPLAY_CADENCE)) {
+            // D-016 / T8 interim: pin shared virtual market timestamp on play frames.
+            var ts = Number.isFinite(Number(fallbackTs)) ? Number(fallbackTs) : Number(args.timestamp);
+            if (Number.isFinite(ts)) {
+                rs.replayTimestamp = ts;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Apply one replay animation frame from parent tile A. Iframe panels stay
      * paused locally — parent is the single playhead driver.
      */
@@ -843,13 +880,8 @@
             if (Number.isFinite(frameMark)) ch._mcPendingCanonicalMark = frameMark;
         } catch (_fm) { /* ignore */ }
 
-        // D-016 / T8: pin shared virtual market timestamp on every play frame so
-        // coarse panels stay byte-aligned with the host finest-TF clock (parity).
-        if (args.isPlaying
-            && !(typeof window !== 'undefined'
-                && window.__TALARIA_MC_DISABLE_FINEST_TF_REPLAY_CADENCE)) {
-            rs.replayTimestamp = ts;
-        }
+        // ORDER-01B: consume the host market-time cursor when present (default ON).
+        applyMarketTimeCursorFromFrame(rs, args, ts);
 
         // Host mid timeframe-switch: it rebuilds its master data and its broadcast
         // playhead can momentarily regress. Applying those transient frames drags

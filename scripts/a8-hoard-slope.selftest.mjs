@@ -15,13 +15,16 @@ const check = (name, cond, detail = '') => {
   else { fail += 1; console.log(`  FAIL ${name}${detail ? ` — ${detail}` : ''}`); }
 };
 
-const probe = (label, { running, floor, t, verdict = 'MEASURED' }) => ({
+const probe = (label, { running, floor, t, bars = null, verdict = 'MEASURED' }) => ({
   verdict,
   label,
   runningMB: running,
   hoardFloorMB: floor,
   frothPercentOfRunning: running > 0 && floor != null ? +(((running - floor) / running) * 100).toFixed(1) : null,
-  steps: [{ stage: 'running', atMs: t - 660_000 }, { stage: 'after-reclaim-10min', atMs: t }],
+  steps: [
+    { stage: 'running', atMs: t - 660_000, residentBars: bars },
+    { stage: 'after-reclaim-10min', atMs: t, residentBars: bars },
+  ],
 });
 
 const MOVED = { moved: true, indexAdvance: 12_000, timestampAdvanceMs: 720_000_000 };
@@ -67,6 +70,50 @@ console.log('A8 HOARD-SLOPE grader self-test\n');
   check('STALL with a flat hoard VOIDs', g.verdict === 'VOID', `graded ${g.verdict}`);
   check('stall reason names the false all-clear', /stall|did not advance/i.test(g.why || ''), g.why);
   check('stall emits no result to quote', g.result === undefined);
+}
+
+// 3b. THE ONE MY FIRST VERSION MISSED: the leg stalls HALFWAY. Endpoint advance is positive, so the
+//     original gate passed it. This is what the first real run actually did.
+{
+  const halfStalled = [
+    { minute: 2, marketSecPerWallSec: 635 }, { minute: 4, marketSecPerWallSec: 627 },
+    { minute: 6, marketSecPerWallSec: 619 }, { minute: 8, marketSecPerWallSec: 2051 },
+    { minute: 10, marketSecPerWallSec: 209 }, { minute: 12, marketSecPerWallSec: 0 },
+    { minute: 14, marketSecPerWallSec: 0 }, { minute: 16, marketSecPerWallSec: 0 },
+    { minute: 18, marketSecPerWallSec: 0 },
+  ];
+  const rising = gradeHoardSlope({
+    probeA: probe('A', { running: 1008.4, floor: 870.5, t: t0 }),
+    probeB: probe('B', { running: 942.3, floor: 936.2, t: t0 + 0.517 * HOUR }),
+    advance: MOVED, legSamples: halfStalled,
+  });
+  check('a mid-leg stall is detected even though the endpoints advanced',
+    rising.gates.legIntegrity.stalledMidLeg === true && rising.gates.legIntegrity.deliveringFraction === 0.556,
+    JSON.stringify(rising.gates.legIntegrity));
+  check('a RISING floor survives the stall as a lower bound',
+    rising.verdict === 'MEASURED' && /LOWER BOUND/.test(rising.caveat || ''), `${rising.verdict} / ${rising.caveat}`);
+  check('the negative running slope does not become a percentage',
+    rising.result.retainedPercentOfRunningClimb === null && /suppressed/.test(rising.result.retainedPercentSuppressedBecause || ''),
+    String(rising.result?.retainedPercentOfRunningClimb));
+
+  // Same stall, but a FLAT floor: now the stall and "no retention" are indistinguishable.
+  const flat = gradeHoardSlope({
+    probeA: probe('A', { running: 1008.4, floor: 900, t: t0 }),
+    probeB: probe('B', { running: 942.3, floor: 899, t: t0 + 0.517 * HOUR }),
+    advance: MOVED, legSamples: halfStalled,
+  });
+  check('a FLAT floor after a stall VOIDs rather than clearing the arm',
+    flat.verdict === 'VOID' && /indistinguishable|same flat floor/.test(flat.why || ''), `${flat.verdict} / ${flat.why}`);
+
+  // A clean leg must not be penalised.
+  const clean = gradeHoardSlope({
+    probeA: probe('A', { running: 1008.4, floor: 870.5, t: t0 }),
+    probeB: probe('B', { running: 1200, floor: 936.2, t: t0 + 0.517 * HOUR }),
+    advance: MOVED, legSamples: halfStalled.map((s) => ({ ...s, marketSecPerWallSec: 600 })),
+  });
+  check('a clean leg carries no stall caveat', clean.verdict === 'MEASURED' && !clean.caveat, String(clean.caveat));
+  check('a clean leg with a positive running slope still reports a retained share',
+    clean.result.retainedPercentOfRunningClimb !== null, String(clean.result?.retainedPercentOfRunningClimb));
 }
 
 // 4. A drain that never verified its pause cannot contribute a floor.

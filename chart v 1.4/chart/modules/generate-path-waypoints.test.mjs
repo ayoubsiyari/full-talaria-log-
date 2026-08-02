@@ -141,6 +141,63 @@ test('A4: default generation does not allocate per-bar path arrays', () => {
     'generator must not allocate per-bar arrays');
 });
 
+test('A4: retained cached paths do not alias the transient scratch path', () => {
+  const replay = makeReplay('BTCUSD');
+  replay.ticksPerCandle = 8;
+  const firstBar = { symbol: 'BTCUSD', t: 1, o: 100, h: 112, l: 98, c: 106, resolvedEventLevels: [109] };
+  const secondBar = { symbol: 'BTCUSD', t: 2, o: 200, h: 212, l: 198, c: 206, resolvedEventLevels: [209] };
+
+  const retained = replay.getRetainedTickPath(firstBar, 'animatingCandle');
+  const retainedHead = retained[0];
+  const transient = replay.getTickPath(secondBar);
+
+  assert.notEqual(retained, transient, 'retained cachedPath must not be the transient scratch object');
+  assert.notEqual(transient[0], retainedHead, 'anti-vacuity: second bar path is genuinely different');
+  assert.equal(retained[0], retainedHead, 'later transient generation must not rewrite retained cachedPath');
+});
+
+test('A4: independent-pair and aggregate generation do not clobber retained paths', () => {
+  const replay = makeReplay('NQ');
+  replay.ticksPerCandle = 8;
+  replay.currentTicksPerCandle = 8;
+  replay.sessionStartIndex = 0;
+  const firstBar = { symbol: 'NQ', t: 1000, o: 100, h: 112, l: 98, c: 106, v: 1, resolvedEventLevels: [109] };
+  const secondBar = { symbol: 'NQ', t: 2000, o: 200, h: 212, l: 198, c: 206, v: 1, resolvedEventLevels: [209] };
+  replay.fullRawData = [firstBar, secondBar];
+
+  const retained = replay.getRetainedTickPath(firstBar, 'animatingCandle');
+  const retainedHead = retained[0];
+  replay.animatingCandle = { target: firstBar, cachedPath: retained };
+
+  const pair = replay._buildIndependentPairAnimatedCandle(replay.fullRawData, 1500, {
+    tickElapsedMs: 1,
+    tickProgress: 2,
+    ticksPerCandle: 8,
+  });
+  assert.ok(pair && pair.candle, 'independent pair fixture must produce a forming candle');
+  assert.notEqual(pair.candle.o, firstBar.o, 'anti-vacuity: independent pair generated the second bar');
+  assert.equal(retained[0], retainedHead, 'independent-pair generation must not rewrite retained cachedPath');
+
+  const aggregate = replay.getAggregatedTickPath(1000, 2000);
+  assert.ok(aggregate && aggregate.totalTicks >= 16, 'aggregate fixture must include both bars');
+  assert.equal(retained[0], retainedHead, 'aggregate loop generation must not rewrite retained cachedPath');
+});
+
+test('A4: cachedPath retainers use retained slots, not transient getTickPath scratch', () => {
+  for (const [label, source] of [
+    ['canonical', replaySource],
+    ['mirror', replayMirrorSource],
+  ]) {
+    assert.doesNotMatch(source, /cachedPath\s*=\s*this\.getTickPath\(/,
+      `${label} cachedPath assignments must not retain transient scratch`);
+    assert.match(source, /cachedPath:\s*prePath/, `${label} startTickAnimation still retains the prefetched path`);
+    assert.match(source, /getRetainedTickPath\(targetCandle,\s*'animatingCandle'\)/,
+      `${label} startTickAnimation must prefetch into the animating retained slot`);
+    assert.match(source, /getRetainedTickPath\(tc,\s*'animatingCandle'\)/,
+      `${label} step-clock helper must use the animating retained slot`);
+  }
+});
+
 test('A6: path code has no import or reachability into order-resolution state', () => {
   assert.equal(replaySource, replayMirrorSource, 'replay mirror must be byte-identical');
   const methods = {
@@ -148,6 +205,7 @@ test('A6: path code has no import or reachability into order-resolution state', 
     generateRandomPath: methodSource(replaySource, 'generateRandomPath'),
     collectPathWaypoints: methodSource(replaySource, '_collectPathWaypoints'),
     getTickPath: methodSource(replaySource, 'getTickPath'),
+    getRetainedTickPath: methodSource(replaySource, 'getRetainedTickPath'),
   };
   assertPathHasNoOrderReach(methods);
 

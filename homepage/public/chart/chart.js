@@ -3057,13 +3057,90 @@ class Chart {
         requestAnimationFrame(step);
     }
 
+    /**
+     * RATE-HOLD headline for the soak HUD — must match E's probe definition:
+     * host panel simulated-time delivery =
+     *   replayTimestamp delta / host timeframe / wall time
+     * (`barsPerSecRoute: "replayTimestamp"`). `currentIndex` and
+     * `window.__talariaEffectiveRate` are witnesses only; never the judge.
+     */
+    _qw4ReadTimestampRouteBarsPerSecond(now = null) {
+        const wallNow = Number.isFinite(now) ? now
+            : ((typeof performance !== 'undefined' && typeof performance.now === 'function')
+                ? performance.now()
+                : Date.now());
+        const rs = this.replaySystem;
+        const ts = rs && Number.isFinite(Number(rs.replayTimestamp)) ? Number(rs.replayTimestamp) : null;
+        let tfMs = null;
+        try {
+            if (rs && typeof rs._resolveReplayStepTimeframeMs === 'function') {
+                const resolved = Number(rs._resolveReplayStepTimeframeMs());
+                if (Number.isFinite(resolved) && resolved > 0) tfMs = resolved;
+            }
+        } catch (_e) { /* ignore */ }
+        if (!(tfMs > 0)) {
+            const tf = this.currentTimeframe || (rs && rs.currentTimeframe) || null;
+            const m = String(tf || '').match(/^(\d+)\s*([smhdw])$/i);
+            if (m) {
+                const n = Number(m[1]);
+                const unit = m[2].toLowerCase();
+                const sec = n * ({ s: 1, m: 60, h: 3600, d: 86400, w: 604800 }[unit] || 0);
+                if (sec > 0) tfMs = sec * 1000;
+            }
+        }
+        if (!(tfMs > 0)) tfMs = 60000;
+
+        const prev = this._qw4TsRouteSample;
+        this._qw4TsRouteSample = { at: wallNow, ts };
+        if (!prev || prev.ts == null || ts == null) {
+            return {
+                effective: null,
+                route: null,
+                timestampDeltaMs: null,
+                indexBarsPerSec: null,
+                witnessEffectiveRate: Number(typeof window !== 'undefined' ? window.__talariaEffectiveRate : NaN),
+            };
+        }
+        const wallSec = (wallNow - prev.at) / 1000;
+        const timestampDeltaMs = ts - prev.ts;
+        const timestampBarsPerSec = wallSec > 0 && timestampDeltaMs >= 0
+            ? (timestampDeltaMs / tfMs) / wallSec
+            : null;
+        let indexBarsPerSec = null;
+        try {
+            const idx = rs && rs.currentIndex != null ? Number(rs.currentIndex) : null;
+            const prevIdx = Number.isFinite(this._qw4IndexRouteSample) ? this._qw4IndexRouteSample : null;
+            this._qw4IndexRouteSample = idx;
+            if (idx != null && prevIdx != null && wallSec > 0 && idx >= prevIdx) {
+                indexBarsPerSec = (idx - prevIdx) / wallSec;
+            }
+        } catch (_e) { /* witness only */ }
+        const witness = Number(typeof window !== 'undefined' ? window.__talariaEffectiveRate : NaN);
+        return {
+            effective: Number.isFinite(timestampBarsPerSec) ? timestampBarsPerSec : null,
+            route: Number.isFinite(timestampBarsPerSec) ? 'replayTimestamp' : (Number.isFinite(indexBarsPerSec) ? 'currentIndex' : null),
+            timestampDeltaMs: Number.isFinite(timestampDeltaMs) ? timestampDeltaMs : null,
+            indexBarsPerSec: Number.isFinite(indexBarsPerSec) ? indexBarsPerSec : null,
+            witnessEffectiveRate: Number.isFinite(witness) ? witness : null,
+        };
+    }
+
     _qw4ReadSoakDiagnosticsSnapshot() {
         const now = (typeof performance !== 'undefined' && typeof performance.now === 'function')
             ? performance.now()
             : Date.now();
         const gov = typeof window !== 'undefined' ? window.__talariaSpeedGov : null;
-        const effective = Number(typeof window !== 'undefined' ? window.__talariaEffectiveRate : NaN);
-        const target = Number(gov && gov.target);
+        const routeSample = this._qw4ReadTimestampRouteBarsPerSecond(now);
+        // Headline = timestamp route (E RATE-HOLD). Fall back only when the
+        // playhead has not yet produced a timestamp delta sample.
+        const effective = Number.isFinite(routeSample.effective)
+            ? routeSample.effective
+            : (Number.isFinite(routeSample.witnessEffectiveRate) ? routeSample.witnessEffectiveRate : NaN);
+        const target = Number(
+            (this.replaySystem && typeof this.replaySystem.getTargetBarsPerSecond === 'function')
+                ? this.replaySystem.getTargetBarsPerSecond()
+                : (gov && gov.target),
+        );
         if (!Number.isFinite(this._qw4RateBaseline) && Number.isFinite(effective) && effective > 0) {
             this._qw4RateBaseline = effective;
         }
@@ -3092,6 +3169,10 @@ class Chart {
             effectiveBarsPerSecond: Number.isFinite(effective) ? effective : null,
             targetBarsPerSecond: Number.isFinite(target) ? target : null,
             baselineBarsPerSecond: Number.isFinite(baseline) ? baseline : null,
+            barsPerSecRoute: routeSample.route,
+            timestampDeltaMs: routeSample.timestampDeltaMs,
+            indexBarsPerSecWitness: routeSample.indexBarsPerSec,
+            speedGovEffectiveWitness: routeSample.witnessEffectiveRate,
             rateHoldPct,
             rateHoldOk: rateHoldPct == null ? null : rateHoldPct <= 5,
             heapMiB,
@@ -3117,6 +3198,7 @@ class Chart {
             node.classList.remove('talaria-qw4-soak-hud__bad', 'talaria-qw4-soak-hud__ok');
             if (cls) node.classList.add(cls);
         };
+        const route = snap.barsPerSecRoute || 'pending';
         const rate = this._formatQw4Number(snap.effectiveBarsPerSecond, 2, ' b/s');
         const target = this._formatQw4Number(snap.targetBarsPerSecond, 2, ' tgt');
         const hold = snap.rateHoldPct == null ? '--' : `${snap.rateHoldPct.toFixed(2)}% vs h0`;
@@ -3124,7 +3206,7 @@ class Chart {
             ? Object.entries(snap.restoreCatchCounts).map(([k, v]) => `${k}:${v}`).join(' ')
             : '0';
         set('age', `${Math.floor(snap.ageSeconds)}s`);
-        set('rate', `${rate} / ${target}`);
+        set('rate', `${rate} / ${target} [${route}]`);
         set('hold', hold, snap.rateHoldOk === false ? 'talaria-qw4-soak-hud__bad' : (snap.rateHoldOk ? 'talaria-qw4-soak-hud__ok' : ''));
         set('heap', this._formatQw4Number(snap.heapMiB, 1, ' MiB'));
         set('frame', this._formatQw4Number(snap.frameIntervalMs, 1, ' ms'));

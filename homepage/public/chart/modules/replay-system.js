@@ -239,6 +239,50 @@ const SPEED_GOV_RATE_WINDOW_MS = 2000;
 const SPEED_GOV_MIN_INTERVAL_MS = 16;
 
 /**
+ * ORDER-01B — the market seconds one step may cover.
+ *
+ * The speed ladder answers "how often", and on its own it could never answer
+ * "how far": ten steps a second across one-minute bars and ten steps a second
+ * across one-second bars are the same speed and sixty times apart in market
+ * time. The step knob is the second half of that sentence.
+ *
+ * Only divisors of the chart timeframe are offered, and only from this list. A
+ * step that does not divide the timeframe evenly leaves a ragged remainder in
+ * every bar, so the forming candle would close early or late by that remainder
+ * — visible immediately as a playhead that drifts off the bar boundary.
+ */
+const ORDER01B_STEP_CANDIDATE_SECONDS = Object.freeze([
+    1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800,
+    3600, 7200, 14400, 21600, 43200, 86400,
+]);
+
+/**
+ * ORDER-01B master switch. Negatively named, unlike the SPEED-01 governor
+ * flag, because the reinterpretation is the shipped behaviour and the switch
+ * exists only to get back to the old one: absent ⇒ the step knob is live;
+ * truthy ⇒ a step is one chart bar again and `setStepSeconds` refuses.
+ */
+function _order01bStepV1Enabled() {
+    return !_speedGovFlagState('__TALARIA_DISABLE_ORDER01B_STEP_V1', false);
+}
+
+/**
+ * Timeframe string for a step, in the vocabulary `timeframeToMs` already
+ * parses. The step knob writes the same `stepTimeframeOverride` the INTERVAL
+ * popup writes — deliberately, so the two controls cannot disagree about what
+ * a step is. Two sources of truth for one number is how the cadence ends up
+ * derived from one control and the playhead advanced by the other.
+ */
+function _order01bStepLabel(seconds) {
+    const n = Math.round(Number(seconds));
+    if (!Number.isFinite(n) || n <= 0) return null;
+    if (n % 86400 === 0) return `${n / 86400}d`;
+    if (n % 3600 === 0) return `${n / 3600}h`;
+    if (n % 60 === 0) return `${n / 60}m`;
+    return `${n}s`;
+}
+
+/**
  * Bounds on the corrector's authority. Without them a momentary stall
  * reads as near-zero rate and the corrector demands an enormous burst,
  * which is the very unbounded unit of work that caused the drift.
@@ -1508,11 +1552,14 @@ class ReplaySystem {
         this.playbackMode = normalizedMode;
         this.tickAnimationEnabled = normalizedMode === 'tick';
 
-        // ORDER-01 §5: REALISTIC exists only in tick mode. Leaving tick while
-        // it is selected would strand the user on a speed candle mode has no
-        // rung for, and the bare Number() downstream would silently read it
-        // as 1 while the selector went on showing something else.
-        if (normalizedMode === 'candle' && this.speed === SPEED_GOV_REALISTIC) {
+        // ORDER-01 §5 had to demote REALISTIC here: it existed only in tick
+        // mode, so leaving tick while it was selected stranded the user on a
+        // speed candle mode had no rung for. ORDER-01B removes the reason —
+        // REALISTIC is a preset on both knobs and means the same thing in
+        // either mode, so there is nothing to demote. The demotion survives
+        // only for the switched-off path, where it is still a live hazard.
+        if (!_order01bStepV1Enabled()
+            && normalizedMode === 'candle' && this.speed === SPEED_GOV_REALISTIC) {
             this.speed = SPEED_GOV_LADDER_BPS[0];
         }
 
@@ -5756,6 +5803,129 @@ class ReplaySystem {
     }
 
     /* ----------------------------------------------------------------- *
+     * ORDER-01B — the step knob: how far one step moves the market clock.
+     * ----------------------------------------------------------------- */
+
+    /** The chart timeframe in seconds: the coarsest step, and the default. */
+    getChartTimeframeSeconds() {
+        const tf = this.chart && this.chart.currentTimeframe;
+        const ms = tf ? this.timeframeToMs(tf) : null;
+        if (Number.isFinite(ms) && ms > 0) return Math.round(ms / 1000);
+        const raw = this._getRawBarPeriodMs();
+        return Number.isFinite(raw) && raw > 0 ? Math.round(raw / 1000) : 60;
+    }
+
+    /**
+     * The finest step the loaded inventory can actually render, in seconds.
+     * Below this there is no bar to advance onto, so the step has to be drawn
+     * by the simulated path rather than read out of data.
+     */
+    getDataFloorSeconds() {
+        const raw = this._getRawBarPeriodMs();
+        return Number.isFinite(raw) && raw > 0 ? Math.round(raw / 1000) : 60;
+    }
+
+    /**
+     * The steps the knob may offer: divisors of the chart timeframe, coarsest
+     * last, always including the timeframe itself. The timeframe is appended
+     * even when it is not a listed candidate, because "one bar per step" must
+     * remain reachable on any timeframe — that is the setting the whole
+     * pre-ORDER-01B product ran at.
+     */
+    getOfferedStepSeconds() {
+        const tfSeconds = this.getChartTimeframeSeconds();
+        const out = [];
+        for (const candidate of ORDER01B_STEP_CANDIDATE_SECONDS) {
+            if (candidate > tfSeconds) break;
+            if (tfSeconds % candidate === 0) out.push(candidate);
+        }
+        if (out.indexOf(tfSeconds) === -1) out.push(tfSeconds);
+        return out;
+    }
+
+    /** A step finer than the inventory must be drawn, not read. */
+    isStepBelowDataFloor(seconds = this.getStepSeconds()) {
+        return Number(seconds) < this.getDataFloorSeconds();
+    }
+
+    /** How the current step is served: out of data, or by the simulated path. */
+    getStepRouting() {
+        const stepSeconds = this.getStepSeconds();
+        return {
+            stepSeconds,
+            dataFloorSeconds: this.getDataFloorSeconds(),
+            route: this.isStepBelowDataFloor(stepSeconds) ? 'puppet' : 'native',
+        };
+    }
+
+    /** Menu label for a step, in the same vocabulary the INTERVAL popup uses. */
+    getStepLabel(seconds = this.getStepSeconds()) {
+        return _order01bStepLabel(seconds);
+    }
+
+    /**
+     * Market seconds advanced by one step. Defaults to the chart timeframe,
+     * which makes `speed` mean bars per second exactly as it did before the
+     * knob existed — the soak at `speed=10, step=TF` is arithmetically the
+     * old ten-bars-a-second run, not a new regime with the same name.
+     */
+    getStepSeconds() {
+        if (!_order01bStepV1Enabled()) return this.getChartTimeframeSeconds();
+        const ms = this._resolveReplayStepTimeframeMs();
+        if (Number.isFinite(ms) && ms > 0) return ms / 1000;
+        return this.getChartTimeframeSeconds();
+    }
+
+    /**
+     * Choose the step. Returns false for a step that is not on offer rather
+     * than snapping to the nearest one: snapping is right for a user dragging
+     * a slider and wrong for every programmatic caller, which would otherwise
+     * record the step it asked for and run at a different one.
+     */
+    setStepSeconds(seconds) {
+        if (!_order01bStepV1Enabled()) return false;
+        const n = Number(seconds);
+        if (!Number.isFinite(n) || n <= 0) return false;
+        if (this.getOfferedStepSeconds().indexOf(n) === -1) return false;
+        const label = _order01bStepLabel(n);
+        if (!label) return false;
+
+        this.stepTimeframeOverride = label;
+        // A new step is a new regime: market time per tick changes, so the
+        // rate window describes something that is no longer running.
+        this._speedGovResetMeter();
+        if (this.isPlaying && typeof this._restartPlaybackAfterControlChange === 'function') {
+            this._restartPlaybackAfterControlChange(true);
+        }
+        return true;
+    }
+
+    /**
+     * True once the user has actually chosen a step. Absent a choice the
+     * product behaves exactly as it did before ORDER-01B, which is what keeps
+     * the A8 baseline a valid comparison.
+     */
+    _order01bHasExplicitStep() {
+        return !!(_order01bStepV1Enabled() && this._hasExplicitReplayStepInterval());
+    }
+
+    /** Steps per wall-second: the ladder value, which is what speed now means. */
+    getTargetStepsPerWallSecond() {
+        const base = this.normalizeSpeed(this.speed);
+        const n = Number(base);
+        return Number.isFinite(n) && n > 0 ? n : 1;
+    }
+
+    /**
+     * The rate the two knobs promise together, in market seconds per wall
+     * second. This is the number a user can check against a clock, and the
+     * one `__talariaEffectiveRate` is measured against.
+     */
+    getMarketSecondsPerWallSecond() {
+        return this.getTargetStepsPerWallSecond() * this.getStepSeconds();
+    }
+
+    /* ----------------------------------------------------------------- *
      * SPEED-01 / ORDER-01 — governor: ladder, meter, corrector, clock.
      * ----------------------------------------------------------------- */
 
@@ -5799,9 +5969,37 @@ class ReplaySystem {
         return SPEED_GOV_LADDER_BPS.slice();
     }
 
-    /** Tick mode: the same ten, plus real time. */
+    /**
+     * Tick mode offers the same ten and nothing else.
+     *
+     * ORDER-01B takes REALISTIC off the ladder. A rung that was a string and
+     * not a speed forced a branch into every consumer that touched it — the
+     * selector label, the normaliser, the rate derivation, and a mode switch
+     * that had to demote the user off it on the way out of tick mode. Real
+     * time is now expressible in the two knobs the user already has (one
+     * second of market time per wall second), so it is a preset, not a rung.
+     */
     getTickSpeedLadder() {
+        if (_order01bStepV1Enabled()) return SPEED_GOV_LADDER_BPS.slice();
         return [...SPEED_GOV_LADDER_BPS, SPEED_GOV_REALISTIC];
+    }
+
+    /**
+     * The REALISTIC preset: one second of market time per wall second, which
+     * is what "real time" always meant. It sets both knobs, because that is
+     * the only honest way to say it once a speed alone cannot.
+     */
+    applyRealisticPreset() {
+        if (!_order01bStepV1Enabled()) return false;
+        this.setSpeed(SPEED_GOV_LADDER_BPS[0]);
+        return this.setStepSeconds(1);
+    }
+
+    /** Whether the two knobs currently sit where the preset puts them. */
+    isRealisticPresetActive() {
+        return !!(_order01bStepV1Enabled()
+            && this.getTargetStepsPerWallSecond() === 1
+            && this.getStepSeconds() === 1);
     }
 
     /**
@@ -5814,6 +6012,11 @@ class ReplaySystem {
      * two modes share a ladder without sharing a rate.
      */
     getTargetBarsPerSecond() {
+        // ORDER-01B: one ladder, one meaning. Tick mode used to derive its
+        // rate from a bar duration fixed at `(timeframe / 4) / N`, so the same
+        // rung meant one thing in candle mode and four times that in tick —
+        // a difference no label ever showed.
+        if (_order01bStepV1Enabled()) return this.getTargetStepsPerWallSecond();
         if (this.getPlaybackMode() === 'tick') {
             const durationMs = this.getTickBarDurationMs(this.speed);
             if (Number.isFinite(durationMs) && durationMs > 0) return 1000 / durationMs;
@@ -5829,24 +6032,40 @@ class ReplaySystem {
     }
 
     /**
-     * Tick mode bar duration, in milliseconds: `(timeframe_seconds / 4) / N`.
-     * REALISTIC runs 1:1 with the market clock instead.
+     * How long a tick-mode bar takes in wall time.
+     *
+     * ORDER-01B: its market length divided by the market rate the two knobs
+     * promise. `(timeframe_seconds / 4) / N` was a constant nobody could check
+     * against a clock, and the 4 in it is why tick mode ran four times faster
+     * than candle mode at the same labelled speed. The old formula stays
+     * behind the kill-switch.
      */
     getTickBarDurationMs(speed = this.speed, tfMsOverride = null) {
         const resolved = Number.isFinite(tfMsOverride) && tfMsOverride > 0
             ? tfMsOverride
             : this._resolveReplayStepTimeframeMs();
         const tfSeconds = (Number.isFinite(resolved) && resolved > 0 ? resolved : 60000) / 1000;
-        if (speed === SPEED_GOV_REALISTIC) return tfSeconds * 1000;
         const n = Number(speed);
+        if (_order01bStepV1Enabled()) {
+            const rungs = Number.isFinite(n) && n > 0 ? n : 1;
+            const marketPerWall = rungs * this.getStepSeconds();
+            if (!(marketPerWall > 0)) return tfSeconds * 1000;
+            return (tfSeconds / marketPerWall) * 1000;
+        }
+        if (speed === SPEED_GOV_REALISTIC) return tfSeconds * 1000;
         if (!Number.isFinite(n) || n <= 0) return tfSeconds * 1000;
         return ((tfSeconds / SPEED_GOV_TICK_TF_DIVISOR) / n) * 1000;
     }
 
     /**
-     * Record bars actually delivered. Called from the playback tick with
+     * Record progress actually delivered. Called from the playback tick with
      * the real playhead delta, never with the number we intended to move
      * — the whole point is to measure what happened, not what was asked.
+     *
+     * The unit is the caller's: bars before ORDER-01B, market seconds after.
+     * The meter divides an amount by a span and does not care which, and the
+     * one thing that must never happen is a target in one unit being compared
+     * against a rate in the other.
      */
     _speedGovRecordBars(bars, now = _speedGovNow()) {
         const n = Number(bars);
@@ -5903,9 +6122,17 @@ class ReplaySystem {
         const effective = this.getEffectiveBarsPerSecond(now);
         gov.lastEffective = effective;
         if (typeof window === 'undefined') return effective;
+        const order01b = _order01bStepV1Enabled();
         const detail = {
             effective,
-            target: this.getTargetBarsPerSecond(),
+            target: this._speedGovTargetRate(),
+            // Named, because the number changed meaning under ORDER-01B and a
+            // reader that assumes bars per second would call a healthy 600 a
+            // sixtyfold overrun. Anything consuming the rate must branch on
+            // this rather than on its own idea of what the product does.
+            unit: order01b ? 'market-seconds-per-wall-second' : 'bars-per-second',
+            stepSeconds: order01b ? this.getStepSeconds() : null,
+            stepsPerWallSecond: order01b ? this.getTargetStepsPerWallSecond() : null,
             gain: gov.gain,
             mode: this.getPlaybackMode(),
             corrections: gov.corrections,
@@ -5941,9 +6168,24 @@ class ReplaySystem {
      * (>5%) and sustained (>5 s) — a single slow frame is noise, and
      * correcting on noise is how a governor starts oscillating.
      */
+    /**
+     * The target in whatever unit the meter is reporting. Drift is a ratio,
+     * and a ratio between two different units is a correction against nothing.
+     */
+    _speedGovTargetRate() {
+        return _order01bStepV1Enabled()
+            ? this.getMarketSecondsPerWallSecond()
+            : this.getTargetBarsPerSecond();
+    }
+
+    /** Market seconds of replay delivered per wall second, as measured. */
+    getEffectiveMarketSecondsPerWallSecond(now = _speedGovNow()) {
+        return this.getEffectiveBarsPerSecond(now);
+    }
+
     _speedGovEvaluateDrift(now = _speedGovNow()) {
         const gov = this._speedGovState();
-        const target = this.getTargetBarsPerSecond();
+        const target = this._speedGovTargetRate();
         const effective = gov.lastEffective;
         // No window yet, or stopped: nothing to judge, and no run to keep.
         if (!this.isPlaying || effective <= 0 || target <= 0) {
@@ -6084,6 +6326,16 @@ class ReplaySystem {
         let intervalMs = Math.max(MIN_INTERVAL_MS, Math.floor(1000 / speed));
         let stepsPerTick = Math.max(1, Math.round((speed * intervalMs) / 1000));
         const orderMoneyPath = this.isPlaying && this._getOrderExecutionCadenceMs() != null;
+
+        // ORDER-01B: with a step chosen, the ladder is steps per wall-second
+        // and nothing downstream may add steps to a tick. The finest-TF
+        // subdivision below exists to keep a coarse host in step with a finer
+        // peer, and it multiplies steps per tick to do it — correct when a
+        // step is one bar of whatever the panel shows, and a silent multiple
+        // of the promised rate once the user has said how far a step goes.
+        if (this._order01bHasExplicitStep()) {
+            return { intervalMs, stepsPerTick: 1, orderMoneyPath };
+        }
         // Kill-switch restores the safe-but-slow legacy path: one exact fine event
         // and one chart paint per timer tick whenever an order owns the money path.
         if (orderMoneyPath && !this._isOrderMoneyPathBatchEnabled()) {
@@ -6214,6 +6466,11 @@ class ReplaySystem {
         // Measured against the playhead, so the meter reports bars delivered
         // rather than steps attempted.
         const govStartIndex = governed ? Number(this.currentIndex) : 0;
+        // Market time, not bar count. Once a step can be finer than a bar the
+        // index stops moving on most steps, and a meter reading the index
+        // would report a stalled replay running perfectly well — then the
+        // corrector would chase the shortfall it invented.
+        const govStartTs = governed ? Number(this.replayTimestamp) : 0;
         const evaluateSkippedMoneyPath = orderMoneyPath === true
             && this._isOrderMoneyPathBatchEnabled();
         // Bound path: advance all steps with skipChartUpdate, paint on rAF.
@@ -6238,7 +6495,16 @@ class ReplaySystem {
             this._scheduleCandlePlaybackPaint(lastAutoScroll);
         }
         if (governed) {
-            const delivered = Number(this.currentIndex) - govStartIndex;
+            const bars = Number(this.currentIndex) - govStartIndex;
+            let delivered = bars;
+            if (_order01bStepV1Enabled()) {
+                const deltaMs = Number(this.replayTimestamp) - govStartTs;
+                delivered = Number.isFinite(deltaMs) && deltaMs > 0
+                    ? deltaMs / 1000
+                    // Not every advance path maintains replayTimestamp; bars
+                    // times the step is the same market time by construction.
+                    : (Number.isFinite(bars) && bars > 0 ? bars * this.getStepSeconds() : 0);
+            }
             if (Number.isFinite(delivered) && delivered > 0) {
                 this._speedGovRecordBars(delivered, govNow);
             }
@@ -6701,14 +6967,18 @@ class ReplaySystem {
         if (tfLower === 'w') return 7 * 24 * 60 * 60 * 1000;
         if (tfLower === 'mo') return 30 * 24 * 60 * 60 * 1000;
 
-        // Parse number + unit (supports m/h/d/w/mo)
-        const match = tfLower.match(/^(\d+)\s*(mo|w|d|h|m)$/);
+        // Parse number + unit (supports s/m/h/d/w/mo).
+        // Seconds are here for the ORDER-01B step knob: a sub-minute step has
+        // no timeframe spelling without them, and the step writes the same
+        // `stepTimeframeOverride` string the INTERVAL popup does.
+        const match = tfLower.match(/^(\d+)\s*(mo|w|d|h|m|s)$/);
         if (!match) return null;
 
         const num = parseInt(match[1], 10);
         const unit = match[2];
 
         switch (unit) {
+            case 's': return num * 1000;
             case 'm': return num * 60 * 1000;
             case 'h': return num * 60 * 60 * 1000;
             case 'd': return num * 24 * 60 * 60 * 1000;
@@ -6813,10 +7083,7 @@ class ReplaySystem {
         // market clock. The legacy divisor was `tf / N`, i.e. four times
         // slower than the contract at every rung of the ladder.
         let realTimeCandleDuration = _speedGovTickDurationV1Enabled()
-            ? this.getTickBarDurationMs(
-                this.speed === SPEED_GOV_REALISTIC ? SPEED_GOV_REALISTIC : effectivePlaybackSpeed,
-                rawCandleTimeframeMs,
-            )
+            ? this.getTickBarDurationMs(effectivePlaybackSpeed, rawCandleTimeframeMs)
             : rawCandleTimeframeMs / effectivePlaybackSpeed;
         const cadenceSubdivisions = this._finestTfCadenceSubdivisions();
         if (cadenceSubdivisions > 1) {
@@ -6877,7 +7144,7 @@ class ReplaySystem {
             if (!this._preserveTickProgress || !this.animatingCandle) {
                 // Pre-fetch the tick path so the very first render already
                 // shows a small movement from open (avoids a flat doji flash).
-                const prePath = this.getTickPath(targetCandle);
+                const prePath = this.getRetainedTickPath(targetCandle, 'animatingCandle');
                 const seed0 = (prePath && prePath.length > 0) ? prePath[0] : targetCandle.o;
                 this.animatingCandle = {
                     target: targetCandle,
@@ -7121,7 +7388,7 @@ class ReplaySystem {
 
         if (progress < count) {
             if (!target.cachedPath) {
-                target.cachedPath = this.getTickPath(tc);
+                target.cachedPath = this.getRetainedTickPath(tc, 'animatingCandle');
             }
             const pathSpan = Math.max(0, target.cachedPath.length - 1);
             const tickSpan = Math.max(1, count - 1);
@@ -7582,6 +7849,18 @@ class ReplaySystem {
         cache[candle.t] = Array.prototype.slice.call(path);
         return path;
     }
+
+    _getRetainedTickPathBuffer(slot = 'default') {
+        const key = String(slot || 'default');
+        const buffers = this._retainedTickPathBuffers || (this._retainedTickPathBuffers = Object.create(null));
+        return buffers[key] || (buffers[key] = []);
+    }
+
+    getRetainedTickPath(candle, slot = 'default') {
+        if (!candle || !candle.t) return null;
+        const n = this.ticksPerCandle || 72;
+        return this.generatePath(candle, n, this._getRetainedTickPathBuffer(slot));
+    }
     
     /**
      * Get aggregated tick path for higher timeframe candle
@@ -7604,7 +7883,11 @@ class ReplaySystem {
         // Concatenate tick paths from all raw candles
         const aggregatedPath = [];
         for (const rawCandle of rawCandles) {
-            const tickPath = this.getTickPath(rawCandle);
+            const tickPath = this.generatePath(
+                rawCandle,
+                this.ticksPerCandle || 72,
+                this._aggregateTickPathScratch || (this._aggregateTickPathScratch = []),
+            );
             if (tickPath) {
                 aggregatedPath.push(...tickPath);
             }
@@ -7632,7 +7915,10 @@ class ReplaySystem {
         if (tickAnimActive && this.animatingCandle) {
             if (this.tickProgress > 0) {
                 if (!this.animatingCandle.cachedPath) {
-                    this.animatingCandle.cachedPath = this.getTickPath(this.animatingCandle.target || this.animatingCandle);
+                    this.animatingCandle.cachedPath = this.getRetainedTickPath(
+                        this.animatingCandle.target || this.animatingCandle,
+                        'animatingCandle',
+                    );
                 }
                 const path = this.animatingCandle.cachedPath;
                 const pathIndex = Math.min(Math.max(0, this.tickProgress - 1), path.length - 1);
@@ -8113,8 +8399,8 @@ class ReplaySystem {
 
         const tc = anim.target || anim;
         let path = anim.cachedPath;
-        if ((!path || !path.length) && typeof this.getTickPath === 'function') {
-            path = this.getTickPath(tc);
+        if ((!path || !path.length) && typeof this.getRetainedTickPath === 'function') {
+            path = this.getRetainedTickPath(tc, 'savedTickState');
         }
         if (!path || !path.length) return;
 
@@ -8310,7 +8596,10 @@ class ReplaySystem {
         if (governed
             && typeof speed === 'string'
             && speed.trim().toUpperCase() === SPEED_GOV_REALISTIC) {
-            return SPEED_GOV_REALISTIC;
+            // ORDER-01B: as a *speed*, REALISTIC is the bottom rung. It is the
+            // step that carries the rest of its meaning, and `setSpeed` has no
+            // business writing the step — `applyRealisticPreset` sets both.
+            return _order01bStepV1Enabled() ? SPEED_GOV_LADDER_BPS[0] : SPEED_GOV_REALISTIC;
         }
         const n = Number(speed);
         if (!Number.isFinite(n)) return 1;
@@ -8325,6 +8614,16 @@ class ReplaySystem {
      * nearest surviving rung is what keeps them off a dead setting.
      */
     migrateStoredSpeed(stored) {
+        // ORDER-01B: a returning user with REALISTIC stored selected real
+        // time, not the number 1. Normalising alone would silently leave them
+        // at one bar a second — sixty times faster on a 1m chart than what
+        // they chose — so the stored preset is restored as a preset.
+        if (_order01bStepV1Enabled()
+            && typeof stored === 'string'
+            && stored.trim().toUpperCase() === SPEED_GOV_REALISTIC) {
+            this.applyRealisticPreset();
+            return SPEED_GOV_LADDER_BPS[0];
+        }
         return this.normalizeSpeed(stored);
     }
 
@@ -9096,7 +9395,13 @@ class ReplaySystem {
             || this.ticksPerCandle
             || 72;
         const tp = Math.max(0, Math.min(Number(this.tickProgress) || 0, ticksNeeded));
-        const path = typeof this.getTickPath === 'function' ? this.getTickPath(panelBar) : null;
+        const path = typeof this.generatePath === 'function'
+            ? this.generatePath(
+                panelBar,
+                ticksNeeded,
+                this._independentPairPathScratch || (this._independentPairPathScratch = []),
+            )
+            : null;
         let currentPrice = Number(panelBar.c);
         if (path && path.length > 0 && tp > 0) {
             const pathIndex = Math.min(tp - 1, path.length - 1);
@@ -10270,7 +10575,7 @@ class ReplaySystem {
 
                 const nextCandle = this.fullRawData[this.currentIndex + 1];
                 if (nextCandle && savedTickProgress > 0) {
-                    const tickPath = this.getTickPath(nextCandle);
+                    const tickPath = this.getRetainedTickPath(nextCandle, 'restoreAnimatingCandle');
                     const pathIndex = Math.min(savedTickProgress - 1, tickPath.length - 1);
                     const currentPrice = pathIndex >= 0 ? tickPath[pathIndex] : nextCandle.o;
 

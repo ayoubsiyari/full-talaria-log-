@@ -54,12 +54,20 @@ test('QW-4 source: HUD is default-off and switch-gated', () => {
   assert.match(ensure, /setInterval\(\(\) => this\._updateQw4SoakDiagnosticsHud\(\), 2000\)/);
 });
 
-test('QW-4 source: live snapshot carries soak headline fields', () => {
+test('QW-4 source: headline rate uses E RATE-HOLD timestamp route', () => {
+  const route = methodSource(chartJs, '_qw4ReadTimestampRouteBarsPerSecond');
+  assert.match(route, /replayTimestamp/);
+  assert.match(route, /_resolveReplayStepTimeframeMs/);
+  assert.match(route, /'replayTimestamp'/);
+  assert.match(route, /currentIndex/);
+  assert.match(route, /__talariaEffectiveRate/);
+
   const snapshot = methodSource(chartJs, '_qw4ReadSoakDiagnosticsSnapshot');
-  assert.match(snapshot, /window\.__talariaEffectiveRate/);
-  assert.match(snapshot, /window\.__talariaSpeedGov/);
-  assert.match(snapshot, /performance\.memory/);
-  assert.match(snapshot, /window\.__talariaReplayRestoreCatchCounts/);
+  assert.match(snapshot, /_qw4ReadTimestampRouteBarsPerSecond/);
+  assert.match(snapshot, /barsPerSecRoute/);
+  assert.match(snapshot, /timestampDeltaMs/);
+  assert.match(snapshot, /indexBarsPerSecWitness/);
+  assert.match(snapshot, /speedGovEffectiveWitness/);
   assert.match(snapshot, /effectiveBarsPerSecond/);
   assert.match(snapshot, /targetBarsPerSecond/);
   assert.match(snapshot, /baselineBarsPerSecond/);
@@ -68,9 +76,11 @@ test('QW-4 source: live snapshot carries soak headline fields', () => {
   assert.match(snapshot, /heapMiB/);
   assert.match(snapshot, /frameIntervalMs/);
   assert.match(snapshot, /restoreCatchTotal/);
+  // Headline must prefer timestamp route over speed-gov witness.
+  assert.match(snapshot, /Number\.isFinite\(routeSample\.effective\)/);
 });
 
-test('QW-4 source: human HUD renders every STOPWATCH-01 metric', () => {
+test('QW-4 source: human HUD renders every STOPWATCH-01 metric with route label', () => {
   const update = methodSource(chartJs, '_updateQw4SoakDiagnosticsHud');
   assert.match(chartJs, /SOAK HUD/);
   assert.match(chartJs, /data-qw4="rate"/);
@@ -79,6 +89,7 @@ test('QW-4 source: human HUD renders every STOPWATCH-01 metric', () => {
   assert.match(chartJs, /data-qw4="frame"/);
   assert.match(chartJs, /data-qw4="catches"/);
   assert.match(update, /window\.__talariaQw4SoakHudSnapshot = snap/);
+  assert.match(update, /barsPerSecRoute/);
   assert.match(update, /talaria-qw4-soak-hud__bad/);
   assert.match(update, /talaria-qw4-soak-hud__ok/);
 });

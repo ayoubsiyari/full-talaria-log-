@@ -85,6 +85,16 @@ const METHODS = [
     '\n    getCandlePlaybackCadence() {',
     '\n    normalizeSpeed(speed) {',
     '\n    migrateStoredSpeed(stored) {',
+    // ORDER-01B reinterprets the ladder as steps per wall-second and the
+    // cadence now asks whether a step has been chosen. Lifted so these cells
+    // exercise the shipped cadence rather than a copy that stops at SPEED-01.
+    '\n    _order01bHasExplicitStep() {',
+    '\n    _hasExplicitReplayStepInterval() {',
+    '\n    getChartTimeframeSeconds() {',
+    '\n    getStepSeconds() {',
+    '\n    getTargetStepsPerWallSecond() {',
+    '\n    getMarketSecondsPerWallSecond() {',
+    '\n    _speedGovTargetRate() {',
 ];
 
 /**
@@ -95,8 +105,15 @@ const METHODS = [
  * `mutate` rewrites the lifted source before it is compiled; that is how each
  * oracle proves it would notice the fix being inert.
  */
-function build({ win, timers, mutate = (s) => s, source = src } = {}) {
+function build({ win, timers, mutate = (s) => s, source = src, order01b = true } = {}) {
     const w = win || (() => { const x = {}; x.parent = x; x.top = x; return x; })();
+    // ORDER-01B reinterpreted the ladder as steps per wall-second and made the
+    // meter report market seconds. The clauses this file was written for —
+    // tick bar duration at `(tf / 4) / N`, REALISTIC as a rung — are now the
+    // *switched-off* contract, so the cells that own them build with the
+    // switch thrown. That keeps them as the kill-switch's negative control
+    // instead of deleting the only evidence the old path still works.
+    if (!order01b) w.__TALARIA_DISABLE_ORDER01B_STEP_V1 = true;
     const t = timers || makeTimers();
 
     const body = mutate(`
@@ -113,6 +130,7 @@ function build({ win, timers, mutate = (s) => s, source = src } = {}) {
         ${balanced(source, 'function _speedGovV1Enabled(')}
         ${balanced(source, 'function _speedGovFlagState(')}
         ${balanced(source, 'function _speedGovTickDurationV1Enabled(')}
+        ${balanced(source, 'function _order01bStepV1Enabled(')}
         ${balanced(source, 'function _speedGovNearestRung(')}
         ${balanced(source, 'function _speedGovNow(')}
         return {
@@ -132,7 +150,15 @@ function build({ win, timers, mutate = (s) => s, source = src } = {}) {
     engine.currentIndex = 0;
     engine._mode = 'candle';
     engine.getPlaybackMode = function () { return this._mode; };
-    engine._resolveReplayStepTimeframeMs = function () { return this._tfMs ?? 60_000; };
+    // A one-second scene, so one bar is one market second and every figure in
+    // this file reads the same in either unit. The governor's contract is
+    // about a *ratio* of delivered to promised; picking a timeframe where the
+    // two units coincide keeps these cells testing that ratio rather than the
+    // arithmetic of the step knob, which has its own oracle.
+    engine._resolveReplayStepTimeframeMs = function () { return this._tfMs ?? 1000; };
+    engine.stepTimeframeOverride = null;
+    engine.chart = { currentTimeframe: '1s' };
+    engine._getRawBarPeriodMs = function () { return this._tfMs ?? 1000; };
     engine._getOrderExecutionCadenceMs = () => null;
     engine._isOrderMoneyPathBatchEnabled = () => true;
     engine._isFinestTfCandleCadenceFixEnabled = () => false;
@@ -414,7 +440,9 @@ test('O1 MUTANT: a meter that reports the request instead of the delivery goes r
 // ---------------------------------------------------------------------------
 
 test('O2 tick bar duration is (timeframe_seconds / 4) / N', () => {
-    const { engine } = build();
+    // ORDER-01B derives this from the two knobs instead; the divisor survives
+    // only behind the kill-switch, which is where this cell now measures it.
+    const { engine } = build({ order01b: false });
     for (const tfSeconds of [60, 300, 900]) {
         for (const n of engine.getSpeedLadderBarsPerSecond()) {
             const expected = ((tfSeconds / TF_DIVISOR) / n) * 1000;
@@ -426,7 +454,10 @@ test('O2 tick bar duration is (timeframe_seconds / 4) / N', () => {
 });
 
 test('O2 REALISTIC runs one bar per timeframe, 1:1 with the market clock', () => {
-    const { engine } = build();
+    // Switched-off contract. ORDER-01B says the same thing with both knobs —
+    // one market second per wall second — and the ORDER-01B cell for it lives
+    // in order01b-step-speed.test.mjs, where the preset can be exercised.
+    const { engine } = build({ order01b: false });
     assert.equal(engine.getTickBarDurationMs('REALISTIC', 60_000), 60_000);
     assert.equal(engine.getTickBarDurationMs('REALISTIC', 900_000), 900_000);
 });
@@ -701,7 +732,9 @@ test('O4 MUTANT: an installer that does not clear first goes red', () => {
 // ---------------------------------------------------------------------------
 
 test('O5 tick mode offers the same ten speeds plus REALISTIC', () => {
-    const { engine } = build();
+    // Switched-off contract: ORDER-01B takes REALISTIC off the ladder and
+    // makes it a preset on both knobs.
+    const { engine } = build({ order01b: false });
     const candle = engine.getSpeedLadderBarsPerSecond();
     const tick = engine.getTickSpeedLadder();
     assert.equal(tick.length, candle.length + 1);
@@ -710,7 +743,10 @@ test('O5 tick mode offers the same ten speeds plus REALISTIC', () => {
 });
 
 test('O5 each mode reports the target its own contract implies', () => {
-    const { engine } = build();
+    // Two modes, two rates from one ladder — the shape ORDER-01B removes, kept
+    // here as the switched-off contract. Under ORDER-01B both modes report the
+    // same steps per wall-second, which is the point of the reinterpretation.
+    const { engine } = build({ order01b: false });
     engine.speed = 10;
     engine._tfMs = 60_000;
 
@@ -742,7 +778,7 @@ test('O5 the same delivered rate is a fault in one mode and correct in the other
     // This is the cell that would catch a shared-target regression: 0.667 bars/s
     // is exactly right for tick at 10x on a 1m chart, and badly wrong for candle.
     const scene = () => {
-        const { engine } = build();
+        const { engine } = build({ order01b: false });
         engine._tfMs = 60_000;
         engine.speed = 10;
         return engine;

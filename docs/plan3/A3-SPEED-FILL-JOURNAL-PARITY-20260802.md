@@ -1,31 +1,50 @@
-# A3 Speed Fill / Journal Parity — 2026-08-02
+# A3 Speed Fill / Journal Parity — 2026-08-02 (CI gate on canary b122)
 
 ## Verdict
-PASSED on today's candidate build.
+**PASSED** on candidate pinned by all three identity coordinates:
+`badge 20260802b122` · `digest 5f0378407c214999ec822eb6a17e165e` · `source 1c69bebb496f1fb3bdf4f90317dae84d1507d427`.
 
-Same deterministic session setup at `1x` and `10x` produced identical fills and an identical normalized journal.
+Identical session across playback coordinates **1 / 5 / 10** produced three byte-equal transcript pairs (fills, journal, money). Digest per transcript: `357f693c501c3ab6921b1c1c520ada27b26a92960009cf7967026fd200fad7ac`.
 
-## Surface
-- Local served `chart/dist-v9` candidate bundle.
-- Build read-back: `20260728b85`.
-- Scenario: one `BUY` market order at replay timestamp `1785547740000`, take-profit target in the next bar, real replay playback at `1x` and `10x`.
+Prior local `20260728b85` one-off and the two-speed canary smoke are **superseded**. This file is the sealed evidence for the CI-permanent money-path gate.
+
+## Surface (three coordinate pairs)
+| coordinate | expected = observed |
+|---|---|
+| badge | `20260802b122` |
+| seal digest | `5f0378407c214999ec822eb6a17e165e` |
+| sourceCommitSha | `1c69bebb496f1fb3bdf4f90317dae84d1507d427` |
+
+- Origin: `http://31.97.192.82:3000` (canary, not Cloudflare prod)
+- Shell: `/chart/dist-v9/index.html?mode=backtest`
+- Runner: `scripts/a3-speed-fill-journal-parity-canary.mjs`
+- CI gate: `npm run test:a3-speed-fill-journal-parity`
+- Evidence JSON: `docs/plan3/evidence/a3-speed-fill-journal-parity-b122.json`
+
+## Scenario (pinned across all three arms)
+- fileId `677` / symbol `EURUSD` / TF `1m`
+- startIdx `1400` / startT `1781856060000`
+- hitIdx `1403` / direction `BUY`
+- takeProfit `1.14546` / stopLoss `1.087769`
 
 ## Result
-- `1x`: one closed trade, one journal row, zero open positions.
-- `10x`: one closed trade, one journal row, zero open positions.
-- Normalized digest for both arms: `b4a999ca9828f1ecebb54a8d98e97dc6ec332f7a6b03fdb030018e67013cfeff`.
+| Arm | Status | Closed | Journal | fills/journal/money digest |
+|---|---|---:|---:|---|
+| 1 | OBSERVED | 1 | 1 | `357f693c…fad7ac` |
+| 5 | OBSERVED | 1 | 1 | `357f693c…fad7ac` |
+| 10 | OBSERVED | 1 | 1 | `357f693c…fad7ac` |
 
-Matched money-path fields:
+Matched money-path fields (all arms):
 - `ticker`: `EURUSD`
 - `direction`: `BUY`
-- `entryPrice`: `0.94722`
-- `closePrice`: `0.98615`
-- `pnl`: `3893`
+- `entryPrice`: `1.14502`
+- `closePrice`: `1.14744`
+- `pnl`: `242`
 - `quantity`: `1`
-- `openTime`: `1785429540000`
-- `closeTime`: `1785547800000`
-- `takeProfit`: `0.94736208`
-- `stopLoss`: `0.899859`
+- `openTime`: `1781856060000`
+- `closeTime`: `1781892720000`
+- `takeProfit`: `1.14546`
+- `stopLoss`: `1.087769`
 
-## Caveat
-This was a bounded one-off browser measurement using existing harness helpers and local candidate bytes, not a new committed product gate. It did not mutate a deployed user ledger.
+## Companion gate
+- **A2** (`npm run test:a2-resolvebar-transcript`): resolveBar from raw/retained series + bar-close transcript census — also CI-permanent at money-path tier.
