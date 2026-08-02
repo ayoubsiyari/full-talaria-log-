@@ -10,7 +10,9 @@
  *   vite build ...
  *   node scripts/bump-dist-v9-cache.mjs --dist
  *
- * Override build id: BUILD_ID=20260516a2 npm run build:live
+ * The build id is required, not derived: BUILD_ID=20260516a2 npm run build:live
+ * (CI may supply GITHUB_SHA instead). Without one the script exits 2 having
+ * written nothing — see resolveBuildId.
  */
 import fs from "fs";
 import path from "path";
@@ -57,19 +59,6 @@ const swPaths = [
   path.resolve(repoRoot, "homepage/public/chart/dist-v9/sw.js"),
 ];
 
-function defaultBuildId() {
-  const d = new Date();
-  const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
-  return `${ymd}b1`;
-}
-
-/** Bump `20260516b1` → `20260516b2` (or legacy `…aN`) when rebuilding the same day. */
-function incrementBuildId(id) {
-  const m = /^(\d{8})([ab])(\d+)$/i.exec(String(id || "").trim());
-  if (m) return `${m[1]}${m[2]}${parseInt(m[3], 10) + 1}`;
-  return `${defaultBuildId()}2`;
-}
-
 function readCurrentChartBuildId(html) {
   const m = html.match(/\/chart\/[^"?]+\?v=([^"'#\s]+)/);
   if (m) return m[1];
@@ -77,12 +66,46 @@ function readCurrentChartBuildId(html) {
   return w ? w[1] : null;
 }
 
-function resolveBuildId(html) {
-  if (process.env.BUILD_ID?.trim()) return process.env.BUILD_ID.trim();
-  if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA.slice(0, 10);
-  const current = readCurrentChartBuildId(html);
-  if (current) return incrementBuildId(current);
-  return defaultBuildId();
+export class BuildIdRefusal extends Error {
+  constructor(reason, message) {
+    super(message);
+    this.name = "BuildIdRefusal";
+    this.reason = reason;
+  }
+}
+
+/**
+ * The build id becomes a served cache key, so it must carry identity from
+ * outside this tree. It used to fall back to incrementing the stamp committed
+ * in `live/index.html`; that stamp trails what production has served, so the
+ * derived id could land *behind* an id already in the field (b61→b62 against a
+ * deployed b80) and cache-bust nothing while reporting success. A wrong id is
+ * indistinguishable from a right one by eye and outlives the build, so the
+ * absence of an explicit id is a refusal, never a guess.
+ */
+export function resolveBuildId(env = process.env) {
+  const explicit = env.BUILD_ID?.trim();
+  if (explicit) return { id: explicit, source: "BUILD_ID" };
+  const sha = env.GITHUB_SHA?.trim();
+  if (sha) return { id: sha.slice(0, 10), source: "GITHUB_SHA" };
+  const reason =
+    "BUILD_ID" in env ? "BUILD_ID_EMPTY" : "BUILD_ID_ABSENT";
+  throw new BuildIdRefusal(
+    reason,
+    [
+      "[bump-dist-v9-cache] REFUSING TO STAMP — no explicit build id. Nothing was written.",
+      reason === "BUILD_ID_EMPTY"
+        ? "  BUILD_ID is set but empty (docker-compose passes CHART_BUILD_ID through as BUILD_ID;"
+          + " an unset CHART_BUILD_ID arrives here as an empty string)."
+        : "  BUILD_ID is not set.",
+      "  This script no longer derives an id from the committed stamp: that stamp trails what",
+      "  production has served, so the derived id can collide with or go behind a live one.",
+      "",
+      "  Local build:      BUILD_ID=20260802b123 npm run build:chart-v9",
+      "  Checkpoint build: CHECKPOINT_BUILD=1 CHART_BUILD_ID=<id> docker compose build",
+      "  CI:               GITHUB_SHA is accepted automatically.",
+    ].join("\n"),
+  );
 }
 
 /**
@@ -148,8 +171,14 @@ function bumpChartScriptsInHtml(filePath, { required, buildId: buildIdOverride }
     return { touched: 0, buildId: buildIdOverride || null };
   }
 
+  if (!buildIdOverride) {
+    throw new BuildIdRefusal(
+      "BUILD_ID_ABSENT",
+      `[bump-dist-v9-cache] internal: no build id supplied for ${filePath}`,
+    );
+  }
   const before = fs.readFileSync(filePath, "utf8");
-  const buildId = buildIdOverride ?? resolveBuildId(before);
+  const buildId = buildIdOverride;
   let after = before.replace(SCRIPT_SRC_RE, `$1$2?v=${buildId}$3`);
   after = after.replace(LINK_HREF_RE, `$1$2?v=${buildId}$3`);
   after = after.replace(INLINE_MULTICHART_V_RE, `var V = '${buildId}';`);
@@ -299,46 +328,31 @@ function main() {
       ? "live"
       : "both";
 
+  // Resolve before the first write: a half-stamped tree is worse than an unstamped one.
+  const { id: buildId, source: buildIdSource } = resolveBuildId();
+  console.log(`[bump-dist-v9-cache] build id ${buildId} (from ${buildIdSource})`);
+
   let touched = 0;
-  let buildIdForDist = null;
 
   if (mode === "live" || mode === "both") {
-    if (fs.existsSync(liveIndexPath)) {
-      const liveBefore = fs.readFileSync(liveIndexPath, "utf8");
-      buildIdForDist = resolveBuildId(liveBefore);
-    }
     const liveRes = bumpChartScriptsInHtml(liveIndexPath, {
       required: mode === "live",
-      buildId: buildIdForDist,
+      buildId,
     });
     touched += liveRes.touched;
-    if (liveRes.buildId) buildIdForDist = liveRes.buildId;
-    if (buildIdForDist) {
-      touched += bumpServiceWorkerVersion(buildIdForDist);
-    }
+    touched += bumpServiceWorkerVersion(buildId);
   }
 
   if (mode === "dist" || mode === "both") {
-    let distBuildId = buildIdForDist;
-    if (process.env.BUILD_ID?.trim()) {
-      distBuildId = process.env.BUILD_ID.trim();
-    } else if (fs.existsSync(distIndexPath)) {
-      const distCurrent = readCurrentChartBuildId(fs.readFileSync(distIndexPath, "utf8"));
-      // After `vite build`, dist copies live's id — bump dist one step so browsers reload modules.
-      distBuildId = distCurrent ? incrementBuildId(distCurrent) : distBuildId;
-    }
-    if (!distBuildId && fs.existsSync(liveIndexPath)) {
-      distBuildId = readCurrentChartBuildId(fs.readFileSync(liveIndexPath, "utf8"));
-    }
+    const distBuildId = buildId;
 
     const distRes = bumpChartScriptsInHtml(distIndexPath, {
       required: mode === "dist" || mode === "both",
       buildId: distBuildId,
     });
     touched += distRes.touched;
-    if (distRes.buildId) distBuildId = distRes.buildId;
 
-    if (distBuildId && fs.existsSync(liveIndexPath)) {
+    if (fs.existsSync(liveIndexPath)) {
       touched += bumpChartScriptsInHtml(liveIndexPath, {
         required: false,
         buildId: distBuildId,
@@ -374,10 +388,10 @@ function main() {
     }
   }
 
-  if (buildIdForDist || mode === "dist") {
+  {
     const finalId = fs.existsSync(distIndexPath)
       ? readCurrentChartBuildId(fs.readFileSync(distIndexPath, "utf8"))
-      : buildIdForDist;
+      : buildId;
     if (finalId) {
       console.log("[bump-dist-v9-cache] Active build id:", finalId);
     }
@@ -389,5 +403,14 @@ const isMain =
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (isMain) {
-  main();
+  try {
+    main();
+  } catch (error) {
+    if (error instanceof BuildIdRefusal) {
+      // Distinct from a crash: the tree is untouched and the operator has an action.
+      console.error(error.message);
+      process.exit(2);
+    }
+    throw error;
+  }
 }

@@ -170,11 +170,15 @@ try {
     stdio: "inherit",
     env: { ...process.env },
   });
+  // A swallowed failure here leaves the homepage mirror carrying whatever stamp it
+  // had before the sync, which is the mixed-id state the layout proof exists to catch.
   if (r.status !== 0) {
-    console.warn("[sync-v9-to-homepage] bump-dist-v9-cache --dist exited", r.status);
+    console.error("[sync-v9-to-homepage] bump-dist-v9-cache --dist exited", r.status);
+    process.exit(r.status);
   }
 } catch (e) {
-  console.warn("[sync-v9-to-homepage] bump-dist-v9-cache failed:", e && e.message || e);
+  console.error("[sync-v9-to-homepage] bump-dist-v9-cache failed:", e && e.message || e);
+  process.exit(1);
 }
 
 // Regenerate opaque transparent-background icons from logo-04.png (run scripts/generate-pwa-icons.ps1 before release).

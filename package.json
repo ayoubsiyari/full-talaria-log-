@@ -66,6 +66,7 @@
     "test:lag-session-history": "node --test scripts/tests/lag-session-history-control.test.mjs",
     "preflight:support-passport-degraded": "node scripts/support-passport-degraded-gate.mjs",
     "test:support-passport-degraded": "node --test scripts/tests/support-passport-degraded.test.mjs",
+    "test:build-id-refusal": "node --test scripts/tests/build-id-refusal.test.mjs",
     "preflight:cache-stamp-coherence": "node scripts/cache-stamp-coherence-gate.mjs",
     "test:cache-stamp-coherence": "node --test scripts/tests/cache-stamp-coherence.test.mjs",
     "preflight:surf3-build-agreement": "node scripts/surf3-build-agreement-gate.mjs",
