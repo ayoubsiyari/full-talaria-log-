@@ -68,7 +68,28 @@ async function readPlayhead(page) {
       residentBars: (c && c.data && c.data.length) || null,
       jsHeapMB,
     };
-  }).then((r) => ({ ...r, atMs: Date.now() })).catch(() => ({ atMs: Date.now() }));
+  }).then((r) => ({ ...r, atMs: Date.now(), readOk: true }))
+    // The reason is KEPT. My first version returned a bare {atMs} on failure, so when the browser was
+    // killed under the run mid-drain the log printed "idx undefined" for twenty minutes and the cause
+    // was nowhere. This is the swallowed-catch defect I fixed in the workload library and then wrote
+    // again here.
+    .catch((e) => ({ atMs: Date.now(), readOk: false, readError: String(e && e.message || e).slice(0, 160) }));
+}
+
+/**
+ * Is the browser still there at all? A drain is ten minutes of not touching the page, which is ten
+ * minutes in which another manager's chrome cleanup can take the browser out from under the run — it
+ * happened on the first attempt, and every subsequent reading was an empty string in a log.
+ */
+async function browserAlive(browser, page) {
+  try {
+    if (!browser || browser.isConnected() !== true) return { alive: false, why: 'puppeteer browser is no longer connected' };
+    if (!page || page.isClosed()) return { alive: false, why: 'the page is closed' };
+    await page.evaluate(() => 1);
+    return { alive: true };
+  } catch (e) {
+    return { alive: false, why: `page unreachable: ${String(e && e.message || e).slice(0, 140)}` };
+  }
 }
 
 /**
@@ -188,6 +209,8 @@ if (RUN_DIRECTLY) (async () => {
     console.log(`[probe A] running footprint read, then pause + drain (~${(FROTH_MS + RECLAIM_MS) / 60000} min)`);
     const probeA = await pauseProbe(page, { readFootprint: readAll, frothWaitMs: FROTH_MS, reclaimWaitMs: RECLAIM_MS, label: 'A-early', log: (m) => console.log(`  ${m}`) });
     artifact.probes.A = probeA;
+    const liveAfterA = await browserAlive(session.browser, page);
+    if (!liveAfterA.alive) throw new Error(`BROWSER_LOST during probe A's drain — ${liveAfterA.why}. The floor reading is missing, not zero.`);
     const afterA = await readPlayhead(page);
 
     if (probeA.verdict !== 'MEASURED') {
@@ -203,6 +226,8 @@ if (RUN_DIRECTLY) (async () => {
       let prevRate = legStart;
       while (Date.now() - legT0 < PLAY_MIN * 60_000) {
         await sleep(Math.min(120_000, PLAY_MIN * 60_000 - (Date.now() - legT0)));
+        const live = await browserAlive(session.browser, page);
+        if (!live.alive) throw new Error(`BROWSER_LOST during the play leg — ${live.why}. Nothing after this point can be measured, so the run stops here instead of sampling an absent browser for another half hour.`);
         const ph = await readPlayhead(page);
         const rate = deliveredRate(prevRate, ph);
         prevRate = ph;
@@ -225,8 +250,13 @@ if (RUN_DIRECTLY) (async () => {
       Object.assign(artifact, graded);
     }
   } catch (e) {
+    const msg = String(e && e.message);
     artifact.verdict = 'VOID';
-    artifact.why = `threw: ${String(e && e.message).slice(0, 300)}`;
+    // A browser killed under the run is an ENVIRONMENT loss, not a product finding, and the two must
+    // never be filed as the same thing. The first attempt died this way when another manager's chrome
+    // cleanup swept the host at 13:07 and took this browser with it.
+    artifact.voidClass = /BROWSER_LOST/.test(msg) ? 'ENVIRONMENT_BROWSER_LOST' : 'THREW';
+    artifact.why = msg.slice(0, 400);
     console.error(e);
   } finally {
     try { if (session && session.browser) await session.browser.close(); } catch (_) {}
