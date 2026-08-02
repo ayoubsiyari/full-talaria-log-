@@ -4280,8 +4280,23 @@ class Chart {
     _createSharedBarStore() {
         const MAX_FILES = 12;
         const MAX_BARS_PER_TF = 200000;
-        const files = new Map(); // fileId -> { tfs:Map(tf->{bars,cursors,updatedAt}), refs:Set(clientId), lru }
+        const MAX_TFS_PER_FILE = 4;
+        const files = new Map(); // fileId -> { tfs:Map(tf->{bars,cursors,updatedAt,lru}), refs:Set(clientId), lru }
         let lruSeq = 0;
+
+        /** BARSTORE-1: bound timeframes per file. Kill: __TALARIA_DISABLE_BARSTORE_TF_CAP_V1. */
+        const tfCapEnabled = () => {
+            try {
+                return !(typeof window !== 'undefined' && window.__TALARIA_DISABLE_BARSTORE_TF_CAP_V1);
+            } catch (_e) { return true; }
+        };
+
+        /** BARSTORE-2: eviction must not drop a retained file. Kill: __TALARIA_DISABLE_BARSTORE_REFCOUNT_EVICT_V1. */
+        const refcountEvictEnabled = () => {
+            try {
+                return !(typeof window !== 'undefined' && window.__TALARIA_DISABLE_BARSTORE_REFCOUNT_EVICT_V1);
+            } catch (_e) { return true; }
+        };
 
         const parseTfMs = (tf) => {
             const s = String(tf || '').toLowerCase().trim();
@@ -4293,13 +4308,65 @@ class Chart {
             return n * (mult[unit] || 60000);
         };
 
-        const evict = () => {
-            if (files.size <= MAX_FILES) return;
-            let oldestId = null; let oldestLru = Infinity;
-            for (const [id, f] of files) {
-                if (f.lru < oldestLru) { oldestLru = f.lru; oldestId = id; }
+        /**
+         * BARSTORE-1: a file accumulated one entry per timeframe visited, with no
+         * bound — the ceiling was MAX_FILES x unlimited tfs x MAX_BARS_PER_TF.
+         * Dropping a timeframe costs a refetch on the next pick(), never
+         * correctness, so LRU within the file is safe.
+         */
+        const evictTfs = (f) => {
+            if (!tfCapEnabled()) return;
+            if (!f || !f.tfs) return;
+            while (f.tfs.size > MAX_TFS_PER_FILE) {
+                let oldestTf = null; let oldestLru = Infinity;
+                for (const [tf, e] of f.tfs) {
+                    const seq = Number(e && e.lru) || 0;
+                    if (seq < oldestLru) { oldestLru = seq; oldestTf = tf; }
+                }
+                if (oldestTf == null) return;
+                f.tfs.delete(oldestTf);
             }
-            if (oldestId != null) files.delete(oldestId);
+        };
+
+        /**
+         * BARSTORE-2: a retained file is the live working set, not cache. Evicting
+         * one pulled bars out from under a live reader and silently discarded its
+         * refs, so the owner's later releaseFile() became a no-op. Only
+         * unreferenced files are eviction candidates; if every file is held, the
+         * cap yields rather than the data.
+         */
+        const evict = (protectId) => {
+            if (files.size <= MAX_FILES) return;
+            if (!refcountEvictEnabled()) {
+                let oldestId = null; let oldestLru = Infinity;
+                for (const [id, f] of files) {
+                    if (f.lru < oldestLru) { oldestLru = f.lru; oldestId = id; }
+                }
+                if (oldestId != null) files.delete(oldestId);
+                return;
+            }
+            const keep = String(protectId || '');
+            const oldestOf = (wantReferenced) => {
+                let oldestId = null; let oldestLru = Infinity;
+                for (const [id, f] of files) {
+                    // The write that triggered this eviction is the newest entry and
+                    // has not been retained yet; evicting it would discard the fetch
+                    // that just completed.
+                    if (keep && id === keep) continue;
+                    if (!!(f.refs && f.refs.size > 0) !== wantReferenced) continue;
+                    if (f.lru < oldestLru) { oldestLru = f.lru; oldestId = id; }
+                }
+                return oldestId;
+            };
+            while (files.size > MAX_FILES) {
+                // Unreferenced entries are cache and lose first. A retained file is a
+                // victim only when nothing else is left, which keeps a *leaked* ref
+                // bounded by the LRU (P3 S-3) without evicting out from under a live
+                // reader in normal use.
+                const victim = oldestOf(false) ?? oldestOf(true);
+                if (victim == null) return;
+                files.delete(victim);
+            }
         };
 
         const scalarClone = (value) => {
@@ -4354,8 +4421,10 @@ class Chart {
                     bars: mergedBars,
                     cursors: cloneCursorsForStore(cursors) || (prev && prev.cursors) || null,
                     updatedAt: Date.now(),
+                    lru: ++lruSeq,
                 });
-                evict();
+                evictTfs(f);
+                evict(id);
             },
             retainFile(fileId, clientId) {
                 const id = String(fileId || '');
@@ -4384,7 +4453,7 @@ class Chart {
                 if (!f) return null;
                 const wantMs = parseTfMs(wantedTf);
                 if (!wantMs) return null;
-                let best = null; let bestScore = -1;
+                let best = null; let bestScore = -1; let bestEntry = null;
                 for (const [tf, e] of f.tfs) {
                     const ms = parseTfMs(tf);
                     if (!ms || ms > wantMs) continue; // can't upsample a coarser cache
@@ -4395,10 +4464,12 @@ class Chart {
                     const score = span > 0 ? span / wantMs : e.bars.length;
                     if (score > bestScore) {
                         bestScore = score;
+                        bestEntry = e;
                         best = { bars: e.bars.slice(), tf: tf, cursors: e.cursors };
                     }
                 }
-                if (best) f.lru = ++lruSeq;
+                // BARSTORE-1: served timeframes are the ones worth keeping under the cap.
+                if (best) { f.lru = ++lruSeq; if (bestEntry) bestEntry.lru = ++lruSeq; }
                 return best;
             },
             peek(fileId) {
