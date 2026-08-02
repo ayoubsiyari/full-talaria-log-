@@ -182,6 +182,13 @@ class Chart {
     animateZoom() {}
     _tickMultichartBackgroundRenderCatchup() {}
     _tickBarCloseCountdown() {}
+    // FRAME-01 added \`this._frameGovShouldPaint(...)\` to the lifted animate loop. This gate
+    // is about coalescing, not about the governor, so the stub always allows the paint and
+    // reproduces the pre-governor cadence the assertions below were written against. The
+    // governor's own behaviour is covered by frame-gov-v1.test.mjs; permitting it here would
+    // make paint counts depend on wall-clock timing and turn this gate flaky.
+    _frameGovShouldPaint() { return true; }
+    _frameGovRecordPaint() {}
     render() {
         if (this._throwOnce && !this._thrown) {
             this._thrown = true;
@@ -441,7 +448,9 @@ test('static: kill-switch name + per-call helper + clear-before-paint present', 
   const animate = methodSource(src, 'animate');
   assert.match(
     animate,
-    /if\s*\(\s*this\.renderPending\s*\)\s*\{[\s\S]*?this\.renderPending\s*=\s*false;[\s\S]*?this\.render\(\);/,
+    // The guard may carry extra conjuncts — FRAME-01 added the frame governor — but the
+    // ordering this cell exists to protect is that pending clears BEFORE render() is called.
+    /if\s*\(\s*this\.renderPending\b[\s\S]*?\)\s*\{[\s\S]*?this\.renderPending\s*=\s*false;[\s\S]*?this\.render\(\);/,
     'clear-before-paint ordering in animate()',
   );
   const sched = methodSource(src, 'scheduleRender');
@@ -452,12 +461,21 @@ test('static: kill-switch name + per-call helper + clear-before-paint present', 
 
 // ── mutants (on-disk both mirrors + behavioural oracles) ─────────────────────
 
-/** Shared product needle for the clear-before-paint block in animate(). */
-const CLEAR_BEFORE_BLOCK = `        if (this.renderPending) {
+/**
+ * Shared product needle for the clear-before-paint block in animate().
+ *
+ * Must track the product byte for byte: a stale needle makes every mutant below report
+ * NOT_APPLIED, which reads as "no mutation survived" and is indistinguishable from a real
+ * green unless the harness is loud about it. FRAME-01 added the governor conjunct and the
+ * paint-record call, so both appear here; the mutants keep the conjunct and vary only the
+ * clear ordering, which is the property under test.
+ */
+const CLEAR_BEFORE_BLOCK = `        if (this.renderPending && this._frameGovShouldPaint(frameGovNow)) {
             // Clear BEFORE paint so scheduleRender() raised during render() is
             // not swallowed by a post-paint clear. Also throw-safe: a throwing
             // render() leaves pending false, so the next scheduleRender re-arms.
             this.renderPending = false;
+            this._frameGovRecordPaint(frameGovNow);
             this.render();`;
 
 const MUTANTS = [
@@ -490,7 +508,7 @@ const MUTANTS = [
     id: 'M2',
     name: 'never clear the pending flag (no clear at all)',
     needle: CLEAR_BEFORE_BLOCK,
-    replacement: `        if (this.renderPending) {
+    replacement: `        if (this.renderPending && this._frameGovShouldPaint(frameGovNow)) {
             // MUTANT: never clear pending
             this.render();`,
     killingCell: 'idle-no-overpaint (never-clear over-paints)',
@@ -504,7 +522,7 @@ const MUTANTS = [
     id: 'M3',
     name: 'clear pending AFTER paint (swallows in-paint scheduleRender)',
     needle: CLEAR_BEFORE_BLOCK,
-    replacement: `        if (this.renderPending) {
+    replacement: `        if (this.renderPending && this._frameGovShouldPaint(frameGovNow)) {
             // MUTANT: clear AFTER paint — swallows mid-paint scheduleRender
             try {
                 this.render();
@@ -556,7 +574,7 @@ const MUTANTS = [
     id: 'M5',
     name: 'clear twice — second clear after paint swallows in-paint rearm',
     needle: CLEAR_BEFORE_BLOCK,
-    replacement: `        if (this.renderPending) {
+    replacement: `        if (this.renderPending && this._frameGovShouldPaint(frameGovNow)) {
             // MUTANT: clear before AND after — post-paint clear swallows rearm
             this.renderPending = false;
             this.render();
@@ -573,7 +591,7 @@ const MUTANTS = [
     name: 'clear outside the guard (always clears; breaks pending arming)',
     needle: CLEAR_BEFORE_BLOCK,
     replacement: `        this.renderPending = false;
-        if (this.renderPending) {
+        if (this.renderPending && this._frameGovShouldPaint(frameGovNow)) {
             // MUTANT: clear ran outside the guard — pending never observed true
             this.render();`,
     killingCell: 'one-frame-dedupe (N schedules → 1 paint)',

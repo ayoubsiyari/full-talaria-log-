@@ -401,6 +401,11 @@ ${body}
     _canBypassLoadingRenderFreeze() { return false; }
     _canBypassDataSwitchRenderFreeze() { return false; }
     _hideChartCenterLoadingDots() {}
+    // FRAME-01 added \`this._frameGovShouldPaint(...)\` to the lifted animate loop. This gate
+    // measures background-render cadence, so the stub always allows the paint and preserves
+    // the pre-governor cadence its counts assume. The governor is covered by
+    // frame-gov-v1.test.mjs; admitting it here would make paint counts wall-clock dependent.
+    _frameGovShouldPaint() { return true; }
     _clearPanTimeTickCache() { this._panTimeTickCache = null; }
     _m20Q2CountdownIdleFixEnabled() { return true; }
     _getBarCloseCountdownText() { return this.__countdownText; }
