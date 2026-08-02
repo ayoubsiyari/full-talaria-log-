@@ -996,3 +996,52 @@ wall-second, the computed divisor step menu, the REALISTIC chip as a preset, the
 with legacy migration, `--step` in the harness, `__talariaEffectiveRate` in market-seconds per
 wall-second, and oracles 1, 2, 5 and 6. Oracles green on this tip: 48 step-speed cells, 11 M20-Q6
 cells, 13 rate-hold cells.
+
+### A — 2026-08-02 20:20 — HANDOFF → B · V9 shell `play` override inert on host at `step=1s`
+
+`tier=top author model=claude-opus-5-thinking-high`. Finding announced at 19:20; this is the formal
+hand-across. Detail packet: [`docs/plan3/A-TO-B-V9-SHELL-PLAY.md`](../A-TO-B-V9-SHELL-PLAY.md).
+Evidence: `docs/plan3/evidence/order01b-readback-canary-step1s.json`, verdict
+`SHELL_PLAY_OVERRIDE_INERT`.
+
+The override is an own-property on the host `replaySystem` installed by the dist-v9 shell. It
+emits telemetry and broadcasts to panels, then returns without calling the engine. Host via that
+entry: dead. Host via the class method on the same object: live timer. Panels via the override:
+fine. Source is in the V9 bundle, not this tree — B owns that build. Engine edge-wait work stays
+mine and is already landed; the canary keeps the two reds separate on purpose.
+
+### A — 2026-08-02 20:20 — FINDING · soak peer pin is non-overlapping datasets, not runway or data-floor
+
+`tier=top author model=claude-opus-5-thinking-high`. The three-of-four pin at `1999/2000`,
+`3909/3910`, `2493/2494` was assigned here because speed/step and data-floor routing sit in this
+lane. **Neither is the cause.**
+
+C already measured the four CONF-01 files under `datasets mode=distinct` (BOARD-C 19:34): host 1m
+file covers mid-June; the 5m/15m/1h files end in mid-May — a month of empty air between them.
+Nothing in `buildDatasetPlan` asserts a shared calendar window; it only asserts four distinct
+`(fileId, timeframe)` pairs. Confirmed here by replaying the product sync arithmetic that C named:
+
+```
+timeResolvedIndex = _findLastRawIndexAtOrBefore(fullRawData, hostTs)
+currentIndex = Math.max(sessionStartIndex || 0, timeResolvedIndex)
+```
+
+A May series of length 2000 against a June host timestamp resolves to index **1999** every tick —
+exactly C's 5m reading. The 1m panel keeps re-basing because *its* file has forward bars and it is
+the one with `isPlaying=true`, so `checkViewportLoadMore('forward')` runs. The peers are not short
+of runway and they are not mis-routed by the step floor; they hold the wrong century of the tape
+for the playhead they are being asked to follow, and sync re-pins them to their last bar forever.
+
+| Candidate | Verdict |
+|---|---|
+| prefetch runway | **no** — peers never get a chance to ask; they are already past their data |
+| data-floor routing | **no** — floor gates step size, not which file window is loaded |
+| dataset too short / non-overlapping | **yes** — harness seed, four files with no shared window |
+
+**Owner of the fix:** C. C already claimed it at 19:34 (`bootConf01Session` must seed a common
+window or declare a one-panel arm). I am not taking the harness change. What I owed was the
+ruling against the three candidates named in the brief; that is this entry.
+
+**Secondary product note, not the soak blocker:** under non-overlapping data the product silently
+pins rather than saying "no data at this time." Lower priority than making CONF-01 measure four
+live panels; recorded so it is not forgotten once the harness is honest.
