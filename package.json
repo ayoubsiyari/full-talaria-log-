@@ -157,6 +157,8 @@
     "test:panel-state-roundtrip": "npm run preflight:panel-state-roundtrip",
     "preflight:panel-state-binding": "node --test --test-concurrency=1 \"chart v 1.4/chart/modules/panel-state-binding.test.mjs\"",
     "test:panel-state-binding": "npm run preflight:panel-state-binding",
+    "preflight:viewport-restore-consumer": "node --test --test-concurrency=1 \"chart v 1.4/chart/modules/viewport-restore-consumer.test.mjs\"",
+    "test:viewport-restore-consumer": "npm run preflight:viewport-restore-consumer",
     "preflight:shell-play-shipped-equivalence": "node --test --test-concurrency=1 \"chart v 1.4/chart/modules/shell-play-shipped-equivalence.test.mjs\"",
     "test:shell-play-shipped-equivalence": "npm run preflight:shell-play-shipped-equivalence",
     "rebuild-constraint": "node scripts/rebuild-constraint-check.mjs",

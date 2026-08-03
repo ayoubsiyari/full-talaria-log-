@@ -2647,6 +2647,63 @@
             }, parentOrigin);
         } catch (_) {}
 
+        // ─── TAL-01865 boot viewport restore ──────────────────────────────
+        // The manager has written `restoreStart` / `restoreEnd` onto this
+        // frame's URL since Phase 6.4 and nothing has ever read them: the
+        // window was captured, persisted, carried across the boundary and
+        // dropped on the floor right here. This is the missing consumer.
+        //
+        // RESTORE-ONLY by construction, which is the whole risk story:
+        //   - it reads the BOOT URL only, never live sync traffic;
+        //   - it applies at most once, then never again;
+        //   - it abandons the moment the user touches the chart, because a
+        //     late snap that yanks the view out from under a pan is worse
+        //     than not restoring at all;
+        //   - it gives up after a bounded number of attempts rather than
+        //     polling forever waiting for bars that may never arrive.
+        // Kill switch: `__TALARIA_DISABLE_VIEWPORT_RESTORE_V1`.
+        function bootViewportRestoreEnabled() {
+            try { return !global.__TALARIA_DISABLE_VIEWPORT_RESTORE_V1; } catch (_) { return true; }
+        }
+
+        function scheduleBootViewportRestore() {
+            if (!bootViewportRestoreEnabled()) return;
+            var startSec, endSec;
+            try {
+                var params = new URLSearchParams((global.location && global.location.search) || '');
+                startSec = Number(params.get('restoreStart'));
+                endSec   = Number(params.get('restoreEnd'));
+            } catch (_) { return; }
+            if (!Number.isFinite(startSec) || !Number.isFinite(endSec) || endSec <= startSec) return;
+
+            var attempts = 0;
+            var MAX_ATTEMPTS = 25;   // ~3s at 120ms; bars normally land well inside this
+            var INTERVAL_MS = 120;
+            var cancelled = false;
+            function abandon() { cancelled = true; }
+            ['wheel', 'mousedown', 'touchstart', 'keydown'].forEach(function (ev) {
+                try { global.addEventListener(ev, abandon, { once: true, passive: true }); } catch (_) {}
+            });
+
+            function tick() {
+                if (cancelled) return;
+                attempts += 1;
+                if (chart && chart.data && chart.data.length > 0 && chart.canvas) {
+                    try {
+                        setVisibleTimeRange(chart, startSec, endSec);
+                        chart.__talariaBootViewportRestored = {
+                            startSec: startSec, endSec: endSec, attempts: attempts,
+                        };
+                    } catch (_) {}
+                    return;
+                }
+                if (attempts < MAX_ATTEMPTS) global.setTimeout(tick, INTERVAL_MS);
+            }
+            global.setTimeout(tick, 0);
+        }
+
+        try { scheduleBootViewportRestore(); } catch (_) {}
+
         // Same-origin fast path: parent manager can call this synchronously during
         // panSync instead of postMessage (avoids one event-loop tick of lag).
         global.__multichartSyncApply = applyInbound;
