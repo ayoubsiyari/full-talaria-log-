@@ -53,7 +53,12 @@ const arg = (k, d) => {
 
 const ORIGIN = arg('origin', 'http://31.97.192.82:3000');
 const SPEED = Number(arg('speed', '10'));
-const WARMUP_MIN = Number(arg('warmup', '4'));
+/**
+ * Warmup before the BOOT floor is forbidden by default. E's 532.6 and A's 420.70 are cold-boot
+ * readings — four panels, nothing played. A warm play before the first curve measures a different
+ * quantity and cannot retire those figures. `--warmup` remains for deliberate non-cold arms only.
+ */
+const WARMUP_MIN = Number(arg('warmup', '0'));
 const PLAY_MIN = Number(arg('play', '20'));
 const OUT = arg('out', `_evidence/manager-C/canonical-floor-retake-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
 
@@ -61,8 +66,12 @@ const OUT = arg('out', `_evidence/manager-C/canonical-floor-retake-${new Date().
  * Cumulative settle rungs in seconds. 0 and 20 are not arbitrary: they are the two published
  * methods, kept as rungs so this artifact can say what each of them would have reported on this
  * session instead of relying on the older runs being comparable.
+ *
+ * 600 is required after the b126 first pass: both curves fell another ~10 MB between 150s and 300s
+ * (STILL_FALLING / BOUND_ONLY). Quoting 300s as a floor would have repeated the defect. The last
+ * rung must be far enough that a 10 MB late drop either flattens or forces another extension.
  */
-const RUNGS_SEC = (arg('rungs', '0,20,150,300')).split(',').map((s) => Number(s.trim())).filter((n) => Number.isFinite(n));
+const RUNGS_SEC = (arg('rungs', '0,20,150,300,600')).split(',').map((s) => Number(s.trim())).filter((n) => Number.isFinite(n));
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (m) => console.log(`[floor-retake ${new Date().toISOString().slice(11, 19)}] ${m}`);
@@ -248,27 +257,57 @@ async function main() {
     };
     log(`boot ok advancing=${session.conf01.delivering?.advancingPanels}`);
 
-    log(`warm ${WARMUP_MIN} min`);
-    await sleep(WARMUP_MIN * 60_000);
+    // CONF-01 arms panels into a playing state. The boot floor must be a cold reading, so pause
+    // immediately and do not warm-play first. A prior b126 pass warmed 4 min before the boot curve
+    // and produced a 728 MB bound that cannot be compared to E's 532.6 cold headline.
+    await pauseAll(session.page);
+    if (WARMUP_MIN > 0) {
+      log(`WARNING: --warmup=${WARMUP_MIN} is set; boot floor is NO LONGER a cold-boot reading`);
+      await resumeAll(session.page);
+      await sleep(WARMUP_MIN * 60_000);
+      await pauseAll(session.page);
+    }
 
-    log('BOOT FLOOR — settle curve');
+    log('BOOT FLOOR — settle curve (cold, nothing played after arm)');
     artifact.bootFloor = await settleCurve(session, { label: 'boot' });
     log(`  boot floor: ${artifact.bootFloor.grade.state} ${artifact.bootFloor.grade.floorMB ?? artifact.bootFloor.grade.upperBoundMB ?? '?'} MB`);
 
     log(`play leg ${PLAY_MIN} min`);
-    await resumeAll(session.page);
     const beforePlay = await readPlayhead(session.page);
-    await sleep(PLAY_MIN * 60_000);
+    const resume = await resumeAll(session.page);
+    // Confirm play actually took before sleeping the wall clock — the first b126 pass slept 20 min
+    // against a session that delivered 0 bars (index 1260 → 546), and that voided the post-play arm.
+    await sleep(8_000);
+    const playCheck = await readPlayhead(session.page);
+    if (!playCheck?.isPlaying) {
+      log('play did not stick after resume — retrying once');
+      await resumeAll(session.page);
+      await sleep(5_000);
+    }
+    await sleep(Math.max(0, PLAY_MIN * 60_000 - 8_000));
     const afterPlay = await readPlayhead(session.page);
+    const beforeIdx = Number(beforePlay?.replayIndex);
+    const afterIdx = Number(afterPlay?.replayIndex);
+    let barsDelivered = 0;
+    let playNote = null;
+    if (Number.isFinite(beforeIdx) && Number.isFinite(afterIdx)) {
+      if (afterIdx > beforeIdx) barsDelivered = afterIdx - beforeIdx;
+      else if (afterIdx < beforeIdx) {
+        // Window wrap / re-seed: not "0 bars". Count forward progress after the reset.
+        barsDelivered = afterIdx;
+        playNote = `playhead reset during the leg (${beforeIdx} -> ${afterIdx}); barsDelivered counts post-reset only`;
+      }
+    }
     artifact.playLeg = {
       beforePlay,
       afterPlay,
-      barsDelivered: (Number.isFinite(beforePlay?.replayIndex) && Number.isFinite(afterPlay?.replayIndex)
-        && afterPlay.replayIndex > beforePlay.replayIndex)
-        ? afterPlay.replayIndex - beforePlay.replayIndex
-        : 0,
+      resume,
+      playCheck,
+      barsDelivered,
+      playNote,
+      wasPlayingAtEnd: !!afterPlay?.isPlaying,
     };
-    log(`  played ${artifact.playLeg.barsDelivered} bars`);
+    log(`  played ${barsDelivered} bars${playNote ? ` (${playNote})` : ''}`);
 
     log('POST-PLAY FLOOR — settle curve');
     artifact.postPlayFloor = await settleCurve(session, { label: 'post-play' });
