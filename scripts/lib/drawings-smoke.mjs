@@ -172,6 +172,34 @@ export function gradeDrawingsPersistence(planted, frames, opts = {}) {
     };
   }
 
+  /**
+   * A frame existing is not a surface being back. The first run of this step against
+   * b126 found ONE chart frame with ZERO panels painted, and every drawing was duly
+   * reported LOST -- which is a lie in the shape of a finding: there was nothing
+   * rendered for a drawing to be on, so the refresh proved nothing either way.
+   *
+   * BIND-01 is explicit that a broken anchor must fail with its own state rather than
+   * collapse into the same RED as a live defect, and `!live.length` was too narrow a
+   * reading of "the panels did not come back". Paint is the evidence that they did.
+   *
+   * Only fires when the caller supplies the count: an older caller that cannot say
+   * keeps the previous behaviour rather than being silently downgraded to unmeasured.
+   */
+  const painted = opts.panelsPainted;
+  if (painted != null && painted === 0) {
+    return {
+      state: 'DRAWINGS_UNOBSERVABLE_NO_PAINT',
+      ok: false,
+      attributable: false,
+      verdict: `${live.length} frame(s) answered but 0 panels painted, so drawing persistence is UNMEASURED, not failed`,
+      detail: 'Do not read this as "drawings do not persist". Nothing rendered after the refresh, '
+        + 'so a drawing could not have been observed even if it had survived perfectly. The thing to '
+        + 'chase first is why the surface did not come back.',
+      surface: { framesAnswering: live.length, panelsPainted: painted, panelsExpected: opts.panelsExpected ?? null },
+      perDrawing: [],
+    };
+  }
+
   const perDrawing = planted.map((p) => {
     const hits = live
       .map((f) => ({ frame: f, hit: (f.drawings || []).find((d) => d.id === p.id) }))

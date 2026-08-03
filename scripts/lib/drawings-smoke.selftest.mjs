@@ -131,6 +131,44 @@ cell('panels not coming back is its own state, not DRAWINGS_LOST', () => {
   assert.match(r.detail, /Distinct from DRAWINGS_LOST/);
 });
 
+/**
+ * These four cells exist because of what the first real run against b126 produced.
+ * The step planted two drawings, the refresh came back with one frame and ZERO panels
+ * painted, and the grader reported DRAWINGS_LOST — a persistence defect that had not
+ * been demonstrated, because nothing had rendered for a drawing to be on.
+ */
+cell('REGRESSION (b126 run): a frame that answers but paints nothing is UNMEASURED, not LOST', () => {
+  const r = gradeDrawingsPersistence([trendline, horizontal], [frame('A', '1m', [])], {
+    panelsPainted: 0, panelsExpected: 1,
+  });
+  assert.equal(r.state, 'DRAWINGS_UNOBSERVABLE_NO_PAINT');
+  assert.equal(r.ok, false);
+  assert.equal(r.attributable, false, 'an unmeasured run must say it is not attributable');
+  assert.match(r.detail, /Do not read this as "drawings do not persist"/);
+  assert.equal(r.surface.panelsPainted, 0);
+});
+
+cell('ANTI-VACUITY: with panels painted, the same absent drawings are still DRAWINGS_LOST', () => {
+  const r = gradeDrawingsPersistence([trendline, horizontal], [frame('A', '1m', [])], {
+    panelsPainted: 2, panelsExpected: 2,
+  });
+  assert.equal(r.state, 'DRAWINGS_LOST', 'the new state must not swallow a real loss');
+  assert.equal(r.ok, false);
+});
+
+cell('the paint gate does not fire on a healthy run', () => {
+  const r = gradeDrawingsPersistence([trendline], [frame('A', '1m', [asStored(trendline)])], {
+    panelsPainted: 1, panelsExpected: 1,
+  });
+  assert.equal(r.state, 'DRAWINGS_PERSIST');
+  assert.equal(r.ok, true);
+});
+
+cell('a caller that cannot report paint keeps the old behaviour rather than going unmeasured', () => {
+  const r = gradeDrawingsPersistence([trendline], [frame('A', '1m', [])]);
+  assert.equal(r.state, 'DRAWINGS_LOST', 'absent paint evidence must not be read as zero paint');
+});
+
 cell('matching is by id, so a DIFFERENT drawing of the same type is not a survivor', () => {
   const impostor = { ...asStored(trendline), id: 'dr_other' };
   const r = gradeDrawingsPersistence([trendline], [frame('A', '1m', [impostor])]);

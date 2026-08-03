@@ -30,6 +30,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { openRun, inspectRun } from './lib/detach01.mjs';
+import { acquireRunLockOrExit, lockFlagsFromArgv } from './lib/run-lock.mjs';
 import { bootConf01Session, cycleTrades } from './lib/conf01-session.mjs';
 import {
   HEAP_CYCLE_DATASET_MODE_SAME_SYMBOL,
@@ -510,6 +511,24 @@ let nextGovernorAt = Date.now();
 const SEAL_STALL_LIMIT = 3;
 let sealStalls = 0;
 const governorEveryMs = 3_600_000 / Math.max(1, CLOSES_PER_HOUR);
+
+/**
+ * RUN-LOCK-01, taken here rather than in the launcher. The fire is a launcher that exits within
+ * seconds of spawning a detached child, so a lock or claim held by the fire names a pid that is
+ * already gone — the exact stale-holder shape that made E's claim look abandoned 28 s after it was
+ * made. The long-lived process must be the holder, and for this arm that is this process.
+ *
+ * The 18:58:37+01:00 smoke ran with no lock and no claim while E held the head of the queue. It did
+ * no harm because it finished, but the ten-hour fire on the same path would have sat on the box for
+ * a working day with nothing in the queue saying so.
+ */
+const runLock = await acquireRunLockOrExit({
+  artifact: OUT,
+  script: 'sealed-two-arm-soak.mjs',
+  ...lockFlagsFromArgv(),
+});
+run.note({ __runLock: true, at: new Date().toISOString(), state: runLock.state, pid: process.pid,
+  foreignScan: runLock.foreignScan ?? null });
 
 try {
   while ((Date.now() - t0) / 3600000 < HOURS) {
@@ -1170,7 +1189,13 @@ try {
       if (DRAWINGS_SMOKE) {
         const back = (await endPhases.run('end.readDrawings', SOAK_PHASE_BUDGETS_MS['end.readDrawings'],
           () => readDrawings(session.page, { expectIds: plantedDrawings.map((d) => d.id) }))).value ?? null;
-        const graded = gradeDrawingsPersistence(plantedDrawings, back.frames);
+        // The paint census above is handed in deliberately: without it the grader will
+        // call every drawing LOST on a refresh where nothing rendered at all, which
+        // reads as a persistence defect when it is really an unmeasured run.
+        const graded = gradeDrawingsPersistence(plantedDrawings, back.frames, {
+          panelsPainted: painted.length,
+          panelsExpected: withChart.length,
+        });
         run.note({
           __drawingsPersist: true,
           at: new Date().toISOString(),
@@ -1225,5 +1250,6 @@ try {
   run.finish({ completed: false, segments: segment });
 } finally {
   try { if (session?.browser) await session.browser.close(); } catch { /* gone */ }
+  try { runLock.release(); } catch { /* a lock we cannot release is reaped as stale, not fatal */ }
 }
 log(`done: ${JSON.stringify(inspectRun(OUT))}`);

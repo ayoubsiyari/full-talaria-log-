@@ -166,8 +166,18 @@ gate('all four panels paint after a page refresh',
 
 // 16b. DRAW-SMOKE-01, on the same refresh as gate 16.
 const draw = notes.find((n) => n.__drawingsPersist);
+/**
+ * DRAWINGS_UNOBSERVABLE_NO_PAINT is a WARN, not a FAIL, and the distinction is the
+ * point of the gate rather than a softening of it. On the first b126 run the surface
+ * came back with 0 panels painted, so the drawings could not have been seen whatever
+ * they did; scoring that as FAIL would report a persistence defect this run never
+ * demonstrated, and would sit next to gate 16 already failing for the real reason.
+ * The unmeasured run is still not a pass, so it can never be quoted as one.
+ */
 gate('a trendline and a level survive a refresh at the planted price and market time',
-  !draw ? 'WARN' : (draw.state === 'DRAWINGS_PERSIST' ? 'PASS' : 'FAIL'),
+  !draw ? 'WARN'
+    : draw.state === 'DRAWINGS_PERSIST' ? 'PASS'
+      : draw.attributable === false ? 'WARN' : 'FAIL',
   draw
     ? `${draw.state} — ${draw.verdict}${draw.detail ? `; ${draw.detail}` : ''}`
     : 'the drawings step did not run in this window (--drawingsSmoke=1 rides --smoke)',
