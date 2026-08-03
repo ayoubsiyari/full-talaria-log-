@@ -7,7 +7,7 @@ A blocked manager reads this rather than waiting for a relay.
 
 ---
 
-## CURRENT STATE — E's lane · maintained in place · last updated 16:40+01:00
+## CURRENT STATE — E's lane · maintained in place · last updated 17:23+01:00
 
 > **This block is the one part of this file that is NOT append-only.** It is overwritten, so it
 > answers *what is true now*; everything below answers *what happened*. Every number here carries
@@ -17,18 +17,20 @@ A blocked manager reads this rather than waiting for a relay.
 
 | row | value | state |
 |---|---|---|
-| V8 playback rerun | **running** | `DIAGNOSTIC_IN_FLIGHT_CONTAMINATED` — CONF-01 same-symbol, 4 panels, playback at 10 bars/s, zero-trade reproduction; useful retainer data, not authoritative plateau/slope read |
+| V8 playback rerun | **complete** | `DIAGNOSTIC_CAPTURED_CONTAMINATED` — CONF-01 same-symbol, 4 panels, playback at 10 bars/s, zero-trade reproduction; useful retainer data, not authoritative plateau/slope read |
 | Snapshot A | **captured at 15:36:47+01:00** | `OBSERVED_ARTIFACT` — `_evidence/manager-E/v8-playback-heap-slope-20260803/2026-08-03T14-34-45-491Z/A.heapsnapshot` |
 | Snapshot B | **captured at 16:22:04+01:00** | `OBSERVED_ARTIFACT` — `_evidence/manager-E/v8-playback-heap-slope-20260803/2026-08-03T14-34-45-491Z/B.heapsnapshot` |
-| Snapshot C | **due around 17:07:10+01:00** | `PENDING` — B-C interval began 16:22:10+01:00 |
-| Queue claim | **pid 28948 since 15:34:45+01:00** | `HELD_BY_E` — `measurement-queue status` is authoritative |
+| Snapshot C | **captured at 17:07:24+01:00** | `OBSERVED_ARTIFACT` — `_evidence/manager-E/v8-playback-heap-slope-20260803/2026-08-03T14-34-45-491Z/C.heapsnapshot` |
+| Queue claim | **released at 17:22:24+01:00** | `RELEASED` — next queue holder is A/order01b-readback-canary-rerun-4up |
 | Foreign host process | **started 16:37:13+01:00** | `HOST_CONTAMINATION_RISK` — `order01b-readback-canary-run.mjs#31064` joined during E's B-C interval |
 | Authoritative read capability | **GATE-01 PASS 4/4** | `BUILT_NOT_RUN` — `v8-authoritative-heap-read` samples every 3 min and overlays floors at 0/45/90 |
+| Diagnostic V8 heap used | **68.469 → 131.139 → 157.492 MB** | `DIAGNOSTIC_ONLY` — B-C +26.353 MB after A-B +62.670 MB; not authoritative slope/plateau |
+| Diagnostic constructor self-size | **A-C +18.692 MB positive / +11.291 MB net** | `DIAGNOSTIC_ONLY` — B-C +3.091 MB positive / +2.962 MB net |
+| Runtime watchdogs | **0 heartbeat timeouts / 0 phase overdue** | `CLEAN_DIAGNOSTIC` — report verdict line says runtimeAnomaly=NO |
 
-**Blocked on someone else** — Not currently blocked; E holds the queue and the V8 rerun is live. The
-remaining risk is host-scope locking: A owns RUN-LOCK-01 host scope, and until it lands E is relying on
-the queue claim plus process-list checks to detect a foreign Chrome launcher. No launch decision is
-waiting on C.
+**Blocked on someone else** — The authoritative read is not running yet. It must run later with Cursor
+closed and host-scope locking in place or an explicit quiet-box window. A owns RUN-LOCK-01 host scope.
+No launch decision is waiting on C.
 
 **Not quotable, and why** — The live `V8-PLAYBACK-HEAP-SLOPE-90M-RERUN` is now diagnostic only:
 three isolated heap snapshots can name retainers but cannot authoritatively separate plateau from slope,
@@ -41,10 +43,9 @@ positive constructor self-size and `m20Q6CapturedClear +7.270 MB`, are quotable 
 salvage, not as flattening/slope evidence. `BUFFER-PARTITION-DISCRIMINATOR-V1` did not assign the
 120 MB buffer shelf; its arm numbers are negative/weak-transient owner eliminations, not an owner claim.
 
-**Next required update** — Replace this block after C lands, after any `HEARTBEAT_KEEPALIVE_TIMEOUT` or
-`PHASE_OVERDUE`, or when the run completes/releases the queue. The authoritative read must run later
-with Cursor closed and is quotable only if identity lock, all phases, sidecars, COV-01 >=95%, and GATE-01
-all pass inline.
+**Next required update** — Replace this block when the authoritative read is scheduled or starts. That
+read must run with Cursor closed and is quotable only if identity lock, all phases, sidecars, COV-01
+>=95%, and GATE-01 all pass inline.
 
 Do not edit another lane's file; write here and let the reader come to you. This directory
 replaced a single shared board after three add/add collisions in one evening, each of which
