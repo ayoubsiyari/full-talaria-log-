@@ -40,9 +40,32 @@ Artifact: `docs/plan3/evidence/suspect-ledger-census-20260804.json`.
 | | before assembly | after assembly |
 | --- | --- | --- |
 | population (149 ticket-ledger rows + 16 curated campaign controls) | 165 | 165 |
-| STATED under exactly one legal state | **2** | see §4e/§4f/§4g |
-| `ILLEGAL_OPEN` | **5** | 0 — restated below |
-| `ABSENT`, the forbidden state | **158** | 0 for the enumerated population |
+| STATED under exactly one legal state | **2** | **165** |
+| `ILLEGAL_OPEN` | **5** | **0** |
+| `AMBIGUOUS_MULTI_STATE` | 0 | **0** |
+| `ABSENT`, the forbidden state | **158** | **0** of the enumerated population |
+| dangling post-soak seats | **3** | **0** |
+
+Instrument exit code **0** (`CENSUS_CLEAN`). Selftest **12/12**.
+
+**Read the "after" column exactly as written.** `0 ABSENT` means *zero absent of the 165 enumerated*,
+and the enumeration is a floor. It does not mean nothing is missing, and this ledger does not claim it.
+
+**Three defects were found in the instrument by running it against the assembled file.** Each would
+have produced a false accusation rather than a missed row, and all three are the same family as the
+defects this campaign has spent ten days finding in product code:
+
+1. A restated row records its former verdict as `` `OPEN` `` in a `was` column. The detector read that
+   quotation as a live assertion and graded a lawful audit trail an illegal state. Fixed by stripping
+   inline-code spans — **assertions are bold, quotations are backticked.**
+2. A `DEFERRED` row explaining *"a fix with no mechanism is not a fix, so this cannot be KILLED"* was
+   graded `KILLED` off its own prose, colliding with its bold status. Fixed by giving the **bold**
+   status precedence over any state word in prose.
+3. Nine rows stated a few lines away were reported `ABSENT`, because ids like `SEL-01`, `Rayan #6b` and
+   `PO value-box shaky` match no id shape, and curated handles like `SECOND-GPU-BOX` are my shorthand
+   appearing nowhere in the prose. Fixed with literal matching plus an explicit **anchor** per curated
+   control, so a reworded row breaks the anchor and reports absence **loudly** rather than passing on a
+   handle nobody uses. That is BIND-01 applied to the census itself.
 
 **The finding, stated plainly: this ledger has never been a census.** It was a highlights list.
 Section 4 carried **7** ticket rows against the ticket ledger's **149**; the other 142 appeared
@@ -279,9 +302,313 @@ under E's seat and must not be counted twice in §2. The eight DEFERRED seats ar
 
 ---
 
+## 4f · D-lane suspect rows sent to B at freeze
+
+Sent by D at **23:28+01:00** in `docs/plan3/D-SUSPECT-LEDGER-ROWS-20260803.md` and integrated here at
+00:4x+01:00, because a row that stays in a lane's own file is not in the ledger.
+
+**Four of D's rows are stated in §4 rather than repeated here** — TAL-01696, TAL-01698, TAL-01865 and
+Rayan #8. They were the `OPEN` rows, D's evidence is what killed them, and restating them twice would
+give one id two rows. **D's lane submission beat the ticket ledger's status column on three of the
+four**, which is the single most useful thing that came out of assembling this section.
+
+**D's kill shape is the strongest in this file and deserves naming: served mutants killed against
+b126**, not static gates on a source tree. Artifact
+`docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary.json`.
+
+| Row | State | Evidence |
+| --- | --- | --- |
+| M24 quota retry dropping `order_counters` | **KILLED** | Fix `47b1c5f05`; gate `m24-order-id-restore-stability.test.mjs` exercises the `QuotaExceededError` retry and preserves `order_counters`. **Switch axis present and named:** `__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1` remains the restore-stability RED discriminator. One of very few rows in this file evidencing all four axes. |
+| M19 hot/durable tier merge dropping durable summaries | **KILLED** | Fix `bebedd412`; gate `m19-persist-trim-contract.test.mjs` proves `journal_by_ticker` and `per_instrument_stats` survive a newer slim hot payload by merging from the durable tier. |
+| Money-path refresh survival | **KILLED** | Fix `f2e9d4fdb`; gate `order-refresh-money-path-survival.test.mjs` covers open positions, pending orders, journal, balance and order counters across refresh. |
+| Drawing market-time persistence | **KILLED** | Fix `f2e9d4fdb`; gate `drawing-market-time-persist.test.mjs`; served mutant `drawings-index-persist` killed on b126. **This is the runtime half of the drawings question** — see §4h, where the PO's drawings item is stated, because D's mutant kill and B's never-executed grader are two different claims about the same feature. |
+| Pause drain as a memory release point | **KILLED** | Fix `f2e9d4fdb`; gate `replay-pause-drain.test.mjs`; PO visual addendum row 31 names expected state `PAUSE_DRAIN_RELEASES_MEMORY` with a 60-second Browser Task Manager observation window. |
+| QW-3 Stack 2/3 ≥80% allocation-reduction target | **CLEARED** | PO ruling **withdrew the ≥80% acceptance bar** after memory measurement showed JS heap was a minor contributor. Stacks closed as implemented and kill-switched, with the measured improvement recorded in `docs/plan3/QW3-RESAMPLE-HOLD-20260802.md`. Cleared because the bar was retired, not because the target was met — those are different and the distinction is D's own. |
+| `m20Q6CapturedClear` as V8 retainer owner | **CLEARED** | E's real-playback heap verdict measured **416 bytes** retained; D demoted it in `docs/plan3/V8-RETAINER-DIFF-LOOKUP-20260803.md` and `BOARD-D.md`, below the **2 MB** single-path threshold. Agrees with `E-SUS-07`'s independent finding of 13 instances / 416 bytes. **Two lanes, one number** — see §4h for what this does and does not clear. |
+| Pair-switch arena accumulation alarm | **CLEARED** | `scripts/pair-switch-arena-accumulation.mjs`: ten switches cost **10.57 MB**, not the feared **127 MB**. First-switch cost decays; only shallow later creep remains. Independently the same conclusion as `C-SUS-10`, which was C's own hypothesis being disproved by D's run. |
+
+### D's deferred rows
+
+D supplied five, with signature lines already blank for the PO. **All five cited seats
+`POST-SOAK-LEDGER-D-001` … `-D-005`, none of which exist** — the same dangling-seat defect found in
+§4d, and with E's three that makes **eight** deferrals across two lanes citing a seat number that is
+not a seat. Both lanes numbered sensibly against a file that did not exist yet. Real seats below;
+D's labels are kept as aliases so D's own notes still resolve.
+
+| Seat | alias | Row | State | PO signature | Revisit condition |
+| --- | --- | --- | --- | --- | --- |
+| `PSL-23` | `D-001` | `TAL-DATA-LOAD-ERROR-SURFACE` | **DEFERRED** |  | After seal, scope and fix chart bootstrap error surfacing for bad or stale data seeds. **Same row as §4h's `scoped` entry** — D found it and it is seated once, not twice. D's raising it answers the "no owner named" gap: **D is the owner.** |
+| `PSL-07` | `D-002` | `_orderExecutionSeriesByFileId` V8 retainer candidate | **DEFERRED** |  | After E's real-playback forced-GC diff, clear or perturb this map only if the retainer path accounts for material retained growth. Path `OrderManager → _orderExecutionSeriesByFileId → Map → per-file Map → series:Array`. |
+| `PSL-07` | `D-003` | `_miSeriesByFileId` V8 retainer candidate | **DEFERRED** |  | After E's diff, clear/bypass the background MI series fetch only if the retained `raw:Array` path is material. |
+| `PSL-07` | `D-004` | `_m20Q9PrefixByMaster` V8 retainer candidate | **DEFERRED** |  | After E's diff, invalidate prefixes or run `__TALARIA_DISABLE_M20_PREFIX_SLICE_V1` only if WeakMap prefix arrays account for material retained growth. |
+| `PSL-07` | `D-005` | V8 candidate-list underfit branch | **DEFERRED** |  | If D-002…D-004 together account for **less than one tenth** of the measured retained-growth delta, stop naming constructors and switch to retained size by dominator subtree. Precommitted stopping rule; not a product fix. |
+
+> **Why D-002…D-005 share `PSL-07`.** That seat was opened as "D's V8 candidates" and seeded with
+> exactly these three constructors plus the precommitted underfit branch, before D's rows arrived.
+> Giving each its own seat would split one decision — *does E's rerun name any of them* — across four
+> rows that can only ever be resolved together. They are listed individually here so no candidate can
+> go missing inside the cohort.
+
+---
+
+## 4g · Ticket census — all 149 ticket-ledger rows, by rule
+
+Every row of `docs/plan3/TICKET-STATUS-LEDGER-20260729.md` appears below. This section exists because
+§4 stated **7** of them and the law requires all **149**.
+
+**The mapping rule is stated so it can be argued with, and applied mechanically so it cannot drift row
+to row.** The table is *generated* from the ticket ledger, not transcribed — 149 rows typed by hand is
+149 chances to move a status word.
+
+| ticket status | maps to | why |
+| --- | --- | --- |
+| `fixed` | **KILLED** | commit and green gate recorded in the ticket ledger's own columns |
+| `superseded` | **CLEARED** | replaced by a later row; the successor carries the work |
+| `feature-request` | **CLEARED** | not a defect. A defect ledger is the wrong instrument for it |
+| `cleared`, `closed-scratched`, `intended` | **CLEARED** | already retired, withdrawn by its author, or behaving as designed |
+| `po-eyes` | **DEFERRED** `PSL-18` | needs a PO decision, which is precisely what a deferral seat is for |
+| `owner-blocked` | **DEFERRED** `PSL-19` | real open work behind a named owner |
+| `blocked-on-build` | **DEFERRED** `PSL-20` | fix may exist; verification needs a build |
+| `scoped`, `broken`, `verify-gone` | **refuses mapping** | stated individually in §4h. A rule that cleared these would be the defect |
+
+**Four rows carry a lane override**, where a submitted fix beats a stale status word: TAL-01696,
+TAL-01698, TAL-01865 (D, §4) and Rayan #8. Their basis cell names D's evidence and points at §4, so
+each id still holds exactly one state across the whole file.
+
+**Cohort seating, and its honest cost.** 49 deferred tickets share three seats rather than holding 49
+of their own. The cost is real — a cohort can hide an individual, which is the failure this census is
+against. Accepted for `po-eyes`/`owner-blocked`/`blocked-on-build` because those rows are deferred
+*for the same reason* and will be worked as a batch; **refused** for the six rows in §4h, which get
+individual seats precisely because a cohort would swallow them.
+
+**Read the KILLED basis cells literally.** `switch UNRECORDED` appears on **48 of 49** and means what
+it says: three axes evidenced, the fourth recorded nowhere. See §0.
+
+| ID | ticket-ledger status | state | basis | post-soak seat |
+| --- | --- | --- | --- | --- |
+| M24 / TAL-01926 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01930 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01888 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01813 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01758 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01908 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01919 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01924 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01904 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01897 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01933 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01809 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| SEL-01 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| Timezone EST-to-CST override | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01861 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01885 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01905 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01932 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01777 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01750 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01927 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01903 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01810 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01683 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01751 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01697 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01699 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01895 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01792 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01896 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| M23 / TAL-01937 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01800 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| Rayan #8 | `fixed` | **KILLED** | D: `f2e9d4fdb`, `analysis-only-symbol-order-gate`, 4 served mutants killed — see §4 | — |
+| TAL-01798 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01815 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01802 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01886 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| Rayan #1 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| Rayan #2 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| Rayan #3 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| Rayan #4 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| Rayan #5 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| Rayan #6b | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| Rayan #9 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| Rayan #11 | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01807b | `fixed` | **KILLED** | commit + green gate + switch | — |
+| PO value-box shaky | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| PO hover one-by-one | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| PO pending SL/TP resurrect | `fixed` | **KILLED** | commit + green gate + switch UNRECORDED | — |
+| TAL-01756 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01653 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01692 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01658 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01691 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01805 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01795 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01780 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01781 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01789 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01791 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01760 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01688 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01709 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01719 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01723 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01725 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01726 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01728 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01732 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01736 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01737 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01739 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01740 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01743 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01769 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01824 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01831 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01847 | `superseded` | **CLEARED** | replaced by a later row; cite the successor | — |
+| TAL-01784 | `feature-request` | **CLEARED** | not a defect; out of scope for a defect ledger | — |
+| TAL-01814 | `feature-request` | **CLEARED** | not a defect; out of scope for a defect ledger | — |
+| TAL-01849 | `feature-request` | **CLEARED** | not a defect; out of scope for a defect ledger | — |
+| TAL-01851 | `feature-request` | **CLEARED** | not a defect; out of scope for a defect ledger | — |
+| TAL-01852 | `feature-request` | **CLEARED** | not a defect; out of scope for a defect ledger | — |
+| TAL-01894 | `feature-request` | **CLEARED** | not a defect; out of scope for a defect ledger | — |
+| TAL-01906 | `feature-request` | **CLEARED** | not a defect; out of scope for a defect ledger | — |
+| TAL-01907 | `feature-request` | **CLEARED** | not a defect; out of scope for a defect ledger | — |
+| TAL-01915 | `feature-request` | **CLEARED** | not a defect; out of scope for a defect ledger | — |
+| TAL-01617 | `cleared` | **CLEARED** | already cleared with a reason | — |
+| TAL-01941 | `cleared` | **CLEARED** | already cleared with a reason | — |
+| TAL-01912 | `closed-scratched` | **CLEARED** | withdrawn by its author | — |
+| TAL-01744 | `intended` | **CLEARED** | behaviour is as designed | — |
+| TAL-01696 | `po-eyes` | **KILLED** | D: `a1a270692`+`c0a0d7620`, 4 gates, 9 served mutants killed on b126 — see §4 | — |
+| TAL-01698 | `po-eyes` | **KILLED** | D: `231df7bb5`, 2 gates, served mutant `release-only-average` killed — see §4 | — |
+| TAL-01940 | `po-eyes` | **DEFERRED** | needs a PO decision, which is what a deferral seat is for | PSL-18 |
+| TAL-01700 | `po-eyes` | **DEFERRED** | needs a PO decision, which is what a deferral seat is for | PSL-18 |
+| TAL-01717 | `po-eyes` | **DEFERRED** | needs a PO decision, which is what a deferral seat is for | PSL-18 |
+| TAL-01724 | `po-eyes` | **DEFERRED** | needs a PO decision, which is what a deferral seat is for | PSL-18 |
+| TAL-01734 | `po-eyes` | **DEFERRED** | needs a PO decision, which is what a deferral seat is for | PSL-18 |
+| TAL-01735 | `po-eyes` | **DEFERRED** | needs a PO decision, which is what a deferral seat is for | PSL-18 |
+| TAL-01755 | `po-eyes` | **DEFERRED** | needs a PO decision, which is what a deferral seat is for | PSL-18 |
+| TAL-01768 | `po-eyes` | **DEFERRED** | needs a PO decision, which is what a deferral seat is for | PSL-18 |
+| TAL-01796 | `po-eyes` | **DEFERRED** | needs a PO decision, which is what a deferral seat is for | PSL-18 |
+| TAL-01821 | `po-eyes` | **DEFERRED** | needs a PO decision, which is what a deferral seat is for | PSL-18 |
+| TAL-01823 | `po-eyes` | **DEFERRED** | needs a PO decision, which is what a deferral seat is for | PSL-18 |
+| TAL-01838 | `po-eyes` | **DEFERRED** | needs a PO decision, which is what a deferral seat is for | PSL-18 |
+| TAL-01862 | `po-eyes` | **DEFERRED** | needs a PO decision, which is what a deferral seat is for | PSL-18 |
+| TAL-01898 | `po-eyes` | **DEFERRED** | needs a PO decision, which is what a deferral seat is for | PSL-18 |
+| TAL-01909 | `po-eyes` | **DEFERRED** | needs a PO decision, which is what a deferral seat is for | PSL-18 |
+| TAL-01911 | `po-eyes` | **DEFERRED** | needs a PO decision, which is what a deferral seat is for | PSL-18 |
+| TAL-01916 | `po-eyes` | **DEFERRED** | needs a PO decision, which is what a deferral seat is for | PSL-18 |
+| TAL-01917 | `po-eyes` | **DEFERRED** | needs a PO decision, which is what a deferral seat is for | PSL-18 |
+| TAL-01923 | `po-eyes` | **DEFERRED** | needs a PO decision, which is what a deferral seat is for | PSL-18 |
+| TAL-01925 | `po-eyes` | **DEFERRED** | needs a PO decision, which is what a deferral seat is for | PSL-18 |
+| TAL-01928 | `po-eyes` | **DEFERRED** | needs a PO decision, which is what a deferral seat is for | PSL-18 |
+| TAL-01929 | `po-eyes` | **DEFERRED** | needs a PO decision, which is what a deferral seat is for | PSL-18 |
+| TAL-01934 | `po-eyes` | **DEFERRED** | needs a PO decision, which is what a deferral seat is for | PSL-18 |
+| TAL-01865 | `owner-blocked` | **KILLED** | D: served suite `710313adc`, 5 mutants killed incl. `refresh-symbol-resets` — see §4 | — |
+| TAL-01747 | `owner-blocked` | **DEFERRED** | real open work behind a named owner | PSL-19 |
+| M20-A timezone sha pin | `owner-blocked` | **DEFERRED** | real open work behind a named owner | PSL-19 |
+| TAL-01733 | `owner-blocked` | **DEFERRED** | real open work behind a named owner | PSL-19 |
+| TAL-01759 | `owner-blocked` | **DEFERRED** | real open work behind a named owner | PSL-19 |
+| TAL-01799 | `owner-blocked` | **DEFERRED** | real open work behind a named owner | PSL-19 |
+| TAL-01850 | `owner-blocked` | **DEFERRED** | real open work behind a named owner | PSL-19 |
+| TAL-01854 | `owner-blocked` | **DEFERRED** | real open work behind a named owner | PSL-19 |
+| TAL-01864 | `owner-blocked` | **DEFERRED** | real open work behind a named owner | PSL-19 |
+| TAL-01887 | `owner-blocked` | **DEFERRED** | real open work behind a named owner | PSL-19 |
+| TAL-01893 | `owner-blocked` | **DEFERRED** | real open work behind a named owner | PSL-19 |
+| TAL-01910 | `owner-blocked` | **DEFERRED** | real open work behind a named owner | PSL-19 |
+| TAL-01913 | `owner-blocked` | **DEFERRED** | real open work behind a named owner | PSL-19 |
+| TAL-01914 | `owner-blocked` | **DEFERRED** | real open work behind a named owner | PSL-19 |
+| TAL-01921 | `owner-blocked` | **DEFERRED** | real open work behind a named owner | PSL-19 |
+| TAL-01931 | `owner-blocked` | **DEFERRED** | real open work behind a named owner | PSL-19 |
+| TAL-01935 | `owner-blocked` | **DEFERRED** | real open work behind a named owner | PSL-19 |
+| TAL-01936 | `owner-blocked` | **DEFERRED** | real open work behind a named owner | PSL-19 |
+| TAL-01938 | `owner-blocked` | **DEFERRED** | real open work behind a named owner | PSL-19 |
+| TAL-01939 | `owner-blocked` | **DEFERRED** | real open work behind a named owner | PSL-19 |
+| M17-DI2 / TAL-01918 | `blocked-on-build` | **DEFERRED** | fix may exist but verification needs a build | PSL-20 |
+| TAL-01718 | `blocked-on-build` | **DEFERRED** | fix may exist but verification needs a build | PSL-20 |
+| TAL-01892 | `blocked-on-build` | **DEFERRED** | fix may exist but verification needs a build | PSL-20 |
+| TAL-01899 | `blocked-on-build` | **DEFERRED** | fix may exist but verification needs a build | PSL-20 |
+| TAL-01900 | `blocked-on-build` | **DEFERRED** | fix may exist but verification needs a build | PSL-20 |
+| TAL-01902 | `blocked-on-build` | **DEFERRED** | fix may exist but verification needs a build | PSL-20 |
+| TAL-01922 | `blocked-on-build` | **DEFERRED** | fix may exist but verification needs a build | PSL-20 |
+
+---
+
+## 4h · Stated individually, because a rule would have got them wrong
+
+Six rows carry a status the mapping refuses to apply. That refusal earned its keep immediately: **two
+of the six do not land where the rule would have put them.**
+
+| ID | ticket status | state | PO signature | Seat | Statement |
+| --- | --- | --- | --- | --- | --- |
+| TAL-01677 | `verify-gone` | **CLEARED** | `PO-SIGNED: PO (asserted)` | — | The rule would have deferred this. **It is cleared, and the ticket ledger says why:** *"PO-DECISIONS: already fixed (PO)"*, *"PO asserts fixed; no re-ask"*. Same basis as TAL-01617 and TAL-01941 — the PO's own verification, explicitly not a gate, explicitly not to be re-asked. No runtime evidence is claimed and none is owed. |
+| TAL-01891 | `broken` | **DEFERRED** |  | `PSL-21` | **The most serious row in this file.** A live P0 candidate, owner **A**: a real decoded chart screenshot measures **20.7 MB**, and heavy account scale can plausibly reach multi-GB. Individually seated because a cohort seat for a live P0 would be indefensible. **Do not read §1's cleared decoded-image row as clearing this.** That row disproved a *per-closed-trade coefficient* — ~16.6 MB/closed-trade, which failed the matched-bars test and was bar-driven growth wearing a trade label. The *absolute* 20.7 MB decode is a different claim and was never disproved. Note also *"fresh harness accounts are not representative"*: **the soak may well not surface it**, so a quiet soak is not evidence against this row. |
+| TAL-01920 | `verify-gone` | **DEFERRED** |  | `PSL-22` | PO reopened with a specific instruction: *"positively verify absent on stamp (PO-CHECK §17)"*, and *"Not find-original-repro"*. This is **verification debt against the sealed build**, not an unfixed defect: the ask is to prove absence on the stamp and nobody has. It cannot be CLEARED without that positive verification — the whole point of `verify-gone` is that the evidence went missing. |
+| Rayan #7 | `verify-gone` | **DEFERRED** |  | `PSL-22` | Same instruction, PO-CHECK §15. Settings/profile monitor item. Verify-absent-on-stamp debt. |
+| Rayan #10 | `verify-gone` | **DEFERRED** |  | `PSL-22` | Same instruction and same PO-CHECK §15, explicitly a monitor item paired with Rayan #7. |
+| TAL-DATA-LOAD-ERROR-SURFACE | `scoped` | **DEFERRED** |  | `PSL-23` | **Found during b126 TAL smoke seed triage**, so it is the newest row here. A *product* row, not a harness artifact: on a stale or non-owned `/api/file/:id/bars` 404 with a `/smart` fallback 404, the chart initializes its UI and order managers but **leaves the user in an apparent infinite loading state with no surfaced failure message**. Deferred rather than cleared. Seated once, shared with D's `D-001` in §4f, and **D is the owner** — the "no owner named" gap the `scoped` status implied is closed by D having raised it. |
+
+> **Why `verify-gone` cannot be mapped.** Three of these rows are the PO asking for proof of absence on
+> the stamp; one is the PO asserting a fix directly. A rule reading the status word alone would have
+> deferred all four, burying a legitimate PO clearance in a cohort, or cleared all four, inventing
+> three verifications that do not exist. Both are the same error in opposite directions, and it is the
+> error this ledger is being rewritten to remove.
+
+---
+
+## 4i · The PO's ten named items, and six campaign controls whose gaps are suspects
+
+The PO named ten items directly. They are stated here with the other six curated controls, because a
+control's *gap* is a suspect even though the control itself is a rule and cannot be killed.
+
+**Three of the ten could not be located in the tracked corpus, and are marked
+`REFERENT_NOT_LOCATED`.** They still carry a state, because absence is forbidden — but the state rests
+on my inability to find the underlying finding, not on evidence about it. Saying so is the whole point
+of the discipline that produced this section: an honest "I could not find this" is a valid entry, and a
+confident verdict over a referent I never located would be the manufactured zero in prose form.
+
+| # | Item | State | Seat | Basis |
+| --- | --- | --- | --- | --- |
+| 1 | **SHELL-PLAY-01** — V9 shell play override | **DEFERRED** | `PSL-26` | Present and mirrored in the shipped bytes (`apply(this)`, `__shellPlayOverrideInert`) and **bound to nothing**: the host instance's `play()` stayed inert on b124 and no mechanism has been found. Receiver divergence was tested and **disproved** as the mechanism, which is why §4b's sibling-wrapper row is deferred separately rather than as the cause. A fix with no mechanism is not a fix, so this cannot be KILLED. |
+| 2 | **The `replay-system.js:4297` product change** | **DEFERRED** | `PSL-03` | `startIdx = rd.length - 1` at `:4297` then `sessionStartIndex = this.currentIndex` at `:4301` pins the rollback floor to the last bar, so a realm in that state can **neither advance nor be rewound by construction**, and the fallback is **silent**. Confirmed at runtime: `seekTo(1760)` left four realms at 1880. The pre-soak **refusal** landed at `46bf8e848`; the **product semantics are unchanged in the sealed bytes**, deliberately, on A's judgement that changing replay session semantics on seal eve was not defensible. Ruling pending. |
+| 3 | **The m20Q6 cross-domain suspect** — V8 retainer claim | **CLEARED** | — | **Two lanes, independently, one number.** E's complete diagnostic-C retainer hunt found **13 instances / 416 bytes**; D measured **416 bytes** on real-playback and demoted it against a precommitted **2 MB** single-path threshold. Below threshold by three orders of magnitude. The earlier A–B **+7.270 MB** constructor salvage remains **two-point salvage only**, not a standing retainer owner. Reopen only if a post-soak authoritative V8 read names it again. |
+| 3b | **The m20Q6 CPU-freeze angle** | **DEFERRED** | `PSL-28` | **Split out deliberately.** m20Q6 was originally a *cross-domain* match — CPU-freeze stacks *and* monotone V8 heap-grower shapes. Only the **V8 half** was resolved above. I found no evidence that the CPU-freeze half was separately closed, and clearing a cross-domain suspect on one domain's evidence is `C-SUS-14` cross-basis borrowing in a new costume. Related and *not* the same: A's discarded first capture shape allocated **358 MB** in five minutes with `m20Q6PatchTarget`/`Set`/`Map` at the top, fixed by making discoveries ephemeral behind gate **R7** and switch `__TALARIA_DISABLE_M20Q6_CAPTURE_REUSE_V1` (**94–95.4% off** the M20-Q6 stack). That was instrument allocation, not the product CPU freeze. |
+| 4 | **The zero-trade lag census** | **KILLED**, with a named unproven arm | — | The lag roster is closed: `LAG-1a`, `LAG-1b`, `LAG-2`, `LAG-3`, `LAG-4` are all **KILLED** at PROC-3 GREEN in §1, `LAG-1a` with a mutant proof. The census machinery from `FINDING-LAG-IS-RESIDUE-20260728` is **LIVE**, not merely designed: `TEARDOWN-CENSUS-GATE-V1`, `LAG-SESSION-HISTORY-CONTROL-V1`, `INDICATOR-LAG-ORACLE-V1` — the last of which **refuses GREEN or RED** unless sealed via the session-history control — with four orphan discriminators (interval, listener, rAF, MessageChannel) each RED on a known defect. **The named gap:** `BROWSER-TEARDOWN-CYCLE` reads **UNPROVEN** without a real browser, so the browser arm of this census is not evidenced by this ledger. `REFERENT_PARTIAL` — I found no document titled "zero-trade lag census"; this is the nearest and largest match, and if the PO meant the lag census restricted to the zero-trade soak arm, that arm-specific run is not in the corpus. |
+| 5 | **The ~724 ms/s owner** | **DEFERRED** | `PSL-29` | **The owner was never named**, which is the item. The figure family is real and the readings disagree by design: C measured **867.3 ms/s** unthresholded main-thread task total, **657.7 ms/s** blocking time, and **861 ms/s** busy by a second decomposition (86.1% of wall); B measured **302 ms/s** thresholded and a **~700–800 ms/s** floor. The exact value **724 is not in the tracked corpus** — `REFERENT_NOT_LOCATED` for that number specifically, though the quantity it belongs to is unambiguous. The only candidate mechanism on record is a **working diagnosis**, not an attribution: the host computing indicators through the asynchronous worker pipeline, busy-coalescing at high speed. A working diagnosis is not an owner. |
+| 6 | **The hoard-floor curve** | **DEFERRED** | `PSL-14` | `C-SUS-22`. Ruled post-soak by the Director: the end-of-arm paused curve was **removed from both arms**, recorded as Amendment 2 of `RECIPE-SEALED-SOAK-FROZEN-20260803.md` at `f0531a352`. The hour-0 curve remains and covers the boot end. Related and separately seated: the canonical floor itself is `FLOOR_FOUND` but **`NOT_QUOTABLE_COVERAGE`** at 59.84% (`C-SUS-06`, `PSL-11`), and on the corrected criterion its curve **could never have graded settled** because the instrument's default ladder had a 300 s last gap against a 600 s minimum (`C-SUS-17`). |
+| 7 | **The drawings full verification** | **DEFERRED** | `PSL-27` | **Two different claims about one feature, and the distinction is the answer.** D's is the stronger: fix `f2e9d4fdb`, gate `drawing-market-time-persist.test.mjs`, and served mutant **`drawings-index-persist` killed on b126** — a runtime kill on the sealed build, so market-time drawing persistence *is* verified. B's `DRAW-SMOKE-01` grader is a different claim and a weaker one: **13/13 as a pure function, symbols present in the served b126 bytes, and it has never executed against a build.** A grader that has never run is not a passing gate. Deferred on B's half only; D's half is KILLED in §4f. |
+| 8 | **The unlit dark rooms** | **DEFERRED** | `PSL-30` | **`REFERENT_NOT_LOCATED`.** The word "dark" does not appear anywhere in the tracked `docs/plan3` corpus, boards included. I will not guess: the nearest concepts are gates that never ran (14 of them, `PSL-04`), roster switches absent from the served build (11 of 14, `PSL-17`), the 2,049 swallowed catches of which 189 are CRITICAL (`PSL-16`), and `DRIFT-ABBA`, which was reported complete having never run (`C-SUS-07`, `PSL-12`). Any of those fits "an unlit room" and they are all separately seated. **The PO's referent needs naming before this can be stated on evidence.** |
+| 9 | **The second GPU box** | **DEFERRED** | `PSL-30` | **`REFERENT_NOT_LOCATED`.** No request for a second machine appears in the corpus. "GPU" occurs only as GPU-private *memory* in A's competitor bands — reference band **433–501 MB GPU** for one chart, and the finding that **GPU private is flat across 2 and 4 panels** (138.95–142.95 MB), against an advisor expectation of 130–180 MB. **That entire series is withdrawn** (`PSL-01`) because the window overlapped E's V8 run, and the flat-GPU finding is withdrawn with it — A's own note is that it was the one they most wanted to keep. If "second GPU box" means a second host to escape the contention that withdrew those arms, that need is real and evidenced throughout, but the phrase itself is the PO's and not the corpus's. |
+| 10 | **R7's machine-coverage backfill** | **DEFERRED** | `PSL-30` | **`REFERENT_PARTIAL`.** `R7` resolves to two different things and neither is a machine-coverage backfill. (a) A's **ephemeral-discovery gate R7** in the M20-Q6 capture-reuse work, which fails the suite if a regression re-joins discoveries to the shared registry — LIVE, with switch `__TALARIA_DISABLE_M20Q6_CAPTURE_REUSE_V1`. (b) **M21-2 R7**, a review round, accepted as `ACCEPT-M21-2-R7` with all 21 sealed inputs stable. I found no "machine coverage" concept under either. Nearest real coverage gap: `COV-01`'s **59.84%** basis defect, fixed to all-process `effective_size` at `2f548462d` and guarded by `BASIS-GUARD-01` (`C-SUS-01`). **Needs the PO to name the R7 they mean.** |
+
+### The six B-lane controls
+
+| Control | State | Seat | Basis |
+| --- | --- | --- | --- |
+| `COPY-ABSENCE-01` | **KILLED** | — | Census built, bound and committed, with the three refusal states writing citable artifacts carrying `counts: null` and `notACensus: true` so a refusal cannot be read as zero absences. Two real defects were found and fixed in it: it aborted on the one path where it had something to report (`process.exit()` with undici sockets open), and it exited 0 while reporting a silent absence. **Its own floor caveat stands and is the honest limit** — end-to-end cells stay `SUITE_INCOMPLETE_E2E_UNPROVEN` and unquotable when the box is busy. |
+| `CLOCK-01` file-scope relabel | **KILLED** | — | Both figures relabelled **file-scoped, not lane-scoped**, on the Director's instruction — B's own row and D's 9. The count is of files, not of a manager's stamping correctness, and the rows now say so. 21 future-dated stamps were corrected and a `FUTURE_STAMP` check added to `board-state-block.mjs`. |
+| `GATE-DEPTH-SWEEP` | **DEFERRED** | `PSL-04` | **121** gates resolve the repo root by fixed directory depth, corrected **up** from a 76 undercount. Of the mirrored pairs, **26 of 29 are broken by depth and 14 never ran at all.** A gate that never ran is not a passing gate, and 14 had been counted as coverage. |
+| `EVIDENCE-CITE-01` | **DEFERRED** | `PSL-06` | **65 live citations point at gitignored paths.** Of those only 22 are recoverable by an ignore change, and **38 cite artifacts that exist on no disk in the project** — unverifiable when written, by anyone including their author. Patch measured and reverted byte-identical; `.gitignore` is not B's to change. |
+| `TERRITORY-FOUR-TRAILERS` | **DEFERRED** | `PSL-08` | The gate requires `Manager`, `Row`, `Packet`, `Tier`; the installed hook guarantees **`Manager` only**, so B's own trailered commits still report **0 attributed, 3 UNATTRIBUTABLE of 3**. "Attribution starts now" was **overstated by B** — enforcement covers a quarter of the requirement. |
+| `TERRITORY-DUPLICATE-MANAGERS` | **DEFERRED** | `PSL-09` | D and E are each declared **twice** with contradictory grants; **six paths are owned by one block and denied by the other.** Three mechanical defects repaired at `f3c6a58b8`; this is the single remaining blocker and it is the Director's to rule. **A union is not the neutral option** — proved, not assumed: `resolveOwnership` returns on the first matching `denied` rule before it looks at `owned`, so unioning D's blocks voids CHARTER-D's five module grants while reading like a merge that kept both. |
+
+> **What §4i does not claim.** Twelve of these sixteen rest on evidence I could cite. Three rest on my
+> having failed to find the PO's referent, and one (`R7`) on finding two candidates and matching
+> neither. Those four are stated as DEFERRED because the law forbids absence, **not** because deferral
+> is the evidenced answer — the evidenced answer is "not located", and `PSL-30` exists to get the
+> referents named rather than to hold work.
+
+---
+
 ## 5 · Seal gate on this ledger
 
-- **Soak-legal only when** section 1 has zero OPEN, section 2 has zero OPEN (or browser cold-load waived by PO), section 4 every OPEN row carries `PO-SIGNED: <name> <UTC>` or is moved to KILLED/CLEARED, and **section 4b every DEFERRED row carries both a PO signature and a revisit condition** (a deferral without a revisit condition is an OPEN row wearing a better word).
+- **Soak-legal only when** `node scripts/suspect-ledger-census.mjs` exits **0**, meaning every one of the
+  165 enumerated items is stated under exactly one of KILLED / CLEARED / DEFERRED, no row is `OPEN`, no
+  row carries two states, and **no DEFERRED row cites a post-soak seat that does not exist.** This
+  replaces the old "zero OPEN per section" wording, which could be satisfied by a section that simply
+  never mentioned a suspect.
+- **Every DEFERRED row carries a seat and a revisit condition.** A deferral without a revisit condition
+  is an OPEN row wearing a better word, and a seat number pointing at nothing is absence wearing one.
+- **PO signature cells for DEFERRED rows are deliberately empty** and are signed at packet review. An
+  empty signature cell is the expected state tonight, not an omission.
 - Re-run PROC-3 on the **final tip** the day of the seal; paste the tip SHA and GREEN count into the board when publishing the sealed copy of this file.
 - Do not invent CLEARED. A row without evidence stays OPEN.
 

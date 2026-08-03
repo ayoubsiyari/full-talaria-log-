@@ -84,13 +84,34 @@ export const STATUS_MAP = {
   'verify-gone': { state: 'DEFERRED', safe: false, why: 'the verification vanished. Cannot be cleared without re-verification' },
 };
 
-/** Campaign controls whose GAPS are suspects. No regex can infer this list. */
+/**
+ * Campaign controls whose GAPS are suspects. No regex can infer this list, so it is curated
+ * and can be argued with.
+ *
+ * Each carries an ANCHOR: the literal text that must appear in the ledger row stating it. A
+ * handle like `SECOND-GPU-BOX` is my shorthand and appears nowhere in the prose, so matching
+ * on the handle reported nine rows absent that were in fact stated a few lines away. Binding
+ * to an anchor makes the check real: if someone rewords the row, the anchor breaks and this
+ * reports absence LOUDLY rather than passing on a handle nobody uses. That is BIND-01 applied
+ * to the census itself -- a broken anchor must not look like a missing row.
+ */
 export const CURATED = [
-  'SHELL-PLAY-01', 'DRAW-SMOKE-01', 'COPY-ABSENCE-01', 'CLOCK-01-FILE-SCOPE',
-  'GATE-DEPTH-SWEEP', 'EVIDENCE-CITE-01', 'TERRITORY-DUPLICATE-MANAGERS',
-  'TERRITORY-FOUR-TRAILERS', 'REPLAY-4297-PRODUCT', 'M20Q6-CPU-DOMAIN',
-  'ZERO-TRADE-LAG-CENSUS', 'MS-PER-SECOND-724-OWNER', 'HOARD-FLOOR-CURVE',
-  'UNLIT-DARK-ROOMS', 'SECOND-GPU-BOX', 'R7-MACHINE-COVERAGE-BACKFILL',
+  { id: 'SHELL-PLAY-01', anchor: 'SHELL-PLAY-01' },
+  { id: 'DRAW-SMOKE-01', anchor: 'DRAW-SMOKE-01' },
+  { id: 'COPY-ABSENCE-01', anchor: 'COPY-ABSENCE-01' },
+  { id: 'CLOCK-01-FILE-SCOPE', anchor: 'file-scope relabel' },
+  { id: 'GATE-DEPTH-SWEEP', anchor: 'GATE-DEPTH-SWEEP' },
+  { id: 'EVIDENCE-CITE-01', anchor: 'EVIDENCE-CITE-01' },
+  { id: 'TERRITORY-DUPLICATE-MANAGERS', anchor: 'TERRITORY-DUPLICATE-MANAGERS' },
+  { id: 'TERRITORY-FOUR-TRAILERS', anchor: 'TERRITORY-FOUR-TRAILERS' },
+  { id: 'REPLAY-4297-PRODUCT', anchor: 'product change' },
+  { id: 'M20Q6-CPU-DOMAIN', anchor: 'CPU-freeze angle' },
+  { id: 'ZERO-TRADE-LAG-CENSUS', anchor: 'zero-trade lag census' },
+  { id: 'MS-PER-SECOND-724-OWNER', anchor: '724 ms/s owner' },
+  { id: 'HOARD-FLOOR-CURVE', anchor: 'hoard-floor curve' },
+  { id: 'UNLIT-DARK-ROOMS', anchor: 'unlit dark rooms' },
+  { id: 'SECOND-GPU-BOX', anchor: 'second GPU box' },
+  { id: 'R7-MACHINE-COVERAGE-BACKFILL', anchor: 'machine-coverage backfill' },
 ];
 
 export function parseTicketLedger(text) {
@@ -120,11 +141,24 @@ export function axesOf(row) {
   };
 }
 
-function stateOfLine(line) {
-  if (/\bKILLED\b/.test(line)) return 'KILLED';
-  if (/\bCLEARED\b/.test(line)) return 'CLEARED';
-  if (/\bDEFERRED\b/.test(line)) return 'DEFERRED';
-  if (/\bOPEN\b/.test(line)) return 'OPEN';
+/**
+ * A state word inside an inline-code span is QUOTED VOCABULARY, not an assertion. Rows that
+ * restate a verdict record the former one in a `was` column as `` `OPEN` ``, and reading that
+ * as a live OPEN makes an audit trail look like an illegal state -- which it did, on the first
+ * assembled run. Assertions are bold; quotations are backticked. Strip code spans first.
+ */
+export function stateOfLine(line) {
+  const bare = line.replace(/`[^`]*`/g, '');
+  // An ASSERTION is bold and lives in the status column; prose that merely names a state is
+  // not one. Without this precedence, a row reading "...so this cannot be KILLED" was graded
+  // KILLED and collided with its own bolded DEFERRED, reporting a legal row as carrying two
+  // states. Take the FIRST bold state, because the status column precedes the prose.
+  const bold = bare.match(/\*\*(KILLED|CLEARED|DEFERRED|OPEN)\*\*/);
+  if (bold) return bold[1];
+  if (/\bKILLED\b/.test(bare)) return 'KILLED';
+  if (/\bCLEARED\b/.test(bare)) return 'CLEARED';
+  if (/\bDEFERRED\b/.test(bare)) return 'DEFERRED';
+  if (/\bOPEN\b/.test(bare)) return 'OPEN';
   return null;
 }
 
@@ -141,7 +175,7 @@ export function idsIn(text) {
   return out;
 }
 
-/** States asserted about each id anywhere in the ledger. */
+/** States asserted about each id anywhere in the ledger, keyed by extracted id shape. */
 export function ledgerStates(ledgerText) {
   const byId = new Map();
   ledgerText.split(/\r?\n/).forEach((line, i) => {
@@ -153,6 +187,30 @@ export function ledgerStates(ledgerText) {
     }
   });
   return byId;
+}
+
+/**
+ * Every state-asserting line, kept whole. Needed because id SHAPES cannot cover ids like
+ * `SEL-01`, `Rayan #6b`, `PO value-box shaky` or `TAL-DATA-LOAD-ERROR-SURFACE`. Adding a
+ * regex per naming convention is a losing game -- the ticket ledger's ids were written by
+ * hand over ten days -- so a population id is also matched as a literal substring. Without
+ * this, 9 rows that ARE stated in the ledger were reported absent, which would have been a
+ * false accusation rather than a missed one.
+ */
+export function assertingLines(ledgerText) {
+  const out = [];
+  ledgerText.split(/\r?\n/).forEach((line, i) => {
+    const state = stateOfLine(line);
+    if (state) out.push({ state, line: i + 1, text: line });
+  });
+  return out;
+}
+
+/** States asserted about one population id, by shape match or by literal match. */
+export function statesForId(id, states, lines) {
+  const byShape = [...idsIn(id)].flatMap((k) => states.get(k) || []);
+  if (byShape.length) return byShape;
+  return lines.filter((l) => l.text.includes(id)).map((l) => ({ state: l.state, line: l.line }));
 }
 
 export function seatAudit(ledgerText, postSoakText) {
@@ -190,15 +248,12 @@ function main() {
   // Population: every ticket-ledger row, plus the curated controls.
   const population = [
     ...tickets.map((t) => ({ id: t.id, source: 'ticket-ledger', status: t.status, axes: axesOf(t) })),
-    ...CURATED.map((id) => ({ id, source: 'curated-control', status: null, axes: null })),
+    ...CURATED.map((c) => ({ id: c.id, anchor: c.anchor, source: 'curated-control', status: null, axes: null })),
   ];
 
+  const lines = assertingLines(ledgerText);
   const rows = population.map((p) => {
-    // A ticket id may be written `M17-DI2 / TAL-01918`; match on any id shape it contains.
-    const keys = [...idsIn(p.id)];
-    const asserted = keys.flatMap((k) => states.get(k) || []);
-    const direct = states.get(p.id) || [];
-    const all = [...asserted, ...direct];
+    const all = statesForId(p.anchor || p.id, states, lines);
     const uniq = [...new Set(all.map((a) => a.state))];
     let verdict;
     if (!all.length) verdict = 'ABSENT';

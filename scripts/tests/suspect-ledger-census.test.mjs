@@ -10,6 +10,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   STATUS_MAP, CURATED, parseTicketLedger, axesOf, ledgerStates, seatAudit, idsIn,
+  stateOfLine, assertingLines, statesForId,
 } from '../suspect-ledger-census.mjs';
 
 test('idsIn finds each id shape, and does not invent ids', () => {
@@ -120,7 +121,37 @@ test('DISCRIMINATING: seatAudit reports a cited seat that does not exist, and st
 
 test('the curated control list is non-empty and contains the PO-named items', () => {
   assert.ok(CURATED.length >= 16);
+  const ids = CURATED.map((c) => c.id);
   for (const id of ['SHELL-PLAY-01', 'REPLAY-4297-PRODUCT', 'HOARD-FLOOR-CURVE', 'SECOND-GPU-BOX', 'R7-MACHINE-COVERAGE-BACKFILL']) {
-    assert.ok(CURATED.includes(id), `${id} must be in the population`);
+    assert.ok(ids.includes(id), `${id} must be in the population`);
   }
+  // Every curated control must carry an anchor, or it is matched on a handle nobody wrote.
+  for (const c of CURATED) {
+    assert.equal(typeof c.anchor, 'string');
+    assert.ok(c.anchor.length > 3, `${c.id} needs a real anchor`);
+  }
+});
+
+test('DISCRIMINATING: a bold status outranks a state word used in prose', () => {
+  // The exact line that broke this: a DEFERRED row explaining why it is not KILLED.
+  const line = '| 1 | **SHELL-PLAY-01** | **DEFERRED** | A fix with no mechanism is not a fix, so this cannot be KILLED. |';
+  assert.equal(stateOfLine(line), 'DEFERRED', 'bold assertion must win over prose');
+  // Anti-vacuity: with no bold marker, the bare word is still read, so the fallback works.
+  assert.equal(stateOfLine('| x | this row is KILLED outright |'), 'KILLED');
+  // And a backticked state is a quotation, not an assertion, so it is ignored entirely.
+  assert.equal(stateOfLine('| TAL-01 | `OPEN` | **KILLED** | restated |'), 'KILLED');
+  assert.equal(stateOfLine('| TAL-02 | was `OPEN` before |'), null, 'a quoted state alone asserts nothing');
+});
+
+test('DISCRIMINATING: a curated control is found by its anchor, and a broken anchor reports absence', () => {
+  const led = '| 9 | **The second GPU box** | **DEFERRED** | `PSL-30` | not located |';
+  const lines = assertingLines(led);
+  const states = ledgerStates(led);
+  // Bound anchor -> stated.
+  assert.deepEqual(statesForId('second GPU box', states, lines).map((s) => s.state), ['DEFERRED']);
+  // The handle itself appears nowhere, which is exactly why anchors exist.
+  assert.deepEqual(statesForId('SECOND-GPU-BOX', states, lines), []);
+  // A reworded row breaks the anchor and must report absence loudly rather than pass.
+  const reworded = '| 9 | **A second graphics host** | **DEFERRED** | `PSL-30` | not located |';
+  assert.deepEqual(statesForId('second GPU box', ledgerStates(reworded), assertingLines(reworded)), []);
 });

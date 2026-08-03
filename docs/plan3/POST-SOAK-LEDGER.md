@@ -67,6 +67,8 @@ fixed yet. It is never a synonym for "cleared", "not guilty", or "turned out to 
 
 ### PSL-02 · `_smartPrefetchCache` hoard discipline — fixed, green, and deliberately not shipped
 
+**Alias: `POST-SOAK-LEDGER-E-02`**, the seat E cited for `E-SUS-04` before this file existed.
+
 - **owner:** E
 - **finding:** A real asymptotic hoard: `0.384 → 10.827 → 13.239 MB` retained across four cache
   instances, one per panel filling toward capacity — **not** cache multiplication (occurrence count
@@ -170,6 +172,11 @@ fixed yet. It is never a synonym for "cleared", "not guilty", or "turned out to 
   quote it — not a reason to distrust the bundle.
 
 ### PSL-07 · D's V8 candidates
+
+**Aliases: `POST-SOAK-LEDGER-D-002`, `-D-003`, `-D-004`, `-D-005`** — the seats D cited for
+`_orderExecutionSeriesByFileId`, `_miSeriesByFileId`, `_m20Q9PrefixByMaster` and the underfit branch.
+All four share this seat because they resolve on one input, E's real-playback forced-GC diff, and are
+listed individually in `SUSPECT-LEDGER-SEAL.md` §4f so none can go missing inside the cohort.
 
 - **owner:** D, blocked on E
 - **finding:** Three constructor/retainer candidates remain **armed** with signatures and confirming
@@ -375,3 +382,229 @@ row. A seat number pointing at nothing is absence wearing a better word.
   Until then the roster's contribution is **unmeasured**, which is not the same as zero.
 - **seal-corrupting?** **no.** It means one planned measurement cannot be taken against this build, not
   that the build is wrong.
+
+---
+
+## Seats opened by the suspect-ledger census, 00:5x+01:00
+
+The census in `SUSPECT-LEDGER-SEAL.md` §0 found the suspect ledger stated **2** of a **165**-item
+population and left **158 absent**. Closing it produced these seats. Every `DEFERRED` row over there
+now resolves to a numbered row here, because a seat number that points at nothing is absence wearing a
+better word.
+
+**Three of these are cohorts** — `PSL-18`, `PSL-19`, `PSL-20` — holding 49 deferred tickets between
+them. The cost is stated rather than hidden: a cohort can hide an individual. It is accepted only where
+the rows are deferred *for the same reason and will be worked as a batch*, and refused for every row
+with its own reason, which is why `PSL-21` through `PSL-23` are individual.
+
+### PSL-18 · `po-eyes` ticket cohort — 23 tickets awaiting a PO decision
+
+- **owner:** the PO to decide, B to route
+- **finding:** 23 rows in `TICKET-STATUS-LEDGER-20260729.md` carry status `po-eyes`: nobody is blocked
+  on engineering, they are blocked on a decision. Two more (**TAL-01696**, **TAL-01698**) were in this
+  class until D's evidence killed them, so the cohort is 23 rather than 25.
+- **state:** `RULING_PENDING`
+- **evidence:** `docs/plan3/SUSPECT-LEDGER-SEAL.md` §4g, generated from the ticket ledger. Signature
+  packet for the named subset: `docs/plan3/LEDGER-CLOSEOUT-PACK-20260803.md`.
+- **post-soak action:** put the 23 in front of the PO as one batch. **Expect the batch to shrink on
+  contact:** three of the five rows that had sat in §4 for days turned out to be already fixed the
+  moment a lane looked, so a stale `po-eyes` is as likely as a real one.
+- **seal-corrupting?** **no.** Decisions, not bytes.
+
+### PSL-19 · `owner-blocked` ticket cohort — 19 tickets behind a named owner
+
+- **owner:** the named owner per row; B to chase
+- **finding:** 19 rows carry `owner-blocked` — real open work, with an owner, not started or not
+  finished. **TAL-01865** left this class on D's evidence, so 19 rather than 20.
+- **state:** `MEASURED_NOT_FIXED`
+- **evidence:** `SUSPECT-LEDGER-SEAL.md` §4g.
+- **post-soak action:** confirm each owner still holds the row, since ownership has moved repeatedly
+  this week. Ticket-ledger line 167 already records routing changes (`TAL-01677/01733 → A`), so the
+  status column and the routing note can disagree.
+- **seal-corrupting?** **no.**
+
+### PSL-20 · `blocked-on-build` ticket cohort — 7 tickets that are verification debt
+
+- **owner:** B
+- **finding:** 7 rows carry `blocked-on-build`, including **M17-DI2 / TAL-01918**, whose product guard
+  is restored on the train tip and needs stamp confirmation. These are mostly **verification debt
+  against a stamped build rather than unfixed defects** — the distinction the suspect ledger's own
+  closing note has always drawn.
+- **state:** `FIX_COMMITTED_NOT_SHIPPED` for the subset with landed fixes; the rest `MEASURED_NOT_FIXED`
+- **evidence:** `SUSPECT-LEDGER-SEAL.md` §4 and §4g.
+- **post-soak action:** run the owed Script/stamp confirmations against b126 and re-state each row on
+  the result. **Cheapest cohort here** — the work is running gates, not writing fixes.
+- **seal-corrupting?** **no.** But note the shape: a row that only needs a stamp check has been sitting
+  behind builds since b123, because b123, b124 and b125 were all unbuildable under the
+  `module-contract-preflight` failure that `bf0de225c` closed.
+
+### PSL-21 · TAL-01891 — the 20.7 MB decoded screenshot, a live P0 candidate
+
+- **owner:** A
+- **finding:** A real decoded chart screenshot measures **20.7 MB**, and heavy account scale can
+  plausibly reach multi-GB. Status in the ticket ledger is `broken` — the only row carrying that word.
+- **state:** `MEASURED_NOT_FIXED`
+- **evidence:** `docs/plan3/TICKET-STATUS-LEDGER-20260729.md:110`, citing
+  `PULL01-ORDER-MEMORY-TERMS-20260731.md`.
+- **post-soak action:** hunt it on a **representative** account. The ticket's own warning is the load-
+  bearing part: *"fresh harness accounts are not representative"*, so **a quiet soak is not evidence
+  against this row** and must not be quoted as one.
+- **seal-corrupting?** **unsure — and this is the one row where I will not claim otherwise.** It is a
+  live P0 memory candidate in product code that is inside the sealed bytes. It does not make the bytes
+  *wrong*, and it long predates this seal, so by the intake test it belongs here. But if the soak
+  exhausts memory on a heavy account, this row and `PSL-03` are the first two places to look, and
+  whether the soak is then "measuring the wrong thing" depends on whether its accounts are
+  representative — which the ticket says they are not. Recorded as unsure rather than resolved.
+- **do not read the cleared decoded-image row as clearing this.** §1 disproved a *per-closed-trade
+  coefficient* (~16.6 MB/closed-trade, failed the matched-bars test, bar-driven growth wearing a trade
+  label). The *absolute* 20.7 MB decode is a different claim and was never disproved.
+
+### PSL-22 · Verify-absent-on-stamp debt — TAL-01920, Rayan #7, Rayan #10
+
+- **owner:** B to run, PO to accept
+- **finding:** Three rows the PO reopened with one instruction: *"positively verify absent on stamp"* —
+  PO-CHECK §17 for TAL-01920, §15 for Rayan #7 and #10 — and explicitly *"Not find-original-repro"*.
+  Their status is `verify-gone`: the verification went missing, not the fix.
+- **state:** `MEASURED_NOT_FIXED` — nothing is known to be broken and nothing is proven absent
+- **evidence:** `TICKET-STATUS-LEDGER-20260729.md:129`, `:148`, `:150`.
+- **post-soak action:** run the three PO-CHECK items against the stamped build and record the result
+  inline. **These cannot be cleared by argument** — the ask is positive verification, so an absent
+  repro is not a pass.
+- **seal-corrupting?** **no.** Verification debt against the stamp. Worth noting these are the rows the
+  soak's own smoke could plausibly discharge for free if its checklist already covers them.
+
+### PSL-23 · TAL-DATA-LOAD-ERROR-SURFACE — the silent infinite loading state
+
+- **owner:** D, who raised it
+- **finding:** On a stale or non-owned `/api/file/:id/bars` 404 with a `/smart` fallback 404, the chart
+  initializes its UI and order managers but **leaves the user in an apparent infinite loading state
+  with no surfaced failure message.** A product row, not a harness artifact. Found during **b126 TAL
+  smoke seed triage**, making it the newest row in the suspect ledger.
+- **state:** `MEASURED_NOT_FIXED`
+- **evidence:** `TICKET-STATUS-LEDGER-20260729.md:7`;
+  `docs/plan3/D-SUSPECT-LEDGER-ROWS-20260803.md:28` as D's seat `POST-SOAK-LEDGER-D-001`.
+- **post-soak action:** scope and fix bootstrap error surfacing for bad or stale data seeds. The
+  status was `scoped` with no owner named; **D raising it closes that gap.**
+- **seal-corrupting?** **no.** A missing error message on a failure path, not a wrong byte. It does mean
+  that if a soak panel silently fails to load bars, the harness sees a loading state rather than an
+  error — worth knowing before reading a quiet artifact as a healthy one.
+
+### PSL-24 · E-SUS-03 — marker defs / SVG defs
+
+- **owner:** E
+- **finding:** A named E-lane memory suspect with no current E-owned KILLED or CLEARED proof shape.
+  Neither confirmed nor disproved.
+- **state:** `MEASURED_NOT_FIXED`
+- **evidence:** `SUSPECT-LEDGER-SEAL.md` §4d. E cited this seat as `POST-SOAK-LEDGER-E-01`, which did
+  not exist until now — kept as an alias.
+- **post-soak action:** revisit with MB-priced forced-GC/settle evidence, or hand the row to an explicit
+  owner. Under C's `SETTLE-CRITERION-V2` and `READING-VALIDITY-01` the bar for "MB-priced" is now
+  higher than it was when this suspect was named.
+- **seal-corrupting?** **no.** An unresolved diagnostic.
+
+### PSL-25 · E-SUS-05 — the V8 monotone slope, still unresolved
+
+- **owner:** E
+- **finding:** The **36 MB/hour** JS-side monotone slope remains the unresolved finding. The diagnostic
+  run was contaminated and non-authoritative. `PSL-02`'s `_smartPrefetchCache` hoard explains the
+  retained-node snapshot delta lead but is explicitly **not** the slope owner.
+- **state:** `ARMED_AWAITING_INPUT`
+- **evidence:** `SUSPECT-LEDGER-SEAL.md` §4d. Cited by E as `POST-SOAK-LEDGER-E-03`, kept as an alias.
+- **post-soak action:** run the committed smart-cache perturbation and take an authoritative read when
+  the box is released. Sequenced behind C.
+- **seal-corrupting?** **no.** The slope is in the shipped bytes and the soak will measure it, which is
+  the point of the soak rather than a defect in it.
+
+### PSL-26 · SHELL-PLAY-01 — present, mirrored, and bound to nothing
+
+- **owner:** B
+- **finding:** The V9 shell play override is **present and mirrored in the shipped bytes** — `apply(this)`,
+  `__shellPlayOverrideInert` — and the host instance's `play()` stayed **inert** on b124. No mechanism
+  has been found. Receiver divergence was tested and **disproved** as the cause, which is why §4b's
+  eleven sibling wrappers are deferred as a separate shape rather than as the explanation.
+- **state:** `MEASURED_NOT_FIXED` — a fix with no mechanism is not a fix, so this cannot be KILLED
+- **evidence:** `docs/plan3/SUSPECT-LEDGER-SEAL.md` §4b and §4i;
+  `docs/plan3/A-TO-B-SHELL-PLAY-STILL-INERT-ON-B124.md`.
+- **post-soak action:** find the mechanism before attempting another fix. Three tries have landed bytes
+  that are present, mirrored and inert, which is the signature of fixing the wrong thing carefully.
+- **seal-corrupting?** **no.** The override is inert in the sealed bytes, which is the same behaviour
+  the soak will exercise. It does mean any measurement that assumed the override was live is invalid.
+
+### PSL-27 · DRAW-SMOKE-01 — a grader that has never executed against a build
+
+- **owner:** B
+- **finding:** The drawings grader passes **13/13 as a pure function** and the symbols it binds to are
+  present in the served b126 bytes, but **it has never run against a build.** Distinct from D's half,
+  which is stronger and already KILLED: served mutant `drawings-index-persist` killed on b126 plus gate
+  `drawing-market-time-persist.test.mjs` at `f2e9d4fdb`.
+- **state:** `FIX_COMMITTED_NOT_SHIPPED` for the smoke step; the feature itself is verified by D
+- **evidence:** `SUSPECT-LEDGER-SEAL.md` §4f and §4i.
+- **post-soak action:** execute the smoke against a running build. **Until then it is one of the 14
+  gates in `PSL-04` that have never run** — the fact that its symbols exist in the bundle is presence,
+  not binding, which is the distinction BIND-01 exists to enforce.
+- **seal-corrupting?** **no.** D's mutant kill already covers market-time drawing persistence on the
+  sealed build, so the product question is answered even though B's instrument is unproven.
+
+### PSL-28 · The m20Q6 CPU-freeze half, cleared only on the V8 half
+
+- **owner:** D and E jointly; neither has claimed it
+- **finding:** m20Q6 was a **cross-domain** suspect — CPU-freeze stacks **and** monotone V8 heap-grower
+  shapes. The V8 half is properly CLEARED: **416 bytes** retained, measured independently by E (13
+  instances) and D (real playback), against a precommitted 2 MB threshold. **I found no evidence the
+  CPU-freeze half was separately closed.**
+- **state:** `MEASURED_NOT_FIXED`
+- **evidence:** `SUSPECT-LEDGER-SEAL.md` §4d (`E-SUS-07`), §4f, §4i row 3b;
+  `docs/plan3/V8-RETAINER-DIFF-LOOKUP-20260803.md`.
+- **post-soak action:** either produce the CPU-domain evidence or restate the suspect as V8-only. **The
+  reason this is its own seat:** clearing a cross-domain suspect on one domain's evidence is exactly
+  `C-SUS-14` cross-basis borrowing, the defect C built `BASIS-GUARD-01` for, and it would be the fourth
+  time this week that error appeared in a new costume.
+- **seal-corrupting?** **no.** Diagnostics, and the V8 half genuinely is cleared.
+
+### PSL-29 · The main-thread busy-time owner was never named
+
+- **owner:** unassigned — this is the item
+- **finding:** The quantity is real and large, and the readings disagree **by construction rather than by
+  error**: C measured **867.3 ms/s** unthresholded main-thread task total, **657.7 ms/s** blocking time,
+  and **861 ms/s** busy by a second decomposition (86.1% of wall); B measured **302 ms/s** thresholded
+  and a **~700–800 ms/s** floor. **No owning code was ever named.** The only mechanism on record is a
+  working diagnosis — indicators computed through the asynchronous worker pipeline, busy-coalescing at
+  high speed — which is a hypothesis, not an attribution.
+- **state:** `MEASURED_NOT_FIXED`
+- **evidence:** `docs/plan3/FINDING-C-CALIBRATION-PASSES-THE-THRESHOLDING-TEST...-20260731-2100.md:15-26`;
+  `docs/plan3/B-LIFE-3-AND-HYG-1-...-20260801-1030.md:62`; `docs/plan3/ADVISOR-BRIEF-MEMORY.md:75`.
+- **post-soak action:** attribute it, and **state the basis before comparing any two numbers** — the
+  2.18× spread between B's 302 and C's 657.7 is a thresholding difference, not a host difference, and
+  reading it as a host difference is what sent an earlier night sideways.
+- **seal-corrupting?** **no.** Unattributed performance, present in the sealed bytes and unchanged by
+  the seal. **The PO named this as "~724 ms/s" and that exact figure is not in the tracked corpus** —
+  the quantity is unambiguous, the specific number's provenance is not.
+
+### PSL-30 · Three PO-named items whose referent could not be located
+
+- **owner:** the PO, to name the referent; B to state them once named
+- **finding:** Three of the ten items the PO named cannot be tied to anything in the tracked corpus, and
+  the honest report is that rather than a verdict over a finding I never found.
+  - **"the unlit dark rooms"** — the word *dark* appears **nowhere** in tracked `docs/plan3`, boards
+    included. Candidates that fit the metaphor, all separately seated: 14 gates that never ran
+    (`PSL-04`), 11 of 14 roster switches absent from the served build (`PSL-17`), 189 CRITICAL
+    swallowed catches of 2,049 (`PSL-16`), and `DRIFT-ABBA` reported complete having never run
+    (`PSL-12`).
+  - **"the second GPU box"** — no request for a second machine exists in the corpus. GPU appears only as
+    GPU-*private memory* in A's competitor bands, and **that whole series is withdrawn** (`PSL-01`). If
+    it means a second host to escape the contention that withdrew those arms, the *need* is evidenced
+    everywhere; the phrase is not.
+  - **"R7's machine-coverage backfill"** — `R7` resolves to two unrelated things: A's ephemeral-discovery
+    gate in M20-Q6 capture reuse, and M21-2 R7, a review round accepted as `ACCEPT-M21-2-R7`. Neither
+    is a machine-coverage backfill. Nearest real coverage gap is `COV-01`'s 59.84% basis defect, fixed
+    at `2f548462d`.
+- **state:** `RULING_PENDING` — specifically, pending a name, not a decision
+- **evidence:** `SUSPECT-LEDGER-SEAL.md` §4i rows 8, 9, 10, each recording the search performed.
+- **post-soak action:** ask the PO which finding each phrase points at, then state it on evidence. **This
+  seat holds a question, not work.** It exists because the alternative — picking the nearest-looking
+  candidate and writing a confident verdict over it — is the manufactured zero in prose form, and this
+  ledger was rewritten specifically to stop doing that.
+- **seal-corrupting?** **unsure, and unavoidably so.** I cannot rule on the seal-corrupting status of a
+  finding I have not located. If any of the three is a product defect in the sealed bytes it belongs
+  with the PO tonight rather than here. **That risk is why this row is flagged in the handoff rather
+  than filed quietly.**
