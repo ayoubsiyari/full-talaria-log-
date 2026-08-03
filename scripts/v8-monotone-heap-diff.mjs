@@ -57,6 +57,20 @@ function save(report) {
   fs.writeFileSync(path.join(OUT_DIR, 'report.json'), JSON.stringify(report, null, 2));
 }
 
+async function withTimeout(label, timeoutMs, promise) {
+  let timer = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs} ms`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function existingEvidenceNames() {
   if (!fs.existsSync(OUT_DIR)) return [];
   return fs.readdirSync(OUT_DIR)
@@ -183,10 +197,18 @@ async function waitWithHeartbeats(ms, report, page, segmentLabel) {
     const remaining = ms - (Date.now() - start);
     await sleep(Math.min(30_000, Math.max(0, remaining)));
     if (Date.now() >= next || Date.now() - start >= ms) {
-      const keep = await keepConf01Playing(page, SPEED).catch((e) => ({
+      const keep = await withTimeout(
+        `heartbeat ${segmentLabel} keepConf01Playing`,
+        45_000,
+        keepConf01Playing(page, SPEED),
+      ).catch((e) => ({
         error: String(e?.message || e),
       }));
-      const playhead = await readPlayheadSnapshot(page);
+      const playhead = await withTimeout(
+        `heartbeat ${segmentLabel} readPlayheadSnapshot`,
+        20_000,
+        readPlayheadSnapshot(page),
+      ).catch((e) => [{ error: String(e?.message || e) }]);
       const beat = {
         at: new Date().toISOString(),
         segment: segmentLabel,
@@ -203,16 +225,51 @@ async function waitWithHeartbeats(ms, report, page, segmentLabel) {
 }
 
 async function takeMoment(label, page, report) {
+  report.moments[label] = {
+    at: new Date().toISOString(),
+    phase: 'starting',
+  };
+  save(report);
+
   log(`${label}: keep playback alive before GC`);
-  const keepBefore = await keepConf01Playing(page, SPEED).catch((e) => ({
+  const keepBefore = await withTimeout(
+    `${label} keepConf01Playing`,
+    60_000,
+    keepConf01Playing(page, SPEED),
+  ).catch((e) => ({
     error: String(e?.message || e),
   }));
+  report.moments[label].keepBefore = keepBefore;
+  report.moments[label].phase = 'force-gc';
+  save(report);
+
   log(`${label}: force collecting`);
-  await forceCollect(page);
-  const postGcMetrics = await metrics(page, `${label}-post-gc`);
-  const playhead = await readPlayheadSnapshot(page);
-  const advancing = await playbackState(page, `${label}-advance-check`);
+  await withTimeout(`${label} forceCollect`, 180_000, forceCollect(page));
+  const postGcMetrics = await withTimeout(
+    `${label} metrics`,
+    30_000,
+    metrics(page, `${label}-post-gc`),
+  ).catch((e) => ({ label: `${label}-post-gc`, error: String(e?.message || e), at: new Date().toISOString() }));
+  const playhead = await withTimeout(
+    `${label} readPlayheadSnapshot`,
+    20_000,
+    readPlayheadSnapshot(page),
+  ).catch((e) => [{ error: String(e?.message || e) }]);
+  const advancing = await withTimeout(
+    `${label} playbackState`,
+    45_000,
+    playbackState(page, `${label}-advance-check`),
+  ).catch((e) => ({ label: `${label}-advance-check`, error: String(e?.message || e), at: new Date().toISOString() }));
   const snapFile = path.join(OUT_DIR, `${label}.heapsnapshot`);
+  report.moments[label] = {
+    ...report.moments[label],
+    phase: 'snapshotting',
+    snapshotStartedAt: new Date().toISOString(),
+    metrics: postGcMetrics,
+    playhead,
+    advancing,
+  };
+  save(report);
   log(`${label}: snapshot -> ${snapFile}`);
   const snapMeta = await takeEndOfArmSnapshot(page, {
     outFile: snapFile,
@@ -221,11 +278,10 @@ async function takeMoment(label, page, report) {
     timeoutMs: 900_000,
   });
   report.moments[label] = {
-    at: new Date().toISOString(),
+    ...report.moments[label],
+    completedAt: new Date().toISOString(),
+    phase: 'complete',
     keepBefore,
-    metrics: postGcMetrics,
-    playhead,
-    advancing,
     snapMeta,
   };
   save(report);
