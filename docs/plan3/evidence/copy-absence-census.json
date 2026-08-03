@@ -1,0 +1,562 @@
+{
+  "signature": "TALARIA_COPY_ABSENCE_CENSUS_V1",
+  "evidenceClass": "SERVED_RUNTIME — every verdict is an HTTP answer from the deployed build, not a model of the Dockerfiles",
+  "generatedAt": "2026-08-03T17:32:53Z",
+  "generatedAtLocal": "18:32:53+01:00 / 2026-08-03T17:32:53Z",
+  "base": "http://31.97.192.82:3000",
+  "state": "SHELL_PARSE_INCOMPLETE",
+  "roots": [
+    "chart v 1.4",
+    "homepage/public"
+  ],
+  "rootsAbsent": [
+    "homepage/out"
+  ],
+  "door": {
+    "url": "http://31.97.192.82:3000/chart/build-info.json",
+    "status": 200
+  },
+  "counts": {
+    "shellsFound": 34,
+    "measured": 26,
+    "inventoryServable": 6,
+    "unaudited": 20,
+    "skipped": 8,
+    "referencedUrls": 86,
+    "carried": 84,
+    "absentDeclared": 2,
+    "loudAbsent": 0,
+    "conflict": 0,
+    "silentAbsent": 0,
+    "contractPaths": 20
+  },
+  "limits": [
+    "References are extracted from shell DOCUMENTS only: <script src>, <link rel=stylesheet|modulepreload|preload>, importScripts(), new Worker/SharedWorker, serviceWorker.register(). A path assembled inside JavaScript at runtime -- a template literal, a module name from a table, a fetch() built from variables -- is NOT followed, so the true class is at least this size and may be larger.",
+    "Shells absent from the inventory are excluded from the count and listed as SHELL_NOT_IN_INVENTORY.",
+    "A 200 proves the URL is served now, from this base. It does not prove the bytes are correct; that is served-bundle-parity."
+  ],
+  "silentAbsent": [],
+  "loudAbsent": [],
+  "absentDeclared": [
+    {
+      "url": "/chart/modules/m20-a-favorites-harness/m20-a-favorites-harness.client.mjs",
+      "status": 404,
+      "contentType": "text/html",
+      "error": null,
+      "referencedBy": [
+        "chart v 1.4/chart/modules/m20-a-favorites-harness/m20-a-favorites-harness.html",
+        "homepage/public/chart/modules/m20-a-favorites-harness/m20-a-favorites-harness.html"
+      ],
+      "via": [
+        "script-src"
+      ],
+      "warrant": "UNAUDITED_SHELL",
+      "contractNames": [],
+      "declaredBy": [
+        "nginx.local.conf: location ^~ /chart/modules/m20-a-favorites-harness/ returns 404"
+      ],
+      "state": "ABSENT_DECLARED"
+    },
+    {
+      "url": "/chart/modules/m21-2-browser-harness/m21-2-browser-harness.client.mjs",
+      "status": 404,
+      "contentType": "text/html",
+      "error": null,
+      "referencedBy": [
+        "chart v 1.4/chart/modules/m21-2-browser-harness/m21-2-browser-harness.html",
+        "homepage/public/chart/modules/m21-2-browser-harness/m21-2-browser-harness.html"
+      ],
+      "via": [
+        "script-src"
+      ],
+      "warrant": "UNAUDITED_SHELL",
+      "contractNames": [],
+      "declaredBy": [
+        "nginx.local.conf: location ^~ /chart/modules/m21-2-browser-harness/ returns 404"
+      ],
+      "state": "ABSENT_DECLARED"
+    }
+  ],
+  "conflict": [],
+  "carried": [
+    {
+      "url": "/chart/chart.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/dist-admin/assets/admin-X4Ui0J-3.js",
+      "status": 307
+    },
+    {
+      "url": "/chart/dist-admin/assets/index-CyyNIXNQ.css",
+      "status": 307
+    },
+    {
+      "url": "/chart/dist-v9/assets/talaria-v9-live.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/dist/dist/chart-app-part1.min.js",
+      "status": 307
+    },
+    {
+      "url": "/chart/dist/dist/chart-app-part2.min.js",
+      "status": 307
+    },
+    {
+      "url": "/chart/dist/modules/v9-chrome.css",
+      "status": 307
+    },
+    {
+      "url": "/chart/fonts/talaria-fonts.css",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/alert-system.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/chart-data-pipeline.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/chart-env.defaults.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/chart-env.generated.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/chart-indicators-full.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/chart-regression-cases.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/chart-regression-smoke.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/chart-window-limit.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/color-picker.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/compare-overlay.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/drawing-toolbar.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/drawing-tools-advanced-volume.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/drawing-tools-advanced.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/drawing-tools-base.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/drawing-tools-channels.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/drawing-tools-emoji.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/drawing-tools-extended.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/drawing-tools-fib-gann.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/drawing-tools-fibonacci.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/drawing-tools-image.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/drawing-tools-lines.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/drawing-tools-manager.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/drawing-tools-patterns.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/drawing-tools-shapes.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/drawing-tools-text.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/drawing-tools-ui.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/economic-news-sidebar.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/emoji-picker-simple.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/emoji-picker.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/favorites-manager.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/indicator-lifecycle-store.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/indicator-performance.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/indicator-persist-rehydrate.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/indicator-replay-ui-sync.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/indicator-settings-apply.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/indicator-ui.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/indicator-visibility.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/keyboard-shortcuts.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/market-calculations.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/module-presence-runtime.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/order-event-bus.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/order-manager.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/order-service.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/preferences-init.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/preferences-sync.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/replay-dashboard-sync.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/replay-system.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/screenshot-manager.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/server-write-failure-ledger.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/session-calendar.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/settings-write-breaker.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/talaria-fvg-indicator.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/talaria-ratio-gap-indicator.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/talaria-simple-smc-indicator.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/talaria-toast-stack.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/talaria-weekly-map-indicator.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/timezone-manager.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/tool-lifecycle-store.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/trade-attribution.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/undo-redo-manager.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/v9-theme-bridge.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/modules/viewport-data-manager.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/multichart-prod/embed-bridge.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/multichart-prod/engine-api-guards.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/multichart-prod/panel-cmd-bridge.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/multichart-prod/sync-bridge.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/multichart/engine-api-guards.js",
+      "status": 302
+    },
+    {
+      "url": "/chart/multichart/multichart-manager.js",
+      "status": 302
+    },
+    {
+      "url": "/chart/multichart/multichart.css",
+      "status": 302
+    },
+    {
+      "url": "/chart/multichart/sync-bridge.js",
+      "status": 302
+    },
+    {
+      "url": "/chart/propfirm-presets.js",
+      "status": 307
+    },
+    {
+      "url": "/chart/propfirm-script.js",
+      "status": 307
+    },
+    {
+      "url": "/chart/propfirm-styles.css",
+      "status": 307
+    },
+    {
+      "url": "/chart/pwa-install.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/vendor/d3.min.js",
+      "status": 200
+    },
+    {
+      "url": "/chart/vendor/lz-string.min.js",
+      "status": 200
+    }
+  ],
+  "parseIncomplete": [
+    {
+      "path": "chart v 1.4/chart/dist/index.html",
+      "reasons": [
+        "script-element-creation"
+      ]
+    },
+    {
+      "path": "chart v 1.4/chart/legacy-index.html",
+      "reasons": [
+        "script-element-creation"
+      ]
+    },
+    {
+      "path": "chart v 1.4/chart/multichart-prod/chart-embed.html",
+      "reasons": [
+        "document-write-outside-loader"
+      ]
+    },
+    {
+      "path": "homepage/public/chart/multichart-prod/chart-embed.html",
+      "reasons": [
+        "document-write-outside-loader"
+      ]
+    }
+  ],
+  "unaudited": [
+    {
+      "path": "chart v 1.4/chart/admin-dashboard.html",
+      "servedUrl": "/chart/admin-dashboard.html"
+    },
+    {
+      "path": "chart v 1.4/chart/admin-dashboard.legacy.html",
+      "servedUrl": "/chart/admin-dashboard.legacy.html"
+    },
+    {
+      "path": "chart v 1.4/chart/admin-datasets.html",
+      "servedUrl": "/chart/admin-datasets.html"
+    },
+    {
+      "path": "chart v 1.4/chart/backtesting-clean.html",
+      "servedUrl": "/chart/backtesting-clean.html"
+    },
+    {
+      "path": "chart v 1.4/chart/backtesting.html",
+      "servedUrl": "/chart/backtesting.html"
+    },
+    {
+      "path": "chart v 1.4/chart/dist-admin/index.html",
+      "servedUrl": "/chart/dist-admin/index.html"
+    },
+    {
+      "path": "chart v 1.4/chart/dist/index.html",
+      "servedUrl": "/chart/dist/index.html"
+    },
+    {
+      "path": "chart v 1.4/chart/index.html",
+      "servedUrl": "/chart/index.html"
+    },
+    {
+      "path": "chart v 1.4/chart/index.v9.html",
+      "servedUrl": "/chart/index.v9.html"
+    },
+    {
+      "path": "chart v 1.4/chart/modules/b-fixtures/v6-selector-collision/host.html",
+      "servedUrl": "/chart/modules/b-fixtures/v6-selector-collision/host.html"
+    },
+    {
+      "path": "chart v 1.4/chart/modules/m20-a-favorites-harness/m20-a-favorites-harness.html",
+      "servedUrl": "/chart/modules/m20-a-favorites-harness/m20-a-favorites-harness.html"
+    },
+    {
+      "path": "chart v 1.4/chart/modules/m21-2-browser-harness/m21-2-browser-harness.html",
+      "servedUrl": "/chart/modules/m21-2-browser-harness/m21-2-browser-harness.html"
+    },
+    {
+      "path": "chart v 1.4/chart/multichart/multichart-shell.html",
+      "servedUrl": "/chart/multichart/multichart-shell.html"
+    },
+    {
+      "path": "chart v 1.4/chart/propfirm-backtest.html",
+      "servedUrl": "/chart/propfirm-backtest.html"
+    },
+    {
+      "path": "chart v 1.4/chart/sessions.html",
+      "servedUrl": "/chart/sessions.html"
+    },
+    {
+      "path": "chart v 1.4/chart/static/oops.html",
+      "servedUrl": "/chart/static/oops.html"
+    },
+    {
+      "path": "homepage/public/chart/modules/b-fixtures/v6-selector-collision/host.html",
+      "servedUrl": "/chart/modules/b-fixtures/v6-selector-collision/host.html"
+    },
+    {
+      "path": "homepage/public/chart/modules/m20-a-favorites-harness/m20-a-favorites-harness.html",
+      "servedUrl": "/chart/modules/m20-a-favorites-harness/m20-a-favorites-harness.html"
+    },
+    {
+      "path": "homepage/public/chart/modules/m21-2-browser-harness/m21-2-browser-harness.html",
+      "servedUrl": "/chart/modules/m21-2-browser-harness/m21-2-browser-harness.html"
+    },
+    {
+      "path": "homepage/public/chart/multichart/multichart-shell.html",
+      "servedUrl": "/chart/multichart/multichart-shell.html"
+    }
+  ],
+  "skipped": [
+    {
+      "path": "chart v 1.4/admin-design/index.html",
+      "why": "NOT_A_SERVED_LOCATION"
+    },
+    {
+      "path": "chart v 1.4/chart/legacy-index.html",
+      "why": "INVENTORY_EXCLUDED",
+      "servable": false
+    },
+    {
+      "path": "chart v 1.4/chart/node_modules/terser/tools/props.html",
+      "why": "VENDOR"
+    },
+    {
+      "path": "chart v 1.4/talaria-design/index.html",
+      "why": "NOT_A_SERVED_LOCATION"
+    },
+    {
+      "path": "chart v 1.4/talaria-design/live/index.html",
+      "why": "NOT_A_SERVED_LOCATION"
+    },
+    {
+      "path": "homepage/public/maintenance.html",
+      "why": "NOT_A_SERVED_LOCATION"
+    },
+    {
+      "path": "homepage/public/talaria-v16-design/index.html",
+      "why": "NOT_A_SERVED_LOCATION"
+    },
+    {
+      "path": "homepage/public/talaria-v8b-design/index.html",
+      "why": "NOT_A_SERVED_LOCATION"
+    }
+  ]
+}
