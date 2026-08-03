@@ -59,7 +59,15 @@ function findRoot(start) {
  * Matching the expression rather than a declaration line also catches the ones
  * used inline, which never had a ROOT variable to notice.
  */
-const ANCHOR_EXPR = /path\.(?:resolve|join)\(\s*__dirname\s*,\s*((?:['"][^'"]*['"]\s*,\s*)*['"][^'"]*['"])\s*\)/g;
+/** The directory variable is a local naming choice; `HERE` climbs the same way. */
+function dirVarsOf(src) {
+  const names = new Set(['__dirname']);
+  const re = /const\s+([A-Za-z_$][\w$]*)\s*=\s*path\.dirname\(\s*(?:fileURLToPath\(\s*import\.meta\.url\s*\)|__filename)\s*\)/g;
+  let m;
+  while ((m = re.exec(src))) names.add(m[1]);
+  return [...names];
+}
+const anchorExprFor = (name) => new RegExp(String.raw`path\.(?:resolve|join)\(\s*${name}\s*,\s*((?:['"][^'"]*['"]\s*,\s*)*['"][^'"]*['"])\s*\)`, 'g');
 /** `const X = path.resolve(chartRoot, '..', '..')` — anchored on an earlier anchor. */
 const CHAINED_EXPR = /path\.(?:resolve|join)\(\s*([A-Za-z_$][\w$]*)\s*,\s*((?:['"][^'"]*['"]\s*,\s*)*['"][^'"]*['"])\s*\)/g;
 
@@ -107,7 +115,7 @@ function rewrite(file, rel) {
   if (src.includes('function findRoot(')) return { skipped: 'already root-walked' };
 
   const names = [];
-  const replaceExpr = (whole, argsSrc, extraLevels, base) => {
+  const replaceExpr = (whole, argsSrc, extraLevels, base, dirVar = '__dirname') => {
     const segs = segmentsOf(argsSrc);
     const dotdots = segs.findIndex((s) => s !== '..');
     const climb = dotdots === -1 ? segs.length : dotdots;
@@ -118,11 +126,15 @@ function rewrite(file, rel) {
     // the intent legible: the gate wants <repo>/homepage/public/chart, not four
     // levels up from wherever this copy happens to live.
     return suffix.length
-      ? `path.resolve(findRoot(__dirname), '${suffix.join('/')}')`
-      : 'findRoot(__dirname)';
+      ? `path.resolve(findRoot(${dirVar}), '${suffix.join('/')}')`
+      : `findRoot(${dirVar})`;
   };
 
-  let out = src.replace(ANCHOR_EXPR, (whole, argsSrc) => replaceExpr(whole, argsSrc, 0, '__dirname'));
+  const dirVars = dirVarsOf(src);
+  let out = src;
+  for (const name of dirVars) {
+    out = out.replace(anchorExprFor(name), (whole, argsSrc) => replaceExpr(whole, argsSrc, 0, name, name));
+  }
 
   // Second pass for anchors chained off an earlier one. Only safe when that
   // earlier variable is itself a pure dotdot climb from __dirname, so the two
@@ -144,8 +156,8 @@ function rewrite(file, rel) {
   }
 
   // Insert the walk after the __dirname line it depends on.
-  const dirnameLine = /^const __dirname = .*$/m.exec(out);
-  if (!dirnameLine) return { skipped: 'no __dirname declaration to anchor the helper to' };
+  const dirnameLine = new RegExp(String.raw`^const (?:${dirVars.join('|')}) = .*$`, 'm').exec(out);
+  if (!dirnameLine) return { skipped: 'no directory-variable declaration to anchor the helper to' };
   const at = dirnameLine.index + dirnameLine[0].length;
   out = `${out.slice(0, at)}\n${FIND_ROOT}${out.slice(at)}`;
 

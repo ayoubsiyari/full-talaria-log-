@@ -27,8 +27,35 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
+// SEAL-EVIDENCE-01: source evidence cannot bless served bytes. This gate reads the chart
+// SOURCE, so it can show what the code says and not what the sealed build does.
+// The token travels in the output because an audit document does not travel with
+// a sweep log.
+console.log("[SEAL-EVIDENCE-01] STATIC_ONLY_SOURCE_GATE ORDER-01B tick-path deletion \u2014 reads source; served behaviour unobserved");
+
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(HERE, '..', '..', '..');
+
+/**
+ * Walk up to the repo root instead of counting directory levels.
+ *
+ * This file is mirrored to a tree at a DIFFERENT depth, so a fixed '../../..'
+ * resolved to the wrong directory in one of the two locations and the gate there
+ * died on load, or failed a cell on a path it built itself. A gate that cannot
+ * reach its subject reports a red indistinguishable from a product defect.
+ */
+function findRoot(start) {
+  let dir = start;
+  for (let i = 0; i < 12; i += 1) {
+    if (fs.existsSync(path.join(dir, 'chart v 1.4')) && fs.existsSync(path.join(dir, 'homepage'))) return dir;
+    const up = path.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  throw new Error(`ANCHOR_BROKEN: repo root not found from ${start}`);
+}
+
+const ROOT = findRoot(HERE);
 const REPLAY_CANONICAL = path.join(ROOT, 'chart v 1.4', 'chart', 'modules', 'replay-system.js');
 const REPLAY_MIRROR = path.join(ROOT, 'homepage', 'public', 'chart', 'modules', 'replay-system.js');
 

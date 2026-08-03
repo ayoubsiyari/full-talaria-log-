@@ -25,7 +25,24 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+// SEAL-EVIDENCE-01: source evidence cannot bless served bytes. This gate reads the chart
+// SOURCE, so it can show what the code says and not what the sealed build does.
+// The token travels in the output because an audit document does not travel with
+// a sweep log.
+console.log("[SEAL-EVIDENCE-01] STATIC_ONLY_SOURCE_GATE TZ-01 tool label timezone \u2014 reads source; served behaviour unobserved");
+
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Named refusal instead of a bare ENOENT. A gate that cannot find its subject
+ * has not tested it, and must not report that as the subject being defective.
+ */
+function readSubject(file) {
+  if (!fs.existsSync(file)) throw new Error(`SUBJECT_ABSENT: ${file}`);
+  return fs.readFileSync(file, 'utf8');
+}
+
 
 /**
  * Walk up to the repo root instead of counting directory levels.
@@ -53,7 +70,7 @@ const TREES = [
   { name: 'chart v 1.4', root: path.resolve(findRoot(__dirname), 'chart v 1.4/chart') },
 ];
 
-const read = (f) => fs.readFileSync(f, 'utf8');
+const read = (f) => readSubject(f);
 
 /** Body of a class method, brace-matched. Absence is its own reported state. */
 function methodSource(text, name, where) {

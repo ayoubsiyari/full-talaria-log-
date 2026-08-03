@@ -13,7 +13,27 @@ import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(HERE, '..', '..', '..');
+
+/**
+ * Walk up to the repo root instead of counting directory levels.
+ *
+ * This file is mirrored to a tree at a DIFFERENT depth, so a fixed '../../..'
+ * resolved to the wrong directory in one of the two locations and the gate there
+ * died on load, or failed a cell on a path it built itself. A gate that cannot
+ * reach its subject reports a red indistinguishable from a product defect.
+ */
+function findRoot(start) {
+  let dir = start;
+  for (let i = 0; i < 12; i += 1) {
+    if (fs.existsSync(path.join(dir, 'chart v 1.4')) && fs.existsSync(path.join(dir, 'homepage'))) return dir;
+    const up = path.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  throw new Error(`ANCHOR_BROKEN: repo root not found from ${start}`);
+}
+
+const ROOT = findRoot(HERE);
 const CHART_JS = path.join(ROOT, 'chart v 1.4', 'chart', 'chart.js');
 const CHART_MIRROR = path.join(ROOT, 'homepage', 'public', 'chart', 'chart.js');
 const SWITCH = '__TALARIA_DISABLE_MC_HOST_CACHE_RELEASE_V1';

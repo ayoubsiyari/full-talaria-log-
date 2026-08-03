@@ -10,6 +10,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+
+// SEAL-EVIDENCE-01: source evidence cannot bless served bytes. This gate reads the chart
+// SOURCE, so it can show what the code says and not what the sealed build does.
+// The token travels in the output because an audit document does not travel with
+// a sweep log.
+console.log("[SEAL-EVIDENCE-01] STATIC_ONLY_SOURCE_GATE A3 speed/fill journal parity \u2014 reads source; served behaviour unobserved");
+
 import {
   A3_CANDIDATE_B122,
   A3_PLAYBACK_COORDINATES,
@@ -23,6 +30,16 @@ import {
 } from '../../../scripts/lib/a3-speed-fill-journal-parity.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Named refusal instead of a bare ENOENT. A gate that cannot find its subject
+ * has not tested it, and must not report that as the subject being defective.
+ */
+function readSubject(file) {
+  if (!fs.existsSync(file)) throw new Error(`SUBJECT_ABSENT: ${file}`);
+  return fs.readFileSync(file, 'utf8');
+}
+
 
 /**
  * Walk up to the repo root instead of counting directory levels.
@@ -50,12 +67,12 @@ const evidencePath = path.resolve(findRoot(__dirname), 'docs/plan3/evidence/a3-s
 const packageJsonPath = path.resolve(findRoot(__dirname), 'package.json');
 
 test('A3 source: CI gate and live runner are wired', () => {
-  const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+  const pkg = JSON.parse(readSubject(packageJsonPath));
   assert.equal(typeof pkg.scripts['test:a3-speed-fill-journal-parity'], 'string');
   assert.equal(typeof pkg.scripts['preflight:a3-speed-fill-journal-parity'], 'string');
   assert.ok(fs.existsSync(runnerPath), 'live runner must exist');
   assert.ok(fs.existsSync(libPath), 'shared lib must exist');
-  const runner = fs.readFileSync(runnerPath, 'utf8');
+  const runner = readSubject(runnerPath);
   assert.match(runner, /A3_PLAYBACK_COORDINATES|playbackCoordinates/);
   assert.match(runner, /matchCoordinatePairs/);
   assert.match(runner, /buildTranscripts/);
@@ -140,7 +157,7 @@ test('A3 identity: three coordinate pairs reject stale b85 surface', () => {
 
 test('A3 sealed evidence: candidate b122 arms are byte-equal across coordinates', () => {
   assert.ok(fs.existsSync(evidencePath), 'sealed canary evidence must be committed');
-  const evidence = JSON.parse(fs.readFileSync(evidencePath, 'utf8'));
+  const evidence = JSON.parse(readSubject(evidencePath));
   assert.equal(evidence.signature, A3_SIGNATURE);
   assert.ok(evidence.identity?.ok, 'evidence must pass three identity coordinate pairs');
   assert.deepEqual(evidence.expectedCoordinates, A3_CANDIDATE_B122);

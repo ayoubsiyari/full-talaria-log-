@@ -79,11 +79,34 @@ function isRepoRoot(dir) {
 // ('../modules') is a reference to a sibling, not an attempt to find the root,
 // and counting it would inflate the answer.
 const DOTDOT = String.raw`\.\.(?:[\\/]\.\.)*`;
-const PATTERNS = [
-  { kind: 'path.resolve(__dirname)', re: new RegExp(String.raw`path\.resolve\(\s*__dirname\s*,\s*['"](${DOTDOT})['"]`, 'g') },
-  { kind: 'path.join(__dirname)', re: new RegExp(String.raw`path\.join\(\s*__dirname\s*,\s*['"](${DOTDOT})['"]`, 'g') },
-  { kind: 'new URL(import.meta.url)', re: new RegExp(String.raw`new URL\(\s*['"](${DOTDOT})[\\/]?['"]\s*,\s*import\.meta\.url`, 'g') },
-];
+
+/**
+ * The directory variable is not always called `__dirname`.
+ *
+ * An earlier version of this scan matched that one name and undercounted: gates
+ * writing `const HERE = path.dirname(fileURLToPath(import.meta.url))` and then
+ * climbing from `HERE` were invisible to it, including a dead mirror it should
+ * have caught. The name is a local choice; the act is the same.
+ */
+function dirVarsOf(src) {
+  const names = new Set(['__dirname']);
+  const re = /const\s+([A-Za-z_$][\w$]*)\s*=\s*path\.dirname\(\s*(?:fileURLToPath\(\s*import\.meta\.url\s*\)|__filename)\s*\)/g;
+  let m;
+  while ((m = re.exec(src))) names.add(m[1]);
+  return [...names];
+}
+
+function patternsFor(src) {
+  const out = [];
+  for (const name of dirVarsOf(src)) {
+    out.push(
+      { kind: `path.resolve(${name})`, re: new RegExp(String.raw`path\.resolve\(\s*${name}\s*,\s*['"](${DOTDOT})['"]`, 'g') },
+      { kind: `path.join(${name})`, re: new RegExp(String.raw`path\.join\(\s*${name}\s*,\s*['"](${DOTDOT})['"]`, 'g') },
+    );
+  }
+  out.push({ kind: 'new URL(import.meta.url)', re: new RegExp(String.raw`new URL\(\s*['"](${DOTDOT})[\\/]?['"]\s*,\s*import\.meta\.url`, 'g') });
+  return out;
+}
 
 function scanFile(file) {
   let src;
@@ -93,7 +116,7 @@ function scanFile(file) {
   if (!isGate) return null;
 
   const anchors = [];
-  for (const { kind, re } of PATTERNS) {
+  for (const { kind, re } of patternsFor(src)) {
     re.lastIndex = 0;
     let m;
     while ((m = re.exec(src))) {

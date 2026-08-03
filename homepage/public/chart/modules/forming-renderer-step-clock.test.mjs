@@ -13,6 +13,13 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+// SEAL-EVIDENCE-01: source evidence cannot bless served bytes. This gate reads the chart
+// SOURCE, so it can show what the code says and not what the sealed build does.
+// The token travels in the output because an audit document does not travel with
+// a sweep log.
+console.log("[SEAL-EVIDENCE-01] STATIC_ONLY_SOURCE_GATE ORDER-01B forming renderer step clock \u2014 reads source; served behaviour unobserved");
+
+
 function findRoot(start) {
   let cursor = path.resolve(start);
   for (;;) {

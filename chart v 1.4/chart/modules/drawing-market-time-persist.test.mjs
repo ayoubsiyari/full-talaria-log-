@@ -5,6 +5,13 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import test from 'node:test';
 
+// SEAL-EVIDENCE-01: source evidence cannot bless served bytes. This gate reads the chart
+// SOURCE, so it can show what the code says and not what the sealed build does.
+// The token travels in the output because an audit document does not travel with
+// a sweep log.
+console.log("[SEAL-EVIDENCE-01] STATIC_ONLY_SOURCE_GATE TZ-01 drawing market-time persistence \u2014 reads source; served behaviour unobserved");
+
+
 const require = createRequire(import.meta.url);
 
 global.window = {};
