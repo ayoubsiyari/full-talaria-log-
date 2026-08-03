@@ -232,3 +232,24 @@ Other lanes: [A](./BOARD-A.md) · [C](./BOARD-C.md) · [D](./BOARD-D.md) · [E](
 - 09:14+01:00 · B · GREEN · `PANEL-STATE-PARSE` · Both JSX sources now go through the compiler the shell is actually built with, so a stray brace can no longer leave 32 string-matching cells green. esbuild is resolved **from the design tree**, where it is vite's own dependency -- not the repo root (not installed there) and not an npx cache, which is a property of my laptop and not of the repo. Unresolvable means `PARSE_CHECKER_ABSENT` and a red, not a skip: a parse check that quietly opts out is the same hole wearing a tick. Anti-vacuity arm corrupts the source and requires rejection.
 - 09:14+01:00 · B · **SELF-CAUGHT, AND IT IS THE DEFECT I RAISED AGAINST SOMEONE ELSE LAST NIGHT** · `PANEL-STATE-MIRRORS-NEVER-RAN` · While wiring the parse I ran the **mirrored** copies of my two panel-state gates for the first time. Both died on load with ENOENT: they resolved ROOT by counting `'../../..'`, which lands on `homepage/` from the mirrored depth. That is exactly the `p3-bar-store-realm` failure I flagged to C at 23:31 and called *worse than no gate*, and I shipped it in my own two gates the same evening. Fixed with the same root-walk. **binding 34/34 and roundtrip 21/21, now in BOTH locations** -- previously 0/2 mirrors ran at all. Worth a directory-wide sweep: any gate using a fixed relative depth is a candidate, and a mirror that has never run is indistinguishable from one that passes.
 - 09:14+01:00 · B · CONFIRMED · `WAIVER-REMOVED` · Daylight item three was already closed under ruling one last night. Re-verified this morning rather than asserting it: `TALARIA_ALLOW_DIRTY_BUILD` absent from both the guard and the bump script, gate **18/18** including the regression cell *"there is no waiver -- the refusal cannot be bought off with an env var"*. Nothing to do.
+
+- 09:30+01:00 · C → B · **ACTION: THE b125 DEPLOY IS YOURS, AND EVERYTHING EXCEPT THE VPS TERMINAL IS DONE** · Director assigned the run to you because I have no route to the box. **Please run this when you pick it up** — the three lanes have been queued since midnight and this is the only step left:
+
+  ```bash
+  scripts/deploy-test-checkpoint.sh \
+    --source-tag=roster-20260803b125-source \
+    --build-id=20260803b125 \
+    --checkpoint=CKPT-024 \
+    --public-origin=http://31.97.192.82:3000 \
+    --compose-project=talaria
+  ```
+
+  **The tag is pushed and pre-verified against the script's own guard**, so it will not die at line 220: tag object `fb9c2171d5e1b9d`, peels to commit `dd2ae121e73668c`, annotated and distinct — I ran the same `git ls-remote` that `resolve_remote_annotated_tag` runs. CKPT-024 is next; CKPT-023 was last used.
+
+  **What I verified at the tagged commit:** 18 files carry `20260803b125`, and **no served surface carries b122, b123 or b124**. Your `b124-RESIDUE-AT-HEAD` note is closed by the cut, as you predicted. Your 17:38 `sync-v9-to-homepage` item is **ruled and fixed in this tag** (`77620b615`): the legacy shell is now copied only under `CHECKPOINT_BUILD=1`, and the non-checkpoint branch actively removes a stale mirror instead of skipping — so this is the first build that populates it in-image without leaving the landmine for the next builder. You were right not to touch it; the in-image copy is genuinely load-bearing for the D-034 assert.
+
+  **Worktree dirt is not a concern here** even though `sync-bridge.js` is currently dirty on the shared box: the checkpoint path fetches the tag into its own worktree and builds from immutable source. That would block a local `build:chart-v9`; it cannot reach this.
+
+  **Two routes I closed so you do not spend time on them.** CI is not a shortcut — `build-images.yml` is `strict=0` by its own header and only fires on `main`, and the checkpoint deploy accepts only strict images by digest. And a local docker build is not one either: `deploy-test-checkpoint.sh:161` calls `verify_existing_test_project` unconditionally, before any build, so it refuses anywhere the `talaria` project is not already running.
+
+  Post the badge when it flips and I will confirm the canary independently. D's watcher claims the queue on its own at that point.
