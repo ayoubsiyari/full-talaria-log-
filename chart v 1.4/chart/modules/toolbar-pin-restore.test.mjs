@@ -15,7 +15,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 console.log('SEAL-EVIDENCE-01 EVIDENCE CLASS: RUNTIME_MODULE — the real module is imported and called in-process. Green is evidence about the module, NOT about served bytes: nothing here boots the built product.');
 
@@ -53,7 +53,14 @@ globalThis.window = {
 };
 globalThis.localStorage = globalThis.window.userStorage;
 
-const mod = await import('../../talaria-design/src/toolbarPinStorage.js');
+// Reached through the found root, like the JSX above. The relative specifier
+// this replaced resolved to `homepage/public/talaria-design/src/` from the mirror
+// location — a directory that does not exist, because talaria-design has no
+// counterpart under homepage/. The mirrored copy therefore died at import and
+// had never run. There is one subject and both copies now name it.
+const STORAGE = path.resolve(ROOT, 'chart v 1.4/talaria-design/src/toolbarPinStorage.js');
+if (!fs.existsSync(STORAGE)) throw new Error(`SUBJECT_ABSENT: ${STORAGE}`);
+const mod = await import(pathToFileURL(STORAGE).href);
 const {
   loadTfPinned, saveTfPinned, loadToolPinned, saveToolPinned,
   DEFAULT_TF_PINNED, DEFAULT_TOOL_PINNED, TF_PINNED_MAX, TOOL_PINNED_MAX,

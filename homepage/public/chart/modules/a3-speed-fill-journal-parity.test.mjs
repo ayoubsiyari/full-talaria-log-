@@ -8,7 +8,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
 
 // SEAL-EVIDENCE-01: source evidence cannot bless served bytes. This gate reads the chart
@@ -16,18 +16,6 @@ import test from 'node:test';
 // The token travels in the output because an audit document does not travel with
 // a sweep log.
 console.log("[SEAL-EVIDENCE-01] STATIC_ONLY_SOURCE_GATE A3 speed/fill journal parity \u2014 reads source; served behaviour unobserved");
-
-import {
-  A3_CANDIDATE_B122,
-  A3_PLAYBACK_COORDINATES,
-  A3_SIGNATURE,
-  buildTranscripts,
-  compareCoordinateTranscripts,
-  matchCoordinatePairs,
-  modelCoordinateInvariantSession,
-  normalizeMoneyRow,
-  stableDigest,
-} from '../../../scripts/lib/a3-speed-fill-journal-parity.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -65,6 +53,30 @@ const runnerPath = path.resolve(findRoot(__dirname), 'scripts/a3-speed-fill-jour
 const libPath = path.resolve(findRoot(__dirname), 'scripts/lib/a3-speed-fill-journal-parity.mjs');
 const evidencePath = path.resolve(findRoot(__dirname), 'docs/plan3/evidence/a3-speed-fill-journal-parity-b122.json');
 const packageJsonPath = path.resolve(findRoot(__dirname), 'package.json');
+
+/**
+ * The subject is reached through the found root, not through a relative
+ * specifier. A static `import` cannot take a computed path, and the fixed
+ * '../../../scripts/lib/...' this replaced resolved to `homepage/scripts/lib/`
+ * from the mirror location — so the mirrored copy of this gate died at import
+ * and had never run, while reading in a sweep like any other file.
+ *
+ * This is what resolves the conflict named in the ROOT-DEPTH-01 correction:
+ * byte-identical mirrors and correct relative imports cannot both hold when the
+ * two trees sit at different depths. A computed root can, because it is the same
+ * text in both places and evaluates correctly in each.
+ */
+const {
+  A3_CANDIDATE_B122,
+  A3_PLAYBACK_COORDINATES,
+  A3_SIGNATURE,
+  buildTranscripts,
+  compareCoordinateTranscripts,
+  matchCoordinatePairs,
+  modelCoordinateInvariantSession,
+  normalizeMoneyRow,
+  stableDigest,
+} = await import(pathToFileURL(libPath).href);
 
 test('A3 source: CI gate and live runner are wired', () => {
   const pkg = JSON.parse(readSubject(packageJsonPath));

@@ -12,8 +12,32 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
+/**
+ * Walk up to the repo root rather than counting directory levels.
+ *
+ * The '..', '..', '..' this replaced reached `chart v 1.4/talaria-design/` from
+ * the canonical harness and `homepage/public/talaria-design/` from the mirror —
+ * a directory that does not exist, because talaria-design has no counterpart
+ * under homepage/. The mirrored copy died at import and had never run, and a
+ * gate that dies at import reads in a sweep exactly like one that passed.
+ *
+ * There is one subject, so both copies name it explicitly instead of computing a
+ * different one from their own depth.
+ */
+function findRoot(start) {
+  let dir = start;
+  for (let i = 0; i < 12; i += 1) {
+    if (fs.existsSync(path.join(dir, 'chart v 1.4')) && fs.existsSync(path.join(dir, 'homepage'))) return dir;
+    const up = path.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  throw new Error(`ANCHOR_BROKEN: repo root not found from ${start}`);
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const GRID_SRC = path.resolve(__dirname, '..', '..', '..', 'talaria-design', 'src', 'MultichartGrid.jsx');
+const GRID_SRC = path.resolve(findRoot(__dirname), 'chart v 1.4/talaria-design/src/MultichartGrid.jsx');
+if (!fs.existsSync(GRID_SRC)) throw new Error(`SUBJECT_ABSENT: ${GRID_SRC}`);
 const SOURCE = fs.readFileSync(GRID_SRC, 'utf8');
 
 function matchingBrace(source, open) {

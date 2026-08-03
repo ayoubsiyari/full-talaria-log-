@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env node
+#!/usr/bin/env node
 // SEAL-EVIDENCE-01: RUNTIME_TOOL — runs the real scripts/ckpt-ship.sh against a
 // real throwaway git repo and remote. It exercises the precondition block only;
 // it proves nothing about deploy-test-checkpoint.sh or about any built image.

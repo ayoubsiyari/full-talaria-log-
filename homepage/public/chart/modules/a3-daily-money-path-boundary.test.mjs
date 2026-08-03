@@ -6,8 +6,11 @@
  * to 17:00 America/New_York.
  */
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { createRequire } from 'node:module';
+import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import * as H from './m22-session-calendar-harness.mjs';
 
@@ -17,12 +20,36 @@ import * as H from './m22-session-calendar-harness.mjs';
 // a sweep log.
 console.log("[SEAL-EVIDENCE-01] STATIC_ONLY_SOURCE_GATE A3 daily bucketing on session day \u2014 reads source; served behaviour unobserved");
 
-import {
+/**
+ * Walk up to the repo root instead of counting directory levels, and reach the
+ * subject through the root rather than through a relative specifier.
+ *
+ * The fixed '../../../scripts/lib/...' this replaced resolved to
+ * `homepage/scripts/lib/` from the mirror location, so the mirrored copy of this
+ * gate died at import and had never run — while reading in a sweep exactly like
+ * a gate that passed.
+ */
+function findRoot(start) {
+  let dir = start;
+  for (let i = 0; i < 12; i += 1) {
+    if (fs.existsSync(path.join(dir, 'chart v 1.4')) && fs.existsSync(path.join(dir, 'homepage'))) return dir;
+    const up = path.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  throw new Error(`ANCHOR_BROKEN: repo root not found from ${start}`);
+}
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const libPath = path.resolve(findRoot(__dirname), 'scripts/lib/a3-speed-fill-journal-parity.mjs');
+if (!fs.existsSync(libPath)) throw new Error(`SUBJECT_ABSENT: ${libPath}`);
+
+const {
   A3_PLAYBACK_COORDINATES,
   buildTranscripts,
   compareCoordinateTranscripts,
   normalizeMoneyRow,
-} from '../../../scripts/lib/a3-speed-fill-journal-parity.mjs';
+} = await import(pathToFileURL(libPath).href);
 
 const require = createRequire(import.meta.url);
 const OrderManager = require('./order-manager.js');

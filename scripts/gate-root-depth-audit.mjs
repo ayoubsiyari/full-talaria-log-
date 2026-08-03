@@ -108,12 +108,32 @@ function patternsFor(src) {
   return out;
 }
 
-function scanFile(file) {
+/**
+ * Is this file part of the population a sweep would count?
+ *
+ * The first version of this asked for a `node:test` import or a shouted GATE /
+ * ORACLE in the header, and it missed `ckpt-ship-tag-first.test.mjs` — a
+ * standalone oracle that imports node:assert, spells "gate" in lower case, and
+ * had never parsed at all because of a byte-order mark ahead of its shebang. A
+ * census that cannot see a file cannot report it as absent, which makes the hole
+ * worse than the defect: it undercounts silently.
+ *
+ * So the name carries weight now. `.test.mjs` is a claim about the file made by
+ * whoever named it, and it is a more reliable signal than its contents.
+ */
+export function isGateFile(file, src) {
+  const base = path.basename(file);
+  if (/\.(test|selftest|spec)\.mjs$/.test(base)) return true;
+  if (/\.mutants\.mjs$/.test(base)) return true;
+  if (/(^|[-.])(gate|oracle)([-.]|$)/i.test(base)) return true;
+  if (src.includes("'node:test'") || src.includes('"node:test"')) return true;
+  return /\bGATE\b|\bORACLE\b/i.test(src.slice(0, 2000));
+}
+
+function scanFile(file, { requireAnchor = true } = {}) {
   let src;
   try { src = fs.readFileSync(file, 'utf8'); } catch { return null; }
-  const isGate = src.includes("'node:test'") || src.includes('"node:test"')
-    || /\bGATE\b|\bORACLE\b/.test(src.slice(0, 2000));
-  if (!isGate) return null;
+  if (!isGateFile(file, src)) return null;
 
   const anchors = [];
   for (const { kind, re } of patternsFor(src)) {
@@ -125,7 +145,7 @@ function scanFile(file) {
       anchors.push({ kind, literal, resolved, resolvesToRepoRoot: isRepoRoot(resolved) });
     }
   }
-  if (!anchors.length) return null;
+  if (!anchors.length && requireAnchor) return null;
 
   return {
     file: path.relative(ROOT, file).replace(/\\/g, '/'),
@@ -201,8 +221,32 @@ function firstError(out) {
 
 const ANCHOR_ERROR = /ENOENT|ERR_MODULE_NOT_FOUND|Cannot find module|ANCHOR_BROKEN|ERR_UNSUPPORTED_DIR_IMPORT/;
 
-function classify({ code, killed, out }, load) {
+/**
+ * A `.red` oracle that reports its verdict by throwing at import is doing its
+ * job, and it looks identical to a file that died on a bad path. Separating them
+ * is a heuristic and is labelled as one: a path error is a path error, and
+ * anything else thrown by a file named `.red.` is taken as a declared verdict.
+ *
+ * Getting this wrong in the safe direction matters more than getting it right:
+ * calling a working red oracle "never ran" inflates the vacuity count, and an
+ * inflated count spends someone's night.
+ */
+export function looksLikeDeclaredRed(file, error) {
+  if (!error || ANCHOR_ERROR.test(error)) return false;
+  if (/\.red\.|\.red\b/i.test(path.basename(file))) return true;
+  return /\bRED\b|GATE-\d|must not|must fail/i.test(error);
+}
+
+function classify({ code, killed, out }, load, file = '') {
   if (load && load.loaded === false) {
+    if (looksLikeDeclaredRed(file, load.error)) {
+      return {
+        state: 'RED_DECLARED_AT_IMPORT',
+        tests: 0,
+        detail: 'throws its verdict at import; a red oracle, not a dead file (heuristic)',
+        evidence: load.error,
+      };
+    }
     return {
       state: 'NEVER_RAN',
       tests: 0,
@@ -228,6 +272,18 @@ function classify({ code, killed, out }, load) {
     return { state: 'NO_CELLS_INCONCLUSIVE', tests: tests ?? 0, pass, fail, detail: 'zero cells, non-zero exit, no path error — inspect by hand', evidence: firstError(out) };
   }
   if (fail > 0 || code !== 0) return { state: 'RAN_RED', tests, pass, fail, detail: null, evidence: firstError(out) };
+
+  // Exited clean having asserted nothing. This is the same vacuity as a gate
+  // that dies at import, wearing the opposite costume: it does not merely fail
+  // to prove anything, it is *counted* as proof. Any sweep that reads exit codes
+  // scores it green, which is how two panel-state gates that parse nothing sat
+  // in the green total.
+  if (tests === 0) {
+    return { state: 'ZERO_CELLS_SCORED_GREEN', tests: 0, pass, fail, detail: 'loaded, exited 0, registered no cells' };
+  }
+  if (tests === null) {
+    return { state: 'NO_TAP_COUNTERS', tests: null, pass, fail, detail: 'exited 0 but printed no TAP counters; not a node:test gate' };
+  }
   return { state: 'RAN_GREEN', tests, pass, fail, detail: null };
 }
 
@@ -245,15 +301,26 @@ function changedFiles() {
 async function main() {
   const scanOnly = process.argv.includes('--scan-only');
   const changedOnly = process.argv.includes('--changed');
-  const out = path.resolve(path.join(ROOT, 'docs/plan3/evidence', `root-depth-audit-${Date.now()}.json`));
+  // The anchor-shaped question was answered and fixed this morning, which means
+  // the anchor scan can no longer see the files it repaired — they stopped
+  // matching. `--all-gates` asks the question the seal actually needs: of every
+  // gate in the tree, how many never execute, for any cause at all. A gate that
+  // never ran is absent while scoring as present, and the cause of its absence
+  // is a detail.
+  const allGates = process.argv.includes('--all-gates');
+  const tag = allGates ? 'all-gates' : 'root-depth';
+  const out = path.resolve(path.join(ROOT, 'docs/plan3/evidence', `${tag}-audit-${Date.now()}.json`));
 
   const files = walk(ROOT);
-  const hits = changedOnly
-    ? changedFiles().map((rel) => ({
-      file: rel, anchors: [], usesRootWalk: true, browserish: false,
-    }))
-    : files.map(scanFile).filter(Boolean);
-  log(`${files.length} .mjs files scanned, ${hits.length} gates anchor by fixed relative depth`);
+  let hits;
+  if (changedOnly) {
+    hits = changedFiles().map((rel) => ({ file: rel, anchors: [], usesRootWalk: true, browserish: false }));
+  } else if (allGates) {
+    hits = files.map((f) => scanFile(f, { requireAnchor: false })).filter(Boolean);
+  } else {
+    hits = files.map((f) => scanFile(f)).filter(Boolean);
+  }
+  log(`${files.length} .mjs files scanned, ${hits.length} ${allGates ? 'gate files found' : 'gates anchor by fixed relative depth'}`);
 
   // Mirrored pairs: same basename present in both module trees. Only these can
   // have one copy silently dead while the other reports for both.
@@ -270,7 +337,7 @@ async function main() {
   log(`${pairs.length} of them sit in a mirrored tree; ${bothSides.length} exist in both locations`);
 
   const report = {
-    signature: 'ROOT-DEPTH-AUDIT-V1',
+    signature: allGates ? 'GATE-EXECUTION-CENSUS-V1' : 'ROOT-DEPTH-AUDIT-V1',
     at: new Date().toISOString(),
     provenance: captureProvenance(),
     counts: {
@@ -303,19 +370,37 @@ async function main() {
 
   let done = 0;
   const queue = [...runnable];
-  const workers = Array.from({ length: 4 }, async () => {
+  const workers = Array.from({ length: allGates ? 6 : 4 }, async () => {
     for (;;) {
       const h = queue.shift();
       if (!h) return;
       const full = path.join(ROOT, h.file);
+      // Parse before executing. A file that does not parse has never run in any
+      // location, and it is the cheapest thing to check and the easiest to miss:
+      // tonight's two were a declaration inserted inside an import block and a
+      // byte-order mark ahead of a shebang, both invisible to inspection.
+      const parsed = await spawnNode(['--check', full], 20_000);
+      if (parsed.code !== 0) {
+        report.executed.push({
+          file: h.file,
+          usesRootWalk: h.usesRootWalk,
+          state: 'PARSE_FAILED',
+          tests: 0,
+          detail: 'does not parse; has never run anywhere',
+          evidence: firstError(parsed.out) || (parsed.out || '').split(/\r?\n/).slice(0, 3).join(' ').slice(0, 220),
+        });
+        done += 1;
+        log(`PARSE_FAILED           ${h.file}`);
+        continue;
+      }
       const load = await loadProbe(full);
-      const verdict = classify(await runGate(full, 30_000), load);
+      const verdict = classify(await runGate(full, 30_000), load, h.file);
       report.executed.push({ file: h.file, usesRootWalk: h.usesRootWalk, ...verdict });
       done += 1;
-      if (verdict.state === 'NEVER_RAN' || verdict.state === 'ANCHOR_FAKE_RED') {
-        log(`${verdict.state.padEnd(16)} ${h.file}`);
+      if (verdict.state === 'NEVER_RAN' || verdict.state === 'ANCHOR_FAKE_RED' || verdict.state === 'ZERO_CELLS_SCORED_GREEN') {
+        log(`${verdict.state.padEnd(22)} ${h.file}`);
       }
-      if (done % 10 === 0) { log(`${done}/${runnable.length}`); save(); }
+      if (done % 25 === 0) { log(`${done}/${runnable.length}`); save(); }
     }
   });
   await Promise.all(workers);
@@ -340,11 +425,23 @@ async function main() {
   report.counts.pairsWithASideBrokenByItsAnchor = report.deadMirrors.length;
   report.counts.pairsWithASideThatNeverRan = report.deadMirrors
     .filter((r) => r.canonical === 'NEVER_RAN' || r.mirror === 'NEVER_RAN').length;
+
+  // Named, not just counted. A count invites the reader to assume someone has
+  // the list.
+  const ABSENT = new Set(['NEVER_RAN', 'PARSE_FAILED', 'ZERO_CELLS_SCORED_GREEN']);
+  report.neverRan = report.executed.filter((e) => ABSENT.has(e.state))
+    .map((e) => ({ file: e.file, state: e.state, evidence: e.evidence }));
+  report.zeroCells = report.executed.filter((e) => e.state === 'ZERO_CELLS_SCORED_GREEN')
+    .map((e) => e.file);
+  report.counts.absentButScoringAsPresent = report.neverRan.length;
   save();
 
   log('');
-  log(`gates anchoring by fixed relative depth: ${report.counts.gatesAnchoringByFixedDepth}`);
+  log(allGates
+    ? `gate files found:                        ${report.counts.gatesAnchoringByFixedDepth}`
+    : `gates anchoring by fixed relative depth: ${report.counts.gatesAnchoringByFixedDepth}`);
   log(`present in both mirror locations:        ${report.counts.presentInBothLocations}`);
+  log(`absent but scoring as present:           ${report.counts.absentButScoringAsPresent}`);
   log(`pairs with a side broken by its anchor:  ${report.counts.pairsWithASideBrokenByItsAnchor}`);
   log(`  of those, a side that never ran:       ${report.counts.pairsWithASideThatNeverRan}`);
   for (const [state, n] of Object.entries(byState)) log(`  ${state}: ${n}`);
