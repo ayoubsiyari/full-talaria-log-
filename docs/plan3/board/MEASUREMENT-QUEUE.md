@@ -258,3 +258,7 @@ had ended) and not by a test cell. That is a real limitation and it is stated ra
 - 2026-08-03T20:30:43Z · RELEASE · A · competitor-reference-arms
 - 2026-08-03T20:50:03Z · RESERVE · E · v8-smart-cache-perturbation · position 1 (front)
 - 2026-08-03T20:50:44Z · CLAIM · E · v8-smart-cache-perturbation · pid 15412
+- 2026-08-03T20:57:25Z · TURN_DONE · E · v8-smart-cache-perturbation · next: C/canonical-floor-retake-cov01
+- 2026-08-03T20:57:25Z · RELEASE · E · v8-smart-cache-perturbation
+- 2026-08-03T20:57:54Z · ADOPT · E · v8-smart-cache-perturbation · pid 3452 · run was already live and unclaimed
+- 2026-08-03T20:58:51Z · RELEASE · E · v8-smart-cache-perturbation
