@@ -93,6 +93,12 @@ export const C_LANE_GATES = [
     armedBy: 'requiredRunwayMs',
   },
   {
+    id: 'FLOOR-CURVE',
+    symbol: 'gradeSettleCurve',
+    module: 'scripts/lib/floor-curve.mjs',
+    refuses: 'a floor quoted from a curve that had not flattened, and any reading off a session that rose',
+  },
+  {
     id: 'DRIFT-ABBA',
     symbol: 'abbaSequence',
     module: 'scripts/lib/abba-drift.mjs',
