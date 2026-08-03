@@ -77,6 +77,13 @@ export const C_LANE_GATES = [
     refuses: 'a log line, artifact field or board number written without the clock that produced it',
   },
   {
+    id: 'RUN-GROUP-01',
+    symbol: 'groupRuns',
+    module: 'scripts/measurement-queue.mjs',
+    refuses: 'an orchestrator and the arms it spawned being counted as separate unclaimed runs — '
+      + 'the false alarm that would fire on every correctly paired ABBA arm',
+  },
+  {
     id: 'CLOCK-01-AUDIT',
     symbol: 'scanText',
     module: 'scripts/clock-01-audit.mjs',
