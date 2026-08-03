@@ -25,9 +25,29 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Walk up to the repo root instead of counting directory levels.
+ *
+ * This file is mirrored to a tree at a DIFFERENT depth, so a fixed '../../..'
+ * resolved to the wrong directory in one of the two locations and the gate there
+ * died on load, or failed a cell on a path it built itself. A gate that cannot
+ * reach its subject reports a red indistinguishable from a product defect.
+ */
+function findRoot(start) {
+  let dir = start;
+  for (let i = 0; i < 12; i += 1) {
+    if (fs.existsSync(path.join(dir, 'chart v 1.4')) && fs.existsSync(path.join(dir, 'homepage'))) return dir;
+    const up = path.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  throw new Error(`ANCHOR_BROKEN: repo root not found from ${start}`);
+}
+
 const CHART_ROOT = path.resolve(__dirname, '..');
-const HOMEPAGE_CHART = path.resolve(__dirname, '../../../homepage/public/chart');
-const EVIDENCE_DIR = path.resolve(__dirname, '../../../docs/plan3/evidence');
+const HOMEPAGE_CHART = path.resolve(findRoot(__dirname), 'homepage/public/chart');
+const EVIDENCE_DIR = path.resolve(findRoot(__dirname), 'docs/plan3/evidence');
 
 const KS_Q2 = '__TALARIA_DISABLE_M20_Q2_COUNTDOWN_IDLE_RENDER_V1';
 const evidenceMode = String(process.env.M20_Q2_ORACLE_EVIDENCE || '').toLowerCase();

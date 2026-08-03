@@ -26,11 +26,31 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(__dirname, '../../../..');
+
+/**
+ * Walk up to the repo root instead of counting directory levels.
+ *
+ * This file is mirrored to a tree at a DIFFERENT depth, so a fixed '../../..'
+ * resolved to the wrong directory in one of the two locations and the gate there
+ * died on load, or failed a cell on a path it built itself. A gate that cannot
+ * reach its subject reports a red indistinguishable from a product defect.
+ */
+function findRoot(start) {
+  let dir = start;
+  for (let i = 0; i < 12; i += 1) {
+    if (fs.existsSync(path.join(dir, 'chart v 1.4')) && fs.existsSync(path.join(dir, 'homepage'))) return dir;
+    const up = path.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  throw new Error(`ANCHOR_BROKEN: repo root not found from ${start}`);
+}
+
+const repoRoot = findRoot(__dirname);
 
 const TREES = [
-  { name: 'homepage', root: path.join(repoRoot, 'homepage/public/chart') },
-  { name: 'chart v 1.4', root: path.join(repoRoot, 'chart v 1.4/chart') },
+  { name: 'homepage', root: path.resolve(findRoot(__dirname), 'homepage/public/chart') },
+  { name: 'chart v 1.4', root: path.resolve(findRoot(__dirname), 'chart v 1.4/chart') },
 ];
 
 const read = (f) => fs.readFileSync(f, 'utf8');
@@ -240,7 +260,7 @@ for (const tree of TREES) {
  * correctly and still contain the wrong hours.
  */
 test('the candles themselves: where bucketing follows the zone and where it cannot', () => {
-  const chartSrc = read(path.join(repoRoot, 'homepage/public/chart/chart.js'));
+  const chartSrc = read(path.resolve(findRoot(__dirname), 'homepage/public/chart/chart.js'));
 
   // Intraday: epoch floor is still correct for any zone whose offset is a whole
   // number of minutes. The reported session is 1m, so its BARS were never the

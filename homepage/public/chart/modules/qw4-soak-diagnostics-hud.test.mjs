@@ -2,12 +2,33 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import fs from 'node:fs';
 import path from 'node:path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+/**
+ * Walk up to the repo root instead of counting directory levels.
+ *
+ * This file is mirrored to a tree at a DIFFERENT depth, so a fixed '../../..'
+ * resolved to the wrong directory in one of the two locations and the gate there
+ * died on load, or failed a cell on a path it built itself. A gate that cannot
+ * reach its subject reports a red indistinguishable from a product defect.
+ */
+function findRoot(start) {
+  let dir = start;
+  for (let i = 0; i < 12; i += 1) {
+    if (fs.existsSync(path.join(dir, 'chart v 1.4')) && fs.existsSync(path.join(dir, 'homepage'))) return dir;
+    const up = path.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  throw new Error(`ANCHOR_BROKEN: repo root not found from ${start}`);
+}
+
 const chartRoot = path.resolve(__dirname, '..');
-const repoRoot = path.resolve(chartRoot, '..', '..');
+const repoRoot = findRoot(__dirname);
 const chartJsPath = path.join(chartRoot, 'chart.js');
 const homepageChartJsPath = path.join(repoRoot, 'homepage', 'public', 'chart', 'chart.js');
 
