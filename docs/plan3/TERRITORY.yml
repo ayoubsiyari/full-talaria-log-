@@ -427,9 +427,47 @@ managers:
       - pattern: docs/plan3/journal/MANAGER-D.md
         provenance: ruling
         authority: A16.1 - each manager holds a positive grant to its own journal
-        - pattern: docs/plan3/D[0-9]*.md
+      # REPAIR 03-08 22:4x+01:00 (B, on Director ruling). This was one entry reading
+      # `docs/plan3/D[0-9]*.md` at indent 8, which carried two defects: the indent made it a
+      # child of MANAGER-D.md's mapping so parseStrictYaml stopped here and the manifest had
+      # not loaded since 08-01, and `[`/`]` are rejected both in a bare scalar and by
+      # globToRegExp even when quoted, so a character class cannot be written at all.
+      #
+      # Expanded to ten single-digit prefixes, which express `D[0-9]` EXACTLY: same three
+      # files matched today, no future edit needed when D adds D3-*.md, and nothing widened.
+      # The tempting one-line repair, `docs/plan3/D*.md`, would have granted D 23 further
+      # files including DIRECTOR-RULINGS-20260727.md and all eleven DIRECTOR-DISPATCH-*.md,
+      # and the gate would have gone green while transferring the Director's own rulings.
+      - pattern: docs/plan3/D0*.md
         provenance: ruling
         reason: D's own findings, prefixed to avoid collision with the Director's docs/plan3/*.md grant
+      - pattern: docs/plan3/D1*.md
+        provenance: ruling
+        reason: D's own findings, D1-prefixed
+      - pattern: docs/plan3/D2*.md
+        provenance: ruling
+        reason: D's own findings, D2-prefixed
+      - pattern: docs/plan3/D3*.md
+        provenance: ruling
+        reason: D's own findings, D3-prefixed
+      - pattern: docs/plan3/D4*.md
+        provenance: ruling
+        reason: D's own findings, D4-prefixed
+      - pattern: docs/plan3/D5*.md
+        provenance: ruling
+        reason: D's own findings, D5-prefixed
+      - pattern: docs/plan3/D6*.md
+        provenance: ruling
+        reason: D's own findings, D6-prefixed
+      - pattern: docs/plan3/D7*.md
+        provenance: ruling
+        reason: D's own findings, D7-prefixed
+      - pattern: docs/plan3/D8*.md
+        provenance: ruling
+        reason: D's own findings, D8-prefixed
+      - pattern: docs/plan3/D9*.md
+        provenance: ruling
+        reason: D's own findings, D9-prefixed
     denied_paths:
       - pattern: chart v 1.4/chart/chart.js
         reason: D measures and verifies; it ships no engine code. chart.js is A-L1's single-writer spine
@@ -437,6 +475,12 @@ managers:
         authority: PLAN3-PHASE-4 - chart.js has exactly one writer at a time
       - pattern: chart v 1.4/chart/modules/**
         reason: product code belongs to A
+        # Added 03-08 22:4x+01:00 (B). The required `provenance` key was absent entirely, which
+        # nothing could see while the parser was still dying at line 430. Labelled `inferred`
+        # rather than `ruling` because unlike its sibling above it cites no authority, and
+        # claiming a ruling I cannot point to would be the same overclaim A16.2 was about.
+        # Whoever holds the ruling for A's modules tree should upgrade this and name it.
+        provenance: inferred
   # D was stood up on 20260729 and shipped money-path code all day with no entry in
   # this file. Every D packet was therefore unowned to the preflight, and the B/D
   # overlap on order-manager.js went unrecorded until the Director found it by trial
@@ -561,6 +605,12 @@ managers:
       - pattern: chart v 1.4/chart/modules/chart-indicators-full.js
         reason: E confirmed this file live on 20260730 but it remains A's; E writes oracles
           against it and does not edit it. Prevents the collision that NOTE-E-IS-ABOUT-TO-FIX-POSSIBLY-DEAD-CODE flagged
+        # Added 03-08 22:4x+01:00 (B). The required `provenance` key was absent, invisible while
+        # the parser was dying at line 430. `inferred` because the reason cites a NOTE rather
+        # than a ruling. This entry DENIES E a file that the second E block below OWNS on an
+        # explicit director carve-out, so it is one of the six contradictions the duplicate-block
+        # ruling has to settle; the label here does not settle it either way.
+        provenance: inferred
 
   - id: E
     role: indicator lifecycle and eviction, chart overlay labels
