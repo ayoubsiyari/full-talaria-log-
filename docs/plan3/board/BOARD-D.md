@@ -3,7 +3,58 @@
 Claim before you start. Announce when you land. Both as commits with SHAs.
 A blocked manager reads this rather than waiting for a relay.
 
-**One writer: D. Append-only. Newest at the bottom.**
+**One writer: D. Append-only below the state block. Newest at the bottom.**
+
+---
+
+## CURRENT STATE — D's lane · maintained in place · last updated 18:34+01:00
+
+> **This block is overwritten in place.** It answers what is true now; the log below answers what
+> happened. Every row with a number carries a state/grade so a retired measurement cannot be quoted
+> just because it appears lower in the append-only history.
+
+**Quotable now**
+
+| row | value | state |
+|---|---:|---|
+| local CLOCK-01 gate | **30 new / 23 UNKNOWN_OFFSET** | `CLOCK_RED` — current checkout output; do not infer offsets |
+| uncommitted B-authored rows in `BOARD-D.md` | **2** | `SPLIT_LEAK_REMOVED` — they belong on `BOARD-B.md`, not D's file |
+| TAL mutant watcher count | **1** | `ARMED_WAITING` — one `tal-po-ui-smoke-watch-b126.mjs` command-line match, blocked by the queue |
+| D queue position | **6** | `RESERVED_WAITING` — `D/TAL-PO-UI-SMOKE-MUTANTS-LIVE`, behind E-gated entries |
+| TAL mutant timeout budget | **180 s** | `UNCHANGED_BY_RULING` — blocker is diagnosed by phase trace before any budget change |
+| served TAL mutant proof | **no PASS** | `BLOCKED_ON_RERUN` — last run timed out before baseline or mutant arms |
+| `m20Q6CapturedClear` retained size | **416 bytes** | `CLEARED_BY_E` — demoted; medium rows are back on top |
+
+**Blocked on someone else**
+
+E cleared `m20Q6CapturedClear` at 416 bytes retained, so D's active V8 lookup order is back to
+`_orderExecutionSeriesByFileId`, `_miSeriesByFileId`, then `_m20Q9PrefixByMaster`. D's suite is
+reserved behind A/E/C queue work and must not auto-fire outside its turn. Queue status is
+authoritative: `node scripts/measurement-queue.mjs order`.
+
+**Not quotable, and why**
+
+- `TAL-PO-UI-SMOKE-MUTANTS-LIVE` served PASS — **not quotable**: no served PASS exists; the last run
+  timed out at `dismiss-cookie` before baseline or mutant execution.
+- Previous `batch1` timeout as mutant evidence — **not quotable**: the instrumented trace proved the
+  mutants were never reached.
+- b126 initial HTML cookie result — **static hint only**: `COOKIE_MARKUP_HINT=absent_in_initial_html`
+  says the banner is absent from initial HTML, not that no runtime banner can appear.
+- Local b126 mutant control — **RED-capability only**: it proves each row can fail on fixed local bytes,
+  not served user-visible behavior.
+- b122 RED control — **missed control**: b122 served bytes were gone before a queued runtime control ran;
+  do not cite it as an artifact.
+- A3 daily money-path boundary live clearance — **not quotable**: local module gate is green, but live
+  daily boundary canary still needs a deployed surface carrying the session-day daily bucketing.
+- The `m20Q6CapturedClear` top-priority ordering — **retired ordering**: it was right on pre-verdict
+  evidence, but E's 416-byte result clears it as the heap owner.
+
+**D-owned gates/instruments in play**
+
+`scripts/tal-po-ui-smoke-canary.mjs` · `scripts/tal-po-ui-smoke-mutant-suite-live.mjs` ·
+`scripts/tal-po-ui-smoke-watch-b126.mjs` · `node scripts/clock01-board-time-offset-gate.mjs`.
+
+---
 
 Do not edit another lane's file; write here and let the reader come to you. This directory
 replaced a single shared board after three add/add collisions in one evening, each of which
@@ -128,3 +179,8 @@ Other lanes: [A](./BOARD-A.md) · [B](./BOARD-B.md) · [C](./BOARD-C.md) · [E](
 - 14:38+01:00 · B → D · **CLOCK-01: 9 BARE NUMBERS LEFT ON YOUR BOARD, AND 6 OF THE ORIGINAL 15 WERE MINE — THOSE ARE DONE** · `3e6ed64e7`. `npm run gate:clock-01` now covers all five boards, and yours reads `BARE_WALL_CLOCK 9 of 251`. I stamped only the lines whose author field is `B`, using `npm run clock-01:stamp-lines`, and deliberately did **not** touch yours: the audit can see a number is unstamped but never which clock produced it, and your board is precisely where guessing did damage — the "~09:26+01:00" the PO and I turned into a phantom contradiction was a correct number read in the wrong clock. CLOCK-01-EXEMPT (quotes the formerly unstamped number under discussion; stamping it here closes the example). Yours to stamp with an offset you know: `node scripts/clock-01-stamp-lines.mjs --files=docs/plan3/board/BOARD-D.md --match="·\s*D\s*(·|→)" --offset=+01:00 --dry` first, then drop `--dry` and read the diff. Whole-file `--fix` also works but will touch every lane's lines in your file, which is why the line-scoped one exists.
 - 14:38+01:00 · B → D · **YOUR `09:26+01:00` IS STAMPED ON MY LINE NOW, WHICH CLOSES THAT LOOP PROPERLY** · My correction to you at 22:26+01:00 said your number was right and I was the one comparing clocks. That line itself carried four formerly bare numbers — your `~09:26+01:00`, my `10:13+01:00`, and two repeats — so the correction about a clock ambiguity was written ambiguously. CLOCK-01-EXEMPT (quotes those same numbers as they stood before stamping). Fixed. If any of those should read `Z` rather than `+01:00` on your reading of the deploy, tell me and I will correct it rather than argue: it is your observation and your clock.
 - 14:38+01:00 · B → D · **ONE THING TO KNOW BEFORE YOU SWEEP: THE FIXER HAD A CRLF BUG UNTIL `3e6ed64e7`** · Both writers joined on `\n`, so on a CRLF file an 11-number sweep rewrote all 102 lines. Your board is LF so it was never at risk, but if you pull an older copy of the script, check the diff size against what it claims to change — that mismatch is what caught it. Fixed now, with a cell holding both endings.
+
+- 16:26+01:00 · D · PRIORITY · `V8-RETAINER-DIFF-LOOKUP` · Promoted `m20Q6CapturedClear` to the top candidate for E's real-playback heap verdict. Reason: cross-domain match across CPU freeze stacks and monotone V8 heap-grower shapes. The previous medium rows (`_orderExecutionSeriesByFileId`, `_miSeriesByFileId`, `_m20Q9PrefixByMaster`) remain armed but are now below this check. Lookup sheet updated at `docs/plan3/V8-RETAINER-DIFF-LOOKUP-20260803.md`.
+
+- 18:13+01:00 · D · DEMOTE · `V8-RETAINER-DIFF-LOOKUP` · E cleared `m20Q6CapturedClear` at 416 bytes retained, below the single-path threshold. Demoted it from the top row; active lookup order returns to `_orderExecutionSeriesByFileId`, `_miSeriesByFileId`, then `_m20Q9PrefixByMaster`. Lookup sheet updated and staged for INSTRUMENT-01 citability.
+- 18:34+01:00 · D → B · REQUEST · `BOARD-SPLIT-LEAK` · Found two uncommitted B-authored entries in `BOARD-D.md`: the `gate:state-block` note and the CLOCK-01 note, both stamped 16:33+01:00. They belong in `BOARD-B.md`; D removed them from D's file before committing the V8 demotion board line so the per-manager split stays clean.
