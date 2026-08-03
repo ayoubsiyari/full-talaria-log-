@@ -28,6 +28,10 @@
  * returns STILL_FALLING and this instrument reports an upper bound. Publishing the last rung as a
  * floor because the run ended is exactly the defect being retired, and it is refused in code.
  *
+ * CHECKPOINTED. Every rung is written to the artifact as it is taken, and the file carries
+ * `partial: true` plus `verdict: INCOMPLETE_RUNNING` until an orderly finish clears them. A killed
+ * run leaves its readings behind and cannot leave anything that reads as a result.
+ *
  * GAUGE. `lib/footprint.mjs`, OS private working set summed across every browser process, with the
  * browser/renderer/GPU split. Verified to be the same gauge behind 633.0 and behind A's table, which
  * is what makes any of these numbers comparable at all.
@@ -149,7 +153,7 @@ async function readPlayhead(page) {
  * The rung's own compliance grade rides along, so the 0 s and 20 s rungs are visibly NON-compliant
  * — they exist to reproduce the published methods, not to be quoted.
  */
-async function settleCurve(session, { label }) {
+async function settleCurve(session, { label, onProgress }) {
   const pause = await pauseAll(session.page);
   await sleep(2000);
 
@@ -186,6 +190,7 @@ async function settleCurve(session, { label }) {
       arenas: rung.value,
     });
     log(`  ${label} @${targetSec}s: ${totalMB ?? '?'} MB (gpu ${reads.at(-1).gpuMB ?? '?'}, renderer ${reads.at(-1).rendererMB ?? '?'})`);
+    if (onProgress) onProgress({ label, pause, rungsSec: RUNGS_SEC, reads, curveComplete: false });
   }
 
   const graded = gradeSettleCurve(reads.map((r) => ({ settleSec: r.settleSec, totalMB: r.totalMB })));
@@ -200,6 +205,7 @@ async function settleCurve(session, { label }) {
     pause,
     rungsSec: RUNGS_SEC,
     reads,
+    curveComplete: true,
     grade: graded,
     /** What the two published methods would have reported on THIS session. */
     asPublishedMethods: {
@@ -236,6 +242,28 @@ async function main() {
       '420.70': "A's same boot after a 20 s settle",
       '633.0': "C's unsettled POST-PLAY floor after destroying three panels — never comparable to the above",
     },
+    /**
+     * Set from the first rung onward and cleared only on an orderly finish. A killed run therefore
+     * leaves an artifact that says it is a fragment. Two b126 passes were killed mid-curve on this
+     * box and the second lost three real readings because the artifact was written once, at the end.
+     * Readings are expensive and kills are not rare here, so each rung is checkpointed to disk — but
+     * a fragment that could be mistaken for a result would be worse than no fragment at all, hence
+     * the verdict below rather than a bare partial file.
+     */
+    verdict: 'INCOMPLETE_RUNNING',
+    partial: true,
+    partialWhy: 'run had not finished when this was written; no floor here is quotable and the last '
+      + 'rung of an unfinished curve is not an upper bound either, because the curve may still fall.',
+    completedAt: null,
+  };
+
+  const writeArtifact = () => {
+    try {
+      fs.mkdirSync(path.dirname(OUT), { recursive: true });
+      fs.writeFileSync(OUT, JSON.stringify(artifact, null, 2));
+    } catch (e) {
+      log(`checkpoint write failed: ${String(e?.message || e).slice(0, 120)}`);
+    }
   };
 
   let session = null;
@@ -256,6 +284,7 @@ async function main() {
       commonWindow: session.conf01.commonWindow ?? null,
     };
     log(`boot ok advancing=${session.conf01.delivering?.advancingPanels}`);
+    writeArtifact();
 
     // CONF-01 arms panels into a playing state. The boot floor must be a cold reading, so pause
     // immediately and do not warm-play first. A prior b126 pass warmed 4 min before the boot curve
@@ -269,7 +298,11 @@ async function main() {
     }
 
     log('BOOT FLOOR — settle curve (cold, nothing played after arm)');
-    artifact.bootFloor = await settleCurve(session, { label: 'boot' });
+    artifact.bootFloor = await settleCurve(session, {
+      label: 'boot',
+      onProgress: (partial) => { artifact.bootFloor = partial; writeArtifact(); },
+    });
+    writeArtifact();
     log(`  boot floor: ${artifact.bootFloor.grade.state} ${artifact.bootFloor.grade.floorMB ?? artifact.bootFloor.grade.upperBoundMB ?? '?'} MB`);
 
     log(`play leg ${PLAY_MIN} min`);
@@ -308,9 +341,14 @@ async function main() {
       wasPlayingAtEnd: !!afterPlay?.isPlaying,
     };
     log(`  played ${barsDelivered} bars${playNote ? ` (${playNote})` : ''}`);
+    writeArtifact();
 
     log('POST-PLAY FLOOR — settle curve');
-    artifact.postPlayFloor = await settleCurve(session, { label: 'post-play' });
+    artifact.postPlayFloor = await settleCurve(session, {
+      label: 'post-play',
+      onProgress: (partial) => { artifact.postPlayFloor = partial; writeArtifact(); },
+    });
+    writeArtifact();
     log(`  post-play floor: ${artifact.postPlayFloor.grade.state} ${artifact.postPlayFloor.grade.floorMB ?? artifact.postPlayFloor.grade.upperBoundMB ?? '?'} MB`);
 
     const bootMB = artifact.bootFloor.grade.floorMB;
@@ -342,9 +380,13 @@ async function main() {
     log('ERROR ' + artifact.error.split('\n')[0]);
   } finally {
     try { if (session?.browser) await session.browser.close(); } catch (_) {}
-    fs.mkdirSync(path.dirname(OUT), { recursive: true });
-    fs.writeFileSync(OUT, JSON.stringify(artifact, null, 2));
-    log(`artifact -> ${OUT}`);
+    // Reaching here at all means the run terminated in an orderly way, error included. A kill skips
+    // this, which is exactly what leaves `partial` set on the fragment.
+    artifact.partial = false;
+    delete artifact.partialWhy;
+    artifact.completedAt = new Date().toISOString();
+    writeArtifact();
+    log(`artifact -> ${OUT} (${artifact.verdict})`);
   }
 }
 
