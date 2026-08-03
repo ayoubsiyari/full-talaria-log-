@@ -1,6 +1,6 @@
 # TAL PO Visual Pass Checklist — b126
 
-Timestamp: 2026-08-03 19:16+01:00  
+Timestamp: 2026-08-03 22:46+01:00  
 Surface: `20260803b126` visual pass before seal  
 Purpose: give the PO direct pass/fail rows for TAL-01696, TAL-01698, TAL-01865, Rayan #8, and the refresh-persistence directive.
 
@@ -14,16 +14,16 @@ Mark each row `PASS` or `FAIL` from the served b126 UI. This checklist is visual
 6. TAL-01696 one box on activation — activating an order line shows exactly one info box for that line, not a duplicate stacked or offset second box.
 7. TAL-01696 matching fonts vertically aligned — tag text, value text, and control glyphs use matching font size/family and sit on the same visual baseline.
 8. TAL-01698 multi-TP average updates live — while dragging an individual TP, the average TP line moves immediately with the drag preview before mouse release.
-9. TAL-01865 crosshair and line-tool labels agree — on 1m, for all four symbols, the crosshair label and the line-tool label identify the same candle.
-10. TAL-01865 selected timezone controls displayed candles — changing the timezone changes displayed candle labels to that timezone, not to the browser default or UTC by accident.
-11. TAL-01865 refresh returns to the visible symbol — after refresh, the chart opens on the symbol that was on screen before refresh, not EURUSD unless EURUSD was the visible symbol.
-12. TAL-01865 refresh returns to the reached replay position — after refresh, replay resumes at the position reached before refresh, not at the session start.
-13. Rayan #8 session creation prevents duplicate roles — the same pair cannot be selected as both a trading symbol and a supporting symbol in one session.
-14. Rayan #8 supporting symbols are gold — supporting symbols appear in gold in the symbol dropdown.
-15. Rayan #8 supporting symbols refuse orders — attempting to place an order on a supporting symbol is blocked, and the order panel explains that the symbol is analysis-only.
-16. Rayan #8 Compare remains available — the Compare button is still visible and usable when the session includes supporting symbols.
-17. Refresh persistence restores symbols — after refresh, the same symbol set returns.
-18. Refresh persistence restores timeframes — after refresh, each panel returns to its pre-refresh timeframe.
+9. TAL-01865 four-FX label parity — PASS if, on 1m for `EURUSD`, `GBPUSD`, `AUDUSD`, and `USDJPY`, the crosshair label and a line-tool label placed on the same candle show the same date and clock; FAIL if any pair shows a different date or clock between the two labels.
+10. TAL-01865 selected timezone drives candles — PASS if changing the chart timezone changes the displayed candle clock to that timezone, including non-UTC zones; FAIL if labels stay on UTC, browser local time, or a fixed offset after the timezone changes.
+11. TAL-01865 refresh restores visible symbol — PASS if switching to a non-`EURUSD` pair such as `USDJPY`, refreshing, and reopening returns to that visible pair; FAIL if refresh returns to `EURUSD` or the session's first pair instead.
+12. TAL-01865 refresh restores replay position — PASS if advancing replay, refreshing, and reopening returns to the reached candle/playhead; FAIL if replay restarts at the session start or an earlier candle.
+13. Rayan #8 trading picker refuses a supporting pair — PASS if a pair already chosen as supporting cannot also be selected as a trading symbol; FAIL if the UI allows the overlap.
+14. Rayan #8 supporting picker refuses a trading pair — PASS if a pair already chosen for trading cannot also be selected as supporting context; FAIL if the UI allows the overlap.
+15. Rayan #8 supporting symbols are gold — PASS if supporting symbols render in gold in the symbol dropdown; FAIL if they look the same as tradable symbols.
+16. Rayan #8 supporting symbols refuse orders — PASS if trying to place an order on a supporting symbol is blocked and the order panel says the symbol is analysis-only; FAIL if an order can be placed or the panel gives no explanatory message.
+17. Rayan #8 Compare remains available — PASS if the Compare button remains visible and usable when the session contains supporting symbols; FAIL if supporting symbols remove or disable Compare.
+18. TAL-01865 drawings persist by market time — PASS if a trendline and a horizontal level on two panels survive refresh at the same prices and market times; FAIL if they return only at the same bar indices, move to different candles, or disappear.
 19. Refresh persistence restores indicators and settings — after refresh, indicators return with their last selected settings.
 20. Refresh persistence restores drawings by market time — after refresh, drawings reappear at the same prices and market times, not merely at the same bar indices.
 21. Refresh persistence restores pinned items — after refresh, pinned items return in the same visible state.
