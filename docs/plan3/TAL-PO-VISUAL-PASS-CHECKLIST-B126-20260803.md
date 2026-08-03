@@ -5,6 +5,7 @@ Surface: `20260803b126` visual pass before seal
 Purpose: give the PO direct pass/fail rows for TAL-01696, TAL-01698, TAL-01865, Rayan #8, and the refresh-persistence directive.
 
 Mark each row `PASS` or `FAIL` from the served b126 UI. This checklist is visual evidence; it does not replace the queued served mutant suite or money-path gates.
+Rows 9–18 are the seal-gate-3 visual rows backed by `tal-po-ui-smoke-mutants-b126-live-summary.json`.
 
 1. TAL-01696 fixed box size across order types — STOP, MARKET, and LIMIT info boxes keep the same width and height while their displayed values change.
 2. TAL-01696 values update without moving the box — price, size, and money text updates live during drag, and the surrounding info box does not jump or shift.
