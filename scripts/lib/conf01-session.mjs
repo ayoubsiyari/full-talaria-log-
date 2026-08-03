@@ -90,6 +90,150 @@ export async function readPanelWindows(page) {
   };
 }
 
+export const R3_SESSION_START_COVERAGE_SIGNATURE = 'R3-SESSION-START-COVERAGE-V1';
+
+const finiteNumberOrNull = (value) => {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+};
+const isoOrNull = (value) => {
+  const n = finiteNumberOrNull(value);
+  return n == null ? null : new Date(n).toISOString();
+};
+
+export function assessR3SessionStartCoverage(rows = []) {
+  const panels = Array.isArray(rows) ? rows : [];
+  const graded = panels.map((row) => {
+    const sessionStartMs = finiteNumberOrNull(row?.sessionStartMs);
+    const bars = finiteNumberOrNull(row?.bars);
+    const firstAtOrAfterSessionStartMs = finiteNumberOrNull(row?.firstAtOrAfterSessionStartMs);
+    const readable = sessionStartMs != null && bars != null && bars > 0;
+    const covers = readable && firstAtOrAfterSessionStartMs != null;
+    return {
+      panelId: row?.panelId ?? null,
+      frameUrl: row?.frameUrl ?? null,
+      fileId: row?.fileId ?? null,
+      timeframe: row?.timeframe ?? null,
+      bars,
+      dataFirstMs: finiteNumberOrNull(row?.dataFirstMs),
+      dataLastMs: finiteNumberOrNull(row?.dataLastMs),
+      sessionStartMs,
+      sessionStartIso: isoOrNull(sessionStartMs),
+      firstAtOrAfterSessionStartMs: covers ? firstAtOrAfterSessionStartMs : null,
+      firstAtOrAfterSessionStartIso: covers ? isoOrNull(firstAtOrAfterSessionStartMs) : null,
+      readable,
+      coversSessionStart: covers,
+    };
+  });
+  const base = {
+    signature: R3_SESSION_START_COVERAGE_SIGNATURE,
+    ok: false,
+    panels: graded,
+    panelsChecked: graded.length,
+  };
+  if (!graded.length) {
+    return { ...base, state: 'R3_NO_CHART_REALMS', reason: 'no chart realms were readable for R3 session-start coverage preflight' };
+  }
+  const unreadable = graded.filter((row) => !row.readable);
+  if (unreadable.length) {
+    return {
+      ...base,
+      state: 'R3_SESSION_START_COVERAGE_UNREADABLE',
+      reason: `${unreadable.length}/${graded.length} realm(s) lacked a readable session start or loaded rawData before replay arming`,
+      offendingPanels: unreadable,
+    };
+  }
+  const missing = graded.filter((row) => !row.coversSessionStart);
+  if (missing.length) {
+    return {
+      ...base,
+      state: 'R3_NO_BAR_AT_OR_AFTER_SESSION_START',
+      reason: `${missing.length}/${graded.length} realm(s) have loaded rawData but no bar at or after the session start; replay-system.js:4297 would pin the floor to the last loaded bar`,
+      offendingPanels: missing,
+    };
+  }
+  return {
+    ...base,
+    ok: true,
+    state: 'R3_SESSION_START_COVERAGE_OK',
+    reason: `all ${graded.length} realm(s) have at least one loaded rawData bar at or after the session start`,
+    offendingPanels: [],
+  };
+}
+
+export function assertR3SessionStartCoverage(assessment) {
+  if (assessment?.ok === true) return assessment;
+  const state = assessment?.state || 'R3_SESSION_START_COVERAGE_UNREADABLE';
+  const error = new Error(`R3 preflight refusal [${state}]: ${assessment?.reason || 'no reason recorded'}`);
+  error.name = 'R3SessionStartCoverageRefusal';
+  error.state = state;
+  error.assessment = assessment;
+  throw error;
+}
+
+export async function readR3SessionStartCoverage(page, { timeoutMs = 1000 } = {}) {
+  const read = (async () => {
+    const rows = [];
+    for (const frame of page.frames()) {
+      const row = await frame.evaluate(() => {
+        const chart = window.chart || null;
+        if (!chart) return null;
+        let session = chart.backtestingSession || null;
+        if (!session) {
+          try {
+            const storage = typeof userStorage !== 'undefined' ? userStorage : window.localStorage;
+            session = JSON.parse(storage.getItem('backtestingSession') || '{}');
+          } catch (_) { session = null; }
+        }
+        const rawStart = session && (session.startDate || session.start_date);
+        const sessionStartMs = rawStart ? new Date(rawStart).getTime() : null;
+        const data = Array.isArray(chart.rawData) ? chart.rawData : [];
+        const at = (bar) => {
+          const value = bar && (bar.t ?? bar.time);
+          const n = Number(value);
+          return Number.isFinite(n) ? n : null;
+        };
+        let firstAtOrAfterSessionStartMs = null;
+        if (Number.isFinite(sessionStartMs)) {
+          for (const bar of data) {
+            const t = at(bar);
+            if (t != null && t >= sessionStartMs) {
+              firstAtOrAfterSessionStartMs = t;
+              break;
+            }
+          }
+        }
+        return {
+          frameUrl: window.location && window.location.href ? window.location.href : null,
+          fileId: chart.currentFileId ?? chart.fileId ?? chart.datasetId ?? null,
+          timeframe: chart.currentTimeframe ?? null,
+          bars: data.length,
+          dataFirstMs: data.length ? at(data[0]) : null,
+          dataLastMs: data.length ? at(data[data.length - 1]) : null,
+          sessionStartMs: Number.isFinite(sessionStartMs) ? sessionStartMs : null,
+          firstAtOrAfterSessionStartMs,
+        };
+      }).catch((error) => ({
+        readError: String(error?.message || error),
+      }));
+      if (row) rows.push({ panelId: `f${rows.length}`, ...row });
+    }
+    return assessR3SessionStartCoverage(rows);
+  })();
+  const timeout = new Promise((resolve) => {
+    setTimeout(() => resolve({
+      signature: R3_SESSION_START_COVERAGE_SIGNATURE,
+      ok: false,
+      state: 'R3_SESSION_START_COVERAGE_TIMEOUT',
+      reason: `R3 session-start coverage preflight exceeded ${timeoutMs}ms`,
+      panels: [],
+      panelsChecked: 0,
+    }), timeoutMs);
+  });
+  return Promise.race([read, timeout]);
+}
+
 /**
  * Read CONF-01 state from the product itself, twice, so playback is judged by the
  * replay index ADVANCING rather than by an `isPlaying` flag that lags the `play()`
@@ -479,6 +623,11 @@ export async function bootConf01Session({
   if (!readiness.allReady) {
     console.error(`[conf01] panels not ready after ${readiness.waitedMs}ms: ${JSON.stringify(readiness.perFrame)} inFlight=${JSON.stringify(readiness.inFlight)}`);
   }
+  const r3SessionStartCoverage = await readR3SessionStartCoverage(page, { timeoutMs: 1000 });
+  if (!r3SessionStartCoverage.ok) {
+    try { await browser.close(); } catch (_) {}
+    assertR3SessionStartCoverage(r3SessionStartCoverage);
+  }
   let workload;
   try {
     workload = await armHeapCyclePoWorkload(page, {
@@ -599,6 +748,7 @@ export async function bootConf01Session({
       replaySpeed,
       datasetMode,
       delivering,
+      r3SessionStartCoverage,
       /**
        * The graded window travels with the run. Without it a reader cannot tell a soak that played
        * through fresh bars from one that circled the same week forty times, and those are different
