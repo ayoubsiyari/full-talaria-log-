@@ -28,8 +28,24 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(__dirname, '..');
 
 /** A-lane surfaces. Other lanes pass --files; nobody edits another board. */
-const DEFAULT_FILES = [
+/**
+ * Every board, not one lane's.
+ *
+ * CLOCK-01 is binding repo-wide and board prose is the first surface it names, so
+ * a default of A-lane files meant `gate:clock-01` could report green while four
+ * other boards carried bare numbers. Scope that is narrower than the rule reads
+ * as coverage in exactly the way a never-executed gate does, and every sweep
+ * summary we have would have shown it as a tick.
+ *
+ * Adding a board here is deliberately cheap; a lane whose board is outside the
+ * default is a lane the rule does not actually reach.
+ */
+export const DEFAULT_FILES = [
   'docs/plan3/board/BOARD-A.md',
+  'docs/plan3/board/BOARD-B.md',
+  'docs/plan3/board/BOARD-C.md',
+  'docs/plan3/board/BOARD-D.md',
+  'docs/plan3/board/BOARD-E.md',
   'docs/plan3/RUN-LOCK-01-ADOPTION-20260803.md',
   'docs/plan3/A-SEAL-EVIDENCE-AUDIT-20260803.md',
 ];
@@ -69,12 +85,37 @@ const OFFSET_AFTER = new RegExp(
  */
 const INSIDE_AN_OFFSET = /[+-]$/;
 
-/** Contexts where the number is not a wall clock at all. */
+/**
+ * A LIST of times rather than a numeric pair: `11:16:55+01:00 / 11:21:12 / …`.
+ *
+ * This distinction is load-bearing, because the numeric-pair excuse below reads
+ * the text before the number and a slash-separated list of times ends in exactly
+ * the same shape — `…:00 / ` — as a ratio's left-hand side. Every time after the
+ * first was therefore excused, so a list of four probe timestamps with three bare
+ * numbers in it reported CLOCK_OK. Found in B's own board line, where the gate had
+ * blessed the line it should have failed.
+ *
+ * The excuse it guards is narrower than it looks: `5576:5670` and `4:1` produce
+ * no time tokens at all, because TIME requires 1-2 hour digits and `[0-5]\d`
+ * minutes. So suppressing it after a time costs nothing that was being protected.
+ */
+const LIST_OF_TIMES = new RegExp(
+  '\\d{1,2}:[0-5]\\d(?::[0-5]\\d)?(?:\\.\\d+)?(?:[+-]\\d{2}:?\\d{2}|Z)?[*_`\\s]*[:/]\\s*$',
+  'i',
+);
+
+/**
+ * Contexts where the number is not a wall clock at all.
+ *
+ * `afterTime: false` marks an excuse that must NOT fire when a time immediately
+ * precedes the separator, because there the neighbour is a sibling timestamp
+ * rather than the other half of a pair.
+ */
 const NOT_A_CLOCK = [
   { re: INSIDE_AN_OFFSET, why: 'the digits of an offset, not a time' },
   { re: /\b(?:L|line|lines?)\s*$/i, why: 'source line reference' },
   { re: /\b(?:ratio|aspect|odds)\s*$/i, why: 'ratio' },
-  { re: /[\d.]+\s*[:/]\s*$/, why: 'part of a numeric pair' },
+  { re: /[\d.]+\s*[:/]\s*$/, why: 'part of a numeric pair', afterTime: false },
   { re: /\bv?\d+\.\d+\s*$/i, why: 'version' },
 ];
 
@@ -120,13 +161,24 @@ export function scanText(text) {
       const before = line.slice(0, m.index);
       if (OFFSET_AFTER.test(after)) continue;
       if (isIsoStamped(line, m.index) && OFFSET_AFTER.test(after)) continue;
-      const excuse = NOT_A_CLOCK.find((n) => n.re.test(before));
+      // Accepted trade-off: `ratio 12:30 / 13:45` now flags its second number,
+      // because suppressing the pair excuse after a time cannot distinguish a
+      // ratio list from a timestamp list. That direction is deliberate — a false
+      // positive argues with you and a false green blesses bare numbers silently,
+      // and the silent one is what let a four-timestamp line report CLOCK_OK.
+      // Genuine non-clock lists declare themselves with CLOCK-01-EXEMPT.
+      const inAList = LIST_OF_TIMES.test(before);
+      const excuse = NOT_A_CLOCK.find((n) => n.re.test(before)
+        && !(n.afterTime === false && inAList));
       if (excuse) continue;
       findings.push({
         line: i + 1,
         token: m[0],
         context: line.trim().slice(0, 140),
         isoPrefixed: isIsoStamped(line, m.index),
+        // Where an offset would go. Carried so the fixer stamps exactly what the
+        // gate reported, instead of deciding a second time and disagreeing.
+        endsAt: m.index + m[0].length,
       });
     }
   });
@@ -170,20 +222,17 @@ export function fixFile(rel, offset) {
   const lines = src.split(/\r?\n/);
   const changed = [];
   const out = lines.map((line, i) => {
+    // One decision, taken once. This loop used to re-test OFFSET_AFTER and
+    // NOT_A_CLOCK itself, so the fixer and the gate could disagree -- and they
+    // did: after the list-of-times narrowing landed in scanText only, the gate
+    // reported three bare numbers on a board line and the fixer stamped none of
+    // them, printing "stamped 0", which reads exactly like "nothing needed".
     const { findings } = scanText(line);
     if (!findings.length) return line;
-    let next = '';
-    let at = 0;
-    for (const m of line.matchAll(TIME)) {
-      const after = line.slice(m.index + m[0].length);
-      const before = line.slice(0, m.index);
-      if (OFFSET_AFTER.test(after)) continue;
-      if (NOT_A_CLOCK.some((n) => n.re.test(before))) continue;
-      next += line.slice(at, m.index + m[0].length) + offset;
-      at = m.index + m[0].length;
-    }
-    if (!next) return line;
-    next += line.slice(at);
+    // Right to left, so an earlier insertion cannot shift a later index.
+    const next = [...findings]
+      .sort((a, b) => b.endsAt - a.endsAt)
+      .reduce((acc, f) => acc.slice(0, f.endsAt) + offset + acc.slice(f.endsAt), line);
     changed.push({ line: i + 1, from: line.trim().slice(0, 120), to: next.trim().slice(0, 120) });
     return next;
   });
