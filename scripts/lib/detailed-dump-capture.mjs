@@ -1,3 +1,5 @@
+import { ratio, tag, BASES } from './basis-guard.mjs';
+
 /**
  * DETAILED-DUMP-CAPTURE — E's item 6 capture, callable INLINE from an instrument that already owns a
  * browser.
@@ -139,6 +141,14 @@ export function coverageAcrossProcesses(perPid, { totalPrivateMB = null } = {}) 
     ? null : Number(totalPrivateMB);
   const total = Number.isFinite(totalRaw) ? totalRaw : null;
 
+  /**
+   * BASIS-GUARD-01. The 59.84% figure came from exactly this division with a single renderer's roots
+   * on top and every process's private memory underneath. The numerator is now built by summing
+   * across ALL processes, so the ratio is same-basis by construction — and the guard asserts it
+   * rather than leaving that to the comment above it. Both sides are tagged all-Chrome; if a future
+   * edit narrows the numerator again, the ratio refuses instead of producing a plausible number.
+   */
+  const guarded = ratio(tag(namedTotal, BASES.allChromeRoots), tag(total, BASES.allChromeRoots));
   const pct = (total != null && total > 0) ? +((namedTotal / total) * 100).toFixed(2) : null;
   const overshoot = pct != null && pct > 100.5;
 
@@ -151,6 +161,7 @@ export function coverageAcrossProcesses(perPid, { totalPrivateMB = null } = {}) 
     arenaCoveragePct: pct,
     arenaUnattributedMB: (total != null) ? +(total - namedTotal).toFixed(3) : null,
     arenaCoverageMeets95: pct == null ? null : (pct >= 95 && !overshoot),
+    basisGuard: { state: guarded.state, ok: guarded.ok, basis: guarded.basis ?? null },
     processCount: entries.length,
     sizeBasis: bases.size === 1 ? [...bases][0] : bases.size ? 'mixed' : null,
     // Sized above 100% means roots overlapped, which is what summing `size` does to the GPU process.

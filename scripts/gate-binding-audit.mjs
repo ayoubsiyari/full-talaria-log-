@@ -84,6 +84,13 @@ export const C_LANE_GATES = [
       + 'separately, a pair with no contrast at all, whose delta is zero by construction',
   },
   {
+    id: 'BASIS-GUARD-01',
+    symbol: 'ratio',
+    module: 'scripts/lib/basis-guard.mjs',
+    refuses: 'cross-basis borrowing — a figure measured on one quantity, scope or method used against '
+      + 'another, which produced the 59.84% coverage reading and nearly killed three canvas reclaims',
+  },
+  {
     id: 'QUIESCE-01',
     symbol: 'quiesce',
     module: 'scripts/lib/settle-protocol.mjs',

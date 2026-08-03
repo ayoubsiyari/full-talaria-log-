@@ -41,6 +41,7 @@
     "test:known-weakness": "node --test scripts/lib/known-weakness.selftest.mjs",
     "test:bar-basis": "node --test scripts/lib/bar-basis.selftest.mjs",
     "test:settle-criterion": "node --test scripts/lib/settle-criterion.selftest.mjs",
+    "test:basis-guard": "node --test scripts/lib/basis-guard.selftest.mjs",
     "test:phase-survival": "node --test scripts/lib/phase-survival.selftest.mjs",
     "gate:settle-roster": "node scripts/settle-compliance-roster.mjs",
     "test:first-paint-allowance": "node --test scripts/lib/first-paint-allowance.selftest.mjs",
