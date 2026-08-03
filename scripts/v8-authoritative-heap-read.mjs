@@ -85,9 +85,35 @@ function acquireOutDirLock() {
   }
 }
 
-function releaseOutDirLock(acquired) {
+function currentPhase(report) {
+  for (const { label } of [...FLOOR_SCHEDULE].reverse()) {
+    const floor = report?.floors?.[label];
+    if (floor?.phase && floor.phase !== 'complete') return `${label}:${floor.phase}`;
+    if (floor?.phase === 'complete') return `${label}:complete`;
+  }
+  if (report?.samples?.length) return `sampling:${report.samples.length}`;
+  return 'starting';
+}
+
+function finalizeOutDirLock(acquired, report, state = 'PROCESS_EXITING') {
   if (!acquired) return;
-  try { fs.unlinkSync(LOCK_FILE); } catch (_) {}
+  let lock = {};
+  try { lock = JSON.parse(fs.readFileSync(LOCK_FILE, 'utf8')); } catch (_) {}
+  const startedAtMs = Number.isFinite(Date.parse(lock.startedAt)) ? Date.parse(lock.startedAt) : null;
+  const finalState = {
+    ...lock,
+    state,
+    finalizedAt: new Date().toISOString(),
+    pid: process.pid,
+    processStillAliveAtFinalizeWrite: true,
+    plannedPlaybackMin: TOTAL_MIN,
+    wallElapsedMinAtFinalize: startedAtMs != null ? +((Date.now() - startedAtMs) / 60_000).toFixed(3) : null,
+    currentPhase: currentPhase(report),
+    note: 'Private outdir lock is not deleted. Completed runs leave this terminal record; live runs keep state=ACTIVE, so a running process never appears silently unlocked.',
+  };
+  try { fs.writeFileSync(LOCK_FILE, JSON.stringify(finalState, null, 2)); } catch (_) {}
+  report.lockState = finalState;
+  save(report);
 }
 
 export async function withTimeout(label, timeoutMs, promise) {
@@ -122,6 +148,30 @@ function startPhaseWatchdog(report, {
     save(report);
     log(`PHASE_OVERDUE ${phase} elapsed=${Math.round(elapsedMs / 1000)}s`);
   }, everyMs);
+  return () => clearInterval(timer);
+}
+
+function startRunOverdueWatchdog(report, startedAtMs) {
+  let sequence = 0;
+  const plannedMs = TOTAL_MIN * 60_000;
+  const timer = setInterval(() => {
+    const elapsedMs = Date.now() - startedAtMs;
+    if (elapsedMs < plannedMs || report.completedAt) return;
+    sequence += 1;
+    const event = {
+      state: 'RUN_OVERDUE_ACTIVE_PHASE',
+      at: new Date().toISOString(),
+      elapsedMs,
+      plannedPlaybackMs: plannedMs,
+      plannedPlaybackMin: TOTAL_MIN,
+      activePhase: currentPhase(report),
+      sequence,
+      note: 'Playback plan elapsed; process remains intentionally alive in the named active phase, usually snapshot-C write/analysis.',
+    };
+    report.phaseEvents.push(event);
+    save(report);
+    log(`RUN_OVERDUE_ACTIVE_PHASE ${event.activePhase} elapsed=${Math.round(elapsedMs / 1000)}s`);
+  }, 60_000);
   return () => clearInterval(timer);
 }
 
@@ -310,6 +360,7 @@ function allPhasesCompleted(report) {
 async function main() {
   let lockAcquired = false;
   let session = null;
+  let stopRunOverdueWatchdog = null;
   const gate01 = runGate01CapabilityProof();
   const report = {
     signature: 'V8-AUTHORITATIVE-HEAP-READ-90M',
@@ -351,6 +402,7 @@ async function main() {
     save(report);
 
     const startedAtMs = Date.now();
+    stopRunOverdueWatchdog = startRunOverdueWatchdog(report, startedAtMs);
     let sampleIndex = 0;
     let floorIndex = 0;
     let nextSampleAtMs = startedAtMs;
@@ -413,8 +465,9 @@ async function main() {
     log(`ERROR ${String(e?.message || e)}`);
     process.exitCode = 1;
   } finally {
+    if (stopRunOverdueWatchdog) stopRunOverdueWatchdog();
     try { await session?.browser?.close(); } catch (_) {}
-    releaseOutDirLock(lockAcquired);
+    finalizeOutDirLock(lockAcquired, report);
   }
 }
 

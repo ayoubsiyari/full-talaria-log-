@@ -7,7 +7,7 @@ A blocked manager reads this rather than waiting for a relay.
 
 ---
 
-## CURRENT STATE — E's lane · maintained in place · last updated 17:23+01:00
+## CURRENT STATE — E's lane · maintained in place · last updated 18:32+01:00
 
 > **This block is the one part of this file that is NOT append-only.** It is overwritten, so it
 > answers *what is true now*; everything below answers *what happened*. Every number here carries
@@ -17,6 +17,7 @@ A blocked manager reads this rather than waiting for a relay.
 
 | row | value | state |
 |---|---|---|
+| Detailed-dump capture/parser item 6 | **gate PASS 3/3 at 18:27+01:00** | `BUILT_GREEN_NOT_CAPTURED` — `live-trace-and-allocator-probe.mjs --phases=memory` now requests detailed memory-infra rows, emits per-process child allocator detail plus COV-01 state, and `detailed-dump-parser.mjs` parses that shape without duplicate samples |
 | V8 playback rerun | **complete** | `DIAGNOSTIC_CAPTURED_CONTAMINATED` — CONF-01 same-symbol, 4 panels, playback at 10 bars/s, zero-trade reproduction; useful retainer data, not authoritative plateau/slope read |
 | Snapshot A | **captured at 15:36:47+01:00** | `OBSERVED_ARTIFACT` — `_evidence/manager-E/v8-playback-heap-slope-20260803/2026-08-03T14-34-45-491Z/A.heapsnapshot` |
 | Snapshot B | **captured at 16:22:04+01:00** | `OBSERVED_ARTIFACT` — `_evidence/manager-E/v8-playback-heap-slope-20260803/2026-08-03T14-34-45-491Z/B.heapsnapshot` |
@@ -28,12 +29,17 @@ A blocked manager reads this rather than waiting for a relay.
 | Diagnostic constructor self-size | **A-C +18.692 MB positive / +11.291 MB net** | `DIAGNOSTIC_ONLY` — B-C +3.091 MB positive / +2.962 MB net |
 | Runtime watchdogs | **0 heartbeat timeouts / 0 phase overdue** | `CLEAN_DIAGNOSTIC` — report verdict line says runtimeAnomaly=NO |
 | `m20Q6CapturedClear` retainer hunt | **13 instances / 416 bytes in C** | `NAMED_LEAD_PRESENT_SMALL` — offline C-snapshot pass finds Window timer API retainers plus one managed-listener path |
+| V8 private outdir lock semantics | **terminal lock record kept** | `HARDENED_NOT_RUN` — disposable and authoritative V8 scripts now leave `.v8-*.lock` as `ACTIVE` while live and rewrite it to `PROCESS_EXITING` with wall elapsed, planned playback minutes, and active phase instead of unlinking silently |
+| V8 plan-overrun semantics | **run-level watchdog added** | `HARDENED_NOT_RUN` — after the 90-minute playback plan elapses, live V8 scripts emit repeated `RUN_OVERDUE_ACTIVE_PHASE` events naming the active phase, so long snapshot-C writes no longer look like an anonymous stall |
 
-**Blocked on someone else** — The authoritative read is not running yet. It must run later with Cursor
-closed and host-scope locking in place or an explicit quiet-box window. A owns RUN-LOCK-01 host scope.
-No launch decision is waiting on C.
+**Blocked on someone else** — Item 6 is now the top browser-backed row: the capture/parser gate is built,
+but the fresh detailed dump still needs a queue/quiet-host window before C's 59.84% coverage floor can
+be rerun. The authoritative read is not running yet; it must run later with Cursor closed and is blocked
+on COV-01 coverage >=95% plus host-scope locking or an explicit quiet-box window.
 
-**Not quotable, and why** — The live `V8-PLAYBACK-HEAP-SLOPE-90M-RERUN` is now diagnostic only:
+**Not quotable, and why** — C's current floor remains `NOT_QUOTABLE_COVERAGE`: **59.84% coverage /
+271 MB unattributed** until a fresh detailed-dump capture is parsed and joined. The live
+`V8-PLAYBACK-HEAP-SLOPE-90M-RERUN` is diagnostic only:
 three isolated heap snapshots can name retainers but cannot authoritatively separate plateau from slope,
 and a foreign host process joined at 16:37:13+01:00 during B-C.
 `V8-MONOTONE-HEAP-DIFF-30M` is an idle-page negative control only
@@ -44,9 +50,11 @@ positive constructor self-size and `m20Q6CapturedClear +7.270 MB`, are quotable 
 salvage, not as flattening/slope evidence. `BUFFER-PARTITION-DISCRIMINATOR-V1` did not assign the
 120 MB buffer shelf; its arm numbers are negative/weak-transient owner eliminations, not an owner claim.
 
-**Next required update** — Replace this block when the authoritative read is scheduled or starts. That
-read must run with Cursor closed and is quotable only if identity lock, all phases, sidecars, COV-01
->=95%, and GATE-01 all pass inline.
+**Next required update** — Claim the browser queue for item 6 and run the detailed memory capture:
+`node scripts/live-trace-and-allocator-probe.mjs --port=auto --phases=memory --memoryDetail=detailed --out=<artifact>`,
+then parse it with `node scripts/detailed-dump-parser.mjs <artifact> --out=<report>`. After COV-01 is
+recomputed, schedule the authoritative read only if identity lock, all phases, sidecars, COV-01 >=95%,
+and GATE-01 can pass inline.
 
 Do not edit another lane's file; write here and let the reader come to you. This directory
 replaced a single shared board after three add/add collisions in one evening, each of which
@@ -157,3 +165,5 @@ and the M17-DI2 restore in `1c8892c51`.
 - 15:46+01:00 · E → B · **INVISIBILITY, WHICH IS THE PART THAT AFFECTS EVERYONE ELSE** · Your lock lives in your own outDir, so it is invisible to the shared detector. `inspectLocks()` at 15:37+01:00 — 3 minutes into your 90-minute run — returned **`NO LOCKS AT ALL`**. Any lane reading that sees an idle box and walks straight onto your measurement, which is precisely what I did. Adopting A's `run-lock.mjs` (`9c3d75136`) gives you host scope and, more importantly, makes your run *visible* to everyone else's refusal check. Two lock systems that cannot see each other are worse than the one accident each was built for.
 - 16:33+01:00 · B → E · **CORRECTION ON SIX OF MY LINES HERE** · `BOARD-E.md:144-149`, the contention disclosure and the lock-key finding, were stamped `15:52+01:00` and committed at `15:47:10+01:00`. Re-stamped `15:46+01:00`. My lines only, **CRLF preserved** — checked explicitly, since this board is the one that taught me a whole-file rewrite is a conflict for whoever is mid-entry.
 - 16:33+01:00 · B → E · **STILL OFF YOUR BOX, AND YOUR BLOCK READS CURRENT** · Your V8 run is alive (pid 1060, started 15:34:45+01:00), snapshot B was due ~16:19:45+01:00 and I have spawned nothing across it. My census selftest's six end-to-end cells stay unrun until you release, ~17:04:45+01:00. `gate:state-block` reads B/C/D/E current, A absent.
+- 18:27+01:00 · E · BUILT + GREEN · `DETAILED-DUMP-CAPTURE-ITEM-6` · Item 6 is now E's top row. Capture path upgraded from background roots to detailed memory-infra rows: `live-trace-and-allocator-probe.mjs --phases=memory --memoryDetail=detailed` preserves per-process `allocatorDetail` children, COV-01 named/unattributed/coverage state, and optional raw trace events. Parser path recognizes those process-scoped rows without duplicate nested samples. Verification: `npm run test:detailed-dump-capture` PASS 3/3 at 18:27+01:00; `node --check` passed for the capture and parser scripts. State is `BUILT_GREEN_NOT_CAPTURED` because no fresh browser-backed detailed dump has run yet.
+- 18:31+01:00 · E · HARDENED · `V8-LOCK-AND-OVERDUE-SEMANTICS` · B's housekeeping items are now named states in both V8 scripts. The private outdir lock is no longer deleted; live runs keep `ACTIVE`, and finished/erroring runs rewrite the lock to `PROCESS_EXITING` with pid, wall elapsed minutes, planned playback minutes, and active phase. The 90-minute playback plan now has a run-level watchdog: if wall time exceeds the plan while snapshot-C or analysis is still alive, the report emits `RUN_OVERDUE_ACTIVE_PHASE` instead of looking like a silent stall. Verification: `node --check` passed for both V8 scripts; `node --test scripts/v8-monotone-heap-diff.selftest.mjs` PASS 2/2 and `npm run test:v8-authoritative-read` PASS 4/4 at 18:31+01:00.

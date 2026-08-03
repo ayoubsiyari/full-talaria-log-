@@ -82,4 +82,32 @@ describe('item 6 — DETAILED-DUMP-PARSER', () => {
     assert.equal(report.diffs[0].totalNamedBeforeMB, 60);
     assert.equal(report.diffs[0].totalNamedAfterMB, 74);
   });
+
+  it('parses item 6 capture artifacts as process-scoped COV-01 rows without duplicate detail samples', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'detailed-dump-parser-'));
+    const file = writeJson(dir, 'live-memory.json', {
+      allocatorDump: {
+        item: 'DETAILED-DUMP-CAPTURE',
+        processes: [
+          {
+            pid: 456,
+            privateFootprintMB: 200,
+            allocatorDetail: {
+              rootsMB: { v8: 60, partition_alloc: 100, malloc: 30 },
+              childrenByRoot: {
+                partition_alloc: [{ name: 'partition_alloc/partitions/buffer', mb: 80 }],
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    const report = buildDetailedDumpReport([file]);
+    assert.equal(report.sampleCount, 1);
+    assert.equal(report.samples[0].pid, 456);
+    assert.equal(report.samples[0].coverage.coveragePct, 95);
+    assert.equal(report.samples[0].coverage.state, 'COV_01_MEETS_95');
+    assert.ok(report.samples[0].children.partition_alloc.some((r) => r.name === 'partition_alloc/partitions/buffer' && r.mb === 80));
+  });
 });

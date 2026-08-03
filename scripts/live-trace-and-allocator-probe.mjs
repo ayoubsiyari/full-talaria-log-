@@ -24,8 +24,11 @@
  * If any of this reads as too expensive on the night's only soak, the correct action is to skip it and say so.
  */
 import fs from 'node:fs';
+import path from 'node:path';
 import { loadPuppeteer } from './lib/heap-cycle-browser.mjs';
 import { findSoakBrowser } from './lib/find-soak-port.mjs';
+import { arenaColumns } from './lib/arena-columns.mjs';
+import { summariseAllocatorDetail } from './lib/blink-allocator-detail.mjs';
 
 const argOf = (name, fallback) => {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
@@ -34,6 +37,8 @@ const argOf = (name, fallback) => {
 const PORT = argOf('port', '49797');
 const PHASES = argOf('phases', 'timeline');
 const TRACE_MS = Number(argOf('traceMs', '3000'));
+const MEMORY_DETAIL = argOf('memoryDetail', 'detailed');
+const RAW_OUT = argOf('rawOut', '');
 const OUT = argOf('out', `c:\\Users\\user\\Desktop\\talaria1\\_evidence\\manager-C\\LIVE-TRACE-${PHASES.toUpperCase()}-20260731.json`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -205,9 +210,12 @@ try {
   });
 
   if (PHASES === 'memory') {
-    // BACKGROUND detail is the cheap tier: process totals only, no per-allocator-object walking.
-    const dump = await client.send('Tracing.requestMemoryDump', { deterministic: false, levelOfDetail: 'background' }).catch((e) => ({ error: String(e.message).slice(0, 200) }));
+    // Item 6 needs detailed child allocator rows. Background detail only gives roots, which leaves
+    // COV-01 blocked with a large unlabelled remainder.
+    const detail = MEMORY_DETAIL === 'background' ? 'background' : 'detailed';
+    const dump = await client.send('Tracing.requestMemoryDump', { deterministic: detail === 'detailed', levelOfDetail: detail }).catch((e) => ({ error: String(e.message).slice(0, 200) }));
     report.memoryDumpRequest = dump;
+    report.memoryDumpLevelOfDetail = detail;
     await sleep(1200);
   } else {
     await sleep(TRACE_MS);
@@ -335,7 +343,7 @@ try {
       };
     }
   } else {
-    // Allocator totals per process from the memory-infra dump.
+    // Allocator totals and detailed children per process from the memory-infra dump.
     const dumps = events.filter((e) => e.ph === 'v' || e.name === 'periodic_interval');
     const perProcess = [];
     for (const e of dumps) {
@@ -349,22 +357,46 @@ try {
         rows[name] = +((parseInt(size, 16) || 0) / 1048576).toFixed(1);
       }
       const totals = e.args?.dumps?.process_totals;
+      const privateFootprintMB = totals?.private_footprint_bytes ? +((parseInt(totals.private_footprint_bytes, 16) || 0) / 1048576).toFixed(1) : null;
+      const residentMB = totals?.resident_set_bytes ? +((parseInt(totals.resident_set_bytes, 16) || 0) / 1048576).toFixed(1) : null;
+      const allocatorDetail = summariseAllocatorDetail(allocators, { maxChildren: 120 });
+      const coverage = arenaColumns(allocatorDetail.rootsMB, {
+        totalPrivateMB: privateFootprintMB ?? residentMB,
+        totalBasis: privateFootprintMB != null ? 'process-private-footprint' : 'process-resident-set',
+      });
       perProcess.push({
         pid: e.pid,
-        residentMB: totals?.resident_set_bytes ? +((parseInt(totals.resident_set_bytes, 16) || 0) / 1048576).toFixed(1) : null,
-        privateFootprintMB: totals?.private_footprint_bytes ? +((parseInt(totals.private_footprint_bytes, 16) || 0) / 1048576).toFixed(1) : null,
+        residentMB,
+        privateFootprintMB,
         allocatorsMB: rows,
+        allocatorDetail,
+        cov01: {
+          namedMB: coverage.arenaNamedTotalMB,
+          unattributedMB: coverage.arenaUnattributedMB,
+          coveragePct: coverage.arenaCoveragePct,
+          state: coverage.arenaCoverageMeets95 ? 'COV_01_MEETS_95' : 'NOT_QUOTABLE_COVERAGE',
+          totalBasis: coverage.totalBasis,
+        },
       });
     }
     perProcess.sort((a, b) => (b.privateFootprintMB ?? b.residentMB ?? 0) - (a.privateFootprintMB ?? a.residentMB ?? 0));
+    const largest = perProcess[0] ?? null;
     report.allocatorDump = {
+      item: 'DETAILED-DUMP-CAPTURE',
       processCount: perProcess.length,
+      levelOfDetail: report.memoryDumpLevelOfDetail || MEMORY_DETAIL,
       processes: perProcess,
-      largest: perProcess[0] ?? null,
-      reading: perProcess[0]
-        ? `Largest process holds ${perProcess[0].privateFootprintMB ?? perProcess[0].residentMB} MB with allocator split ${JSON.stringify(perProcess[0].allocatorsMB)}. This names the arena rather than inferring it.`
+      largest,
+      largestCoverage: largest?.cov01 || null,
+      reading: largest
+        ? `Largest process holds ${largest.privateFootprintMB ?? largest.residentMB} MB with allocator split ${JSON.stringify(largest.allocatorsMB)}. Detailed child rows captured; COV-01=${largest.cov01?.coveragePct}% (${largest.cov01?.state}).`
         : 'No dump payload parsed — the memory-infra category may not be compiled into this Chrome build.',
     };
+    if (RAW_OUT) {
+      fs.mkdirSync(path.dirname(RAW_OUT), { recursive: true });
+      fs.writeFileSync(RAW_OUT, JSON.stringify({ signature: 'DETAILED-DUMP-RAW-TRACE-EVENTS-V1', at: new Date().toISOString(), eventCount: events.length, traceEvents: events }, null, 1));
+      report.rawTraceEventsFile = RAW_OUT;
+    }
   }
 } catch (e) {
   report.error = String(e && e.stack || e).slice(0, 900);
@@ -373,5 +405,6 @@ try {
 }
 
 report.signatureFilenameCheck = OUT.endsWith(report.artifactFile) ? 'PASS' : 'FAIL';
+fs.mkdirSync(path.dirname(OUT), { recursive: true });
 fs.writeFileSync(OUT, JSON.stringify(report, null, 1));
 console.log(JSON.stringify({ window: report.window, decomposition: report.decomposition, allocator: report.allocatorDump?.reading, mainThread: report.mainThread?.candidates, error: report.error }, null, 1).slice(0, 4000));

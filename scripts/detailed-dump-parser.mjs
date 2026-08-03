@@ -11,6 +11,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { diffAllocatorDetail, summariseAllocatorDetail } from './lib/blink-allocator-detail.mjs';
+import { arenaColumns } from './lib/arena-columns.mjs';
 
 const DEFAULT_ROOTS = ['v8', 'partition_alloc', 'malloc', 'blink_gc', 'blink_objects', 'canvas', 'cc', 'gpu', 'shared_memory', 'discardable', 'web_cache', 'skia'];
 const OUT = arg('out', null);
@@ -46,6 +47,23 @@ function cloneDetail(detail, label) {
       .slice(0, TOP_N);
   }
   return { label, rootsMB, childrenByRoot };
+}
+
+function processCoverage(detail, proc) {
+  const totalPrivateMB = proc?.privateFootprintMB ?? proc?.residentMB ?? null;
+  if (totalPrivateMB == null) return null;
+  const row = arenaColumns(detail.rootsMB, {
+    totalPrivateMB,
+    totalBasis: proc?.privateFootprintMB != null ? 'process-private-footprint' : 'process-resident-set',
+  });
+  return {
+    namedMB: row.arenaNamedTotalMB,
+    unattributedMB: row.arenaUnattributedMB,
+    coveragePct: row.arenaCoveragePct,
+    state: row.arenaCoverageMeets95 ? 'COV_01_MEETS_95' : 'NOT_QUOTABLE_COVERAGE',
+    totalPrivateMB: row.totalPrivateMB,
+    totalBasis: row.totalBasis,
+  };
 }
 
 function walk(obj, visit, trail = []) {
@@ -89,7 +107,20 @@ function extractFromTrace(file, json) {
 
 function extractSummaries(file, json) {
   const samples = [];
+  for (const proc of json?.allocatorDump?.processes || []) {
+    if (!hasDetailShape(proc?.allocatorDetail)) continue;
+    const label = `${path.basename(file)} :: allocatorDump.processes pid=${proc.pid ?? '?'}`;
+    const detail = cloneDetail(proc.allocatorDetail, label);
+    samples.push({
+      source: file,
+      label,
+      pid: proc.pid ?? null,
+      detail,
+      coverage: proc.cov01 || processCoverage(detail, proc),
+    });
+  }
   walk(json, (node, trail) => {
+    if (trail.includes('allocatorDump') && trail.includes('processes')) return;
     if (hasDetailShape(node)) {
       samples.push({
         source: file,
@@ -178,6 +209,7 @@ export function buildDetailedDumpReport(files) {
       source: s.source,
       pid: s.pid ?? null,
       ts: s.ts ?? null,
+      coverage: s.coverage ?? null,
       roots: rootTable(s.detail),
       children: childTable(s.detail),
     })),
