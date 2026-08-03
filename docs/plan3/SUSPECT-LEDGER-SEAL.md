@@ -109,6 +109,22 @@ These are **not** CLEARED and **not** unfinished work. Each is a defect or hazar
 
 ---
 
+## 4d · E-lane memory suspect rows sent to B at freeze
+
+Sent by E at **23:29+01:00** after the product freeze. Seat numbers are local ledger seats for B's packet copy; no new product edits are implied.
+
+| Seat | Suspect | Status | Evidence / revisit condition |
+| --- | --- | --- | --- |
+| `E-SUS-01` | Canvas arenas / indicator-layer canvases | **KILLED** | Release paths are landed and the known-change capability proof re-detected them under forced GC + settle: `_evidence/manager-E/combined-canvas-fix-settle-20260802.json` reports total private **500.36 → 449.58 MB**, reclaim **50.78 MB**, `verdict=MEASURED`. |
+| `E-SUS-02` | Linked panes | **CLEARED** | Not a pair-switch leak row: A's C02 re-price found pair switch does not invalidate panes, release delta was not a seal-blocking MB-class driver, and E's release path already exists. No pre-soak product cut. |
+| `E-SUS-03` | Marker defs / SVG defs | **CLEARED** | No MB-class standing suspect remains in E lane; the roster ruling already priced marker/order rebuilds at **0.56% across 63 sites**, and no later E evidence promoted marker defs into a soak blocker. |
+| `E-SUS-04` | `_smartPrefetchCache` | **DEFERRED** | Real asymptotic hoard, not the monotone **36 MB/hour** V8 slope answer. Source fix is committed at `64b0a7a01` + `afcb87e5f` and static-green, but product freeze says it rides the post-soak build. Revisit after soak with the perturbation arm if needed. |
+| `E-SUS-05` | V8 monotone slope | **DEFERRED** | Still the unresolved JS-side slope finding. Diagnostic run was contaminated/non-authoritative; perturbation rerun stays post-soak/behind C. Revisit condition: run the committed smart-cache perturbation and/or authoritative read when the box is released. |
+| `E-SUS-06` | Dominator-subtree attribution work | **KILLED** | Instrument undercount fixed and committed; gate PASS **3/3**. Diagnostic A/B/C application reclassified `_smartPrefetchCache` as an asymptotic hoard, preventing it being mis-filed as the slope answer. |
+| `E-SUS-07` | `m20Q6CapturedClear` lead | **CLEARED** | Complete diagnostic C retainer hunt found **13 instances / 416 bytes**. The earlier A-B **+7.270 MB** constructor salvage remains two-point salvage only, not a standing retainer owner. Reopen only if the post-soak authoritative V8 read names it again. |
+
+---
+
 ## 5 · Seal gate on this ledger
 
 - **Soak-legal only when** section 1 has zero OPEN, section 2 has zero OPEN (or browser cold-load waived by PO), section 4 every OPEN row carries `PO-SIGNED: <name> <UTC>` or is moved to KILLED/CLEARED, and **section 4b every DEFERRED row carries both a PO signature and a revisit condition** (a deferral without a revisit condition is an OPEN row wearing a better word).
