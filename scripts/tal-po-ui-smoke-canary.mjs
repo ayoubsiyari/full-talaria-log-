@@ -169,6 +169,13 @@ async function ensureLoggedIn(page, origin) {
   });
 }
 
+async function dismissCookieOptional(page, label, timeoutMs = 3000) {
+  progress(label, `${timeoutMs}ms`);
+  const clicked = await dismissCookieBanner(page, { timeoutMs });
+  progress(`${label}-done`, clicked || 'none');
+  return clicked;
+}
+
 function talPoUiSmokeArm(activeMutant = '') {
   const rows = [];
   const failures = [];
@@ -747,12 +754,11 @@ async function runCanary() {
     await boundedGoto(page, url, 'goto');
     progress('after-goto', page.url());
     if (/\/login\/?/i.test(new URL(page.url()).pathname)) {
-      if (!localHarness) await dismissCookieBanner(page);
+      if (!localHarness) await dismissCookieOptional(page, 'dismiss-cookie-login');
       await ensureLoggedIn(page, ORIGIN);
       await boundedGoto(page, url, 'goto-login');
     }
-    progress('dismiss-cookie');
-    if (!localHarness) await dismissCookieBanner(page);
+    if (!localHarness) await dismissCookieOptional(page, 'dismiss-cookie');
     progress('wait-single-ready');
     if (!localHarness) await waitForDistV9SingleReady(page, 30000).catch(() => {});
     progress('find-order-frame');

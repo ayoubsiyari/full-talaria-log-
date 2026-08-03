@@ -1831,21 +1831,31 @@ async function runThinHostSession({
   }
 }
 
-export async function dismissCookieBanner(page) {
+export async function dismissCookieBanner(page, { timeoutMs = 3000 } = {}) {
   // Deployed login shows a cookie notice that blocks the form until dismissed.
-  for (let attempt = 0; attempt < 10; attempt += 1) {
-    const clicked = await page.evaluate(() => {
-      const nodes = [...document.querySelectorAll('button, [role="button"]')];
-      for (const el of nodes) {
-        const t = (el.textContent || '').trim();
-        // AR "قبول الكل" / "الضرورية فقط", EN "Accept all" / "Essential only"
-        if (/قبول الكل|Accept all|Accept All|الضرورية فقط|Essential only|Necessary only/i.test(t)) {
-          el.click();
-          return t;
+  const deadline = Date.now() + Math.max(500, Number(timeoutMs) || 3000);
+  for (let attempt = 0; attempt < 10 && Date.now() < deadline; attempt += 1) {
+    const remaining = Math.max(100, deadline - Date.now());
+    let evaluateTimedOut = false;
+    const clicked = await Promise.race([
+      page.evaluate(() => {
+        const nodes = [...document.querySelectorAll('button, [role="button"]')];
+        for (const el of nodes) {
+          const t = (el.textContent || '').trim();
+          // AR "قبول الكل" / "الضرورية فقط", EN "Accept all" / "Essential only"
+          if (/قبول الكل|Accept all|Accept All|الضرورية فقط|Essential only|Necessary only/i.test(t)) {
+            el.click();
+            return t;
+          }
         }
-      }
-      return null;
-    }).catch(() => null);
+        return null;
+      }),
+      sleep(Math.min(remaining, 500)).then(() => {
+        evaluateTimedOut = true;
+        return null;
+      }),
+    ]).catch(() => null);
+    if (evaluateTimedOut) return null;
     if (clicked) {
       await sleep(400);
       return clicked;
