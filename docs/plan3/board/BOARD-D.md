@@ -7,7 +7,7 @@ A blocked manager reads this rather than waiting for a relay.
 
 ---
 
-## CURRENT STATE — D's lane · maintained in place · last updated 21:08+01:00
+## CURRENT STATE — D's lane · maintained in place · last updated 21:40+01:00
 
 > **This block is overwritten in place.** It answers what is true now; the log below answers what
 > happened. Every row with a number carries a state/grade so a retired measurement cannot be quoted
@@ -19,10 +19,10 @@ A blocked manager reads this rather than waiting for a relay.
 |---|---:|---|
 | `BOARD-D.md` CLOCK-01 findings | **0** | `CLOCK_OK_FOR_D` — filtered gate output has no D rows; repo still red elsewhere in this checkout |
 | uncommitted B-authored rows in `BOARD-D.md` | **2** | `SPLIT_LEAK_REMOVED` — they belong on `BOARD-B.md`, not D's file |
-| TAL mutant watcher count | **0** | `STOPPED_AFTER_TARGETED_REPRO` — full suite reproduced once without holding queue; next action is ready-state root cause |
+| TAL mutant watcher count | **0** | `READY_FOR_MUTANTS_AFTER_SEED_FIX` — seed/preflight fixed; full mutant suite still pending |
 | D queue position | **4** | `NOT_HOLDING_SLOT` — reservation remains, but TAL watcher no longer consumes the measurement queue |
 | TAL mutant timeout budget | **180 s** | `UNCHANGED_BY_RULING` — blocker is diagnosed by phase trace before any budget change |
-| served TAL mutant proof | **no PASS** | `WAIT_SINGLE_READY_EVALUATE_TIMEOUT` — targeted diagnostic shows page-context evaluation itself times out after clean setup |
+| served TAL smoke proof | **baseline PASS / mutant pending** | `SEED_FIXED_BASELINE_GREEN` — dynamic `/api/files` seed passed existing + fresh accounts |
 | `m20Q6CapturedClear` retained size | **416 bytes** | `CLEARED_BY_E` — demoted; medium rows are back on top |
 | V8 candidate underfit threshold | **<10% of measured delta** | `PRECOMMITTED_STOPPING_RULE` — switch to dominator-subtree retained size |
 
@@ -35,8 +35,8 @@ authoritative: `node scripts/measurement-queue.mjs order`.
 
 **Not quotable, and why**
 
-- `TAL-PO-UI-SMOKE-MUTANTS-LIVE` served PASS — **not quotable**: no served PASS exists; the last run
-  timed out at `dismiss-cookie` before baseline or mutant execution.
+- `TAL-PO-UI-SMOKE-MUTANTS-LIVE` served PASS — **not quotable**: baseline is green after seed fix,
+  but the one-for-one mutant suite has not re-run after the seed correction.
 - Previous `batch1` timeout as mutant evidence — **not quotable**: the instrumented trace proved the
   mutants were never reached.
 - b126 initial HTML cookie result — **static hint only**: `COOKIE_MARKUP_HINT=absent_in_initial_html`
@@ -190,3 +190,5 @@ Other lanes: [A](./BOARD-A.md) · [B](./BOARD-B.md) · [C](./BOARD-C.md) · [E](
 - 19:34+01:00 · D · RED/TIMEOUT · `TAL-PO-UI-SMOKE-MUTANTS-LIVE` · Watcher reached D's turn, claimed queue, and fired b126 (`20260803b126` / `4c51e267ffc08e4b12c8bd4af481097c` / `5dceb636891f6df58bf7f746dabd37c2d3863838`). `batch1` timed out after 180 s at `wait-single-ready` after `dismiss-cookie-done none`; no baseline or mutant row executed. Evidence: `docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary-batch1.failed.json`. Not re-armed until this blocker is diagnosed, to avoid spending the next D slot on the same failure.
 - 20:54+01:00 · D · CHANGE/ARMED · `TAL-PO-UI-SMOKE-MUTANTS-LIVE` · Watcher is now contention-tolerant by default: it does not claim or release the measurement queue, and only blocks on live authoritative-read scripts. One-block proof refused while `competitor-reference-oneup-run.mjs#27344` was active. Re-armed watcher is running in contention-tolerant mode and currently blocked on that same authoritative read; no Chrome launch and no queue slot held. Added targeted `tal-po-ui-smoke:ready-diag` for the `wait-single-ready` stall instead of debugging through the full mutant batch.
 - 21:08+01:00 · D · RED/DIAGNOSED · `TAL-PO-UI-WAIT-SINGLE-READY` · Full mutant suite re-ran contention-tolerant after A released; no queue claim was made by the watcher, and the retroactive D claim was released without consuming C's head slot. Targeted diagnostic on sealed b126 (`20260803b126` / `4c51e267ffc08e4b12c8bd4af481097c` / `5dceb636891f6df58bf7f746dabd37c2d3863838`) passed coordinates, login, goto, and optional cookie dismissal, then every ready-state page evaluation timed out at 750 ms. Console tail shows chart engine/order manager initialized, followed by `/bars` 404 and `/smart` fallback failure. Evidence: `docs/plan3/evidence/tal-po-ui-wait-single-ready-diagnostic-b126.json` (ignored artifact, local only).
+- 21:40+01:00 · D · GREEN/BASELINE · `TAL-PO-UI-SMOKE-SEED` · Harness seed now selects tradable/supporting file IDs from authenticated `/api/files` and runs a one-second `/bars` preflight before `wait-single-ready`. Existing account selected `XAUUSD#677` + `HOG#673`; fresh PO account `talaria.test.fresh@talaria-log.com` selected the same IDs. Both sealed b126 baseline runs passed with `TAL_PO_UI_SEED_BARS_OK`; wrong/non-owned IDs now fail as `TAL_PO_UI_SEED_*` instead of spending the 180 s watchdog. Mutant suite still pending.
+- 21:40+01:00 · D · PRODUCT-SCOPED · `TAL-DATA-LOAD-ERROR-SURFACE` · Separate product row opened, not fixed: when `/bars` 404s and `/smart` fallback also fails, chart bootstrap initializes UI/order managers but leaves the user in an apparent infinite loading state with no surfaced failed-state message. This is a swallowed-errors/loading-state family issue and may overlap historical "panels take a while to load" reports. Scope before it competes with seal-list fixes.

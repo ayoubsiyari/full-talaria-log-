@@ -152,21 +152,193 @@ async function ensureLoggedIn(page, origin) {
   if (!localHarness && email && password) {
     await uiLoginDeployed(page, origin, email, password);
   }
-  await page.evaluate(() => {
+  const seed = localHarness
+    ? {
+      type: 'static-local-harness',
+      tradable: { ticker: 'ES', fileId: 21 },
+      supporting: { ticker: 'NQ', fileId: 22 },
+      startDate: null,
+      endDate: null,
+    }
+    : await page.evaluate(async () => {
+      const response = await fetch('/api/files', { credentials: 'include', cache: 'no-store' });
+      if (!response.ok) {
+        throw new Error(`TAL_PO_UI_SEED_FILES_HTTP_${response.status}: /api/files did not return the account file list`);
+      }
+      const payload = await response.json();
+      const files = Array.isArray(payload) ? payload : (payload.files || payload.data || []);
+      const normalizeTicker = (file, fallback) => {
+        const raw = String(file.ticker || file.symbol || file.name || file.original_name || fallback || '').trim();
+        const stripped = raw
+          .replace(/\.[a-z0-9]+$/i, '')
+          .replace(/[_-]?(?:1m|min|m1|bid|ask).*$/i, '')
+          .replace(/[^a-z0-9]/gi, '')
+          .toUpperCase();
+        return stripped || `FILE${fallback}`;
+      };
+      const dateRangeFromName = (name) => {
+        const s = String(name || '');
+        const m = /(\d{4}-\d{2}-\d{2}).*?(\d{4}-\d{2}-\d{2})/.exec(s);
+        if (!m) return null;
+        return {
+          startDate: `${m[1]}T00:00:00.000Z`,
+          endDate: `${m[2]}T23:59:00.000Z`,
+        };
+      };
+      const candidates = files
+        .map((file, index) => {
+          const fileId = Number(file.id ?? file.file_id ?? file.fileId);
+          if (!Number.isFinite(fileId)) return null;
+          const originalName = file.original_name || file.name || '';
+          const range = dateRangeFromName(originalName);
+          return {
+            fileId,
+            ticker: normalizeTicker(file, fileId),
+            originalName,
+            hasDateRange: !!range,
+            range,
+            index,
+          };
+        })
+        .filter(Boolean);
+      if (candidates.length < 2) {
+        throw new Error(`TAL_PO_UI_SEED_NO_PROVISIONED_DATA: /api/files returned ${candidates.length} usable file(s); need at least 2 for tradable/supporting smoke seed`);
+      }
+      candidates.sort((a, b) => Number(b.hasDateRange) - Number(a.hasDateRange) || b.fileId - a.fileId || a.index - b.index);
+      const tradable = candidates[0];
+      const supporting = candidates.find((file) => file.fileId !== tradable.fileId);
+      if (!supporting) {
+        throw new Error('TAL_PO_UI_SEED_NO_SUPPORTING_FILE: /api/files did not contain a second distinct file ID');
+      }
+      if (supporting.ticker === tradable.ticker) supporting.ticker = `${supporting.ticker}_SUPPORT`;
+      const range = tradable.range || supporting.range || {};
+      return {
+        type: 'authenticated-api-files',
+        fileCount: candidates.length,
+        tradable,
+        supporting,
+        startDate: range.startDate || null,
+        endDate: range.endDate || null,
+      };
+    });
+  progress('seed-selected', `${seed.type} tradable=${seed.tradable.ticker}#${seed.tradable.fileId} supporting=${seed.supporting.ticker}#${seed.supporting.fileId}`);
+  await page.evaluate((seedInfo) => {
     try {
-      localStorage.setItem('_uid', '1');
-      localStorage.setItem('u1_backtestingSession', JSON.stringify({
+      const session = {
         type: 'standard',
         startBalance: 10000,
         session_id: `tal-po-ui-smoke-${Date.now()}`,
         instruments: {
-          ES: { ticker: 'ES', fileId: 21, tradable: true },
-          NQ: { ticker: 'NQ', fileId: 22, view_only: true, tradable: false },
+          [seedInfo.tradable.ticker]: {
+            ticker: seedInfo.tradable.ticker,
+            fileId: seedInfo.tradable.fileId,
+            tradable: true,
+          },
+          [seedInfo.supporting.ticker]: {
+            ticker: seedInfo.supporting.ticker,
+            fileId: seedInfo.supporting.fileId,
+            view_only: true,
+            tradable: false,
+          },
         },
-        supporting_tickers: ['NQ'],
-      }));
+        supporting_tickers: [seedInfo.supporting.ticker],
+      };
+      if (seedInfo.startDate) session.startDate = seedInfo.startDate;
+      if (seedInfo.endDate) session.endDate = seedInfo.endDate;
+      localStorage.setItem('_uid', '1');
+      localStorage.setItem('u1_backtestingSession', JSON.stringify(session));
+      localStorage.setItem('__talPoUiSmokeSeed', JSON.stringify(seedInfo));
     } catch (_) { /* ignore */ }
+  }, seed);
+}
+
+async function preflightSeedBars(page, timeoutMs = 1000) {
+  progress('seed-bars-preflight', `${timeoutMs}ms`);
+  const timeoutResult = new Promise((resolve) => {
+    setTimeout(() => resolve({
+      ok: false,
+      state: 'TAL_PO_UI_SEED_PREFLIGHT_TIMEOUT',
+      detail: `seed bars preflight exceeded ${timeoutMs}ms`,
+    }), timeoutMs);
   });
+  const evalResult = page.evaluate(async (budgetMs) => {
+    const raw = localStorage.getItem('u1_backtestingSession');
+    const session = raw ? JSON.parse(raw) : null;
+    const instruments = session && session.instruments && typeof session.instruments === 'object'
+      ? Object.values(session.instruments)
+      : [];
+    const selected = instruments
+      .filter((entry) => entry && entry.fileId != null)
+      .map((entry) => ({
+        ticker: String(entry.ticker || ''),
+        fileId: Number(entry.fileId),
+        role: entry.tradable === false || entry.view_only ? 'supporting' : 'tradable',
+      }));
+    if (selected.length < 2 || selected.some((entry) => !Number.isFinite(entry.fileId))) {
+      return {
+        ok: false,
+        state: 'TAL_PO_UI_SEED_INVALID_SESSION',
+        detail: `expected 2 seeded file IDs, got ${JSON.stringify(selected)}`,
+      };
+    }
+    const rows = [];
+    for (const entry of selected) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), budgetMs);
+      try {
+        const response = await fetch(`/api/file/${encodeURIComponent(entry.fileId)}/bars?resolution=1m&limit=100`, {
+          credentials: 'include',
+          cache: 'no-store',
+          signal: ctrl.signal,
+        });
+        const text = await response.text().catch(() => '');
+        let body = null;
+        try { body = JSON.parse(text); } catch (_) { /* keep raw head */ }
+        const bars = Array.isArray(body?.bars) ? body.bars : [];
+        rows.push({
+          ...entry,
+          status: response.status,
+          bars: bars.length,
+          detail: body?.detail || null,
+          head: text.slice(0, 160),
+        });
+        if (!response.ok) {
+          return {
+            ok: false,
+            state: 'TAL_PO_UI_SEED_BARS_HTTP',
+            detail: `${entry.role} ${entry.ticker}#${entry.fileId} /bars returned HTTP ${response.status}`,
+            rows,
+          };
+        }
+        if (!bars.length) {
+          return {
+            ok: false,
+            state: 'TAL_PO_UI_SEED_BARS_EMPTY',
+            detail: `${entry.role} ${entry.ticker}#${entry.fileId} /bars returned 0 bars`,
+            rows,
+          };
+        }
+      } catch (error) {
+        return {
+          ok: false,
+          state: error?.name === 'AbortError' ? 'TAL_PO_UI_SEED_BARS_ABORTED' : 'TAL_PO_UI_SEED_BARS_THROW',
+          detail: `${entry.role} ${entry.ticker}#${entry.fileId} /bars failed: ${String(error?.message || error)}`,
+          rows,
+        };
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    return { ok: true, state: 'TAL_PO_UI_SEED_BARS_OK', rows };
+  }, timeoutMs);
+  const result = await Promise.race([evalResult, timeoutResult]);
+  progress('seed-bars-preflight-done', `${result.state}${result.ok ? '' : ` ${result.detail || ''}`}`);
+  if (!result.ok) {
+    const err = new Error(`${result.state}: ${result.detail || 'seed bars preflight failed'}`);
+    err.seedPreflight = result;
+    throw err;
+  }
+  return result;
 }
 
 async function dismissCookieOptional(page, label, timeoutMs = 3000) {
@@ -759,6 +931,7 @@ async function runCanary() {
       await boundedGoto(page, url, 'goto-login');
     }
     if (!localHarness) await dismissCookieOptional(page, 'dismiss-cookie');
+    if (!localHarness) await preflightSeedBars(page, 1000);
     progress('wait-single-ready');
     if (!localHarness) await waitForDistV9SingleReady(page, 30000).catch(() => {});
     progress('find-order-frame');

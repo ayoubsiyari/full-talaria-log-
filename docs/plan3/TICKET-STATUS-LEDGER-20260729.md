@@ -4,6 +4,7 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 
 | Ticket | Status | Commit | Gate | Review / Canary Note |
 | --- | --- | --- | --- | --- |
+| TAL-DATA-LOAD-ERROR-SURFACE | scoped | — | Repro: stale/non-owned `/api/file/:id/bars` 404 + `/smart` fallback 404 during b126 TAL smoke seed triage | Product row, not harness: chart initializes UI/order managers but leaves user in loading state with no surfaced failed-state message; scope before competing with seal-list fixes |
 | M17-DI2 / TAL-01918 | blocked-on-build | — | RED local: `m17-di2-completed-bar-close-mutation.red.test.mjs`; `m21-b-tal01918-red.test.mjs` | Fix/guard on `manager-a/m17-di2-completed-bar`; not on deployed stamp. 2026-07-30 closure pass |
 | M24 / TAL-01926 | fixed | journal prune GATE-01 | GREEN: pytest `test_session_journal_store.py`; RED: `SESSION_JOURNAL_PATCH_DELETE_GUARD=0` fails GATE-01 cell | Implicit chart PATCH must not prune |
 | TAL-01930 | fixed | `42d01a1dc` | GREEN: `m14-fibonacci-settings-levels-persist.test.mjs` canonical + homepage | M14 Fibonacci settings thread; non-money-path |
