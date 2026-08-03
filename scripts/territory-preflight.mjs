@@ -11,7 +11,12 @@
 //   node scripts/territory-preflight.mjs --base origin/main --head HEAD
 //   node scripts/territory-preflight.mjs --manager C --files-from touched.txt
 //
-// Exit 0 GREEN, exit 1 RED with every violation listed.
+// Exit 0 GREEN, exit 1 RED with every violation listed, exit 9
+// TERRITORY_UNATTRIBUTABLE when part of the range declares no manager and therefore
+// was not judged at all. Keeping 9 separate from 1 is the whole point: for the 250
+// commits before the trailer was required, "the gate could not run" and "a manager
+// edited outside their territory" produced the same exit code, and the second was
+// never what happened.
 //
 // WHICH MANIFEST GOVERNS (B1). Each commit is judged by the manifest as it stood at
 // that commit's first parent, never by the manifest at head. A gate that reads the
@@ -25,6 +30,27 @@
 // signed commits is a Director ruling (TERR-F3), not enforced here. Journals for
 // managers A and B require Director grants in TERRITORY.yml (TERR-F4); this script
 // does not gate manifest edits to Director-only commits.
+//
+// TERR-F3 REMAINS DEFERRED UNTIL AFTER THE SEAL. Director ruling, 03-08 21:xx+01:00,
+// and the reasoning is worth keeping next to the code it governs, because "the trailer
+// is self-declared" reads like a weakness until you check what the alternative proves:
+//
+//   - Git identity proves LESS than the trailer here, not more. Every commit in this
+//     repository is authored by `Manager B release rehearsal <b-release@local>`,
+//     including every lane's. Binding the trailer to identity would bind it to a
+//     constant, which is a check that cannot fail and therefore cannot inform.
+//   - The threat model is carelessness, not evasion. Nobody is forging attribution;
+//     they are omitting it, and today they omit it 250 times out of 250. A declared
+//     trailer plus a commit-msg hook fixes omission completely and forgery not at all,
+//     which is the right trade while the failure in evidence is omission.
+//   - C raised exactly this in July (journal 2026-07-28T03:53Z, "Manager: Director
+//     trailer is spoofable") and it was closed by ruling A16.2 by making the header
+//     stop overclaiming rather than by binding identity. This block is that same
+//     obligation discharged again for the new exit code above.
+//
+// So spoofing is possible and is not claimed otherwise. `--no-verify` skips the hook
+// and exporting another lane's letter defeats it. Both are deliberate acts by someone
+// who has read this comment.
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';

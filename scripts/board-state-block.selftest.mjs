@@ -16,7 +16,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  BOARDS, findBlock, stampOf, verdict,
+  BOARDS, findBlock, laneActivity, laneOfBoardPath, stampOf, verdict,
 } from './board-state-block.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -147,6 +147,105 @@ cell('every lane board is in scope, or a green means one lane', () => {
   for (const b of ['A', 'B', 'C', 'D', 'E']) {
     assert.ok(BOARDS.includes(`docs/plan3/board/BOARD-${b}.md`), `BOARD-${b} missing from scope`);
   }
+});
+
+// --- STATE-BLOCK-02: the file-scoped hole -------------------------------------
+
+const FULL = '## CURRENT STATE — last updated 12:00+01:00 / 2026-08-03T11:00Z\n\nNot quotable: nothing.\n';
+const stamp = new Date('2026-08-03T11:00:00Z');
+const base = { present: true, body: FULL, stamp, committed: stamp, now };
+
+cell('laneOfBoardPath: reads the lane from the board filename', () => {
+  assert.equal(laneOfBoardPath('docs/plan3/board/BOARD-B.md'), 'B');
+  assert.equal(laneOfBoardPath('docs/plan3/board/BOARD-e.md'), 'E');
+  assert.equal(laneOfBoardPath('docs/plan3/board/MEASUREMENT-QUEUE.md'), null);
+});
+
+cell('DISCRIMINATING: a lane that worked elsewhere is STALE_LANE, where it used to be CURRENT', () => {
+  // The exact hole. File-scoped inputs are all clean -- the board itself was committed
+  // at the stamp -- and the old verdict returned CURRENT for precisely this shape.
+  const activity = {
+    lane: 'B', at: new Date('2026-08-03T14:26:00Z'), unattributedSince: 0, totalSince: 4,
+  };
+  const withActivity = verdict({ ...base, activity });
+  const withoutActivity = verdict({ ...base, activity: null });
+  assert.equal(withoutActivity.state, 'STATE_BLOCK_CURRENT', 'file-scoped alone still says CURRENT');
+  assert.equal(withActivity.state, 'STATE_BLOCK_STALE_LANE');
+  assert.equal(withActivity.ok, false);
+  assert.match(withActivity.detail, /lane B committed elsewhere 206 min after/);
+});
+
+cell('a lane whose only commit is inside the grace window stays CURRENT', () => {
+  const activity = {
+    lane: 'B', at: new Date('2026-08-03T11:20:00Z'), unattributedSince: 0, totalSince: 1,
+  };
+  assert.equal(verdict({ ...base, activity }).state, 'STATE_BLOCK_CURRENT');
+});
+
+cell('DISCRIMINATING: untrailered commits after the stamp are UNPROVEN, not CURRENT', () => {
+  const activity = { lane: 'D', at: null, unattributedSince: 7, totalSince: 7 };
+  const result = verdict({ ...base, activity });
+  assert.equal(result.state, 'STATE_BLOCK_STALENESS_UNPROVEN');
+  assert.equal(result.ok, false, 'unproven must not read as a pass');
+  assert.match(result.detail, /7 of 7 commit\(s\) since the stamp carry no Manager: trailer/);
+  assert.match(result.detail, /cannot be determined/);
+});
+
+cell('ANTI-VACUITY: nothing committed after the stamp is provably CURRENT, not unproven', () => {
+  // Without this branch the gate would red a quiet repository, and "always red" is as
+  // uninformative as "always green".
+  const activity = { lane: 'E', at: null, unattributedSince: 0, totalSince: 0 };
+  const result = verdict({ ...base, activity });
+  assert.equal(result.state, 'STATE_BLOCK_CURRENT');
+  assert.equal(result.ok, true);
+});
+
+cell('a proven lane-stale board outranks the unprovable case', () => {
+  // Both signals present: the lane has an attributable commit AND there are untrailered
+  // ones. The provable finding must win, or a lane could bury a real stall in noise.
+  const activity = {
+    lane: 'B', at: new Date('2026-08-03T14:00:00Z'), unattributedSince: 9, totalSince: 12,
+  };
+  assert.equal(verdict({ ...base, activity }).state, 'STATE_BLOCK_STALE_LANE');
+});
+
+cell('file-scoped staleness still wins over lane-scoped, since it is the narrower fact', () => {
+  const activity = {
+    lane: 'B', at: new Date('2026-08-03T14:00:00Z'), unattributedSince: 0, totalSince: 3,
+  };
+  const result = verdict({
+    ...base, committed: new Date('2026-08-03T14:30:00Z'), activity,
+  });
+  assert.equal(result.state, 'STATE_BLOCK_STALE');
+});
+
+cell('laneActivity: counts only commits strictly after the stamp, and splits attributed from not', () => {
+  const rec = (iso, body) => `${iso}\u001f${body}\u001e`;
+  const run = () => [
+    rec('2026-08-03T14:00:00Z', 'feat: mine\n\nManager: B\n'),
+    rec('2026-08-03T13:00:00Z', 'feat: someone\n'),
+    rec('2026-08-03T12:30:00Z', 'feat: another lane\n\nManager: D\n'),
+    rec('2026-08-03T10:00:00Z', 'feat: before the stamp\n\nManager: B\n'),
+  ].join('');
+  const activity = laneActivity({ lane: 'B', since: stamp, run });
+  assert.equal(activity.totalSince, 3, 'the pre-stamp commit is out of scope');
+  assert.equal(activity.unattributedSince, 1);
+  assert.equal(activity.at.toISOString(), '2026-08-03T14:00:00.000Z');
+});
+
+cell('laneActivity: another lane\'s trailer is neither this lane\'s work nor unattributed', () => {
+  const run = () => `2026-08-03T14:00:00Z\u001ffeat: D's work\n\nManager: D\n\u001e`;
+  const activity = laneActivity({ lane: 'B', since: stamp, run });
+  assert.equal(activity.at, null, 'B did not commit');
+  assert.equal(activity.unattributedSince, 0, 'and D\'s commit is attributed, just not to B');
+  assert.equal(activity.totalSince, 1);
+});
+
+cell('laneActivity: a git failure does not fabricate a clean history', () => {
+  const activity = laneActivity({ lane: 'B', since: stamp, run: () => { throw new Error('no git'); } });
+  assert.equal(activity.failed, true);
+  assert.equal(activity.at, null);
+  assert.equal(activity.totalSince, 0);
 });
 
 console.log(`\n  ${pass} passed, ${fail} failed`);
