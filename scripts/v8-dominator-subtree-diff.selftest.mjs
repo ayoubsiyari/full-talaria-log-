@@ -111,4 +111,46 @@ describe('V8 dominator subtree fallback', () => {
     const holder = diff.topRetainedDelta.find((r) => /Holder/.test(r.path));
     assert.equal(holder?.retainedDeltaMB || 0, 0);
   });
+
+  it('aggregates identical logical paths across repeated chart instances', () => {
+    const before = synthGraph([
+      { type: 'synthetic', name: '(GC roots)' },
+      { type: 'object', name: 'Chart', selfSize: 16 },
+      { type: 'object', name: 'Map', selfSize: 16 },
+      { type: 'object', name: 'Array', selfSize: MB },
+      { type: 'object', name: 'Chart', selfSize: 16 },
+      { type: 'object', name: 'Map', selfSize: 16 },
+      { type: 'object', name: 'Array', selfSize: MB },
+    ], [
+      { from: 0, to: 1, name: 'chart' },
+      { from: 1, to: 2, name: '_smartPrefetchCache' },
+      { from: 2, to: 3, name: 'table' },
+      { from: 0, to: 4, name: 'chart' },
+      { from: 4, to: 5, name: '_smartPrefetchCache' },
+      { from: 5, to: 6, name: 'table' },
+    ]);
+    const after = synthGraph([
+      { type: 'synthetic', name: '(GC roots)' },
+      { type: 'object', name: 'Chart', selfSize: 16 },
+      { type: 'object', name: 'Map', selfSize: 16 },
+      { type: 'object', name: 'Array', selfSize: 2 * MB },
+      { type: 'object', name: 'Chart', selfSize: 16 },
+      { type: 'object', name: 'Map', selfSize: 16 },
+      { type: 'object', name: 'Array', selfSize: 3 * MB },
+    ], [
+      { from: 0, to: 1, name: 'chart' },
+      { from: 1, to: 2, name: '_smartPrefetchCache' },
+      { from: 2, to: 3, name: 'table' },
+      { from: 0, to: 4, name: 'chart' },
+      { from: 4, to: 5, name: '_smartPrefetchCache' },
+      { from: 5, to: 6, name: 'table' },
+    ]);
+
+    const diff = diffDominatorSubtrees(before, after, { topN: 10, candidateN: 10 });
+    const cache = diff.topRetainedDelta.find((r) => /Chart\.chart -> Map\._smartPrefetchCache$/.test(r.path));
+    assert.ok(cache, JSON.stringify(diff.topRetainedDelta, null, 2));
+    assert.equal(cache.beforeOccurrenceCount, 2);
+    assert.equal(cache.afterOccurrenceCount, 2);
+    assert.equal(cache.retainedDeltaMB, 3);
+  });
 });

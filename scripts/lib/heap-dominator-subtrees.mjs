@@ -192,22 +192,34 @@ export function analyzeDominatorSubtrees(snapshot, {
     }
   }
 
-  const rows = [];
+  const byPath = new Map();
   for (const n of rpo) {
     if (retained[n] < minRetainedBytes) continue;
     const base = n * graph.nodeStride;
     const selfSize = Number(graph.nodes[base + graph.sizeIx]) || 0;
     const info = nodeInfo(graph, n);
-    rows.push({
-      nodeIndex: n,
-      label: info.label,
-      type: info.typeName,
-      selfSize,
-      retainedSize: retained[n],
-      dominatedNodeCount: dominatedCount[n],
-      path: pathSignature(graph, idom, superRoot, n, { maxDepth }),
-    });
+    const path = pathSignature(graph, idom, superRoot, n, { maxDepth });
+    const prior = byPath.get(path);
+    if (prior) {
+      prior.selfSize += selfSize;
+      prior.retainedSize += retained[n];
+      prior.dominatedNodeCount += dominatedCount[n];
+      prior.occurrenceCount += 1;
+      if (prior.sampleNodeIndexes.length < 5) prior.sampleNodeIndexes.push(n);
+    } else {
+      byPath.set(path, {
+        label: info.label,
+        type: info.typeName,
+        selfSize,
+        retainedSize: retained[n],
+        dominatedNodeCount: dominatedCount[n],
+        occurrenceCount: 1,
+        sampleNodeIndexes: [n],
+        path,
+      });
+    }
   }
+  const rows = [...byPath.values()];
   rows.sort((a, b) => b.retainedSize - a.retainedSize || b.selfSize - a.selfSize || a.path.localeCompare(b.path));
   return {
     signature: HEAP_DOMINATOR_SUBTREES_SIGNATURE,
@@ -251,6 +263,9 @@ export function diffDominatorSubtrees(beforeSnapshot, afterSnapshot, {
       beforeDominatedNodeCount: b?.dominatedNodeCount || 0,
       afterDominatedNodeCount: a?.dominatedNodeCount || 0,
       dominatedNodeCountDelta: (a?.dominatedNodeCount || 0) - (b?.dominatedNodeCount || 0),
+      beforeOccurrenceCount: b?.occurrenceCount || 0,
+      afterOccurrenceCount: a?.occurrenceCount || 0,
+      occurrenceCountDelta: (a?.occurrenceCount || 0) - (b?.occurrenceCount || 0),
     };
   }).sort((x, y) => y.retainedDelta - x.retainedDelta || y.afterRetained - x.afterRetained);
   return {

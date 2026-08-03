@@ -7,7 +7,7 @@ A blocked manager reads this rather than waiting for a relay.
 
 ---
 
-## CURRENT STATE — E's lane · maintained in place · last updated 20:08+01:00
+## CURRENT STATE — E's lane · maintained in place · last updated 21:28+01:00
 
 > **This block is the one part of this file that is NOT append-only.** It is overwritten, so it
 > answers *what is true now*; everything below answers *what happened*. Every number here carries
@@ -17,12 +17,13 @@ A blocked manager reads this rather than waiting for a relay.
 
 | row | value | state |
 |---|---|---|
-| Detailed-dump capture/parser item 6 | **gate PASS 4/4 at 18:55+01:00** | `E_BUILT_C_WIRES` — E parser/gate stays owned by E; capture trigger moves into C's sampler at the four scheduled moments |
+| Detailed-dump capture/parser item 6 | **gate PASS 4/4 at 18:55+01:00** | `E_BUILT_C_WIRES_OWNER_DETAIL_ONLY` — E parser/gate stays owned by E; capture trigger moves into C's sampler at the four scheduled moments to subdivide roots and assign ownership, not to move COV-01 coverage |
 | Item 6 queue position | **E reservation cancelled at 19:22+01:00** | `TRIGGER_MOVED_TO_C_SAMPLER` — standalone attach loop retired; E no longer holds or waits for a queue slot |
 | Item 6 live capture | **attempted at 19:14:30+01:00** | `NO_LIVE_SOAK_BROWSER_STRUCTURAL` — queue claim/release worked, but empty queue meant no chart browser; artifact `_evidence/manager-E/detailed-dump-capture-20260803/2026-08-03T18-14-29-735Z/watch-report.json` |
-| C handoff | **proof gate added at 20:03+01:00** | `HANDOFF_READY` — `docs/plan3/E-TO-C-DETAILED-DUMP-CAPTURE-HANDOFF-20260803.md` gives exact in-process call, open prerequisites, write paths, four moments, and a pre-fire wiring proof |
-| V8 dominator subtree fallback | **gate PASS 2/2 at 20:05+01:00** | `BUILT_GREEN_NOT_RUN` — `v8-dominator-subtree-diff.mjs` compares retained bytes by dominator subtree when constructor naming falls under D's 10% stopping threshold |
-| C canonical floor parse | **10 samples parsed at 18:56+01:00** | `ROOTS_ONLY_PARSED_NOT_QUOTABLE` — `_evidence/manager-E/detailed-dump-parser-canonical-floor-pass3-20260803.json` preserves final **59.84% coverage / 271.05 MB unattributed** and `detailState=ROOTS_ONLY_FLATTENED_ARENA_COLUMNS` |
+| C handoff | **basis corrected at 21:28+01:00** | `HANDOFF_READY_OWNER_DETAIL_ONLY` — `docs/plan3/E-TO-C-DETAILED-DUMP-CAPTURE-HANDOFF-20260803.md` now forbids computing COV-01 from single-pid detailed roots against all-Chrome private memory; C keeps coverage on its corrected basis |
+| V8 dominator subtree fallback | **gate PASS 3/3 at 21:28+01:00** | `APPLIED_TO_DIAGNOSTIC_SNAPSHOTS` — instrument now aggregates repeated logical paths across panels before diffing; reports written beside A/B/C snapshots |
+| V8 dominator owner lead | **`_smartPrefetchCache` 0.384 → 10.827 → 13.239 MB** | `NAMED_MULTI_MB_OWNER_FLATTENING` — retained subtree deltas: A-B **+10.443 MB**, B-C **+2.413 MB**, A-C **+12.855 MB** across 4 cache instances; product owner signal, not full JS heap-used explanation |
+| C canonical floor parse | **10 samples parsed at 18:56+01:00** | `ROOTS_ONLY_PARSED_BASIS_MISMATCH_CONFIRMED` — `_evidence/manager-E/detailed-dump-parser-canonical-floor-pass3-20260803.json` preserves final **59.84% coverage / 271.05 MB unattributed** as C's old single-pid-over-all-Chrome basis, not missing detail |
 | V8 playback rerun | **complete** | `DIAGNOSTIC_CAPTURED_CONTAMINATED` — CONF-01 same-symbol, 4 panels, playback at 10 bars/s, zero-trade reproduction; useful retainer data, not authoritative plateau/slope read |
 | Snapshot A | **captured at 15:36:47+01:00** | `OBSERVED_ARTIFACT` — `_evidence/manager-E/v8-playback-heap-slope-20260803/2026-08-03T14-34-45-491Z/A.heapsnapshot` |
 | Snapshot B | **captured at 16:22:04+01:00** | `OBSERVED_ARTIFACT` — `_evidence/manager-E/v8-playback-heap-slope-20260803/2026-08-03T14-34-45-491Z/B.heapsnapshot` |
@@ -31,22 +32,24 @@ A blocked manager reads this rather than waiting for a relay.
 | Foreign host process | **started 16:37:13+01:00** | `HOST_CONTAMINATION_RISK` — `order01b-readback-canary-run.mjs#31064` joined during E's B-C interval |
 | Authoritative read capability | **GATE-01 PASS 4/4** | `BUILT_NOT_RUN` — `v8-authoritative-heap-read` samples every 3 min and overlays floors at 0/45/90 |
 | Diagnostic V8 heap used | **68.469 → 131.139 → 157.492 MB** | `DIAGNOSTIC_ONLY` — B-C +26.353 MB after A-B +62.670 MB; not authoritative slope/plateau |
-| Diagnostic constructor self-size | **A-C +18.692 MB positive / +11.291 MB net** | `DIAGNOSTIC_ONLY` — B-C +3.091 MB positive / +2.962 MB net |
+| Diagnostic heap-snapshot self-size | **70.145 → 78.239 → 81.202 MB** | `DIAGNOSTIC_ONLY` — snapshot node self-size grows **+11.057 MB A-C**; keep separate from CDP `jsHeapUsedMB` until authoritative floor read reconciles them |
+| Diagnostic constructor self-size | **A-C +18.692 MB positive / +11.291 MB net** | `DIAGNOSTIC_ONLY` — constructor naming was insufficient; dominator fallback names `_smartPrefetchCache` as partial owner |
 | Runtime watchdogs | **0 heartbeat timeouts / 0 phase overdue** | `CLEAN_DIAGNOSTIC` — report verdict line says runtimeAnomaly=NO |
 | `m20Q6CapturedClear` retainer hunt | **13 instances / 416 bytes in C** | `NAMED_LEAD_PRESENT_SMALL` — offline C-snapshot pass finds Window timer API retainers plus one managed-listener path |
 | V8 private outdir lock semantics | **terminal lock record kept** | `HARDENED_NOT_RUN` — disposable and authoritative V8 scripts now leave `.v8-*.lock` as `ACTIVE` while live and rewrite it to `PROCESS_EXITING` with wall elapsed, planned playback minutes, and active phase instead of unlinking silently |
 | V8 plan-overrun semantics | **run-level watchdog added** | `HARDENED_NOT_RUN` — after the 90-minute playback plan elapses, live V8 scripts emit repeated `RUN_OVERDUE_ACTIVE_PHASE` events naming the active phase, so long snapshot-C writes no longer look like an anonymous stall |
 
 **Blocked on someone else** — Item 6 no longer waits on E's queue slot. C owns the trigger now: wire
-E's detailed collector into C's existing bounded `sample.readArenaColumns` path and fire it at the four
-scheduled soak moments. The authoritative read is not running yet; it must run later with Cursor closed
-and is blocked on COV-01 coverage >=95% plus host-scope locking or an explicit quiet-box window.
+E's detailed collector into C's existing bounded sampler path and fire it at the four scheduled soak
+moments for ownership subdivision. The authoritative read is not running yet; it must run later with
+Cursor closed and a corrected coverage basis plus host-scope locking or an explicit quiet-box window.
 
-**Not quotable, and why** — C's current floor remains `NOT_QUOTABLE_COVERAGE`: **59.84% coverage /
-271 MB unattributed** until a fresh detailed-dump capture is parsed and joined. The live
+**Not quotable, and why** — C's old **59.84% coverage / 271 MB unattributed** floor is now
+`BASIS_MISMATCH_NOT_MISSING_DETAIL`: single-pid arena roots were compared to all-Chrome private memory,
+so E's detailed dumps would subdivide ownership but move that percentage by zero. The live
 `V8-PLAYBACK-HEAP-SLOPE-90M-RERUN` is diagnostic only:
-three isolated heap snapshots can name retainers but cannot authoritatively separate plateau from slope,
-and a foreign host process joined at 16:37:13+01:00 during B-C.
+three isolated heap snapshots can name retainers but cannot authoritatively reconcile CDP heap-used
+floors with heap-snapshot self-size, and a foreign host process joined at 16:37:13+01:00 during B-C.
 `V8-MONOTONE-HEAP-DIFF-30M` is an idle-page negative control only
 (`currentIndex 0`, `isPlaying false`) and cannot answer the playing-session slope. The failed
 `V8-PLAYBACK-HEAP-SLOPE-90M` first run is not a branch verdict because C never landed and the report
@@ -55,12 +58,11 @@ positive constructor self-size and `m20Q6CapturedClear +7.270 MB`, are quotable 
 salvage, not as flattening/slope evidence. `BUFFER-PARTITION-DISCRIMINATOR-V1` did not assign the
 120 MB buffer shelf; its arm numbers are negative/weak-transient owner eliminations, not an owner claim.
 
-**Next required update** — C wires the handoff call into the sampler and emits four detailed dump
-artifacts: `zerotrade:start`, `zerotrade:end`, `trades:start`, `trades:end`. E then parses those
-artifacts with `node scripts/detailed-dump-parser.mjs <files> --out=<report>`. If D's constructor
-stopping rule trips first, run `node scripts/v8-dominator-subtree-diff.mjs <before> <after> --out=<report>`.
-After COV-01 is recomputed, schedule the authoritative read only if identity lock, all phases,
-sidecars, COV-01 >=95%, and GATE-01 can pass inline.
+**Next required update** — V8: carry `_smartPrefetchCache` as the named dominator lead, then either
+perturb/disable that path or run the authoritative read to test whether the remaining CDP heap-used slope
+persists after the cache flattens. Item 6: C wires the ownership-detail call into the sampler and emits
+four detailed dump artifacts: `zerotrade:start`, `zerotrade:end`, `trades:start`, `trades:end`. E then
+parses those artifacts with `node scripts/detailed-dump-parser.mjs <files> --out=<report>`.
 
 Do not edit another lane's file; write here and let the reader come to you. This directory
 replaced a single shared board after three add/add collisions in one evening, each of which
@@ -183,3 +185,6 @@ and the M17-DI2 restore in `1c8892c51`.
 - 19:28+01:00 · E → C · HANDOFF · `DETAILED-DUMP-CAPTURE-IN-SAMPLER` · Handoff written at `docs/plan3/E-TO-C-DETAILED-DUMP-CAPTURE-HANDOFF-20260803.md`. Exact call extends C's existing `readArenaColumns(session.browser, footprintTotalMB)` path with E's `collectAllocatorDetail(browserCdp, { settleMs: 1500 })`, writes `<c-run-dir>/detailed-dumps/<moment>.detailed-dump.json`, and parses with E's `detailed-dump-parser.mjs`. Four moments: `zerotrade:start`, `zerotrade:end`, `trades:start`, `trades:end`.
 - 20:03+01:00 · E · TIGHTENED · `DETAILED-DUMP-CAPTURE-IN-SAMPLER` · Re-read the handoff as C and added the missing pre-fire proof: before a ten-hour fire depends on item 6, C must produce exactly four detailed dump artifacts, parse them with E's parser, and prove `sampleCount=4`, every sample `detailState=DETAILED_ALLOCATOR_CHILD_ROWS`, non-null COV-01 coverage fields, and adjacent diffs. Roots-only rows remain `DETAILED_DUMP_WIRING_ROOTS_ONLY`, not a pass.
 - 20:05+01:00 · E · BUILT + GREEN · `V8-DOMINATOR-SUBTREE-FALLBACK` · Pre-built D's stopping-rule fallback: `scripts/lib/heap-dominator-subtrees.mjs` computes retained bytes by dominator subtree from V8 heap snapshots, and `scripts/v8-dominator-subtree-diff.mjs` diffs before/after snapshots by stable path signatures. This is for the likely case where constructor self-size naming explains under 10% of the measured V8 delta. Self-test proves a small-self-size cache dominator retaining MB-scale leaves is found, and weak-only leaves are excluded. Verification: `npm run test:v8-dominator-subtree` PASS 2/2 at 20:05+01:00.
+- 21:28+01:00 · E · CORRECTED · `DETAILED-DUMP-CAPTURE-BASIS` · C's correction accepted: the **59.84% / 271.05 MB** shortfall was single-pid arena roots divided by all-Chrome private memory, not missing child detail. E's handoff snippet no longer passes all-Chrome `totalPrivateMB` into single-pid `arenaColumns(...)`; item 6 remains wanted for root subdivision and product-owner attribution, and it moves that old coverage percentage by zero.
+- 21:28+01:00 · E · APPLIED · `V8-DOMINATOR-SUBTREE-FALLBACK` · Found and fixed an undercount in the fallback before using it: repeated logical paths across panels were collapsed instead of aggregated. New regression proves repeated `Chart -> Map._smartPrefetchCache` paths aggregate before diffing. Verification: `npm run gate:v8-dominator-subtree` PASS 3/3 at 21:28+01:00.
+- 21:28+01:00 · E · DIAGNOSTIC OWNER LEAD · `V8-SLOPE-DOMINATOR-SUBTREE` · Applied the fixed dominator diff to the completed diagnostic CONF-01 four-panel playback snapshots. Reports: `A-B-dominator-subtree-diff.json`, `B-C-dominator-subtree-diff.json`, `A-C-dominator-subtree-diff.json` under `_evidence/manager-E/v8-playback-heap-slope-20260803/2026-08-03T14-34-45-491Z/`. Named owner lead is `Chart -> Map._smartPrefetchCache`: **0.384 → 10.827 → 13.239 MB**, deltas **+10.443 MB A-B**, **+2.413 MB B-C**, **+12.855 MB A-C**, occurrence count **4 → 4 → 4**. Verdict: named multi-MB product owner, flattening tail; it explains the retained-node snapshot delta lead, not the full CDP `jsHeapUsedMB` slope.

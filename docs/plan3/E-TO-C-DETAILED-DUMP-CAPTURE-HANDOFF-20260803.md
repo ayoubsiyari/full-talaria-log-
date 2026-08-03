@@ -25,10 +25,9 @@ Detailed item-6 call to wire inside that bounded phase:
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { arenaColumns } from './lib/arena-columns.mjs';
 import { collectAllocatorDetail, pickHeaviestDetail } from './lib/blink-allocator-detail.mjs';
 
-async function readDetailedArenaColumns(browser, totalPrivateMB = null, {
+async function captureDetailedAllocatorRows(browser, {
   moment,
   outDir,
   settleMs = 1500,
@@ -38,8 +37,9 @@ async function readDetailedArenaColumns(browser, totalPrivateMB = null, {
     browserCdp = await browser.target().createCDPSession();
     const byPid = await collectAllocatorDetail(browserCdp, { settleMs });
     const heaviest = pickHeaviestDetail(byPid);
-    const row = {
-      ...arenaColumns(heaviest?.detail?.rootsMB || null, { totalPrivateMB }),
+    const detailRow = {
+      rootsMB: heaviest?.detail?.rootsMB || null,
+      childrenByRoot: heaviest?.detail?.childrenByRoot || null,
       arenaDumpPid: heaviest?.pid ?? null,
       arenaDumpProcesses: byPid.size,
       detailState: heaviest ? 'DETAILED_ALLOCATOR_CHILD_ROWS' : 'DETAILED_ALLOCATOR_ROWS_ABSENT',
@@ -49,21 +49,22 @@ async function readDetailedArenaColumns(browser, totalPrivateMB = null, {
       signature: 'DETAILED-DUMP-CAPTURE-V1',
       at: new Date().toISOString(),
       moment,
-      totalPrivateMB,
-      totalBasis: 'all-chrome-process-private',
+      coverageBasis: 'OWNERSHIP_DETAIL_ONLY_NOT_COV01',
+      coverageNote: 'Do not compute COV-01 from this row: allocator roots are single-process detail unless C also supplies same-process private footprint. COV-01 coverage remains owned by C on its corrected basis.',
       processes: [...byPid.entries()].map(([pid, allocatorDetail]) => ({
         pid,
         allocatorDetail,
       })),
       selectedPid: heaviest?.pid ?? null,
-      row,
+      detailRow,
     };
     fs.mkdirSync(outDir, { recursive: true });
     fs.writeFileSync(path.join(outDir, `${moment}.detailed-dump.json`), JSON.stringify(artifact, null, 2));
-    return row;
+    return detailRow;
   } catch (e) {
     return {
-      ...arenaColumns(null, { totalPrivateMB }),
+      rootsMB: null,
+      childrenByRoot: null,
       arenaDumpPid: null,
       arenaDumpProcesses: 0,
       detailState: 'DETAILED_DUMP_CAPTURE_ERROR',
@@ -77,13 +78,13 @@ async function readDetailedArenaColumns(browser, totalPrivateMB = null, {
 
 Keep it inside C's existing `phases.run(...)` bounded wrapper. Do not launch a second Node process and do not attach opportunistically from E.
 
-The row returned by `readDetailedArenaColumns(...)` replaces the old root-only `readArenaColumns(...)` row for the scheduled item-6 moments. Outside those four moments, C may keep the cheap root-only sampler if runtime cost matters.
+The row returned by `captureDetailedAllocatorRows(...)` does **not** replace C's corrected COV-01 arena row. It is product-owner/root subdivision detail only. C keeps coverage on its corrected basis; E's detailed row answers "what under `partition_alloc` / `malloc` / `v8` owns the memory?", not "what percentage of all-Chrome private memory is named?".
 
 ## What Must Be Open
 
 - The same `session.browser` and `session.page` already owned by C's soak or canonical-floor sampler.
 - A browser-level CDP session from `browser.target().createCDPSession()`.
-- The footprint row for the same sample, because `totalPrivateMB` must be the same `footprintTotalMB` basis C already writes beside `ARENA-COLUMNS`.
+- C's corrected COV-01 footprint basis remains open in the sampler if C wants to write coverage beside the same moment. Do not pass all-Chrome `footprintTotalMB` into single-pid `arenaColumns(...)`.
 
 Nothing else should be open. E should not own a browser, a queue claim, or a second attach process for item 6.
 
@@ -103,7 +104,7 @@ node scripts/detailed-dump-parser.mjs "<c-run-dir>/detailed-dumps/*.json" --out=
 
 If PowerShell wildcard expansion is not desired, pass the four files explicitly.
 
-The parsed report must preserve `detailState`. `ROOTS_ONLY_FLATTENED_ARENA_COLUMNS` is still `NOT_QUOTABLE_COVERAGE`; only `DETAILED_ALLOCATOR_CHILD_ROWS` can advance item 6 toward COV-01.
+The parsed report must preserve `detailState`. `ROOTS_ONLY_FLATTENED_ARENA_COLUMNS` is still roots-only. `DETAILED_ALLOCATOR_CHILD_ROWS` advances item 6 as ownership subdivision, not as COV-01 coverage calibration.
 
 ## Pre-Fire Wiring Proof
 
@@ -113,7 +114,8 @@ No ten-hour fire should depend on this until C has run a smoke/rehearsal proof t
 - `node scripts/detailed-dump-parser.mjs <four files> --out=<parsed report>` exits 0.
 - The parsed report has `sampleCount === 4`.
 - Every sample has `detailState === "DETAILED_ALLOCATOR_CHILD_ROWS"`.
-- Every sample has non-null `coverage.coveragePct`, `coverage.totalPrivateMB`, and `coverage.totalBasis === "all-chrome-process-private"`.
+- Every sample has child rows under at least one of `partition_alloc`, `malloc`, `v8`, or `blink_gc`.
+- No sample computes COV-01 coverage from single-pid detail against all-Chrome private memory. If coverage appears in the parsed report, it must be from C's corrected basis, not from this handoff row.
 - The parsed report has adjacent diffs for the sequence C declares. A missing diff is a wiring defect, not a memory result.
 
 If any cell fails, report `DETAILED_DUMP_WIRING_ABSENT` or `DETAILED_DUMP_WIRING_ROOTS_ONLY`; do not convert a roots-only row into a pass.
