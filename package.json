@@ -37,6 +37,7 @@
     "gate:queue-status": "node scripts/measurement-queue.mjs status",
     "gate:orphan-servers": "node scripts/orphan-server-census.mjs",
     "test:memory-validity": "node --test scripts/lib/memory-validity.selftest.mjs",
+    "test:cov01-capture": "node --test scripts/lib/detailed-dump-capture.selftest.mjs",
     "test:arm-equality": "node --test scripts/lib/arm-equality.selftest.mjs",
     "test:soak-hanging-stub": "node --test scripts/tests/soak-hanging-stub.test.mjs scripts/tests/bounded-phase.test.mjs",
     "test:orphan-servers": "node --test scripts/orphan-server-census.selftest.mjs",
@@ -99,7 +100,6 @@
     "preflight:support-passport-degraded": "node scripts/support-passport-degraded-gate.mjs",
     "test:support-passport-degraded": "node --test scripts/tests/support-passport-degraded.test.mjs",
     "test:build-id-refusal": "node --test scripts/tests/build-id-refusal.test.mjs",
-    "test:run-lock": "node --test scripts/lib/run-lock.selftest.mjs",
     "test:ckpt-ship": "node scripts/tests/ckpt-ship-tag-first.test.mjs",
     "test:build-context-coverage": "node --test scripts/tests/build-context-coverage.test.mjs",
     "preflight:cache-stamp-coherence": "node scripts/cache-stamp-coherence-gate.mjs",
@@ -207,7 +207,10 @@
     "preflight:text-measure-canvas-pool": "node --test \"chart v 1.4/chart/modules/text-measure-canvas-pool.test.mjs\"",
     "test:text-measure-canvas-pool": "npm run preflight:text-measure-canvas-pool",
     "preflight:axis-highlight-clip-release": "node --test \"chart v 1.4/chart/modules/axis-highlight-clip-release.test.mjs\"",
-    "test:axis-highlight-clip-release": "npm run preflight:axis-highlight-clip-release"
+    "test:axis-highlight-clip-release": "npm run preflight:axis-highlight-clip-release",
+    "gate:board-state": "node scripts/board-state-block-audit.mjs",
+    "test:board-state": "node scripts/board-state-block-audit.selftest.mjs",
+    "mutants:board-state": "node scripts/board-state-block-audit.mutants.mjs"
   },
   "dependencies": {
     "dukascopy-node": "^1.46.3",

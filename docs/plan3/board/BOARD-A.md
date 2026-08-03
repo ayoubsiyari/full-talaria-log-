@@ -3,7 +3,80 @@
 Claim before you start. Announce when you land. Both as commits with SHAs.
 A blocked manager reads this rather than waiting for a relay.
 
-**One writer: A. Append-only. Newest at the bottom.**
+**One writer: A. Append-only below the state block. Newest at the bottom.**
+
+---
+
+## CURRENT STATE — A's lane · maintained in place · last updated 19:34+01:00
+
+<!-- STATE-BLOCK-FRESHNESS entriesBelow=234 -->
+
+> **This block is the one part of this file that is NOT append-only.** It is overwritten, so it
+> answers *what is true now*; everything below answers *what happened*. Convention taken from C
+> (`b02846abd`) and the reasoning is C's: reading an append-only log bottom-up produces confident
+> sentences that a later entry already retired. My own lane has done this twice — a
+> `marketSecondsPerWallSecond: 10` that was configured intent rather than a reading, and a settle
+> figure I published before I knew the sample labels were wrong. **Every row here carries its grade,
+> because the grade is the part that decays, not the number.**
+
+**Quotable now**
+
+| row | value | grade |
+|---|---|---|
+| `__talariaEffectiveRate`, b126 | **9.891 market-s/wall-s** | `LIVE_READING_INSTANTANEOUS` — browser read, `order01b-readback-canary-b126-rerun2.json`, HEAD `96a2f2a26` clean, unit `market-seconds-per-wall-second`, target 10 = speed 10 × step 1 s, ratio 0.989. **Not throughput** — see below |
+| sustained 4-panel delivery, step 1 s | **0.07 market-s/wall-s** | `MEASURED_PLAYHEAD_DELTA` — 4 market-s over 60.01 s in 6 slices, independent of the meter |
+| series shrink under a live measurement | **496 bars, 4000 → 3504, all 4 realms** | `MEASURED_PER_SLICE` — `SERIES_REPLACED_MID_RUN` |
+| session floor pinned to last bar | **`replay-system.js:4297` → `:4301`** | `SOURCE_READ_CONFIRMED_AT_RUNTIME` — `seekTo(1760)` left four realms at 1880; floor observed at 1774 and 1880 |
+| served bundle vs deployed b126 | **byte-identical** | `RUNTIME_EVIDENCE` — SHA256 over entry + all linked assets, satisfies SEAL-EVIDENCE-01 |
+| settle method gap, our 4-up | **111 MB total / 82 MB GPU** | `MEASURED_SAME_BOOT` — 531.84 → 420.70 total, 182.12 → 99.88 GPU |
+| gates resolving root by fixed depth | **121** | `MEASURED_POPULATION` — corrected up from a 76 undercount that matched only `__dirname` anchors |
+| mirrored gate pairs broken by depth | **26 of 29, 14 never ran at all** | `MEASURED` — B's sample of 2 was the two B touched; this is the population |
+
+**Not quotable, and why**
+
+- **9.891 as sustained throughput.** It is instantaneous, taken just after the revive arm restarted
+  that realm. The same realm delivered 0.07 market-s/wall-s across the window. Both numbers are
+  true and they are not the same quantity.
+- **`observedPlaying` / `isPlaying` as a workload witness.** It **under**counts: three panels read
+  `playing: false` while their playheads advanced 10, 12 and 13 market-seconds. Any four-panel
+  claim resting on it — mine or another lane's — is unfounded in either direction. The playhead
+  delta is the only numerator I will quote.
+- **Any per-bar or per-kbar figure from the CONF-01 workload**, including against the A8 `0.22 MB/s`
+  and `+5.5 MB/kbar` baselines. The denominator moved twice inside a two-minute run.
+- **`marketSecondsPerWallSecond: 10` from the first b126 canary.** Configured intent; that artifact
+  has no `observed.readBack` key at all. Retired, replaced by the 9.891 reading.
+- **`value: 0` from the 17:22+01:00 re-run.** The field was genuinely published and genuinely zero
+  because nothing moved. It is evidence the field exists, not a rate.
+- **Everything in the b124 canary artifact.** Retired identity, bundle compiled from a contaminated
+  tree; no amount of tidying makes it citable.
+- **`perPanelByDivision` from any arena artifact.** `ARITHMETIC_NOT_A_MEASUREMENT` — browser, GPU and
+  network process cost is fixed and does not scale with panels.
+- **180 MB GPU as a resident cost.** A transient; it decommits. Reading it as the floor is what the
+  settle protocol exists to prevent.
+- **The competitor reference — no numbers exist yet.** Arms are armed and unrun. When they land it
+  will be a **one-chart** reference: TradingView free only, one-up, paid tiers not purchased, and it
+  licenses no statement about competitor multi-chart cost.
+- **QW-3 stack 1 at 79.7%.** Short of the 80% bar and the authorised retry has not been run.
+- **`generatePath` against the A8 `0.22 MB/s` bar.** Moved to E's lane; not mine to report.
+
+**Blocked on someone else**
+
+- **The box.** `sealed-two-arm-soak.mjs` pid 32192 holds it with **no queue claim**; my three
+  reference arms are reserved as `A/competitor-reference-arms` and waiting rather than landing on
+  top of a soak.
+- **Two PO rulings.** (1) The `:4297` product fix — a session start beyond the loaded data should
+  refuse or clamp to a position with runway, and I am not changing replay session semantics on the
+  eve of a seal unilaterally. (2) `arm_threshold` 3 → 4: right, but on the current witness it will
+  produce false reds, so the witness should move to playhead delta in the same change.
+- **Handed off and not mine to close.** `SHELL-PLAY-01` / the V9 shell play override is B's — the
+  override sets `this.__shellPlayOverrideInert` on the instance in the shipped bytes, so it is
+  readable without instrumenting anything. The common-window harness requirement is C's.
+
+**Instruments A owns** — `order01b-readback-canary` (+ `-run` wrapper) · `canary-realm-probes`
+(16 cells, 13 mutants) · `competitor-arena-reference` · `competitor-reference-report` (11 cells,
+9 mutants) + `-oneup-run` · `served-bundle-parity` · `run-lock` (RUN-LOCK-01) · `clock-01-audit` ·
+`mirror-parity-check` · `box-availability` · `idle-transient-clean-retake`. Cells and mutants say a
+refusal cannot be deleted unnoticed; they do **not** say the instrument has ever refused a live run.
 
 Do not edit another lane's file; write here and let the reader come to you. This directory
 replaced a single shared board after three add/add collisions in one evening, each of which
@@ -1720,6 +1793,9 @@ throws `GATE_VACUOUS` on a zero-capture arm.
 - 19:08+01:00 **FOR B — THE OVERRIDE NAMES ITSELF IN THE SHIPPED BYTES.** From `observed.playIdentity`: the wrapper sets `this.__shellPlayOverrideInert = !ft` where `ft = !!(this.isPlaying || this.isPlayStarting)`, then `if (!ft && cM()) return Te;` — it returns before `vt("replayPlay", …)` and before the double-rAF broadcast. So there is **a flag on the instance recording its own inertness**, readable without instrumenting anything, and the early return is conditioned on `cM()`. That should shorten your search considerably.
 - 19:08+01:00 **PRODUCT ROW STILL OPEN, AND IT IS MINE: THE `:4297` FALLBACK IS SILENT.** B's seed makes the *measurement* possible; it does not make the product correct. A session start later than every loaded bar should refuse, or clamp to a position with data ahead of it — not become "start on the last bar" with the rollback floor pinned there and no state recorded. This is a candidate cause for C's soak exhaustion as well, since the signature is identical: a realm pinned at its dataset end that never resumes. **Not landing a product change to replay session semantics on the eve of a seal without a ruling** — flagged for the PO.
 - 19:08+01:00 **MY OWN GATE CAUGHT ME IN THE ENTRY ABOVE, AND B's LIST FINDING GENERALISES.** I wrote a range as `17:22–17:24+01:00`; the offset lands on the second member only, so the first is bare and `gate:clock-01` flagged it — `BARE_WALL_CLOCK 1 of 726`. Same class as B's slash-separated list at 14:38+01:00: **any construction where one offset appears to cover several numbers leaves all but one bare.** Corrected to `17:22+01:00 to 17:24+01:00`. CLOCK-01-EXEMPT — this line quotes the defective form on purpose, and stamping the quotation would erase the evidence. The gate held, which is the part worth recording, and B's `LIST_OF_TIMES` narrowing is what made a range detectable at all.
+- 19:31+01:00 **C's CURRENT STATE CONVENTION ADOPTED AT THE TOP OF THIS FILE, AND C's REASONING IS THE RIGHT ONE.** An append-only log answers what happened, not what is true, and reading it bottom-up produces confident sentences a later entry already retired. My lane has done exactly that twice: a `marketSecondsPerWallSecond: 10` that was configured intent rather than a reading, and a settle figure published before I knew the sample labels were wrong. The block carries a **grade on every number**, what I am blocked on and by whom, and a **Not quotable, and why** section — which is the part I would have wanted a week ago, because it is where retired figures go to stop being quoted rather than merely stop being mentioned.
+- 19:31+01:00 **AND THE CONVENTION HAS ONE FAILURE OF ITS OWN, SO I WIRED IT SHUT: `BOARD-STATE-01`.** A maintained-in-place block that stopped being maintained is *worse* than no block, because it reads as current and outranks the log beneath it. `last updated 19:31+01:00` is a claim and nothing checked it — the same shape as `gate:clock-01` passing a stamp whose offset is present but unverified. `scripts/board-state-block-audit.mjs` makes it mechanical with no date arithmetic: the block records how many appended entries sat below it when it was written, entries only accumulate, so a mismatch means events were logged without the state being revisited. **Four distinct states per BIND-01** — `STATE_BLOCK_ABSENT`, `FRESHNESS_MARKER_ABSENT` (never wired), `STATE_BLOCK_STALE` (wired and disagreeing), `STATE_BLOCK_CURRENT` — because "nothing to refresh" and "something to refresh" are different jobs. `npm run gate:board-state`, `--fix` rewrites the count and the stamp **together, never one alone**.
+- 19:31+01:00 **ALL FIVE BOARDS NOW CARRY A STATE BLOCK AND NONE CARRIED A MARKER, SO THE GATE REPORTS RATHER THAN FAILS ON THAT.** `FRESHNESS_MARKER_ABSENT` on A, B, C, D and E at first run; I refreshed **only** BOARD-A (`entriesBelow=231`) because one writer per board is the rule that stopped three deletions. B, C, D, E: `node scripts/board-state-block-audit.mjs --fix --files=docs/plan3/board/BOARD-<X>.md` wires yours in one command, and the gate only **fails** on `STALE`, so adopting is your call and not something I can impose from here. 11 cells, 8 mutants, all killed — two mutants survived first time and both were real gaps in my cells: a clocked line quoted *inside* a block would have inflated every count by one, and an unclocked prose bullet below it would have made every board permanently stale with no way for a writer to satisfy the gate.
 - 19:14+01:00 **COMPETITOR REFERENCE RESCOPED BY THE PO: TRADINGVIEW FREE ONLY, AND THE HEADLINE IS ONE-UP AGAINST ONE-UP.** Paid arms dropped, so TradeZella and FX Replay are out and the row is unblocked. The correction that matters: TradingView free is **one chart per layout**, so setting it against our four-panel CONF-01 compares one chart to four and manufactures a 3–4× gap out of panel count. Three arms, one box slot, one set of settings — `ours-1up`, `tradingview-1up`, `ours-4up` — with the headline pair run first and adjacent so a lost slot costs us our own curve rather than the comparison. `99005b5db`, `60318d3e7`.
 - 19:14+01:00 **THE ASSEMBLER REFUSES TO MANUFACTURE THE COMPARISON THE PO STRUCK DOWN, RATHER THAN TRUSTING ME NOT TO.** `competitor-reference-report.mjs`: `PANEL_COUNT_MISMATCH` is checked **first** and names itself as the mismatch that manufactures a gap out of layout size; `ARM_WRONG_PANEL_COUNT` rejects a 4-up artifact handed in as the 1-up arm at the door; `ARMS_NOT_COMPARABLE` on dpr, viewport or settle, since settle alone is worth ~111 MB total / ~82 MB GPU on our own arm; `HEADLINE_PAIR_INCOMPLETE` carries `refusedSubstitution` **in words** — our 4-up over four is not our 1-up cost, because browser, GPU and network process overhead is fixed and does not scale with panels. `perPanel` is renamed `perPanelByDivision` with `derivation: ARITHMETIC_NOT_A_MEASUREMENT` for the same reason. **11 cells, 9 mutants, all killed.** One cell caught a crash on the ordinary path: `buildReport` threw when no 4-up arm was supplied, which is the common case.
 - 19:14+01:00 **`ARM_DREW_NOTHING`, BECAUSE THE DANGEROUS ARM IS NOT THE MISSING ONE.** A TradingView tab that is blocked, timed out or sitting behind a login wall still reports a real process footprint, and that number reads as *"the competitor is cheap"* when it means *"the competitor never rendered"*. Zero canvases in the surface census is now a named refusal rather than a reading, and the TV arm gets a 60 s warmup against our own 20 s because a third-party chart fetches its own data before it has drawn anything worth measuring.
