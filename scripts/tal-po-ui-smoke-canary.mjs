@@ -238,19 +238,6 @@ function talPoUiSmokeArm(activeMutant = '') {
       return Number.isFinite(directY) ? directY : fallbackY;
     });
   }
-  if (mutant === 'release-only-average') {
-    const origUpdate = Object.getPrototypeOf(liveOm)._updateMultiTPAvgLines
-      || liveOm._updateMultiTPAvgLines;
-    wrap(liveOm, '_updateMultiTPAvgLines', function (...args) {
-      const saved = this._previewLiveMultiTPAvgOverride;
-      this._previewLiveMultiTPAvgOverride = null;
-      try {
-        return origUpdate.apply(this, args);
-      } finally {
-        this._previewLiveMultiTPAvgOverride = saved;
-      }
-    });
-  }
 
   const svgNs = 'http://www.w3.org/2000/svg';
   const makeSvgGroup = () => {
@@ -563,7 +550,9 @@ function talPoUiSmokeArm(activeMutant = '') {
           { price: 110, percentage: 50 },
           { price: 120, percentage: 50 },
         ],
-        _previewLiveMultiTPAvgOverride: { targetIndex: 1, price: 130 },
+        _previewLiveMultiTPAvgOverride: mutant === 'release-only-average'
+          ? null
+          : { targetIndex: 1, price: 130 },
         getCurrentCandle: () => ({ c: 100 }),
         _getSymbol: () => 'EURUSD',
         _computeEffectiveTPPercentages: () => [50, 50],
