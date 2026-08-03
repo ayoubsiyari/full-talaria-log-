@@ -69,31 +69,18 @@ export function acquireRunLock(name, opts = {}) {
   let reclaimedFrom = null;
   let state = 'LOCK_ACQUIRED';
 
-  if (fs.existsSync(file)) {
-    let holder = null;
-    try {
-      holder = JSON.parse(fs.readFileSync(file, 'utf8'));
-    } catch {
-      // An unreadable lock is not permission to proceed. Treat it as a dead
-      // holder so it can be reclaimed, but say so rather than pretending the
-      // file was never there.
-      holder = { pid: -1, corrupt: true };
-    }
-    if (pidAlive(holder.pid)) {
-      const err = new Error(
-        `INSTRUMENT_ALREADY_RUNNING: "${name}" is held by pid ${holder.pid}`
-        + ` since ${holder.startedAt || 'unknown'}. Refusing to start a second run:`
-        + ` a concurrent launch overwrites the first run's artifact.`
-        + ` Lock: ${file}`,
-      );
-      err.state = 'INSTRUMENT_ALREADY_RUNNING';
-      err.holder = holder;
-      err.lockFile = file;
-      throw err;
-    }
-    reclaimedFrom = holder;
-    state = 'STALE_LOCK_RECLAIMED';
-  }
+  const refuse = (holder) => {
+    const err = new Error(
+      `INSTRUMENT_ALREADY_RUNNING: "${name}" is held by pid ${holder.pid}`
+      + ` since ${holder.startedAt || 'unknown'}. Refusing to start a second run:`
+      + ` a concurrent launch overwrites the first run's artifact.`
+      + ` Lock: ${file}`,
+    );
+    err.state = 'INSTRUMENT_ALREADY_RUNNING';
+    err.holder = holder;
+    err.lockFile = file;
+    return err;
+  };
 
   const record = {
     signature: 'TALARIA_RUN_LOCK_V1',
@@ -109,7 +96,51 @@ export function acquireRunLock(name, opts = {}) {
     argv: process.argv.slice(1),
     ...(opts.meta || {}),
   };
-  fs.writeFileSync(file, JSON.stringify(record, null, 2));
+
+  // Exclusive create ('wx') is the whole mechanism. A check-then-write —
+  // existsSync followed by writeFileSync — is a TOCTOU race: measured against
+  // 12 processes released on the same millisecond it admitted all 12 in five
+  // rounds out of six, which is no lock at all in precisely the simultaneous
+  // launch it exists to stop. Only the kernel can make "create if absent"
+  // indivisible.
+  for (;;) {
+    try {
+      const fd = fs.openSync(file, 'wx');
+      try { fs.writeFileSync(fd, JSON.stringify(record, null, 2)); } finally { fs.closeSync(fd); }
+      break;
+    } catch (err) {
+      if (err.code !== 'EEXIST') throw err;
+
+      // The loser's read can land in the window after the winner's create but
+      // before its write, where the file exists and is empty. Treating that as
+      // a corpse and reclaiming it is how an atomic create still yields several
+      // winners, so an unparseable lock means "wait and look again", never
+      // "help yourself".
+      let holder = null;
+      for (let i = 0; i < 40; i += 1) {
+        try {
+          const raw = fs.readFileSync(file, 'utf8');
+          if (raw.trim()) { holder = JSON.parse(raw); break; }
+        } catch (readErr) {
+          if (readErr.code === 'ENOENT') break; // holder released while we looked
+        }
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
+      }
+
+      // No same-pid exemption. If this process already holds the lock it called
+      // acquire twice without releasing, which is the in-process spelling of the
+      // same bug; a release always removes the file, so a legitimate re-acquire
+      // never reaches here.
+      if (holder && pidAlive(holder.pid)) throw refuse(holder);
+
+      // Dead holder, or a file that never became readable. Reclaim and retry
+      // the exclusive create — the retry is what keeps this safe if another
+      // process reclaims at the same moment: only one of us can win the create.
+      state = holder ? 'STALE_LOCK_RECLAIMED' : 'STALE_LOCK_RECLAIMED_UNPARSEABLE';
+      reclaimedFrom = holder || { pid: -1, unparseable: true };
+      try { fs.unlinkSync(file); } catch { /* raced with another reclaimer */ }
+    }
+  }
 
   let released = false;
   const release = () => {

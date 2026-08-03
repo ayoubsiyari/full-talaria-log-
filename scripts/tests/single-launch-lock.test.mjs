@@ -133,13 +133,68 @@ cell('ACROSS PROCESSES: a real second node process is refused', () => {
     `a separate process must be refused, got: ${out}`);
 });
 
+cell('SIMULTANEOUS START: 10 processes released on one millisecond yield ONE winner', () => {
+  // The cells above start the second launch after the first is established,
+  // which is the easy half. The launches that actually cost us runs began
+  // together, and a check-then-write lock passes every sequential test while
+  // admitting all ten here. Shipped first with existsSync+writeFileSync: it
+  // admitted 12 of 12 racers in five rounds of six.
+  const RACERS = 10;
+  const ROUNDS = 3;
+  // Driven from a child so the cell stays synchronous: the racers must be
+  // genuinely concurrent, but this assertion must not be.
+  // Racer takes its lock dir and a shared release instant on argv, then spins to
+  // that instant: staggered starts are the case that already passes, so the
+  // processes have to be let go together.
+  const racer = path.join(DIR, 'racer.mjs');
+  fs.writeFileSync(racer, `
+    import { acquireRunLock } from ${spec(HELPER)};
+    const [dir, startAt] = process.argv.slice(2);
+    while (Date.now() < Number(startAt)) {}
+    try { acquireRunLock('raced', { dir }); console.log('WON'); }
+    catch { console.log('refused'); }
+    // Hold past the round. A winner that exits immediately releases the lock,
+    // and the losers then acquire it legitimately one after another — which
+    // counts as several winners and blames the lock for the test's impatience.
+    setTimeout(() => {}, 1500);
+  `);
+
+  const driver = path.join(DIR, 'race-driver.mjs');
+  fs.writeFileSync(driver, `
+    import { spawn } from 'node:child_process';
+    import fs from 'node:fs';
+    import path from 'node:path';
+    const results = [];
+    for (let r = 0; r < ${ROUNDS}; r += 1) {
+      const dir = path.join(${JSON.stringify(DIR)}, 'race-' + r);
+      fs.mkdirSync(dir, { recursive: true });
+      const startAt = Date.now() + 600;
+      const wins = await Promise.all(Array.from({ length: ${RACERS} }, () => new Promise((res) => {
+        let buf = '';
+        const p = spawn(process.execPath, [${JSON.stringify(racer)}, dir, String(startAt)]);
+        p.stdout.on('data', (d) => { buf += d; });
+        p.on('close', () => res(buf.includes('WON') ? 1 : 0));
+      })));
+      results.push(wins.reduce((a, b) => a + b, 0));
+    }
+    console.log(JSON.stringify(results));
+  `);
+
+  const raw = execFileSync(process.execPath, [driver], { encoding: 'utf8' }).trim();
+  const perRound = JSON.parse(raw.split('\n').pop());
+  const bad = perRound.filter((w) => w !== 1);
+  assert.equal(bad.length, 0,
+    `winners per round were ${perRound.join(', ')} across ${RACERS} simultaneous processes; `
+    + 'exactly one may win each round or a duplicate launch proceeds');
+});
+
 cell('ANTI-VACUITY: with the liveness check defeated, the refusal stops firing', () => {
   // Mutant. If this cell cannot make the guard fail, the cells above are not
   // measuring the guard and their greens are worthless.
   const src = fs.readFileSync(HELPER, 'utf8');
   const mutated = src.replace(
-    'if (pidAlive(holder.pid)) {',
-    'if (false) {',
+    'if (holder && pidAlive(holder.pid)) throw refuse(holder);',
+    '',
   );
   assert.notEqual(mutated, src, 'mutation anchor not found — gate is broken, not passing');
   const mutantPath = path.join(DIR, 'mutant-lock.mjs');
