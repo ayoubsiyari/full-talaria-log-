@@ -636,3 +636,54 @@ with its own reason, which is why `PSL-21` through `PSL-23` are individual.
 - **seal-corrupting?** **no.** A requirement about measurement hygiene, not product bytes. It does mean
   every measurement taken this week records at most which *process* held a lock and not which *machine*,
   so cross-machine contention is undetectable in the existing evidence rather than absent from it.
+
+### PSL-32 · Nothing checks a wall-clock stamp outside a board block
+
+- **owner:** B
+- **finding:** `FUTURE_STAMP` in `board-state-block.mjs` catches an impossible stamp in a board's
+  CURRENT STATE block. **It checks nothing else.** I future-dated the §2 handoff document by **1h47m**
+  and told the Director I was one minute inside a deadline I beat by 1h48m; no gate could have caught
+  either, because neither lives in a board block.
+- **state:** `MEASURED_NOT_FIXED`
+- **evidence:** corrected at `5147ac894`; the breach is recorded inside the handoff itself.
+- **post-soak action:** extend the check to prose stamps in `docs/plan3/*.md` and to commit-message
+  stamps, or state on the record that CLOCK-01 covers boards only. **The second option is defensible and
+  the current silence is not** -- CLOCK-01 was made binding on "every wall-clock number in board prose,
+  commit messages, reports and verdict lines", and enforcement reaches one of those four.
+- **seal-corrupting?** **no.** Timestamps in documents. It does mean a stamp in a report is worth exactly
+  the care its author took, with nothing behind it.
+
+### PSL-33 · The passport does not require its SHA to be the tag's peel
+
+- **owner:** C, handed over by B at 16:09+01:00
+- **finding:** `writeBuildInfo()` accepts whatever SHA it is given and does not verify it against the
+  source tag's peel. b126 had three commits claiming the id and the identity **survived on determinism
+  and luck rather than by design** -- zero bundled-source files differed between the two candidates, so
+  two compilations of identical inputs produced identical bytes. Had any source file differed, the
+  passport would have named a commit that did not build the served bytes.
+- **state:** `PROPOSED_NOT_APPLIED`
+- **evidence:** `docs/plan3/board/BOARD-B.md:505`; byte comparison `c356ce029`; §6 of the suspect
+  ledger.
+- **post-soak action:** bind the passport SHA to the tag peel at write time, or state on the record that
+  the passport is a self-report and must never be the sole basis for an identity claim. **b124 was
+  retired for exactly this class** -- bytes that traced to no committed tree -- and the only thing that
+  stopped b126 repeating it was that the diff happened to be empty.
+- **seal-corrupting?** **no.** b126's identity is settled by hashed bytes, not by the passport. The gap is
+  in what the passport *guarantees* for the next build.
+
+### PSL-34 · The shared index takes whoever commits, not whoever staged
+
+- **owner:** whoever owns `commit-scoped.mjs`; B as a reporter
+- **finding:** Three index leaks tonight. My `package.json` scripts landed in `f01507ea0`, another
+  lane's commit. Earlier the same mechanism put **A's four instruments and three documents** into C's
+  `d4015a2be`, and a `git reset HEAD~1` deleted C's `99958ebcc` because reset discards whoever is at
+  HEAD rather than whoever typed it.
+- **state:** `MEASURED_NOT_FIXED` -- mitigated, not closed
+- **evidence:** `INDEX-SCOPE-01` at `ff3d9aa8c`, confirmed live refusing a plain `git commit --trailer "Co-authored-by: Cursor <cursoragent@cursor.com>"` with
+  `NOTHING_NAMED`; §7 of the suspect ledger for the `d4015a2be` ruling.
+- **post-soak action:** decide whether the guard should be enforcing rather than advisory. **The bypass
+  `INDEX_SCOPE_OFF=1` is printed in the refusal message itself**, so it stops carelessness and not
+  haste. Given the mechanism has now cost three lanes' attribution and one lane's commit, advisory may
+  be the wrong setting -- but that is a ruling, not a patch.
+- **seal-corrupting?** **no.** Authorship metadata and process. §7 already proves the b125/b126 stamp
+  chain's bytes are clean, because the swept paths never intersected the governed build roots.
