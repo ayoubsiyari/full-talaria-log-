@@ -16,7 +16,7 @@ Other lanes: [A](./BOARD-A.md) · [C](./BOARD-C.md) · [D](./BOARD-D.md) · [E](
 
 <!-- CURRENT-STATE-BLOCK:BEGIN — overwritten in place. Do not append below this line; append at the file's end. -->
 
-## CURRENT STATE — B's lane · maintained in place · last updated 22:18+01:00 / 2026-08-03T21:18Z
+## CURRENT STATE — B's lane · maintained in place · last updated 23:2x+01:00 / 2026-08-03T22:2xZ
 
 > **This block is the one part of this file that is NOT append-only.** It is overwritten, so it
 > answers *what is true now*; everything below answers *what happened*. Convention adopted from C
@@ -46,10 +46,18 @@ Other lanes: [A](./BOARD-A.md) · [C](./BOARD-C.md) · [D](./BOARD-D.md) · [E](
 | DRAW-SMOKE-01 served preconditions, b126 | **8 of 8 symbols present** | `STATIC_BYTES` — `toolRegistry`, `addDrawing`, `timestampPoints`, `pointsToTimestamps`, `_getMultichartPanelId`, `drawingManager`, `currentFileId`, `currentTimeframe`, all in served bytes at source `5dceb6368` |
 | PROGRESS-ATTRIB-01 · digest cross-credit | **3 items were falsely on pace, 1 credited to a named wrong lane** | `MEASURED` at `fdb50abc3`, same signals and same clock, old logic against new. #14 COMPETITOR-REFERENCE (owner A) was on pace via a board line written by **D**; #1 and #2 (owner C) via unattributable commits. #20 C02 read 101m and is 717m. 17/17 |
 | TERRITORY-ATTRIB-01 · the gate has never enforced anything | **0 of the last 250 commits carry `Manager:`** | `MEASURED`. The gate asserted, the assert hit the CLI catch, and it exited **1** — the same code as a real out-of-territory edit. Now `TERRITORY_UNATTRIBUTABLE`, **exit 9**, at `489c0f494`. 14 cells |
-| TERRITORY-HOOK-01 | **16/16, every behavioural cell through a real `git commit`** | `RUNTIME_TOOL`. **NOT INSTALLED** — see below. Live state `HOOK_NOT_INSTALLED`, exit 3 |
+| TERRITORY-HOOK-01 | **16/16, and now INSTALLED and BINDING** | `RUNTIME_TOOL`. Installed 22:48+01:00 on the Director's ruling; live state `HOOK_ACTIVE`, exit 0. Hooks live in the **shared common git dir**, so one install bound **all 50+ worktrees** at once — I did not expect that and checked it rather than claiming it |
+| TERRITORY-HOOK-01 · adoption, measured not assumed | **last untrailered commit 22:35+01:00; every commit since carries a valid per-lane trailer** | `MEASURED` 23:1x+01:00. 9 consecutive: E, E, B, C, C, D, A, C, E. The count went from **0 of 250** to 9 of 9 in twenty minutes. This is correlation with the install, not proof the hook is what added them — a lane could type the trailer by hand — but the mechanism is installed and the trailers are valid |
 | TERRITORY-BASELINE-01 | **250 baselined UNATTRIBUTED**, no retrofit | `08b71ab28`. SHA-keyed, so no NEW commit can ever match an entry. A second capture **refuses** with exit 2 unless forced — an improvement over the CLOCK-01 baseline it copies, offered back to its owner |
 | STATE-BLOCK-02 · the hole I reported at 20:5x+01:00 | **closed, and it immediately caught my own board** | staleness was scoped to the board FILE. Now also lane-scoped: BOARD-B went `STATE_BLOCK_CURRENT` → **`STATE_BLOCK_STALE_LANE`**, 206 min, because `08b71ab28` is the first commit in this repo that can be attributed to anyone. 21/21 |
-| CLOCK-01, the manifest, and what is NOT fixed | **`TERRITORY.yml` has not parsed since 08-01** | two stacked defects on line 430, diagnosis below. Territory was dead for **two** independent reasons and the trailer was only the first |
+| TERRITORY-REPAIR-01 · line 430 | **repaired, and it needed no grant change** | `f3c6a58b8`. `D[0-9]` expressed exactly as ten prefixes `D0*`–`D9*`: same 3 files match, nothing widened, no future edit when D adds `D3-*.md`. Measured the tempting one-liner first — `docs/plan3/D*.md` would have handed D **23 further files** including `DIRECTOR-RULINGS-20260727.md` and all eleven `DIRECTOR-DISPATCH-*.md`, going green while transferring the Director's own rulings |
+| TERRITORY-REPAIR-01 · what was hiding behind it | **2 more defects of the same class, plus 1 that is a ruling** | the parser had never reached past line 430 since 08-01. Two `denied_paths` entries were missing `provenance` entirely (D's `modules/**`, E's `chart-indicators-full.js`); both labelled `inferred`, not `ruling`, because neither cites an authority |
+| TERRITORY-REPAIR-01 · the gate is still RED | **75 pass / 12 fail, byte-identical before and after** | no regression and **no rescue**. The manifest still does not load. Honest read: I moved the blocker from a queue of syntax errors to one named ownership question, and that is all |
+| **managers D and E are each declared TWICE** | **6 direct contradictions, one of them `order-manager.js`** | `RULING NEEDED`. Lines 396/489 and 568/609, different roles and different citing charters. `69870c491` "union package scripts and territory" **concatenated** instead of unioning. All four one-block-each combinations validate, so this is the only remaining blocker |
+| why a union is not the neutral fix | **probed: deny beats an exact grant inside one block** | `resolveOwnership` checks `denied` before `owned` and returns (`territory-manifest.mjs:414-417`); specificity only arbitrates *owned* grants **across** managers. So unioning D silently voids CHARTER-D's five module grants while looking like a merge that kept everything |
+| EVIDENCE-CITE-01 · citations pointing at ignored paths | **65** | `MEASURED` 23:2x+01:00 across 528 tracked `.md`. 177 distinct evidence paths cited, 77 absent from git (89 references), 65 of those gitignored and 12 merely never added. Proposal in `RULING-REQ-EVIDENCE-GITIGNORE-20260803.md`; I did **not** touch `.gitignore` |
+| EVIDENCE-CITE-01 · the bigger half is not the gitignore | **38 of 65 cite artifacts that exist on no disk at all** | of the 65: 22 are recoverable by an ignore change, 2 cite a directory rather than a file, 3 cite 150 MB+ heapsnapshots, and **38 were never backed by a retained artifact** — unverifiable when written, by anyone including their author |
+| EVIDENCE-CITE-01 · the proposal, measured | **289 artifacts (11.1 MB) become committable; 12/12 heapsnapshots (1.85 GB) stay out** | applied, `git check-ignore`d over all four roots, reverted byte-identical (`b6cc50772cbac613` both ways). `probes/` unchanged at 23/23 ignored |
 
 **Not quotable, and why**
 
@@ -66,22 +74,38 @@ Other lanes: [A](./BOARD-A.md) · [C](./BOARD-C.md) · [D](./BOARD-D.md) · [E](
 - **The territory gate as protection, at any point today.** It exited 1 on the first commit of any
   range for want of a `Manager:` trailer, and would exit RED on `manifest-unloadable` even with one.
   Two independent reasons, both live. Nothing it printed today was a territory verdict.
-- **The commit-msg hook as in force.** It is committed and **not installed**; `.git/hooks` is not
-  version controlled, so the file changes nothing by itself. `npm run gate:commit-hook` says
-  `HOOK_NOT_INSTALLED`, exit 3. Installing it refuses every commit from every worktree that has not
-  set `TALARIA_MANAGER`, which is why it is the Director's call and not mine to spring on the lanes.
+- ~~"The commit-msg hook as in force."~~ **Retired 22:48+01:00** — ruled and installed. `HOOK_ACTIVE`,
+  exit 0, and 9 of the last 9 commits carry valid per-lane trailers where 0 of the previous 250 did.
+- **The hook as covering commits made before 22:48+01:00, or from a lane with `TALARIA_MANAGER`
+  unset.** It refuses rather than guesses, so an unset lane gets a hard stop, not a silent pass — but
+  `INDEX_SCOPE_OFF=1`-style bypasses and `--no-verify` remain available to anyone who wants them. The
+  hook makes the trailer unforgettable; it does not make it unavoidable.
+- **9 of 9 as proof the hook is what added the trailers.** It is correlation across a twenty-minute
+  window either side of the install. A lane typing `Manager: E` by hand is indistinguishable in the
+  log. The claim I can defend is that the mechanism is installed, binding in this worktree, and that
+  every commit since is validly attributed.
 - **Any lane's state block as current, including this one.** The gate can now prove currency only
   where nothing was committed after the stamp; otherwise it reports `STATE_BLOCK_STALENESS_UNPROVEN`
   because untrailered commits cannot be tied to a lane. A, D and E read UNPROVEN right now, which is
   **not** an accusation — it is the gate declining to guess. Mine reads `STATE_BLOCK_STALE_LANE`,
   proven, because my commit is the only attributable one in the repo.
-- **`docs/plan3/TERRITORY.yml` line 430 as a quoting bug.** My first diagnosis (`f5df3466e`) was
-  incomplete and the quoting is reverted. There are **two** defects stacked: the line sits at indent
-  8 where every sibling list item is at 6, so the parser stops there and never reaches the second
-  one, which is that `[` and `]` are rejected in a bare scalar *and* by `globToRegExp` even quoted.
-  A character class cannot be expressed in this glob subset at all. The nearest legal pattern,
-  `docs/plan3/D*.md`, is **wider** than what is written, so making the manifest load means deciding
-  what D's grant should be — a Director ruling, not a syntax fix. Not touched further by me.
+- ~~"line 430 needs a Director ruling on D's grant."~~ **Retired 23:0x+01:00.** I was wrong that a
+  grant change was unavoidable: `D[0-9]` is expressible exactly as ten `D0*`–`D9*` prefixes. Repaired
+  in `f3c6a58b8` with nothing widened. The two stacked defects were real and the third option in my
+  own table — enumerate — turned out to have a version with no maintenance cost.
+- **The manifest as loading, or the territory gate as live.** It still does **not** load. 75 pass / 12
+  fail, identical to before the repair. Managers **D and E are each declared twice** with contradictory
+  charters, and that is a Director ruling, not a syntax fix. Nothing the gate prints is a territory
+  verdict yet.
+- **Any resolution of the duplicate blocks as mechanical.** A union is **not** neutral — I probed it
+  rather than assuming: `resolveOwnership` returns on the first matching `denied` rule before it ever
+  looks at `owned`, so unioning D's blocks voids CHARTER-D's five module grants while reading like a
+  merge that kept both. Six paths are owned by one block and denied by the other, `order-manager.js`
+  among them — the file this manifest's own comment says already cost a trial-merge reconciliation.
+- **My read on which charter should win as a decision.** I offered one in the ruling request, and the
+  case against it is on the same page: block 1 cites the **newer** authority. If Phase 4 superseded
+  CHARTER-D, then D has been working outside its territory all day and my read is backwards. I cannot
+  tell which from the files.
 - **`SHELL-PLAY-01` as closed.** The bytes are CARRIED in b124 and b126 — `apply(this)` and
   `__shellPlayOverrideInert` both verified present — while the host's instance `play()` stayed inert.
   Present, mirrored, bound to nothing. Four documented exits eliminated; **no mechanism yet**.
@@ -93,9 +117,19 @@ Other lanes: [A](./BOARD-A.md) · [C](./BOARD-C.md) · [D](./BOARD-D.md) · [E](
   committed at `15:47:10+01:00`. Corrected in place at 16:20+01:00. Where a stamp and a commit
   disagree, **the commit time is authoritative**. CLOCK-01 caught the offset and missed the
   accuracy, which is a gap in my own gate.
-- **`docs/plan3/evidence/copy-absence-census.json`.** Exists on my disk only. `.gitignore:106` is
-  `docs/plan3/*` with narrow negations that do not include the evidence directory, while 271
-  artifacts under it are tracked. Any row citing a new artifact path cites something unversioned.
+- **Any row citing a new artifact path under an evidence root.** Now measured rather than suspected:
+  **65 live citations across 528 tracked `.md` files point at gitignored paths**, and a further 12 at
+  paths simply never added. The ignore is not keeping evidence out — 378 artifacts under the two
+  evidence roots are already tracked through it — it only makes *which ones landed* a coin flip.
+  Proposal and exact patch in `RULING-REQ-EVIDENCE-GITIGNORE-20260803.md`. `.gitignore` is not mine and
+  I did not change it.
+- **That proposal as a fix for the dangling citations.** It recovers **22 of 65**. Another **38 cite
+  artifacts that exist on no disk anywhere**, so no ignore rule can help them; 2 cite a directory
+  instead of a file and 3 cite 150 MB+ heapsnapshots. The worse finding is the 38, and it is a finding
+  about how this project writes evidence rather than about `.gitignore`.
+- **The proposal as making evidence appear.** It only makes committing possible. Nothing yet **fails**
+  when a lane cites a path it never committed, and a gate that reds exactly that is the obvious next
+  control. Not built, not claimed.
 - **The viewport restore consumer.** **Not landed** — searched at 16:14+01:00, no symbols present. Do
   not read the TAL-01865 per-panel slice as covering it.
 - **DRAW-SMOKE-01 as a passing row.** It has **never executed against a build**. The grader is proven
