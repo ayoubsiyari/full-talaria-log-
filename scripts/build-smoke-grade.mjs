@@ -26,13 +26,29 @@ if (!fs.existsSync(FILE)) {
 
 const rows = fs.readFileSync(FILE, 'utf8').split('\n').filter(Boolean)
   .map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+/**
+ * LAST, not first. The soak resumes into an existing .jsonl rather than truncating it,
+ * so one artifact can hold several passes: after two smoke arms on 2026-08-03 the file
+ * carried a DRAWINGS_LOST note from 18:08:09Z and a DRAWINGS_UNOBSERVABLE_NO_PAINT note
+ * from 18:30:49Z, and `notes.find()` returned the 18:08 one. The grade therefore
+ * described a run that had been superseded twenty minutes earlier.
+ *
+ * The direction of that bug is the dangerous one. Run, see a FAIL, fix it, re-run --
+ * and the grader keeps showing the old FAIL, so a real fix looks inert. Worse in
+ * reverse: an early PASS outlives a later FAIL and the gate reports green on a defect
+ * that is present right now.
+ *
+ * Only single-valued records are moved here. Samples are left alone deliberately: the
+ * resume behaviour is C's design and blending sample series is their call, not mine.
+ */
+const last = (arr, pred) => { for (let i = arr.length - 1; i >= 0; i -= 1) if (pred(arr[i])) return arr[i]; return undefined; };
 const meta = rows.find((r) => r.__meta);
 const samples = rows.filter((r) => r.n != null);
 const segStarts = rows.filter((r) => r.__segmentStart);
 const voids = rows.filter((r) => r.__void);
 const errors = rows.filter((r) => r.__error);
 const browserLost = rows.filter((r) => r.__browserLost);
-const final = rows.find((r) => r.__final);
+const final = last(rows, (r) => r.__final);
 // The harness writes notes as plain records alongside samples; a sample is the one with an `n`.
 const notes = rows.filter((r) => r.n == null);
 
@@ -151,21 +167,21 @@ gate('the pause-probe separated froth from hoard',
   'The memory bar is judged on the hoard floor now, not the running total.');
 
 // 15. N3.
-const off = notes.find((n) => n.__offlineToggle);
+const off = last(notes, (n) => n.__offlineToggle);
 gate('N3: a 30 s outage produced no request storm',
   !off ? 'WARN' : (off.verdict === 'NO STORM' ? 'PASS' : (off.verdict === 'VOID' ? 'WARN' : 'FAIL')),
   off ? `${off.verdict} — ${String(off.why).slice(0, 140)}` : 'the offline toggle did not run in this window',
   'A storm on reconnect is the same defect arriving late.');
 
 // 16. The PO recipe's closing assertion.
-const paint = notes.find((n) => n.__postRefreshPaint);
+const paint = last(notes, (n) => n.__postRefreshPaint);
 gate('all four panels paint after a page refresh',
   !paint ? 'WARN' : (paint.panelsPainted >= 4 ? 'PASS' : 'FAIL'),
   paint ? `${paint.panelsPainted}/${paint.chartsAfterRefresh} painted` : 'no post-refresh paint reading',
   'My own reentry defect produced 0 realms and 0 bars after a fresh navigation; bars in an array are not paint.');
 
 // 16b. DRAW-SMOKE-01, on the same refresh as gate 16.
-const draw = notes.find((n) => n.__drawingsPersist);
+const draw = last(notes, (n) => n.__drawingsPersist);
 /**
  * DRAWINGS_UNOBSERVABLE_NO_PAINT is a WARN, not a FAIL, and the distinction is the
  * point of the gate rather than a softening of it. On the first b126 run the surface
@@ -186,7 +202,7 @@ gate('a trendline and a level survive a refresh at the planted price and market 
   + 'FAIL rather than a pass, because nothing to lose is not the same as nothing lost.');
 
 // 17. N4.
-const storeDiff = notes.find((n) => n.__storageDiff);
+const storeDiff = last(notes, (n) => n.__storageDiff);
 gate('N4: storage bytes read at start, end and post-refresh',
   storeDiff?.startToEnd?.ok ? 'PASS' : 'WARN',
   storeDiff?.startToEnd?.ok
@@ -206,7 +222,19 @@ const verdict = failed.length ? 'DO NOT FIRE' : (warned.length ? 'FIRE WITH WARN
 
 console.log(`\nBUILD SMOKE — ${ARM} arm`);
 console.log(`build: badge ${meta?.seal?.badge ?? '?'} digest ${meta?.seal?.digest ?? '?'} sha ${String(meta?.sourceCommitSha ?? '?').slice(0, 12)}`);
-console.log(`window: ${samples.length} samples, ${samples.length ? samples[samples.length - 1].hours : 0} h, completed=${final?.completed ?? 'still running'}\n`);
+console.log(`window: ${samples.length} samples, ${samples.length ? samples[samples.length - 1].hours : 0} h, completed=${final?.completed ?? 'still running'}`);
+
+/**
+ * Said out loud rather than silently resolved. Grading the last pass is right, but a
+ * reader looking at "3 samples" needs to know those samples came from more than one
+ * pass over the same file, because the sample series is still the union of all of them.
+ */
+const passes = rows.filter((r) => r.__final).length;
+if (passes > 1) {
+  console.log(`NOTE: this artifact holds ${passes} completed passes. Gates read the LAST of each record;`);
+  console.log('      the sample series above is still the union of every pass in the file.');
+}
+console.log('');
 for (const g of gates) {
   console.log(`${g.state.padEnd(5)} ${g.name}`);
   console.log(`      ${g.detail}`);
