@@ -455,6 +455,44 @@ if (isMain) {
     console.log(`[queue] order: ${rs.map((r, i) => `${i + 1}. ${r.owner}/${r.run}`).join('  ') || '(empty)'}`);
     process.exit(0);
   }
+  /**
+   * PROMOTE-01. The queue could reserve, cancel and list, but never REORDER — so acting on a
+   * priority ruling meant cancelling other lanes' reservations and retyping their notes, which is
+   * how a scheduling note gets lost. Moving an entry is now its own operation and leaves every other
+   * entry's text untouched.
+   *
+   * It records who ordered the move. A promotion with no stated authority is a queue-jump, and the
+   * difference should be legible to the lane that just got moved down.
+   */
+  if (cmd === 'promote') {
+    const rs = state.reservations || [];
+    const run = arg('run');
+    const idx = rs.findIndex((r) => r.owner === owner && (!run || r.run === run));
+    if (idx === -1) {
+      console.error(`[queue] REFUSED — no reservation for ${owner}${run ? `/${run}` : ''} to promote.`);
+      process.exit(2);
+    }
+    const to = Math.max(1, Math.min(rs.length, Number(arg('to', '1')))) - 1;
+    if (idx === to) { console.log(`[queue] ${owner}/${rs[idx].run} is already at position ${to + 1}.`); process.exit(0); }
+    const authority = arg('by', null);
+    if (!authority) {
+      console.error('[queue] REFUSED — --by=<who ordered it> is required. A promotion without a '
+        + 'named authority is indistinguishable from a queue-jump, and the lane being moved down '
+        + 'is entitled to see which it was.');
+      process.exit(2);
+    }
+    const [moved] = rs.splice(idx, 1);
+    moved.promotedFrom = idx + 1;
+    moved.promotedBy = authority;
+    moved.promotedAt = stamp();
+    rs.splice(to, 0, moved);
+    state.reservations = rs;
+    writeState(state);
+    appendLog(`- ${stamp()} · PROMOTE · ${owner} · ${moved.run} · ${idx + 1} -> ${to + 1} · by ${authority}`);
+    console.log(`[queue] promoted ${owner}/${moved.run} from ${idx + 1} to ${to + 1} on ${authority}'s order.`);
+    rs.forEach((r, i) => console.log(`[queue] ${i + 1}. ${r.owner} · ${r.run}${r.note ? ` — ${r.note}` : ''}`));
+    process.exit(0);
+  }
   if (cmd === 'order') {
     const rs = state.reservations || [];
     if (!rs.length) console.log('[queue] no reservations; first to claim wins.');
