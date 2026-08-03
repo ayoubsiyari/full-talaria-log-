@@ -9,6 +9,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { sleep } from '../chart v 1.4/chart/multichart-prod/harness/harness-lib.mjs';
 import { aggregateHeapSnapshotByConstructor, compareConstructorAggregates } from './lib/heap-snapshot-aggregates.mjs';
@@ -57,7 +58,7 @@ function save(report) {
   fs.writeFileSync(path.join(OUT_DIR, 'report.json'), JSON.stringify(report, null, 2));
 }
 
-async function withTimeout(label, timeoutMs, promise) {
+export async function withTimeout(label, timeoutMs, promise) {
   let timer = null;
   try {
     return await Promise.race([
@@ -225,36 +226,55 @@ async function readPlayheadSnapshot(page) {
   }).catch((e) => [{ error: String(e?.message || e) }]);
 }
 
-async function waitWithHeartbeats(ms, report, page, segmentLabel) {
+export async function waitWithHeartbeats(ms, report, page, segmentLabel, {
+  sleepFn = sleep,
+  keepAlive = () => keepConf01Playing(page, SPEED),
+  readPlayhead = () => readPlayheadSnapshot(page),
+  saveReport = save,
+  heartbeatEveryMs = 5 * 60_000,
+  keepTimeoutMs = 45_000,
+  playheadTimeoutMs = 20_000,
+} = {}) {
   const start = Date.now();
-  let next = start + 5 * 60_000;
+  let next = start + heartbeatEveryMs;
   while (Date.now() - start < ms) {
     const remaining = ms - (Date.now() - start);
-    await sleep(Math.min(30_000, Math.max(0, remaining)));
+    await sleepFn(Math.min(30_000, Math.max(0, remaining)));
     if (Date.now() >= next || Date.now() - start >= ms) {
       const keep = await withTimeout(
         `heartbeat ${segmentLabel} keepConf01Playing`,
-        45_000,
-        keepConf01Playing(page, SPEED),
+        keepTimeoutMs,
+        keepAlive(),
       ).catch((e) => ({
+        state: 'HEARTBEAT_KEEPALIVE_TIMEOUT',
+        phase: 'heartbeat.keepConf01Playing',
         error: String(e?.message || e),
       }));
       const playhead = await withTimeout(
         `heartbeat ${segmentLabel} readPlayheadSnapshot`,
-        20_000,
-        readPlayheadSnapshot(page),
-      ).catch((e) => [{ error: String(e?.message || e) }]);
+        playheadTimeoutMs,
+        readPlayhead(),
+      ).catch((e) => [{
+        state: 'HEARTBEAT_PLAYHEAD_TIMEOUT',
+        phase: 'heartbeat.readPlayheadSnapshot',
+        error: String(e?.message || e),
+      }]);
+      const states = [
+        keep?.state,
+        ...(Array.isArray(playhead) ? playhead.map((p) => p?.state).filter(Boolean) : []),
+      ].filter(Boolean);
       const beat = {
         at: new Date().toISOString(),
         segment: segmentLabel,
         elapsedMin: +((Date.now() - start) / 60_000).toFixed(2),
+        state: states[0] || 'HEARTBEAT_OK',
         keepPlaying: keep,
         playhead,
       };
       report.heartbeats.push(beat);
-      save(report);
+      saveReport(report);
       log(`heartbeat ${segmentLabel} elapsed=${beat.elapsedMin}min playing=${keep?.playing ?? 'n/a'}`);
-      next += 5 * 60_000;
+      next += heartbeatEveryMs;
     }
   }
 }
@@ -487,4 +507,6 @@ async function main() {
   }
 }
 
-await main();
+if (process.argv[1] && path.resolve(fileURLToPath(import.meta.url)) === path.resolve(process.argv[1])) {
+  await main();
+}
