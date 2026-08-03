@@ -106,6 +106,19 @@ test('an arm that never reached its summary is named, not treated as absent', ()
   assert.match(arm.why, /did not reach its summary/);
 });
 
+test('a competitor page that never drew is refused, not read as a cheap competitor', () => {
+  // The dangerous arm: a blocked or login-walled tab still has a real process
+  // footprint, and quoting it would say TradingView costs 90 MB for a chart it
+  // never rendered.
+  const r = buildReport({
+    ours1up: armOf(arena({ label: 'ours-1up', panels: 1, total: 300, gpu: 60 }), { expectPanels: 1 }),
+    tv1up: armOf(arena({ label: 'tv-1up', panels: 1, total: 90, gpu: 12, canvases: 0 }), { expectPanels: 1 }),
+  });
+  assert.equal(r.arms.tv1up.state, 'ARM_DREW_NOTHING');
+  assert.match(r.arms.tv1up.why, /zero canvases/);
+  assert.equal(r.headline.state, 'HEADLINE_PAIR_INCOMPLETE');
+});
+
 test('our four-up is published as ours, labelled so, with the marginal cost per panel', () => {
   const r = buildReport({
     ours1up: armOf(arena({ label: 'ours-1up', panels: 1, total: 300, gpu: 60 }), { expectPanels: 1 }),

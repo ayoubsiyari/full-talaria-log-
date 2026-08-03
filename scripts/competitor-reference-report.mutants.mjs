@@ -48,6 +48,11 @@ const MUTANTS = [
     replace: "      label: 'comparison',",
   },
   {
+    name: 'a page that drew nothing is read as a cheap competitor',
+    find: '  if (census === 0) {',
+    replace: '  if (false) {',
+  },
+  {
     name: 'an errored arm is read as a reading',
     find: "  if (report.error) return { state: 'ARM_ERRORED', why: String(report.error).split('\\n')[0] };",
     replace: '  if (false) return null;',

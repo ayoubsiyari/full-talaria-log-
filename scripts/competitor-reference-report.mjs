@@ -53,6 +53,15 @@ export function armOf(report, { expectPanels } = {}) {
   if (expectPanels != null && arm.panels !== expectPanels) {
     return { ...arm, state: 'ARM_WRONG_PANEL_COUNT', why: `expected a ${expectPanels}-panel arm, this artifact is ${arm.panels}` };
   }
+  /**
+   * A page that never drew is the dangerous arm, not the missing one: a
+   * TradingView tab blocked, timed out or showing a login wall still reports a
+   * real process footprint, and that number would read as "the competitor is
+   * cheap" when it means "the competitor never rendered". No canvases, no chart.
+   */
+  if (census === 0) {
+    return { ...arm, state: 'ARM_DREW_NOTHING', why: 'the surface census found zero canvases, so no chart was rendered and the footprint is of an empty page' };
+  }
   return arm;
 }
 
