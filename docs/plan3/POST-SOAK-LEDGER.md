@@ -687,3 +687,22 @@ with its own reason, which is why `PSL-21` through `PSL-23` are individual.
   be the wrong setting -- but that is a ruling, not a patch.
 - **seal-corrupting?** **no.** Authorship metadata and process. §7 already proves the b125/b126 stamp
   chain's bytes are clean, because the swept paths never intersected the governed build roots.
+
+### PSL-35 · A-lane suspects were never enumerated as a lane
+
+- **owner:** A
+- **finding:** Four of five lanes supplied self-declared suspect rows to §2 -- C 31, B 36, D 13, E 7.
+  **A supplied none.** A's remaining pre-verification instruction is the governor reference-timeframe
+  pre-flight and then stop, so none are coming before the PO's five-package pass.
+- **state:** `STATED_NOT_SUPPLIED`
+- **evidence:** row counts by lane in `SUSPECT-LEDGER-SEAL.md`; `A-SUS-00` in section 4k. Ten rows in
+  that file carry A as an owner cell, all written by other lanes.
+- **post-soak action:** A supplies its lane's rows under the same law, or the PO accepts on the record
+  that section 2's coverage of A is whatever other lanes happened to name. **The unexamined surface is
+  not small** -- SPEED-01, the A3 speed-fill journal, daily bucketing, the gate-depth sweep, the
+  withdrawn comparison series, the shared `run-lock` primitive, and the W1 arm whose 0.08 turned out to
+  be the harness rather than the product.
+- **seal-corrupting?** **no**, and this is the honest boundary of that answer. It does not make the sealed
+  bytes wrong. It does mean §2's completeness claim is a **four-of-five-lanes** claim, and any reader who
+  treats the ledger as a whole-campaign census is wrong in one direction, for one lane. I would rather
+  that be written down than inferred from a row count.
