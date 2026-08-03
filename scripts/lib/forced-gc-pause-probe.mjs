@@ -19,6 +19,7 @@
 
 import { forceCollection, gradeSettle, SETTLE_DEFAULT_MS, SETTLE_MIN_MS } from './settle-protocol.mjs';
 import { assessAgainstBar } from './bar-basis.mjs';
+import { assessSettled } from './settle-criterion.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -135,8 +136,26 @@ export async function forcedGcPauseProbe(page, {
    * minimum reports BAR_NOT_APPLICABLE_UNSETTLED rather than a pass. That is the defect that let a
    * 3-second reading be quoted against a bar that binds at settled post-GC.
    */
+  /**
+   * SETTLE-CRITERION-V2. The probe satisfies Q (it pauses and verifies) and C (forced collection),
+   * but it takes ONE reading after the settle rather than a curve, so it fails F with NO_CURVE. That
+   * is the truthful grade and it is reported rather than smoothed: a single point cannot show it has
+   * stopped moving, and the hoard floor is the soak's second gate. Lifting this needs >= 3 reads at
+   * 600 s rungs, not a longer sleep before one read.
+   */
+  out.settleCriterion = assessSettled({
+    reads: [gcFloor],
+    rungMs: settleWaitedMs,
+    quiescent: out.pausedVerified === true,
+    forcedGcOk: gc.forcedGcOk,
+    // This probe reads footprint, not per-isolate heap, so the across-collection heap check cannot
+    // run here. The result records that as NOT_MEASURED rather than letting it pass silently.
+    heapBeforeGcMB: null,
+    heapAfterGcMB: null,
+    label: 'hoard floor',
+  });
   out.barBasis = assessAgainstBar(floorRec, {
-    settled: grade.protocolCompliant === true,
+    settled: out.settleCriterion.settled === true,
     settleMs: settleWaitedMs,
     what: 'the hoard floor',
   });

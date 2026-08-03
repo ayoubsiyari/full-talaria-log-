@@ -1,0 +1,42 @@
+---
+description: Before reporting that a measurement, field, or artifact does not exist, search for the instrument that would have produced it.
+alwaysApply: true
+---
+
+# Search the record before reporting an absence
+
+Twice on 2026-08-03 a wrong answer went up because evidence that was already in hand had not been
+read: a `knownWeakness` field written into an artifact and never looked at, and a CONF-01 per-process
+split reported as absent when the instrument that produced it was one search away. Both are the same
+failure — treating one's own prior output as settled context rather than as evidence to re-query, and
+so searching the world instead of the record.
+
+## The rule
+
+**Before writing that a number, field, split, or artifact "is not recorded", "does not exist", "was
+never measured", or "cannot be answered retrospectively", you must first:**
+
+1. **Search the artifacts.** Grep `_evidence/`, `docs/plan3/evidence/`, and `tests/evidence/` for the
+   metric name, the gate ID, and the build stamp.
+2. **Search for the instrument.** Any published number had a producer. Grep `scripts/` for the script
+   that emitted it and read what else it wrote to the same artifact — per-process splits, per-arena
+   rows and schema fields usually ride along beside the headline that got quoted.
+3. **Search the boards.** Grep `docs/plan3/board/` for the figure itself; the context that qualifies
+   it is often in the entry that first posted it.
+
+Only after those three come back empty may absence be reported, and the report must say **where you
+looked**, so the next person can extend the search rather than repeat it.
+
+## What counts as compliance
+
+- ✅ "No instrument preserved raw memory-infra traces — checked `_evidence/`, the six capture scripts
+  in `scripts/`, and BOARD-C/E. Here is the fingerprint I added so the question is answerable next
+  time."
+- ❌ "CONF-01 has no per-process split." (It did. The artifact was on disk.)
+- ❌ "That was never measured." — with no statement of where the search ran.
+
+## Scope
+
+Applies to any claim of absence in board prose, reports, commit messages, verdict lines, or answers to
+the Director or PO. The cost of the search is seconds; the cost of a wrong absence is a decision made
+on it.

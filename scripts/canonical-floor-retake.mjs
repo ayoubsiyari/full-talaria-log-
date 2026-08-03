@@ -54,6 +54,7 @@ import { assessQuotability } from './lib/memory-validity.mjs';
 import { captureDetailedDump } from './lib/detailed-dump-capture.mjs';
 import { assessHeadline } from './lib/known-weakness.mjs';
 import { assessAgainstBar } from './lib/bar-basis.mjs';
+import { assessSettled } from './lib/settle-criterion.mjs';
 import { clockOf, both } from './lib/clock.mjs';
 
 const arg = (k, d) => {
@@ -253,6 +254,22 @@ async function settleCurve(session, { label, onProgress }) {
     ? rankRowGrowth(reads[0].arenas, reads[reads.length - 1].arenas)
     : null;
 
+  /**
+   * SETTLE-CRITERION-V2 on the curve itself. `gradeSettleCurve` grades the shape; this grades whether
+   * the reading is entitled to the word "settled" at all — quiescence, an effective collection, a real
+   * curve at real rungs, and no mid-settle rise. The rung is the LAST gap, which is the one the
+   * flatness bound is applied over.
+   */
+  const rungGapsSec = RUNGS_SEC.slice(1).map((s, i) => s - RUNGS_SEC[i]);
+  const settleCriterion = assessSettled({
+    reads: reads.map((r) => r.totalMB),
+    rungMs: (rungGapsSec.at(-1) ?? 0) * 1000,
+    quiescent: Array.isArray(pause) ? pause.length > 0 && pause.every((p) => p.now === false) : null,
+    forcedGcOk: reads.every((r) => r.forcedGcOk === true),
+    label,
+  });
+  log(`  ${label} SETTLE-CRITERION-V2: ${settleCriterion.state}`);
+
   return {
     label,
     pause,
@@ -260,6 +277,7 @@ async function settleCurve(session, { label, onProgress }) {
     reads,
     curveComplete: true,
     grade: graded,
+    settleCriterion,
     /** What the two published methods would have reported on THIS session. */
     asPublishedMethods: {
       atOneSecondMB: reads.find((r) => r.settleSec === 0)?.totalMB ?? null,
@@ -547,7 +565,9 @@ async function main() {
         .find((r) => r?.footprintTotalMB != null);
       if (lastPost) {
         artifact.barBasis = assessAgainstBar(lastPost, {
-          settled: artifact.postPlayFloor?.verdict === 'FLOOR_FOUND',
+          // The criterion decides this, not the curve's own shape grade. A curve can be FLOOR_FOUND
+          // and still fail quiescence or the across-collection heap check.
+          settled: artifact.postPlayFloor?.settleCriterion?.settled === true,
           what: 'the canonical post-play floor',
         });
         log(`BAR-BASIS-01 ${artifact.barBasis.barState} — ${artifact.barBasis.reason}`);

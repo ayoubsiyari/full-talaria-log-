@@ -84,6 +84,13 @@ export const C_LANE_GATES = [
       + 'separately, a pair with no contrast at all, whose delta is zero by construction',
   },
   {
+    id: 'SETTLE-CRITERION-V2',
+    symbol: 'assessSettled',
+    module: 'scripts/lib/settle-criterion.mjs',
+    refuses: 'a procedurally-compliant reading being taken for a settled one — a live page during '
+      + 'collection, a heap that rose across it, a single point with no curve, or a curve still moving',
+  },
+  {
     id: 'BAR-BASIS-01',
     symbol: 'assessAgainstBar',
     module: 'scripts/lib/bar-basis.mjs',
