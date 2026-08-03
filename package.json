@@ -230,7 +230,12 @@
     "mutants:board-state": "node scripts/board-state-block-audit.mutants.mjs",
     "gate:host-scope": "node scripts/host-scope-adoption-audit.mjs",
     "test:host-scope": "node scripts/host-scope-adoption-audit.selftest.mjs",
-    "mutants:host-scope": "node scripts/host-scope-adoption-audit.mutants.mjs"
+    "mutants:host-scope": "node scripts/host-scope-adoption-audit.mutants.mjs",
+    "gate:index-scope": "node scripts/index-scope-guard.mjs",
+    "test:index-scope": "node --test scripts/index-scope-guard.selftest.mjs",
+    "mutants:index-scope": "node scripts/index-scope-guard.mutants.mjs",
+    "hook:install": "node scripts/install-index-scope-hook.mjs",
+    "commit:scoped": "node scripts/commit-scoped.mjs"
   },
   "dependencies": {
     "dukascopy-node": "^1.46.3",

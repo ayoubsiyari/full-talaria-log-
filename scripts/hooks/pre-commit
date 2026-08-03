@@ -1,0 +1,25 @@
+#!/bin/sh
+# INDEX-SCOPE-01 pre-commit hook.
+#
+# Refuses a commit whose index carries a path the author did not name. Merges,
+# rebases and cherry-picks are exempt; the guard detects them itself.
+#
+# Install:  node scripts/install-index-scope-hook.mjs
+# Bypass:   INDEX_SCOPE_OFF=1 git commit ...   (states the choice in the shell
+#           history, which is the point — an unrecorded bypass is not a bypass,
+#           it is the original defect)
+if [ "$INDEX_SCOPE_OFF" = "1" ]; then
+  echo "[index-scope] BYPASSED by INDEX_SCOPE_OFF=1"
+  exit 0
+fi
+
+node scripts/index-scope-guard.mjs --hook
+status=$?
+if [ $status -ne 0 ]; then
+  echo ""
+  echo "[index-scope] commit refused: the index holds files this commit did not name."
+  echo "[index-scope] name them:   node scripts/commit-scoped.mjs -F <msgfile> <path>..."
+  echo "[index-scope] or bypass:   INDEX_SCOPE_OFF=1 git commit ..."
+  exit $status
+fi
+exit 0
