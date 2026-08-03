@@ -23,6 +23,7 @@ const CAPTURE_TIMEOUT_MS = Number(arg('captureTimeoutMs', '300000'));
 const PARSE_TIMEOUT_MS = Number(arg('parseTimeoutMs', '60000'));
 const DRY_RUN = arg('dryRun', '0') === '1';
 const RE_RESERVE_ON_NO_BROWSER = arg('reReserveOnNoBrowser', '1') === '1';
+const ALLOW_ATTACH_LOOP = arg('allowAttachLoop', '0') === '1';
 
 function arg(name, fallback = null) {
   const prefix = `--${name}=`;
@@ -166,6 +167,11 @@ async function runOnce(paths, report) {
 }
 
 async function main() {
+  if (!DRY_RUN && !ALLOW_ATTACH_LOOP) {
+    console.error('REFUSED_ATTACH_LOOP_RETIRED: detailed dump capture trigger moved to C sampler; use --allowAttachLoop=1 only for explicit postmortem replay.');
+    process.exitCode = 2;
+    return;
+  }
   const paths = freshPaths();
   const report = {
     signature: 'DETAILED-DUMP-CAPTURE-WATCH-V1',

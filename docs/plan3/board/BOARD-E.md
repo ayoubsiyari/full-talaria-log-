@@ -7,7 +7,7 @@ A blocked manager reads this rather than waiting for a relay.
 
 ---
 
-## CURRENT STATE — E's lane · maintained in place · last updated 19:17+01:00
+## CURRENT STATE — E's lane · maintained in place · last updated 19:31+01:00
 
 > **This block is the one part of this file that is NOT append-only.** It is overwritten, so it
 > answers *what is true now*; everything below answers *what happened*. Every number here carries
@@ -17,9 +17,10 @@ A blocked manager reads this rather than waiting for a relay.
 
 | row | value | state |
 |---|---|---|
-| Detailed-dump capture/parser item 6 | **gate PASS 4/4 at 18:55+01:00** | `BUILT_GREEN_NOT_CAPTURED` — capture requests detailed memory-infra rows, parser consumes detailed child rows plus current flattened COV-01 arena rows without letting roots-only rows masquerade as detail |
-| Item 6 queue position | **reserved front at 19:16+01:00** | `RESERVED_FRONT` — watcher consumed the first reservation while proving `NO_LIVE_SOAK_BROWSER`; E re-reserved front immediately |
-| Item 6 live capture | **attempted at 19:14:30+01:00** | `NO_LIVE_SOAK_BROWSER` — queue claim/release worked, but no chart browser remained to attach to; artifact `_evidence/manager-E/detailed-dump-capture-20260803/2026-08-03T18-14-29-735Z/watch-report.json` |
+| Detailed-dump capture/parser item 6 | **gate PASS 4/4 at 18:55+01:00** | `E_BUILT_C_WIRES` — E parser/gate stays owned by E; capture trigger moves into C's sampler at the four scheduled moments |
+| Item 6 queue position | **E reservation cancelled at 19:22+01:00** | `TRIGGER_MOVED_TO_C_SAMPLER` — standalone attach loop retired; E no longer holds or waits for a queue slot |
+| Item 6 live capture | **attempted at 19:14:30+01:00** | `NO_LIVE_SOAK_BROWSER_STRUCTURAL` — queue claim/release worked, but empty queue meant no chart browser; artifact `_evidence/manager-E/detailed-dump-capture-20260803/2026-08-03T18-14-29-735Z/watch-report.json` |
+| C handoff | **written at 19:28+01:00** | `HANDOFF_READY` — `docs/plan3/E-TO-C-DETAILED-DUMP-CAPTURE-HANDOFF-20260803.md` gives exact in-process call, open prerequisites, write paths, and four moments |
 | C canonical floor parse | **10 samples parsed at 18:56+01:00** | `ROOTS_ONLY_PARSED_NOT_QUOTABLE` — `_evidence/manager-E/detailed-dump-parser-canonical-floor-pass3-20260803.json` preserves final **59.84% coverage / 271.05 MB unattributed** and `detailState=ROOTS_ONLY_FLATTENED_ARENA_COLUMNS` |
 | V8 playback rerun | **complete** | `DIAGNOSTIC_CAPTURED_CONTAMINATED` — CONF-01 same-symbol, 4 panels, playback at 10 bars/s, zero-trade reproduction; useful retainer data, not authoritative plateau/slope read |
 | Snapshot A | **captured at 15:36:47+01:00** | `OBSERVED_ARTIFACT` — `_evidence/manager-E/v8-playback-heap-slope-20260803/2026-08-03T14-34-45-491Z/A.heapsnapshot` |
@@ -35,11 +36,10 @@ A blocked manager reads this rather than waiting for a relay.
 | V8 private outdir lock semantics | **terminal lock record kept** | `HARDENED_NOT_RUN` — disposable and authoritative V8 scripts now leave `.v8-*.lock` as `ACTIVE` while live and rewrite it to `PROCESS_EXITING` with wall elapsed, planned playback minutes, and active phase instead of unlinking silently |
 | V8 plan-overrun semantics | **run-level watchdog added** | `HARDENED_NOT_RUN` — after the 90-minute playback plan elapses, live V8 scripts emit repeated `RUN_OVERDUE_ACTIVE_PHASE` events naming the active phase, so long snapshot-C writes no longer look like an anonymous stall |
 
-**Blocked on someone else** — Item 6 is reserved at the front again. The unattended watcher fired when
-the queue cleared at 19:14:30+01:00, claimed, bounded the capture phase, released, and recorded
-`NO_LIVE_SOAK_BROWSER`; the C smoke browser was gone before E could attach. The authoritative read is
-not running yet; it must run later with Cursor closed and is blocked on COV-01 coverage >=95% plus
-host-scope locking or an explicit quiet-box window.
+**Blocked on someone else** — Item 6 no longer waits on E's queue slot. C owns the trigger now: wire
+E's detailed collector into C's existing bounded `sample.readArenaColumns` path and fire it at the four
+scheduled soak moments. The authoritative read is not running yet; it must run later with Cursor closed
+and is blocked on COV-01 coverage >=95% plus host-scope locking or an explicit quiet-box window.
 
 **Not quotable, and why** — C's current floor remains `NOT_QUOTABLE_COVERAGE`: **59.84% coverage /
 271 MB unattributed** until a fresh detailed-dump capture is parsed and joined. The live
@@ -54,10 +54,9 @@ positive constructor self-size and `m20Q6CapturedClear +7.270 MB`, are quotable 
 salvage, not as flattening/slope evidence. `BUFFER-PARTITION-DISCRIMINATOR-V1` did not assign the
 120 MB buffer shelf; its arm numbers are negative/weak-transient owner eliminations, not an owner claim.
 
-**Next required update** — Keep item 6 at the front and fire the same watcher when an attachable chart
-browser is present:
-`node scripts/live-trace-and-allocator-probe.mjs --port=auto --phases=memory --memoryDetail=detailed --out=<artifact>`,
-then parse it with `node scripts/detailed-dump-parser.mjs <artifact> --out=<report>`. After COV-01 is
+**Next required update** — C wires the handoff call into the sampler and emits four detailed dump
+artifacts: `zerotrade:start`, `zerotrade:end`, `trades:start`, `trades:end`. E then parses those
+artifacts with `node scripts/detailed-dump-parser.mjs <files> --out=<report>`. After COV-01 is
 recomputed, schedule the authoritative read only if identity lock, all phases, sidecars, COV-01 >=95%,
 and GATE-01 can pass inline.
 
@@ -178,3 +177,5 @@ and the M17-DI2 restore in `1c8892c51`.
 - 19:13+01:00 · E · READY / DRY-PROVEN · `DETAILED-DUMP-CAPTURE-WATCH` · Added unattended watcher `scripts/detailed-dump-capture-watch.mjs` and package script `watch:detailed-dump-capture`. Dry run wrote a fresh timestamped outdir at `.scratch/detailed-dump-watch-dryrun/2026-08-03T18-12-58-373Z`, proved bounded `captureTimeoutMs=300000` / `parseTimeoutMs=60000`, and attempted no queue claim or browser attach. Verification: `node --check scripts/detailed-dump-capture-watch.mjs`; `npm run test:detailed-dump-capture` PASS 4/4 at 19:12+01:00.
 - 19:14+01:00 · E · FIRED / NO BROWSER · `DETAILED-DUMP-CAPTURE-ITEM-6` · Queue flipped `QUEUE_CLEAR`; watcher claimed E/detailed-dump-capture-item6 at 19:14:30+01:00, started capture, and released at 19:14:33+01:00. Result is named `NO_LIVE_SOAK_BROWSER`, not a stall: `live-trace-and-allocator-probe.mjs` found no live chart page on chrome-owned ports after C's smoke browser was gone. Artifact: `_evidence/manager-E/detailed-dump-capture-20260803/2026-08-03T18-14-29-735Z/watch-report.json`; capture sidecar has `signatureFilenameCheck=PASS`.
 - 19:16+01:00 · E · RE-RESERVED-FRONT · `DETAILED-DUMP-CAPTURE-ITEM-6` · Because the no-browser run consumed E's reservation while proving the setup path, E re-reserved item 6 at queue position 1 ahead of C/canonical-floor-retake-clean. Watcher hardened with `--reReserveOnNoBrowser=1` default so future no-browser outcomes restore the front slot automatically after release.
+- 19:22+01:00 · E · CANCELLED / TRIGGER MOVED · `DETAILED-DUMP-CAPTURE-ITEM-6` · Director ruled `NO_LIVE_SOAK_BROWSER` structural: an empty queue has no browser to measure. E cancelled its queue reservation and retired the standalone attach loop. Capture trigger moves to C's sampler; E keeps parser/gate ownership.
+- 19:28+01:00 · E → C · HANDOFF · `DETAILED-DUMP-CAPTURE-IN-SAMPLER` · Handoff written at `docs/plan3/E-TO-C-DETAILED-DUMP-CAPTURE-HANDOFF-20260803.md`. Exact call extends C's existing `readArenaColumns(session.browser, footprintTotalMB)` path with E's `collectAllocatorDetail(browserCdp, { settleMs: 1500 })`, writes `<c-run-dir>/detailed-dumps/<moment>.detailed-dump.json`, and parses with E's `detailed-dump-parser.mjs`. Four moments: `zerotrade:start`, `zerotrade:end`, `trades:start`, `trades:end`.
