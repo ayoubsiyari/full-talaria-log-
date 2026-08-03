@@ -60,6 +60,28 @@ const SPEED = Number(arg('speed', '10'));
 const STEP = arg('step', null) === null ? null : Number(arg('step', null));
 const OUT = arg('out', path.resolve(__dirname, '../docs/plan3/evidence/order01b-readback-canary.json'));
 
+/**
+ * The reading window, and it was 8 s hardcoded in the run that produced the first
+ * citable b126 artifact. 81 market-seconds of advance at 10.12 market-s/wall-s is
+ * a single 8-second delta: enough to prove a meter is not dead, not enough to
+ * call a rate. Sampled in slices now, so drift and stalls inside the window are
+ * visible instead of averaged away.
+ */
+const SAMPLE_MS = Number(arg('sample', '60000'));
+const SLICE_MS = Number(arg('slice', '10000'));
+
+/**
+ * Bars each realm must have ahead of its playhead before the window opens.
+ *
+ * The same run armed the top realm at index 1880 of 1881 — `fromEnd: 0`, parked
+ * on its last loaded bar with a pan load in flight — while the three panels had
+ * 1275 bars of runway. It then reported `playing=3` as a pass. A four-panel
+ * reading with a quarter of the workload parked measures three panels and a
+ * spectator, and that criticism was levelled at another lane's measurement before
+ * it applied to mine.
+ */
+const RUNWAY_BARS = Number(arg('runway', '120'));
+
 // RUN-LOCK-01. Two lanes lost hours today to a second copy of an instrument
 // starting on top of the first and rewriting its artifact. Refuse before the
 // browser launches, not after the reading is taken.
@@ -110,6 +132,8 @@ async function main() {
   });
 
   let verdict = null;
+  /** A playback failure that must not stop the read-back probe from running. */
+  let playbackFail = null;
   let observed = {};
 
   try {
@@ -353,12 +377,104 @@ async function main() {
       console.log(`          ${String(a.realm).padEnd(10)} index ${a.currentIndex} of ${a.rawBars} (${a.fromEnd} bars from the end) playing=${a.playing}`);
     }
 
+    /* ---- give every realm runway, then start the ones that are not playing --- */
+    const prep = await page.evaluate(async ({ runway, speed, step }) => {
+      const sleepIn = (ms) => new Promise((r) => setTimeout(r, ms));
+      const realms = [{ w: window, name: 'top' }];
+      for (const f of [...document.querySelectorAll('iframe')].slice(0, 4)) {
+        try { realms.push({ w: f.contentWindow, name: f.id || 'panel' }); } catch (_e) { /* cross-origin */ }
+      }
+      const out = [];
+      for (const r of realms) {
+        const rs = r.w.chart && r.w.chart.replaySystem;
+        if (!rs) { out.push({ realm: r.name, state: 'NO_REPLAY_SYSTEM' }); continue; }
+        const len = Array.isArray(rs.fullRawData) ? rs.fullRawData.length : null;
+        const idx = rs.currentIndex ?? null;
+        const before = { rawBars: len, currentIndex: idx, fromEnd: len != null && idx != null ? len - 1 - idx : null, playing: !!rs.isPlaying };
+        let seekedTo = null;
+        if (before.fromEnd != null && before.fromEnd < runway && typeof rs.seekTo === 'function') {
+          // The product's own seek, not a hand-written index assignment: a realm
+          // rewound by poking currentIndex would carry stale animation state.
+          seekedTo = Math.max(0, len - 1 - runway);
+          try { rs.seekTo(seekedTo); } catch (e) { out.push({ realm: r.name, state: 'SEEK_THREW', why: String(e && e.message) }); }
+          await sleepIn(400);
+        }
+        /**
+         * Product path first, always. If `play()` as installed does not start it,
+         * that IS the shell-override finding, so it is recorded per realm rather
+         * than worked around silently — and only then does the prototype start the
+         * realm, so the reading is of four playing panels and the defect is still
+         * on the record.
+         */
+        let startedVia = before.playing ? 'already-playing' : null;
+        if (!rs.isPlaying) {
+          try { rs.play(); } catch (_e) { /* the silent refusal is the subject */ }
+          await sleepIn(800);
+          if (rs.isPlaying) startedVia = 'instance-play';
+          else {
+            const proto = Object.getPrototypeOf(rs);
+            if (proto && typeof proto.play === 'function') {
+              try { proto.play.call(rs); } catch (_e) { /* ignore */ }
+              await sleepIn(800);
+              startedVia = rs.isPlaying ? 'prototype-fallback' : 'would-not-start';
+            } else startedVia = 'would-not-start';
+          }
+        }
+        const lenAfter = Array.isArray(rs.fullRawData) ? rs.fullRawData.length : null;
+        const idxAfter = rs.currentIndex ?? null;
+        out.push({
+          realm: r.name,
+          state: 'PREPARED',
+          before,
+          seekedTo,
+          startedVia,
+          after: {
+            rawBars: lenAfter,
+            currentIndex: idxAfter,
+            fromEnd: lenAfter != null && idxAfter != null ? lenAfter - 1 - idxAfter : null,
+            playing: !!rs.isPlaying,
+            stepSeconds: typeof rs.getStepSeconds === 'function' ? rs.getStepSeconds() : null,
+          },
+          asked: { speed, step },
+        });
+      }
+      return out;
+    }, { runway: RUNWAY_BARS, speed: SPEED, step: STEP });
+    observed.prep = prep;
+
+    console.log(`        runway gate (${RUNWAY_BARS} bars) and start path:`);
+    for (const p of prep) {
+      if (p.state !== 'PREPARED') { console.log(`          ${String(p.realm).padEnd(10)} ${p.state}${p.why ? ` — ${p.why}` : ''}`); continue; }
+      console.log(`          ${String(p.realm).padEnd(10)} fromEnd ${p.before.fromEnd} -> ${p.after.fromEnd}`
+        + `${p.seekedTo === null ? '' : ` (seeked to ${p.seekedTo})`}  start=${p.startedVia}  playing=${p.after.playing}`);
+    }
+
+    const parked = prep.filter((p) => p.state === 'PREPARED' && (p.after.fromEnd ?? 0) < RUNWAY_BARS);
+    check(parked.length === 0, 'every realm had runway to step into before the window opened',
+      parked.length
+        ? `REALM_ARMED_WITHOUT_RUNWAY: ${parked.map((p) => `${p.realm} fromEnd=${p.after.fromEnd}`).join(', ')}`
+        : `all ${prep.length} realms >= ${RUNWAY_BARS} bars from their loaded edge`);
+
+    const notPlaying = prep.filter((p) => p.state !== 'PREPARED' || !p.after.playing);
+    check(notPlaying.length === 0, 'every realm is playing, so this is a four-panel reading',
+      notPlaying.length
+        ? `WORKLOAD_INCOMPLETE: ${notPlaying.map((p) => `${p.realm}=${p.startedVia || p.state}`).join(', ')}`
+        : `${prep.length} of ${prep.length} playing`);
+
+    // Separate row, because a realm that only starts via the prototype is a
+    // product defect even when the reading it enables is valid.
+    const fellBack = prep.filter((p) => p.startedVia === 'prototype-fallback');
+    check(fellBack.length === 0, 'play() as installed started every realm it was asked to',
+      fellBack.length
+        ? `SHELL_PLAY_OVERRIDE_INERT on: ${fellBack.map((p) => p.realm).join(', ')} (started via prototype instead)`
+        : 'no realm needed the prototype fallback');
+
     // Let the governor's meter fill: it reports delivery, so it needs delivery.
     // While it fills, watch the playhead directly. The meter is the thing under
     // test, so it cannot also be the evidence that replay was moving: a zero
     // from a stopped replay and a zero from a broken meter are different
     // findings and only the playhead separates them.
-    const truth = await page.evaluate(async (sampleMs) => {
+    const truth = await page.evaluate(async ({ sampleMs, sliceMs }) => {
       const sleepIn = (ms) => new Promise((r) => setTimeout(r, ms));
       const realms = [{ w: window, name: 'top' }];
       for (const f of [...document.querySelectorAll('iframe')].slice(0, 4)) {
@@ -415,9 +531,39 @@ async function main() {
       };
       const first = realms.map((r) => ({ name: r.name, h: head(r.w) }));
       const t0 = performance.now();
-      await sleepIn(sampleMs);
+      /**
+       * Slices, so a realm that runs for ten seconds and then parks at its edge is
+       * distinguishable from one that ran the whole window at half rate. Averaged
+       * over one delta those two are the same number.
+       */
+      const slices = [];
+      const sliceCount = Math.max(1, Math.round(sampleMs / sliceMs));
+      let prevHeads = realms.map((r) => head(r.w));
+      let prevAt = performance.now();
+      for (let s = 0; s < sliceCount; s += 1) {
+        await sleepIn(sliceMs);
+        const now = performance.now();
+        const wall = (now - prevAt) / 1000;
+        const heads = realms.map((r) => head(r.w));
+        slices.push({
+          sliceSeconds: +wall.toFixed(2),
+          perRealm: realms.map((r, i) => {
+            const a = prevHeads[i];
+            const b = heads[i];
+            const adv = a && b && Number.isFinite(a.t) && Number.isFinite(b.t) ? (b.t - a.t) / 1000 : null;
+            return {
+              realm: r.name,
+              playing: b ? b.playing : null,
+              marketSecAdvanced: adv,
+              marketPerWall: adv === null ? null : +(adv / wall).toFixed(2),
+            };
+          }),
+        });
+        prevHeads = heads;
+        prevAt = now;
+      }
       const wallSec = (performance.now() - t0) / 1000;
-      return realms.map((r, i) => {
+      const rows = realms.map((r, i) => {
         const a = first[i].h;
         const b = head(r.w);
         const advanced = a && b && Number.isFinite(a.t) && Number.isFinite(b.t)
@@ -434,8 +580,10 @@ async function main() {
           diagnosis: (moved && b && b.playing) ? null : why(r.w),
         };
       });
-    }, 8_000);
-    observed.playhead = truth;
+      return { windowSeconds: +wallSec.toFixed(2), sliceSeconds: +(sliceMs / 1000).toFixed(2), rows, slices };
+    }, { sampleMs: SAMPLE_MS, sliceMs: SLICE_MS });
+    observed.playhead = truth.rows;
+    observed.window = { seconds: truth.windowSeconds, sliceSeconds: truth.sliceSeconds, slices: truth.slices };
 
     // A realm that was never asked to play and one that refuses to play look
     // the same from outside. Ask the ones that are idle, once, and see.
@@ -574,16 +722,37 @@ async function main() {
       for (const r of revived) console.log(`        ${String(r.realm).padEnd(12)} ${JSON.stringify(r)}`);
     }
 
-    console.log('\n--- the playhead, measured independently of the meter ---');
-    for (const t of truth) {
+    console.log(`\n--- the playhead, measured independently of the meter, over ${observed.window.seconds}s `
+      + `in ${observed.window.slices.length} slice(s) of ${observed.window.sliceSeconds}s ---`);
+    for (const t of truth.rows) {
       console.log(`        ${String(t.realm).padEnd(12)} playing=${t.playingBefore}->${t.playingAfter} advanced=${t.marketSecAdvanced}s  ${t.marketPerWall} market-s/wall-s`);
       if (t.diagnosis) console.log(`        ${' '.repeat(12)} why: ${JSON.stringify(t.diagnosis)}`);
     }
-    const topHead = truth.find((t) => t.realm === 'top');
+    // Per-slice, so a realm that ran then parked is not averaged into one number.
+    for (const t of truth.rows) {
+      const per = observed.window.slices.map((s) => {
+        const row = s.perRealm.find((p) => p.realm === t.realm);
+        return row && row.marketPerWall !== null ? row.marketPerWall : null;
+      });
+      const seen = per.filter((v) => v !== null);
+      if (seen.length > 1) {
+        console.log(`        ${String(t.realm).padEnd(12)} per slice: ${per.map((v) => (v === null ? '—' : v)).join(' ')}`
+          + `   min ${Math.min(...seen)} max ${Math.max(...seen)}`);
+      }
+    }
+    const deadSlices = truth.rows.flatMap((t) => observed.window.slices
+      .map((s, i) => ({ realm: t.realm, i, row: s.perRealm.find((p) => p.realm === t.realm) }))
+      .filter((x) => x.row && x.row.marketSecAdvanced === 0));
+    check(deadSlices.length === 0, 'no realm sat still for a whole slice inside the window',
+      deadSlices.length
+        ? `STALLED_SLICE: ${deadSlices.slice(0, 6).map((d) => `${d.realm}@slice${d.i + 1}`).join(', ')}`
+        : `all realms advanced in all ${observed.window.slices.length} slices`);
+
+    const topHead = truth.rows.find((t) => t.realm === 'top');
     const replayMoved = !!topHead && Number.isFinite(topHead.marketPerWall) && topHead.marketPerWall > 0;
     check(replayMoved, 'replay actually moved during the reading window',
-      topHead ? `${topHead.marketSecAdvanced}s of market time` : 'no top realm');
-    const stalled = truth.filter((t) => t.playingBefore === true && t.playingAfter === false);
+      topHead ? `${topHead.marketSecAdvanced}s of market time over ${observed.window.seconds}s` : 'no top realm');
+    const stalled = truth.rows.filter((t) => t.playingBefore === true && t.playingAfter === false);
     check(stalled.length === 0, 'no realm stopped playing during the window',
       stalled.length ? `${stalled.map((s) => `${s.realm} after ${s.marketSecAdvanced}s`).join(', ')}` : 'all realms still playing');
 
@@ -603,15 +772,30 @@ async function main() {
         const neverStarted = tries.length > 0 && tries.every((a) => !a.playing);
         return neverStarted && r.viaClassMethod && r.viaClassMethod.playing === true;
       });
-      verdict = inert.length
-        ? fail('SHELL_PLAY_OVERRIDE_INERT',
-          `${inert.map((r) => r.realm).join(', ')}: play() as installed on the instance started `
-          + `nothing across ${inert[0].viaInstanceProperty.length} attempts, while the engine's own `
-          + `play on the same object started playback with a live timer. The engine is fine; the `
-          + `entry point in front of it is not. Identity of the override is in observed.playIdentity.`)
-        : fail('REPLAY_STOPPED',
-          'The playhead stopped, so a read-back of zero is honest and the fault is upstream of the meter. Fix playback at these knobs before grading the rate.');
-      return;
+      /**
+       * Recorded and carried, NOT returned on.
+       *
+       * The b126 run returned here, so section 3 never executed and the artifact
+       * shipped with no `observed.readBack` at all — while `workload.panels[].replay`
+       * carried the engine's CONFIGURED `marketSecondsPerWallSecond: 10`, which
+       * reads exactly like a read-back to anyone scanning the file. I quoted it as
+       * one. A run that fails playback is precisely when the read-back field most
+       * needs recording, because "absent" and "not attempted" are different
+       * findings and only running the probe separates them.
+       */
+      playbackFail = inert.length
+        ? {
+          state: 'SHELL_PLAY_OVERRIDE_INERT',
+          why: `${inert.map((r) => r.realm).join(', ')}: play() as installed on the instance started `
+            + `nothing across ${inert[0].viaInstanceProperty.length} attempts, while the engine's own `
+            + `play on the same object started playback with a live timer. The engine is fine; the `
+            + `entry point in front of it is not. Identity of the override is in observed.playIdentity.`,
+        }
+        : {
+          state: 'REPLAY_STOPPED',
+          why: 'The playhead stopped, so a read-back of zero is honest and the fault is upstream of the meter. Fix playback at these knobs before grading the rate.',
+        };
+      console.log(`\n  carrying a playback failure into the reading: ${playbackFail.state}`);
     }
 
     /* ---- 3. the reading -------------------------------------------------- */
@@ -671,7 +855,8 @@ async function main() {
       top ? `type=${top.type} value=${top.value}` : 'no top realm');
     if (!present) {
       verdict = fail('PUBLISH_ABSENT',
-        'The engine is served and carries ORDER-01B, but nothing readable appears on the frame a harness attaches to. This is the failure that was signed off twice.');
+        'The engine is served and carries ORDER-01B, but nothing readable appears on the frame a harness attaches to. This is the failure that was signed off twice.'
+        + (playbackFail ? ` Playback also failed this run (${playbackFail.state}), so the absence is not conclusive on its own.` : ''));
       return;
     }
 
@@ -711,9 +896,13 @@ async function main() {
       `${publishing.length} of ${panels.length} panel frames`);
 
     const bad = results.filter((r) => !r.ok);
-    verdict = bad.length
-      ? fail('PUBLISH_WRONG', `A reading came back and ${bad.length} clause(s) disagreed with it: ${bad.map((b) => b.label).join('; ')}`)
-      : { state: 'PUBLISH_CORRECT', why: `read-back ${top.value} market-s/wall-s at speed ${SPEED} x step ${stepSeconds}s` };
+    // A playback failure outranks a good reading: a rate delivered by three of
+    // four realms is not a four-panel rate, however correct the scalar is.
+    verdict = playbackFail
+      ? fail(playbackFail.state, `${playbackFail.why} The read-back itself was still probed and is in observed.readBack.`)
+      : bad.length
+        ? fail('PUBLISH_WRONG', `A reading came back and ${bad.length} clause(s) disagreed with it: ${bad.map((b) => b.label).join('; ')}`)
+        : { state: 'PUBLISH_CORRECT', why: `read-back ${top.value} market-s/wall-s at speed ${SPEED} x step ${stepSeconds}s, measured over ${observed.window.seconds}s in ${observed.window.slices.length} slices` };
   } finally {
     await browser.close().catch(() => {});
     await harness.close?.().catch?.(() => {});
@@ -729,8 +918,15 @@ async function main() {
       evidenceClasses: {
         servedEngineMarkers: 'STATIC_BYTES_PRECONDITION',
         rateReadBack: 'OBSERVED_BEHAVIOUR',
-        note: 'A pass requires the read-back. Markers present with no reading is ENGINE_PRESENT_BEHAVIOUR_UNOBSERVED, not a pass.',
+        // Named because these two were confused in the b126 artifact, by me:
+        // panels[].replay is what the engine was TOLD and echoed back at arming
+        // time; readBack is the field a harness attaches to, probed live.
+        workloadReplayFigures: 'CONFIGURED_INTENT_NOT_A_READING',
+        playheadAdvance: 'OBSERVED_BEHAVIOUR',
+        note: 'A pass requires observed.readBack. Markers present with no reading is ENGINE_PRESENT_BEHAVIOUR_UNOBSERVED, and workload.panels[].replay is configured intent rather than a read-back — neither is a pass.',
+        readBackAttempted: 'see observed.readBack; absent means the probe did not run, which is not the same as the field being absent',
       },
+      window: observed.window || { seconds: null, note: 'the reading window never opened' },
       runLock: { state: RUN_LOCK.state, pid: process.pid },
       verdict: verdict || { state: 'HARNESS_FAILED', why: 'the canary did not reach a verdict' },
       checks: results,
