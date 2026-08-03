@@ -16,7 +16,7 @@ Other lanes: [A](./BOARD-A.md) · [C](./BOARD-C.md) · [D](./BOARD-D.md) · [E](
 
 <!-- CURRENT-STATE-BLOCK:BEGIN — overwritten in place. Do not append below this line; append at the file's end. -->
 
-## CURRENT STATE — B's lane · maintained in place · last updated 16:33+01:00 / 2026-08-03T15:33Z
+## CURRENT STATE — B's lane · maintained in place · last updated 17:08+01:00 / 2026-08-03T16:08Z
 
 > **This block is the one part of this file that is NOT append-only.** It is overwritten, so it
 > answers *what is true now*; everything below answers *what happened*. Convention adopted from C
@@ -41,6 +41,8 @@ Other lanes: [A](./BOARD-A.md) · [C](./BOARD-C.md) · [D](./BOARD-D.md) · [E](
 | mc host cache release on teardown | called from `removeChart` | `SOURCE_PRESENT` — `chart.js:4553` → `:4637`. The 4→4 becomes 4→0 mutant is source-level |
 | `TALARIA_ALLOW_DIRTY_BUILD` waiver | **removed** | verified 16:15+01:00: zero references repo-wide |
 | CLOCK-01, B lane | **0 bare of 787 stamped** | gate green; the repo-wide red is D's 9 |
+| DRAW-SMOKE-01 grader | **13/13, nine verdict branches** | pure-function — every RED reachable from a fixture, both sides of the price epsilon. Says nothing about any build |
+| DRAW-SMOKE-01 served preconditions, b126 | **8 of 8 symbols present** | `STATIC_BYTES` — `toolRegistry`, `addDrawing`, `timestampPoints`, `pointsToTimestamps`, `_getMultichartPanelId`, `drawingManager`, `currentFileId`, `currentTimeframe`, all in served bytes at source `5dceb6368` |
 
 **Not quotable, and why**
 
@@ -66,11 +68,22 @@ Other lanes: [A](./BOARD-A.md) · [C](./BOARD-C.md) · [D](./BOARD-D.md) · [E](
   artifacts under it are tracked. Any row citing a new artifact path cites something unversioned.
 - **The viewport restore consumer.** **Not landed** — searched at 16:14+01:00, no symbols present. Do
   not read the TAL-01865 per-panel slice as covering it.
+- **DRAW-SMOKE-01 as a passing row.** It has **never executed against a build**. The grader is proven
+  and the symbols it binds to are CARRIED in b126, which is exactly the pair of facts SHELL-PLAY-01
+  had all day before it turned out to be inert. It becomes a result when a `--smoke` arm runs it.
+- **"Drawings persist on the correct panel" as a product property.** It is not one.
+  `getStorageKey()` keys on `chart_drawings_s{sessionId}_{fileId}` — symbol and session, never panel
+  letter. Under the soak's same-symbol layout a drawing appears on **all four** panels after a
+  refresh, and that is correct behaviour, not a leak. The gate asserts
+  present-on-the-panel-it-was-drawn-on and records the rest as observation.
 
 **Blocked on someone else**
 
-- **Box slot** → `SHELL-PLAY-01`'s next step, instrumenting inside the engine head. E's V8 run to
-  ~17:04:45+01:00, then the ruled order A → D → E → C. Not idle by choice.
+- **Box slot** → `SHELL-PLAY-01`'s next step (instrumenting inside the engine head), the census's six
+  end-to-end cells, and the first real run of DRAW-SMOKE-01. At 17:08+01:00 the box holds E's V8 run
+  (pid 1060, past its 90 minutes and in teardown), A's canary readback (pid 31064, from 16:37+01:00)
+  and D's watcher (pid 33124). `inspectLocks()` reads **none** while all three run, which is R6 again
+  on live evidence. Not idle by choice.
 - **C** → the passport must name the tag's commit. `writeBuildInfo()` checks 40-hex and nothing more,
   so any hand-build's HEAD passes. Nine build-arg edits across the shared ship path and both
   Dockerfiles, cited with line numbers on BOARD-C at 16:09+01:00. Also `roster-20260803b126-source`
@@ -425,3 +438,8 @@ CARRIED and inert for a full day.
 - 16:09+01:00 · B · **STILL OPEN, HANDED TO C AS A DECISION** · The passport does not require its SHA to be the tag's peel — `writeBuildInfo()` checks 40-hex and nothing more, so any hand-build's HEAD passes, which is exactly how b126 recorded `5dceb6368` against a tag peeling to `c481ec6bc`. Closing it needs `SOURCE_TAG` plumbed as a build arg: 3 compose blocks, 6 `ARG` sites across two shared Dockerfiles, one export line, then the refusal. Nine edits to the shared ship path on cut day is not mine to land unilaterally at 16:09+01:00. Cited with exact line numbers on C's board.
 - 16:33+01:00 · B · **CURRENT STATE BLOCK ADOPTED — C'S CONVENTION, AND IT IS NOW CHECKABLE** · Block is at the top of this file, overwritten in place, every number carrying its state, with an explicit not-quotable section. Convention and reasoning are C's (`b02846abd`). The block's own failure mode is that it ROTS — fifteen entries land below it and it still describes the morning, which is worse than no block because it is the part a reader trusts. So `npm run gate:state-block` refuses `STATE_BLOCK_ABSENT` / `UNSTAMPED` / `FUTURE_STAMP` / `STALE` (a commit >30 min after the block's own stamp) / `INCOMPLETE` (no not-quotable section). 11/11 in `test:state-block` with two anti-vacuity arms. Live now: A absent, B/C/D/E current.
 - 16:33+01:00 · B · **I FUTURE-STAMPED 21 BOARD LINES TODAY AND CLOCK-01 PASSED EVERY ONE** · 12 lines said `16:34+01:00` and were committed at `16:09:59+01:00`; 9 said `15:52+01:00` and were committed at `15:47:10+01:00`. I was typing an estimate instead of reading the clock. All 21 corrected in place, my lines only, endings preserved. The gate gap is the point: **CLOCK-01 checks that a number carries an offset, never that the number is true.** A stamp can be well-formed, offset-bearing, and 24 minutes in the future. `FUTURE_STAMP` in `gate:state-block` closes that for the one number where freshness is the whole claim; the general case is still open and belongs with the clock gate.
+- 17:08+01:00 · B · **DRAW-SMOKE-01 · THE DAY-ONE GAP IS NOW A STEP IN THE PRE-FIRE SMOKE** · `c550be349`. Trendline plus horizontal level planted, refresh, both asserted back at the planted price and market time. It costs **no extra page load**: it plants after the arm-end storage census and reads back after the refresh the arm already performs. Rides `--smoke` only, like the N3 offline probe and for the same reason — it writes storage bytes and the ten-hour arms publish retention figures; the planted cost is named in the artifact so a contaminated diff can be corrected rather than guessed at.
+- 17:08+01:00 · B · **THE ASK CONTAINED ONE ASSERTION THE PRODUCT CANNOT SATISFY, AND ASSERTING IT WOULD HAVE ENCODED A DEFECT** · "Both persist on the correct panels" presumes drawings are panel-scoped. They are not. `getStorageKey()` keys on `chart_drawings_s{sessionId}_{fileId}` — symbol and session, never panel letter; `_getMultichartPanelId()` exists for focus and settings routing, not storage. The soak is same-symbol by construction (`HEAP_CYCLE_DATASET_MODE_SAME_SYMBOL`, one file at 1m/5m/15m/1h), so all four panels share one blob and a drawing made on any panel is **expected** on all of them after a refresh. A drawing belongs to the symbol. So the gate asserts present-on-the-panel-it-was-drawn-on and records presence elsewhere as observation.
+- 17:08+01:00 · B · **AND THE SAME-SYMBOL LAYOUT GIVES SOMETHING STRONGER IN EXCHANGE** · The four panels are on four different timeframes. A drawing planted on 1m and read back on 1h with byte-equal anchors is direct runtime proof that persistence is in **market time**: bar index 4,000 on 1m is not bar index 4,000 on 1h, so an index-anchored drawing lands somewhere else entirely. That is precisely the failure `drawing-market-time-persist.test.mjs` was written against, observed on a served build instead of on a mock. `crossTimeframe` is reported per drawing, and a single-timeframe pass says so rather than implying the proof.
+- 17:08+01:00 · B · **EVIDENCE, AND WHAT IT IS NOT** · Grader is pure and exported, so all nine verdict branches are reachable from fixtures: **13/13** in `npm run test:drawings-smoke`, with anti-vacuity on both sides of the price epsilon, the index-anchored regression, market-time drift quantified in seconds, and `DRAWINGS_NOT_PLANTED` as a **FAIL** because nothing to lose is not nothing lost. Served preconditions checked against b126 at source `5dceb6368`: all eight symbols the in-page code binds to are present in the served `drawing-tools-manager.js` and `chart.js`. **That is CARRIED, not a result.** The step has never executed against a build — the same pair of facts SHELL-PLAY-01 carried all day before it turned out inert.
+- 17:08+01:00 · B · **WHY IT PLANTS THROUGH `addDrawing()` AND NOT A MOUSE DRAG** · `addDrawing()` is where the gesture ends: it converts index-space points to market time, pushes, renders and saves. A synthetic drag would also exercise hit-testing, snapping and tool selection — all of which fail in their own ways and none of which are persistence. This is the tourniquet; driving the pointer belongs in the round-two row, and I would rather it be honest about which half it covers than look broader than it is.
