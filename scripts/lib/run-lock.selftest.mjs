@@ -23,6 +23,7 @@ import {
   browserOwningPids,
   classifyRunStrict,
   foreignRuns,
+  foreignRunsSync,
   heldFor,
   inspectLocks,
   isAlive,
@@ -238,7 +239,44 @@ test('writeArtifactAtomic leaves no partial file and no temp behind', () => {
 // B's cells. Placed here so there is one lock and one suite.
 // ---------------------------------------------------------------------------
 
-test("B's cell — a real instrument refuses before it boots anything", () => {
+/**
+ * My two cells below plant a REAL host lock, because LOCK_DIR is a constant with
+ * no override, and they hold it across a process spawn rather than for the
+ * microseconds A's cells need. While it is planted, a lane launching a
+ * measurement is refused — so running the suite can park the very box it exists
+ * to protect. Not hypothetical: I ran it three times between 14:44+01:00 and
+ * 14:49+01:00 with A's canary and D's mutant suite in the queue.
+ *
+ * So the cells ask first, and say which state they are in. A silent skip would be
+ * worse than the collision: a suite that quietly declines its own load-bearing
+ * cells reads as a pass, which is the disease this whole day has been about.
+ *
+ * The durable fix is an env override on LOCK_DIR so the suite can isolate
+ * entirely. That is a change to the shared primitive and it is not being made
+ * mid-queue — proposed on BOARD-A instead.
+ */
+function boxBusyReason() {
+  const held = inspectLocks().filter((l) => l.alive
+    && l.pid !== process.pid && l.pid !== process.ppid);
+  if (held.length) {
+    return `LOCK_HELD_BY_ANOTHER_RUN — ${held.map((h) => `${h.script || '?'}@${h.pid}`).join(', ')}`;
+  }
+  const foreign = foreignRunsSync({ ignorePids: [process.pid, process.ppid] });
+  if (foreign.length) {
+    return `FOREIGN_MEASUREMENT_RUNNING — ${foreign.length} process(es)`;
+  }
+  return null;
+}
+
+test("B's cell — a real instrument refuses before it boots anything", (t) => {
+  const busy = boxBusyReason();
+  if (busy) {
+    // Reported, never silent: this cell did not run and must not be read as green.
+    console.log(`    CELL_DEFERRED_BOX_BUSY — ${busy}. Planting a host lock now would `
+      + 'refuse a live run; re-run when the queue is clear.');
+    t.skip(`CELL_DEFERRED_BOX_BUSY — ${busy}`);
+    return;
+  }
   // The claim under test is not "it refuses" but "it refuses EARLY": the whole
   // value on a shared box is that no browser and no harness server appear. A
   // refusal that arrives after boot has already cost the thing it was preventing.
@@ -277,7 +315,14 @@ test("B's cell — a real instrument refuses before it boots anything", () => {
   } finally { fs.unlinkSync(lf); }
 });
 
-test("B's cell — mutant swap: exclusive create is what enforces it", () => {
+test("B's cell — mutant swap: exclusive create is what enforces it", (t) => {
+  const busy = boxBusyReason();
+  if (busy) {
+    console.log(`    CELL_DEFERRED_BOX_BUSY — ${busy}. The control arm plants a real host `
+      + 'lock; deferring rather than refusing someone mid-run.');
+    t.skip(`CELL_DEFERRED_BOX_BUSY — ${busy}`);
+    return;
+  }
   // BIND-01. If `wx` is weakened to `w`, the refusal cells must die. If they
   // still pass, they are testing their own assertions rather than the mechanism.
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'runlock-mutant-'));
