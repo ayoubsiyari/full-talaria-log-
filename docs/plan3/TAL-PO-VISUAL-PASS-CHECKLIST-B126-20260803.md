@@ -1,11 +1,13 @@
 # TAL PO Visual Pass Checklist — b126
 
-Timestamp: 2026-08-03 22:46+01:00  
+Timestamp: 2026-08-03 22:59+01:00  
 Surface: `20260803b126` visual pass before seal  
 Purpose: give the PO direct pass/fail rows for TAL-01696, TAL-01698, TAL-01865, Rayan #8, and the refresh-persistence directive.
 
 Mark each row `PASS` or `FAIL` from the served b126 UI. This checklist is visual evidence; it does not replace the queued served mutant suite or money-path gates.
-Rows 9–18 are the seal-gate-3 visual rows backed by `tal-po-ui-smoke-mutants-b126-live-summary.json`.
+Rows 1–18 are **Seal Gate 3**. Rows 19–24 are **Beyond Gate** and must not extend the PO's committed visual-pass window.
+
+## Seal Gate 3 — Rows 1–18
 
 1. TAL-01696 fixed box size across order types — STOP, MARKET, and LIMIT info boxes keep the same width and height while their displayed values change.
 2. TAL-01696 values update without moving the box — price, size, and money text updates live during drag, and the surrounding info box does not jump or shift.
@@ -24,11 +26,13 @@ Rows 9–18 are the seal-gate-3 visual rows backed by `tal-po-ui-smoke-mutants-b
 15. Rayan #8 supporting symbols are gold — PASS if supporting symbols render in gold in the symbol dropdown; FAIL if they look the same as tradable symbols.
 16. Rayan #8 supporting symbols refuse orders — PASS if trying to place an order on a supporting symbol is blocked and the order panel says the symbol is analysis-only; FAIL if an order can be placed or the panel gives no explanatory message.
 17. Rayan #8 Compare remains available — PASS if the Compare button remains visible and usable when the session contains supporting symbols; FAIL if supporting symbols remove or disable Compare.
-18. TAL-01865 drawings persist by market time — PASS if a trendline and a horizontal level on two panels survive refresh at the same prices and market times; FAIL if they return only at the same bar indices, move to different candles, or disappear.
+18. TAL-01865 drawings persist by market time — PASS if a trendline and a horizontal level on two panels survive refresh at the same prices and market times, not merely at the same bar indices; FAIL if they move to different candles, return index-anchored, or disappear.
+
+## Beyond Gate — Rows 19–24
+
 19. Refresh persistence restores indicators and settings — after refresh, indicators return with their last selected settings.
-20. Refresh persistence restores drawings by market time — after refresh, drawings reappear at the same prices and market times, not merely at the same bar indices.
-21. Refresh persistence restores pinned items — after refresh, pinned items return in the same visible state.
-22. Money-path refresh survival restores open positions — after refresh, open positions remain present with the same values.
-23. Money-path refresh survival restores pending orders — after refresh, pending orders remain present with the same values.
-24. Money-path refresh survival restores journal — after refresh, journal rows remain present and unchanged.
-25. Money-path refresh survival restores balance — after refresh, account balance remains intact.
+20. Refresh persistence restores pinned items — after refresh, pinned items return in the same visible state.
+21. Money-path refresh survival restores open positions — after refresh, open positions remain present with the same values.
+22. Money-path refresh survival restores pending orders — after refresh, pending orders remain present with the same values.
+23. Money-path refresh survival restores journal — after refresh, journal rows remain present and unchanged.
+24. Money-path refresh survival restores balance — after refresh, account balance remains intact.
