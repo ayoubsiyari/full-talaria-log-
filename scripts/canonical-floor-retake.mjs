@@ -453,8 +453,37 @@ async function main() {
         coveragePct: c.pct, unattributedMB: c.unattributedMB, hasTotalRow: c.hasTotalRow,
         what: 'the canonical boot floor' }); })(),
     };
+    /**
+     * COV-01 BLOCKS AT THE GATE, it does not caveat in prose. Ruled 2026-08-03 18:34+01:00.
+     *
+     * Stamping `validity` on the artifact was still a caveat — the number sat in `canonicalFloors`,
+     * quotable-looking, with a warning elsewhere in the file. **Caveats get dropped when numbers get
+     * quoted**; that is not a hypothetical, it is how `633` and `532.6` both entered circulation and
+     * cost a day to retire. So the under-covered number is REMOVED from the field a reader quotes
+     * from and moved to `blockedFloors`, where taking it requires reading the reason attached to it.
+     *
+     * The measurement is not deleted — every rung is still in the artifact, and `withheldFloors`
+     * names what was withheld and why. Deleting it would be its own dishonesty. The point is that
+     * the publish surface refuses, not that the evidence disappears.
+     */
+    const covBlocked = !artifact.validity.postPlayFloor.quotable;
+    if (covBlocked && artifact.canonicalFloors) {
+      artifact.blockedFloors = {
+        ...artifact.canonicalFloors,
+        blockedBy: 'COV-01',
+        state: artifact.validity.postPlayFloor.state,
+        reason: artifact.validity.postPlayFloor.reason,
+        howToUnblock: 'raise named coverage to >=95% (E\'s parsed detailed dumps) and re-grade this artifact; '
+          + 'the rungs are unchanged and do not need re-measuring.',
+      };
+      delete artifact.canonicalFloors;
+      artifact.verdict = artifact.verdict === 'MEASURED' ? 'MEASURED_NOT_QUOTABLE' : artifact.verdict;
+    }
     log(`VERDICT ${artifact.verdict}`);
     log(`COV-01 post-play: ${artifact.validity.postPlayFloor.state} (${artifact.validity.postPlayFloor.coveragePct ?? 'n/a'}%)`);
+    if (covBlocked) {
+      log('COV-01 BLOCKED — the floor is in blockedFloors, not canonicalFloors. It is not quotable.');
+    }
   } catch (e) {
     artifact.verdict = 'ERROR';
     artifact.error = String(e?.stack || e).slice(0, 1600);
@@ -469,6 +498,15 @@ async function main() {
     writeArtifact();
     try { runLock.release(); } catch (_) { /* a lock we cannot release is reaped as stale, not fatal */ }
     log(`artifact -> ${OUT} (${artifact.verdict})`);
+    /**
+     * The gate has to be legible to something that is not a human reading prose, so the exit code
+     * carries it: 0 quotable, 4 measured-but-blocked, 1 error. 4 rather than 1 because a blocked
+     * floor is NOT a failed run — the measurement is good and the artifact is complete, it simply
+     * may not be published — and a caller that cannot tell those apart will retry a run that needs
+     * no retrying, or bury one that does.
+     */
+    if (artifact.verdict === 'ERROR') process.exitCode = 1;
+    else if (artifact.blockedFloors) process.exitCode = 4;
   }
 }
 

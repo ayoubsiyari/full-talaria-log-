@@ -37,6 +37,8 @@
     "gate:queue-status": "node scripts/measurement-queue.mjs status",
     "gate:orphan-servers": "node scripts/orphan-server-census.mjs",
     "test:memory-validity": "node --test scripts/lib/memory-validity.selftest.mjs",
+    "test:arm-equality": "node --test scripts/lib/arm-equality.selftest.mjs",
+    "test:soak-hanging-stub": "node --test scripts/tests/soak-hanging-stub.test.mjs scripts/tests/bounded-phase.test.mjs",
     "test:orphan-servers": "node --test scripts/orphan-server-census.selftest.mjs",
     "gate:run-lock-status": "node scripts/run-lock-status.mjs",
     "gate:clock-01": "node scripts/clock-01-audit.mjs",

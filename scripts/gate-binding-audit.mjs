@@ -77,6 +77,13 @@ export const C_LANE_GATES = [
     refuses: 'a log line, artifact field or board number written without the clock that produced it',
   },
   {
+    id: 'ARM-EQUALITY-01',
+    symbol: 'assertArmsComparable',
+    module: 'scripts/lib/arm-equality.mjs',
+    refuses: 'firing a two-arm soak whose arms differ in anything beyond the trade knob — and, '
+      + 'separately, a pair with no contrast at all, whose delta is zero by construction',
+  },
+  {
     id: 'COV-01-VALIDITY',
     symbol: 'assessQuotability',
     module: 'scripts/lib/memory-validity.mjs',

@@ -18,6 +18,29 @@ artifact rather than quietly inheriting this one's authority.
 | panels | 4, same-symbol, E indicators | 4, same-symbol, E indicators |
 | dataset | CONF01 common window, runway declared | CONF01 common window, runway declared |
 
+### FROZEN PREDICTION — recorded 2026-08-03 18:40+01:00, before the run
+
+> **At 30 closed round-trips/hour the trade term will NOT be separable from the time term inside the
+> trade arm. I predict `hoursVsClosedTrades_r2` comes back ≥ 0.99, and
+> `soak-trade-correlation.mjs` grades the pair inseparable (`closesPerHourSpread.sd` ≤ 3).**
+>
+> **Why:** a governor holding a steady 30/h makes closed trades a near-exact linear function of wall
+> clock. Steadying the rate is what makes the workload realistic and is the same thing that destroys
+> the within-arm contrast. Raising 20 → 30 does not cause this; it *deepens* it, because the tighter
+> the governor holds, the more perfectly collinear the two axes become.
+>
+> **Falsifier, stated in advance:** `hoursVsClosedTrades_r2` below 0.99, **or** the correlation script
+> grading the terms separable. Either outcome means the governor drifted enough to create usable
+> contrast, and this prediction was wrong.
+>
+> **Consequence if confirmed:** the trade arm certifies total growth under a realistic session — which
+> is what a certification workload is for — and attributes none of it. **The entire bars-versus-trades
+> split then rests on the between-arm delta**, which is why `ARM-EQUALITY-01` refuses to fire when the
+> arms differ in anything but the trade knob.
+>
+> This is recorded **before** the number exists so that, when it arrives, it reads as a confirmed
+> prediction and not as an explanation invented afterwards. It is dated, and it does not move.
+
 Set in exactly two places, both committed: `scripts/fire-sealed-soak.mjs` (`ARMS.trades`) and the
 `closesPerHour` default in `scripts/sealed-two-arm-soak.mjs`. The artifact's `armMeaning` and
 `tradeGovernor` block are **derived from the knob**, not restated beside it, so an artifact cannot

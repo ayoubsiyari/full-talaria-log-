@@ -21,6 +21,7 @@ import { spawnSync } from 'node:child_process';
 import { launchDetached, inspectRun } from './lib/detach01.mjs';
 import { computeSeal } from './lib/seal.mjs';
 import { readBuildInfo } from './lib/build-info.mjs';
+import { assertArmsComparable } from './lib/arm-equality.mjs';
 import { readHostClearance, gradeHostClearance } from './lib/host-clearance.mjs';
 
 const argOf = (n, d) => { const h = process.argv.find((a) => a.startsWith(`--${n}=`)); return h ? h.split('=').slice(1).join('=') : d; };
@@ -102,6 +103,27 @@ const ARMS = {
 if (!ARMS[ARM]) {
   console.error('usage: fire-sealed-soak.mjs --arm=trades|zerotrade --expectDigest=<digest from B\'s cut>');
   process.exit(2);
+}
+
+/**
+ * ARM-EQUALITY-01. Checked at the fire of EITHER arm, because the asymmetry has to be caught before
+ * any host time is spent rather than in the analysis twenty hours later. With within-arm
+ * separability predicted to fail, the between-arm delta is the whole attribution, and a second
+ * difference makes it uninterpretable with nothing left in reserve.
+ */
+{
+  const armVerdict = assertArmsComparable(ARMS.trades, ARMS.zerotrade);
+  if (armVerdict.shouldRefuse) {
+    console.error(`REFUSED — ARM-EQUALITY-01 ${armVerdict.state}`);
+    console.error(`  ${armVerdict.reason}`);
+    for (const d of armVerdict.differences) {
+      console.error(`  DIFFERS  ${d.field}: trades=${d.a}  zerotrade=${d.b}`);
+    }
+    console.error('  Fix the config so the arms differ ONLY in closesPerHour, or record a ruling that');
+    console.error('  the pair is not being used for between-arm attribution. Do not fire past this.');
+    process.exit(2);
+  }
+  console.log(`[fire] ARM-EQUALITY-01 ${armVerdict.state} — ${armVerdict.reason}`);
 }
 if (!DIGEST) {
   console.error('REFUSED: --expectDigest is empty.');

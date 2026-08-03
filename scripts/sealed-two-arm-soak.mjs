@@ -48,7 +48,7 @@ import { arenaColumns, rankRowGrowth } from './lib/arena-columns.mjs';
 import { collectMemoryDump } from './process-memory-census.mjs';
 import { readStorageCensus, diffStorage } from './lib/storage-census.mjs';
 import { offlineToggle } from './lib/offline-toggle.mjs';
-import { createPhaseRecorder, SOAK_PHASE_BUDGETS_MS } from './lib/bounded-phase.mjs';
+import { boundedPhase, createPhaseRecorder, SOAK_PHASE_BUDGETS_MS } from './lib/bounded-phase.mjs';
 import { readHostHealth } from './lib/host-health.mjs';
 import { installLoafCensus, readLoafCensus } from './lib/loaf-census.mjs';
 import { evaluateR3, readOldestOpenPositionAge } from './lib/r3-falsifier.mjs';
@@ -347,7 +347,20 @@ async function readPanels(page) {
   return om && Array.isArray(om.closedPositions) ? om.closedPositions.length : null;
 }).catch(() => null);
 
-const seal = await passport();
+/**
+ * Pre-flight reads, bounded like everything else. A park here is less costly than a park at hour
+ * four — nothing has been measured yet — but it is not free: the run holds its queue slot and its
+ * host window while producing no artifact and no heartbeat, so it reads as a long boot rather than
+ * a hang. `boundedPhase` is used directly rather than a recorder because there is no run to attach
+ * a phase log to yet.
+ */
+const seal = (await boundedPhase('preflight.passport', SOAK_PHASE_BUDGETS_MS['sample.passport'],
+  () => passport(), { fallback: { digest: null, badge: null } })).value;
+if (seal.digest == null) {
+  console.error('REFUSING TO START: the served build could not be read within budget. This is an unreachable '
+    + 'or non-answering origin, NOT a build mismatch — check the origin before re-firing.');
+  process.exit(2);
+}
 if (EXPECT_DIGEST && seal.digest !== EXPECT_DIGEST) {
   console.error(`REFUSING TO START: expected digest ${EXPECT_DIGEST}, served build is ${seal.digest} (badge ${seal.badge}). A soak that cannot name its build measures a question nobody can state.`);
   process.exit(2);
@@ -355,7 +368,8 @@ if (EXPECT_DIGEST && seal.digest !== EXPECT_DIGEST) {
 
 // PASSPORT-3. The digest says WHAT the bytes are; the SHA says WHICH COMMIT made them. Without it a
 // ten-hour artifact records a fingerprint nobody can trace back to a tree.
-const buildInfo = await readBuildInfo(SEAL_ORIGIN);
+const buildInfo = (await boundedPhase('preflight.readBuildInfo', SOAK_PHASE_BUDGETS_MS['sample.readBuildInfo'],
+  () => readBuildInfo(SEAL_ORIGIN), { fallback: { ok: false, state: 'READ_DID_NOT_SETTLE', url: SEAL_ORIGIN } })).value;
 if (REQUIRE_SHA || EXPECT_SHA) {
   if (!buildInfo.ok) {
     console.error(`REFUSING TO START: the source commit SHA is not readable from ${buildInfo.url} [${buildInfo.state}].`);
@@ -477,6 +491,14 @@ const r3Series = [];
 let lastR3Verdict = null;
 let keepTheHourUntil = null;
 let nextGovernorAt = Date.now();
+/**
+ * Consecutive samples where the seal could not be READ (as against read and found different). Three
+ * is roughly nine minutes at the sampling cadence — long enough that a restarting origin or a
+ * momentary network fault does not cost a ten-hour run, short enough that the series never drifts
+ * far while unpinned.
+ */
+const SEAL_STALL_LIMIT = 3;
+let sealStalls = 0;
 const governorEveryMs = 3_600_000 / Math.max(1, CLOSES_PER_HOUR);
 
 try {
@@ -515,7 +537,16 @@ try {
        * knows only `rs.speed` can return the pre-migration field, or null, on the very build the ladder
        * changed under. A null here is not "no mismatch" - it is no verification at all.
        */
-      const effRead = await session.page.evaluate(() => {
+      // Segment boot runs before the sample loop's recorder exists, and a park HERE is the worst
+      // case of the lot: the arm never reaches its first sample, so there is no series at all to
+      // show for the hours spent. Bounded on its own recorder for that reason, created before the
+      // first readback rather than after it — a recorder declared below the call it is meant to
+      // bound protects nothing above it.
+      const bootPhases = createPhaseRecorder({
+        onEvent: (e) => { if (e.state === 'PHASE_OVERDUE' || e.state === 'PHASE_TIMEOUT') log(`${e.state} ${e.phase} (segment boot)`); },
+      });
+      const effRead = (await bootPhases.run('boot.readEffectiveRate', SOAK_PHASE_BUDGETS_MS['boot.readEffectiveRate'],
+        () => session.page.evaluate(() => {
         const rs = window.chart && window.chart.replaySystem;
         if (!rs) return { value: null, route: null, why: 'no replaySystem' };
         const routes = [
@@ -533,14 +564,8 @@ try {
         }
         const answered = seen.find((s) => s.present && typeof s.value === 'number');
         return { value: answered ? answered.value : null, route: answered ? answered.route : null, routes: seen };
-      }).catch((e) => ({ value: null, route: null, why: String(e).slice(0, 100) }));
+        }), { fallback: { value: null, route: null, why: 'effective-rate read did not settle within budget' } })).value;
       const eff = effRead.value;
-      // Segment boot runs before the sample loop's recorder exists, and a park HERE is the worst
-      // case of the lot: the arm never reaches its first sample, so there is no series at all to
-      // show for the hours spent. Bounded on its own recorder for that reason.
-      const bootPhases = createPhaseRecorder({
-        onEvent: (e) => { if (e.state === 'PHASE_OVERDUE' || e.state === 'PHASE_TIMEOUT') log(`${e.state} ${e.phase} (segment boot)`); },
-      });
       const panels = (await bootPhases.run('boot.readPanels', SOAK_PHASE_BUDGETS_MS['sample.readPanels.before'],
         () => readPanels(session.page), { fallback: [] })).value;
       // CDP injection, per segment because a new browser is a new set of documents. Registered for future
@@ -550,7 +575,11 @@ try {
       // N4, reading one of three. Taken at the first segment only: a resumed segment's "start" is a warm
       // origin, and calling that arm start would understate growth by everything the first segment wrote.
       if (!storageAtStart) {
-        storageAtStart = await readStorageCensus(session.page).catch((e) => ({ error: String(e).slice(0, 150) }));
+        // Bounded: a storage census that never settles would park the run at BOOT, before a single
+        // sample exists — the cheapest possible stall to prevent and the most expensive to miss,
+        // because there would be no series at all to show for the host time.
+        storageAtStart = (await bootPhases.run('boot.readStorageCensus', SOAK_PHASE_BUDGETS_MS['boot.readStorageCensus'],
+          () => readStorageCensus(session.page))).value ?? { error: 'readStorageCensus did not settle within budget' };
         run.note({ __storageCensus: true, when: 'arm-start', segment, ...storageAtStart });
       }
       run.note({
@@ -569,7 +598,8 @@ try {
         // Read off the LIVE object, because served bytes and executed bytes differ when a service worker
         // sits between them. Recorded at segment start rather than every sample: it cannot change without
         // a reload, and the capability digest below covers the bytes changing underneath a running arm.
-        speed01Runtime: await readSpeed01Runtime(session.page.mainFrame()).catch(() => null),
+        speed01Runtime: (await bootPhases.run('boot.readSpeed01Runtime', SOAK_PHASE_BUDGETS_MS['boot.readSpeed01Runtime'],
+          () => readSpeed01Runtime(session.page.mainFrame()))).value ?? null,
         loafInstall: { ...loafInstall, viaProductBytes: false, how: 'Page.addScriptToEvaluateOnNewDocument plus live-frame evaluate. The served bytes are untouched and the digest is unchanged.' },
         panels: panels.length,
         timeframes: panels.map((p) => p.tf),
@@ -677,12 +707,37 @@ try {
       nextGovernorAt = Date.now() + governorEveryMs;
     }
 
-    const nowSeal = await passport();
-    const sealHeld = nowSeal.digest === seal.digest;
+    /**
+     * BOUNDED-PHASE-01 on the two NETWORK reads. These were the last unbounded awaits in the sample
+     * loop and the worst of them: an origin that accepts the socket and never answers leaves the
+     * fetch pending forever, so no rejection is raised and no `.catch()` can fire, while the loop
+     * stops advancing and node stays alive. A stalled origin must degrade the sample, not park the
+     * run — a null seal for one sample is a gap, ten hours of silence is a lost week.
+     */
+    const sealPhase = await phases.run('sample.passport', budget('sample.passport'), () => passport());
+    const nowSeal = sealPhase.value ?? { digest: null };
+    /**
+     * A STALLED READ IS NOT A BROKEN SEAL, and conflating them would have been a worse bug than the
+     * one being fixed. `!sealHeld` breaks the loop and voids the segment. If a timed-out passport
+     * collapsed into that, a slow origin would abort a ten-hour run at hour four with `SEAL BROKEN`
+     * in the log — a false verdict about the BUILD, produced by a network hiccup, and one that would
+     * have been believed because it names the thing we are most afraid of.
+     *
+     * So: verified-and-equal holds; verified-and-different breaks; UNVERIFIED continues with the
+     * sample marked. An origin that stalls repeatedly is a different matter — after
+     * `SEAL_STALL_LIMIT` consecutive failures the run is no longer being checked against anything
+     * and stops on its own terms, saying that rather than pretending the build changed.
+     */
+    const sealVerified = sealPhase.state === 'PHASE_OK' && nowSeal.digest != null;
+    const sealHeld = sealVerified ? nowSeal.digest === seal.digest : true;
+    sealStalls = sealVerified ? 0 : sealStalls + 1;
     // PASSPORT-3 re-verified at the SAME cadence as the digest. The digest catches different bytes; the
     // SHA catches a different source. Neither implies the other, so both, every sample.
-    const nowInfo = await readBuildInfo(SEAL_ORIGIN);
-    const shaDrift = shaChanged(pinnedSha, nowInfo);
+    const infoPhase = await phases.run('sample.readBuildInfo', budget('sample.readBuildInfo'),
+      () => readBuildInfo(SEAL_ORIGIN));
+    const nowInfo = infoPhase.value ?? null;
+    // Same rule: only claim source drift when the source was actually read.
+    const shaDrift = infoPhase.state === 'PHASE_OK' && nowInfo ? shaChanged(pinnedSha, nowInfo) : null;
     /**
      * THE THIRD IDENTITY, and it closes a hole in my own seal.
      *
@@ -844,11 +899,16 @@ try {
       evictionActive: EVICTION_ACTIVE,
       sealDigestNow: nowSeal.digest,
       sealHeld,
+      /** Whether the seal was actually CHECKED this sample, as against merely not contradicted. */
+      sealVerified,
+      sealConsecutiveStalls: sealStalls,
       sourceCommitNow: nowInfo.ok ? nowInfo.sourceCommitSha : null,
       sourceCommitStateNow: nowInfo.state,
       sourceCommitHeld: pinnedSha ? shaDrift === null : null,
       sourceCommitNote: shaDrift,
-      sealNote: sealHeld ? null : 'BUILD CHANGED UNDER THE RUN. Every sample from here belongs to a different build and must not be pooled with earlier ones.',
+      sealNote: !sealHeld
+        ? 'BUILD CHANGED UNDER THE RUN. Every sample from here belongs to a different build and must not be pooled with earlier ones.'
+        : (sealVerified ? null : 'SEAL NOT VERIFIED THIS SAMPLE — the origin did not answer within budget. This sample is not pinned to a build; it is not evidence that the build changed.'),
       capabilityDigestNow: nowCap.digest,
       capabilityHeld,
       capabilityNote: capabilityHeld ? null : 'THE ENGINE FILES MOVED and the seal digest cannot see them — replay-system.js, order-manager.js or chart-indicators-full.js changed under the run.',
@@ -864,6 +924,14 @@ try {
     if (!sealHeld) {
       run.note({ __void: true, segment, why: `Served build changed mid-run: ${seal.digest} -> ${nowSeal.digest}. Stopping rather than producing a series across two builds.` });
       log('SEAL BROKEN — stopping');
+      break;
+    }
+    if (sealStalls >= SEAL_STALL_LIMIT) {
+      // Distinct from SEAL BROKEN on purpose: this says the origin stopped answering, NOT that the
+      // build changed. Same stop, different sentence, because the two send you to different places.
+      run.note({ __void: true, segment, why: `Seal unverifiable for ${sealStalls} consecutive samples — the origin stopped answering. `
+        + 'Stopping: from here the run is not pinned to any build, and an unpinned series is what PASSPORT-3 exists to prevent.' });
+      log(`SEAL UNVERIFIABLE x${sealStalls} — stopping (origin not answering; this is NOT a build change)`);
       break;
     }
     if (shaDrift) {
@@ -1004,7 +1072,10 @@ try {
 
     // N4, readings two and three. The post-refresh read is the one that matters: it separates what the
     // session accumulated from what the ORIGIN keeps, which no process-memory gauge can see.
-    const storageAtEnd = await readStorageCensus(session.page).catch((e) => ({ error: String(e).slice(0, 150) }));
+    // Bounded like the rest. A park in the teardown is the cruellest one available: ten hours of
+    // samples are already on disk and the process never reaches the line that grades them.
+    const storageAtEnd = (await endPhases.run('end.readStorageCensus', SOAK_PHASE_BUDGETS_MS['end.readStorageCensus'],
+      () => readStorageCensus(session.page))).value ?? { error: 'readStorageCensus did not settle within budget' };
     run.note({ __storageCensus: true, when: 'arm-end', ...storageAtEnd });
 
     /**
@@ -1043,7 +1114,8 @@ try {
     try {
       await session.page.reload({ waitUntil: 'domcontentloaded', timeout: 120000 });
       await new Promise((r) => setTimeout(r, 45000));
-      storageAfterRefresh = await readStorageCensus(session.page);
+      storageAfterRefresh = (await endPhases.run('end.readStorageCensusAfterRefresh', SOAK_PHASE_BUDGETS_MS['end.readStorageCensusAfterRefresh'],
+        () => readStorageCensus(session.page))).value ?? { error: 'readStorageCensus did not settle within budget after refresh' };
       run.note({ __storageCensus: true, when: 'post-refresh', ...storageAfterRefresh });
 
       // THE PO RECIPE'S CLOSING ASSERTION: after a refresh, all four panels PAINT. Bars in an array are
@@ -1086,7 +1158,8 @@ try {
 
       // The other half of DRAW-SMOKE-01: the same refresh, read back.
       if (DRAWINGS_SMOKE) {
-        const back = await readDrawings(session.page, { expectIds: plantedDrawings.map((d) => d.id) });
+        const back = (await endPhases.run('end.readDrawings', SOAK_PHASE_BUDGETS_MS['end.readDrawings'],
+          () => readDrawings(session.page, { expectIds: plantedDrawings.map((d) => d.id) }))).value ?? null;
         const graded = gradeDrawingsPersistence(plantedDrawings, back.frames);
         run.note({
           __drawingsPersist: true,

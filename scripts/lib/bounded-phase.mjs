@@ -171,6 +171,12 @@ export function createPhaseRecorder({ onEvent = null } = {}) {
         consecutiveTimeouts,
         overdue: phases.reduce((n, p) => n + (p.overdueCount || 0), 0),
         slowestPhase: slowest ? { phase: slowest.phase, ms: slowest.ms, state: slowest.state } : null,
+        /**
+         * WHICH phases parked, by name, not left to be derived from the array below. The question at
+         * hour four is "what is stuck", and an operator scanning an artifact under pressure will read
+         * a named list and will not reduce a fifteen-element array to find out.
+         */
+        timedOutPhases: phases.filter((p) => p.state === PHASE_TIMEOUT).map((p) => p.phase),
         // A sample where every phase timed out is not a sample. Named so the reader is not left to
         // infer it from a count, and so a downstream gate can refuse it.
         sampleState: phases.length && timeouts === phases.length ? 'ALL_PHASES_TIMED_OUT'
@@ -201,6 +207,21 @@ export const SOAK_PHASE_BUDGETS_MS = {
   'sample.readLoafCensus': 30_000,
   'sample.readOldestOpenPositionAge': 30_000,
   'sample.readEffectiveRateReadback': 30_000,
+  /**
+   * The two NETWORK reads in the sample loop, and the most dangerous shape in the file. A socket that
+   * is accepted and then never answered leaves the fetch pending forever — no rejection, so no
+   * `.catch()` ever fires — while node stays alive and the loop stops advancing. That is
+   * alive-but-dead arriving from the origin rather than from the page, and it is the one failure the
+   * heartbeat cannot see, because the heartbeat is written after these lines.
+   */
+  'sample.passport': 60_000,               // six SEAL_PATHS files over the wire
+  'sample.readBuildInfo': 30_000,
+  'boot.readStorageCensus': 60_000,
+  'boot.readSpeed01Runtime': 30_000,
+  'boot.readEffectiveRate': 30_000,
+  'end.readStorageCensus': 60_000,
+  'end.readStorageCensusAfterRefresh': 60_000,
+  'end.readDrawings': 60_000,
   /**
    * The pause-probe deliberately costs ~11 minutes of delivery — the soak's own comment says so and
    * excludes the window from RATE-HOLD for that reason. A budget of five minutes, which is what I
