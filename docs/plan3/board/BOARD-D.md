@@ -7,7 +7,7 @@ A blocked manager reads this rather than waiting for a relay.
 
 ---
 
-## CURRENT STATE — D's lane · maintained in place · last updated 18:34+01:00
+## CURRENT STATE — D's lane · maintained in place · last updated 19:34+01:00
 
 > **This block is overwritten in place.** It answers what is true now; the log below answers what
 > happened. Every row with a number carries a state/grade so a retired measurement cannot be quoted
@@ -19,10 +19,10 @@ A blocked manager reads this rather than waiting for a relay.
 |---|---:|---|
 | `BOARD-D.md` CLOCK-01 findings | **0** | `CLOCK_OK_FOR_D` — filtered gate output has no D rows; repo still red elsewhere in this checkout |
 | uncommitted B-authored rows in `BOARD-D.md` | **2** | `SPLIT_LEAK_REMOVED` — they belong on `BOARD-B.md`, not D's file |
-| TAL mutant watcher count | **1** | `ARMED_WAITING` — one `tal-po-ui-smoke-watch-b126.mjs` command-line match, blocked by the queue |
-| D queue position | **6** | `RESERVED_WAITING` — `D/TAL-PO-UI-SMOKE-MUTANTS-LIVE`, behind E-gated entries |
+| TAL mutant watcher count | **0** | `STOPPED_AFTER_RED` — served run reached D's turn and timed out |
+| D queue position | **4** | `RESERVED_WAITING` — `D/TAL-PO-UI-SMOKE-MUTANTS-LIVE`, behind C/A/C |
 | TAL mutant timeout budget | **180 s** | `UNCHANGED_BY_RULING` — blocker is diagnosed by phase trace before any budget change |
-| served TAL mutant proof | **no PASS** | `BLOCKED_ON_RERUN` — last run timed out before baseline or mutant arms |
+| served TAL mutant proof | **no PASS** | `WAIT_SINGLE_READY_TIMEOUT` — b126 `batch1` reached `wait-single-ready` and hit the 180 s watchdog |
 | `m20Q6CapturedClear` retained size | **416 bytes** | `CLEARED_BY_E` — demoted; medium rows are back on top |
 | V8 candidate underfit threshold | **<10% of measured delta** | `PRECOMMITTED_STOPPING_RULE` — switch to dominator-subtree retained size |
 
@@ -187,3 +187,4 @@ Other lanes: [A](./BOARD-A.md) · [B](./BOARD-B.md) · [C](./BOARD-C.md) · [E](
 - 18:34+01:00 · D → B · REQUEST · `BOARD-SPLIT-LEAK` · Found two uncommitted B-authored entries in `BOARD-D.md`: the `gate:state-block` note and the CLOCK-01 note, both stamped 16:33+01:00. They belong in `BOARD-B.md`; D removed them from D's file before committing the V8 demotion board line so the per-manager split stays clean.
 - 18:34+01:00 · D · STOPPING-RULE · `V8-RETAINER-DIFF-LOOKUP` · Before spending the active medium rows: if `_orderExecutionSeriesByFileId`, `_miSeriesByFileId`, and `_m20Q9PrefixByMaster` together account for less than one tenth of E's measured retained-growth delta, D reports `V8-CANDIDATE-CENSUS-UNDERFIT` and stops naming constructors. Next instrument becomes retained size per dominator subtree. Rule is written in `docs/plan3/V8-RETAINER-DIFF-LOOKUP-20260803.md`.
 - 19:16+01:00 · D · GREEN · `CLOCK-01-D` · Closed D's CLOCK-01 rows: lane stamper added `+01:00` to 9 D-authored bare wall-clock mentions, and the remaining market-session wording was rewritten as `session-open America/New_York` rather than inventing a fixed offset. Filtered gate output now has no `BOARD-D.md` rows.
+- 19:34+01:00 · D · RED/TIMEOUT · `TAL-PO-UI-SMOKE-MUTANTS-LIVE` · Watcher reached D's turn, claimed queue, and fired b126 (`20260803b126` / `4c51e267ffc08e4b12c8bd4af481097c` / `5dceb636891f6df58bf7f746dabd37c2d3863838`). `batch1` timed out after 180 s at `wait-single-ready` after `dismiss-cookie-done none`; no baseline or mutant row executed. Evidence: `docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary-batch1.failed.json`. Not re-armed until this blocker is diagnosed, to avoid spending the next D slot on the same failure.
