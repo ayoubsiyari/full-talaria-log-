@@ -41,9 +41,37 @@ const EXPECT = {
 const OUT_JSON = path.resolve(repoRoot, argOf('out', 'docs/plan3/evidence/tal-po-ui-wait-single-ready-diagnostic-b126.json'));
 const TIMEOUT_MS = Math.max(5_000, Number(argOf('timeout-ms', '30000')) || 30_000);
 const INTERVAL_MS = Math.max(250, Number(argOf('interval-ms', '1000')) || 1000);
+const HARD_TIMEOUT_MS = Math.max(60_000, TIMEOUT_MS + 60_000);
+const PHASES = [];
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function progress(stage, detail = null) {
+  const row = { at: new Date().toISOString(), stage, detail };
+  PHASES.push(row);
+  console.error(`WAIT_SINGLE_READY_DIAG_PHASE ${row.at} ${stage}${detail ? ` ${detail}` : ''}`);
+}
+
+async function bounded(label, timeoutMs, thunk) {
+  progress(`${label}-start`, `${timeoutMs}ms`);
+  let timer = null;
+  try {
+    const value = await Promise.race([
+      Promise.resolve().then(thunk),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} exceeded ${timeoutMs}ms`)), timeoutMs);
+      }),
+    ]);
+    progress(`${label}-done`);
+    return value;
+  } catch (error) {
+    progress(`${label}-failed`, String(error?.message || error).slice(0, 300));
+    throw error;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 async function boundedGoto(page, url, timeoutMs = 15_000) {
@@ -124,8 +152,27 @@ async function sampleReadyState(page) {
   }).catch((e) => ({ evaluateError: String(e?.message || e), predicate: false }));
 }
 
+async function boundedSample(page, timeoutMs = 750) {
+  const started = Date.now();
+  return Promise.race([
+    sampleReadyState(page),
+    sleep(timeoutMs).then(async () => ({
+      evaluateTimedOut: true,
+      sampleTimeoutMs: timeoutMs,
+      url: (() => { try { return page.url(); } catch { return null; } })(),
+      predicate: false,
+      elapsedEvaluateMs: Date.now() - started,
+    })),
+  ]);
+}
+
 async function main() {
-  const surface = await readCandidateCoordinates(ORIGIN);
+  const hardTimer = setTimeout(() => {
+    console.error(`WAIT_SINGLE_READY_DIAG_HARD_TIMEOUT ${HARD_TIMEOUT_MS}ms lastPhase=${JSON.stringify(PHASES[PHASES.length - 1] || null)}`);
+    process.exit(124);
+  }, HARD_TIMEOUT_MS);
+
+  const surface = await bounded('read-coordinates', 15_000, () => readCandidateCoordinates(ORIGIN));
   const expected = {
     badge: EXPECT.badge || surface.badge,
     digest: EXPECT.digest || surface.digest,
@@ -136,12 +183,12 @@ async function main() {
     throw new Error(`served surface identity mismatch: ${JSON.stringify(identity.pairs)}`);
   }
 
-  const puppeteer = await loadPuppeteer();
-  const browser = await puppeteer.launch({
+  const puppeteer = await bounded('load-puppeteer', 10_000, () => loadPuppeteer());
+  const browser = await bounded('launch-browser', 20_000, () => puppeteer.launch({
     headless: 'new',
     args: ['--no-sandbox', '--disable-dev-shm-usage', '--window-size=1440,1000'],
     defaultViewport: { width: 1440, height: 1000 },
-  });
+  }));
   const page = await browser.newPage();
   const consoleRows = [];
   const pageErrors = [];
@@ -158,13 +205,14 @@ async function main() {
   let gotoResult = null;
   let cookieResult = null;
   try {
-    await ensureLoggedIn(page, ORIGIN);
+    await bounded('ensure-login', 30_000, () => ensureLoggedIn(page, ORIGIN));
     const url = reactParityUrlWithLayout(`${ORIGIN}/chart/dist-v9/index.html?mode=backtest&tal=po-ui-ready-diag`, '1');
-    gotoResult = await boundedGoto(page, url);
-    cookieResult = await dismissCookieBanner(page, { timeoutMs: 3000 });
+    gotoResult = await bounded('goto-chart', 20_000, () => boundedGoto(page, url));
+    cookieResult = await bounded('dismiss-cookie', 5_000, () => dismissCookieBanner(page, { timeoutMs: 3000 }));
+    progress('ready-loop-start', `${TIMEOUT_MS}ms`);
     const started = Date.now();
     while (Date.now() - started <= TIMEOUT_MS) {
-      const sample = await sampleReadyState(page);
+      const sample = await boundedSample(page);
       sample.elapsedMs = Date.now() - started;
       samples.push(sample);
       console.error(`WAIT_SINGLE_READY_DIAG elapsedMs=${sample.elapsedMs} predicate=${sample.predicate} chartDataLength=${sample.chartDataLength} readyState=${sample.readyState} url=${sample.url}`);
@@ -176,6 +224,7 @@ async function main() {
     }
   } finally {
     await browser.close().catch(() => {});
+    clearTimeout(hardTimer);
   }
 
   const report = {
@@ -188,6 +237,7 @@ async function main() {
     timeoutMs: TIMEOUT_MS,
     intervalMs: INTERVAL_MS,
     verdict,
+    phases: PHASES,
     gotoResult,
     cookieResult: cookieResult || 'none',
     samples,

@@ -43,7 +43,7 @@ export const CLAIM_GRACE_MS = 120_000;
 export const LOG_FILE = path.join(REPO_ROOT, 'docs', 'plan3', 'board', 'MEASUREMENT-QUEUE.md');
 
 /** This tool, and anything that only reads artifacts, must not count as a running measurement. */
-const NOT_A_MEASUREMENT = /measurement-queue\.mjs|-conform\.mjs|\.selftest\.mjs|--test\b/;
+const NOT_A_MEASUREMENT = /measurement-queue\.mjs|-conform\.mjs|\.selftest\.mjs|--test\b|tal-po-ui-smoke-(?:watch-b126|mutant-suite-live|canary)\.mjs|tal-po-ui-wait-single-ready-diagnostic\.mjs/;
 /**
  * A measurement is a repo script that drives a browser. Harness servers and long-lived watchers are
  * infrastructure: `build-identity-watch.mjs` has been up since 09:41 and blocking on it would mean
