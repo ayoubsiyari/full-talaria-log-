@@ -82,7 +82,24 @@ const OUT = arg('out', `_evidence/manager-C/canonical-floor-retake-${new Date().
  * (STILL_FALLING / BOUND_ONLY). Quoting 300s as a floor would have repeated the defect. The last
  * rung must be far enough that a 10 MB late drop either flattens or forces another extension.
  */
-const RUNGS_SEC = (arg('rungs', '0,20,150,300,600')).split(',').map((s) => Number(s.trim())).filter((n) => Number.isFinite(n));
+/**
+ * LADDER CHANGED FOR SETTLE-CRITERION-V2, 2026-08-03 23:05+01:00.
+ *
+ * The old ladder was `0,20,150,300,600` — cumulative, so its LAST GAP was 300 s (300 -> 600). The
+ * criterion applies its flatness bound over the last gap and requires that gap to be at least 600 s,
+ * because the allocator decommits lazily and a short rung reads flat when nothing has had time to
+ * move. **Under the old ladder no run of this instrument could ever grade SETTLED**, including the
+ * pass-3 curve that reported FLOOR_FOUND. That is the criterion blocking more than the floor does,
+ * exactly as reported.
+ *
+ * `0,600,1200` is the MINIMUM compliant ladder: three reads (the fewest that make a curve) with two
+ * 600 s gaps. 20 minutes per curve. The old ladder is still reachable with --rungs for anyone
+ * reproducing an earlier reading, and it will grade RUNG_TOO_SHORT, which is the honest answer.
+ *
+ * The 0 and 20 rungs carried the two published methods for comparison and are dropped from the
+ * default: those methods are retired, and keeping them costs W2 time that the allowance boots need.
+ */
+const RUNGS_SEC = (arg('rungs', '0,600,1200')).split(',').map((s) => Number(s.trim())).filter((n) => Number.isFinite(n));
 
 /**
  * WHERE THE ARENA DUMP IS TAKEN — `endpoints` (default) or `every`.
