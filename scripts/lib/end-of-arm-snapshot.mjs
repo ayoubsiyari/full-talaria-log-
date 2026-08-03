@@ -6,7 +6,9 @@
  *
  *  - free disk is checked BEFORE the write and the attempt is skipped if headroom is thin,
  *  - the write is capped and aborted cleanly if it runs past the cap,
- *  - any failure is recorded as a logged NON-EVENT with its reason, and the arm still closes green.
+ *  - any failure is recorded as a logged NON-EVENT with its reason, and the arm still closes green,
+ *  - failed/partial files are preserved with a `.failed` suffix plus a JSON sidecar, so
+ *    "attempted and died" never collapses into "never started."
  *
  * The snapshot is a by-product. The series is the measurement.
  *
@@ -42,10 +44,12 @@ export async function takeEndOfArmSnapshot(page, {
   capMB = 4096,
   requireFreeMB = 12288,   // cap plus generous headroom: a full disk is its own outage
   timeoutMs = 600000,
+  phase = 'snapshotting',
 } = {}) {
   const result = {
     attempted: false, ok: false, file: null, bytes: null, elapsedMs: null,
     skippedWhy: null, failedWhy: null,
+    phase,
     note: 'End-of-arm snapshot is a by-product taken after the final sample. Its absence is a logged non-event and does NOT invalidate the arm.',
   };
 
@@ -61,6 +65,35 @@ export async function takeEndOfArmSnapshot(page, {
   let session = null;
   let written = 0;
   let aborted = false;
+  const preserveFailed = () => {
+    const failedFile = `${outFile}.failed`;
+    const failedMetaFile = `${failedFile}.json`;
+    try {
+      if (fs.existsSync(outFile)) {
+        fs.renameSync(outFile, failedFile);
+        result.failedFile = failedFile;
+      }
+    } catch (err) {
+      result.failedPreserveError = String(err?.message || err).slice(0, 200);
+    }
+    try {
+      const preservedPath = result.failedFile || outFile;
+      fs.writeFileSync(failedMetaFile, JSON.stringify({
+        phase,
+        at: new Date().toISOString(),
+        outFile,
+        failedFile: result.failedFile || null,
+        failedWhy: result.failedWhy,
+        skippedWhy: result.skippedWhy,
+        bytesCounted: result.bytesCounted ?? written,
+        bytesOnDisk: fs.existsSync(preservedPath) ? fs.statSync(preservedPath).size : 0,
+        aborted,
+      }, null, 2));
+      result.failedMetaFile = failedMetaFile;
+    } catch (err) {
+      result.failedMetaError = String(err?.message || err).slice(0, 200);
+    }
+  };
   try {
     fs.mkdirSync(path.dirname(outFile), { recursive: true });
     fs.writeFileSync(outFile, '');
@@ -71,7 +104,7 @@ export async function takeEndOfArmSnapshot(page, {
       const n = Buffer.byteLength(ev.chunk, 'utf8');
       if (written + n > capMB * MB) {
         aborted = true;
-        result.failedWhy = `write passed the ${capMB} MB cap and was aborted cleanly at ${((written + n) / MB).toFixed(0)} MB. A partial snapshot is discarded rather than published.`;
+        result.failedWhy = `write passed the ${capMB} MB cap and was aborted cleanly at ${((written + n) / MB).toFixed(0)} MB. A partial snapshot is preserved as .failed evidence rather than published as a valid snapshot.`;
         return;
       }
       fs.appendFileSync(outFile, ev.chunk);
@@ -99,20 +132,20 @@ export async function takeEndOfArmSnapshot(page, {
       result.file = null;
       result.bytesCounted = written;
       result.bytesOnDisk = onDisk;
-      try { fs.rmSync(outFile, { force: true }); } catch { /* nothing further */ }
+      preserveFailed();
     } else if (written === 0 || onDisk === 0) {
       result.ok = false;
       result.bytesCounted = written;
       result.bytesOnDisk = onDisk;
       result.failedWhy = `takeHeapSnapshot produced wire=${written} disk=${onDisk}. Nothing usable to publish.`;
-      try { fs.rmSync(outFile, { force: true }); } catch { /* nothing further */ }
+      preserveFailed();
       result.file = null;
     } else if (onDisk < written * 0.99) {
       result.ok = false;
       result.bytesCounted = written;
       result.bytesOnDisk = onDisk;
       result.failedWhy = `counted ${written} bytes from the wire but ${onDisk} reached disk. Reported as a FAILED non-event rather than a success, because a snapshot nobody can open is not a snapshot.`;
-      try { fs.rmSync(outFile, { force: true }); } catch { /* nothing further */ }
+      preserveFailed();
       result.file = null;
     } else {
       result.ok = true;
@@ -125,7 +158,7 @@ export async function takeEndOfArmSnapshot(page, {
     // Includes the tab dying mid-snapshot, which is an expected outcome on a 1.5 GB renderer.
     result.ok = false;
     result.failedWhy = result.failedWhy || `${String(err).slice(0, 200)}. A renderer of this size can OOM taking its own snapshot; that is a by-product failing, not a soak failing.`;
-    try { if (fs.existsSync(outFile)) fs.rmSync(outFile, { force: true }); } catch { /* nothing further to do */ }
+    preserveFailed();
     result.file = null;
   } finally {
     result.elapsedMs = Date.now() - started;

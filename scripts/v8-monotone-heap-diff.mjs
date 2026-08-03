@@ -71,6 +71,41 @@ async function withTimeout(label, timeoutMs, promise) {
   }
 }
 
+function startPhaseWatchdog(report, {
+  moment,
+  phase,
+  expectedMs,
+  marginMs,
+  everyMs = 60_000,
+}) {
+  const startedAtMs = Date.now();
+  const thresholdMs = expectedMs + marginMs;
+  let sequence = 0;
+  const timer = setInterval(() => {
+    const elapsedMs = Date.now() - startedAtMs;
+    if (elapsedMs < thresholdMs) return;
+    sequence += 1;
+    const event = {
+      state: 'PHASE_OVERDUE',
+      at: new Date().toISOString(),
+      moment,
+      phase,
+      elapsedMs,
+      expectedMs,
+      marginMs,
+      sequence,
+    };
+    if (!Array.isArray(report.phaseEvents)) report.phaseEvents = [];
+    report.phaseEvents.push(event);
+    if (report.moments?.[moment]) {
+      report.moments[moment].phaseOverdue = event;
+    }
+    save(report);
+    log(`PHASE_OVERDUE ${moment} ${phase} elapsed=${Math.round(elapsedMs / 1000)}s expected=${Math.round(expectedMs / 1000)}s margin=${Math.round(marginMs / 1000)}s`);
+  }, everyMs);
+  return () => clearInterval(timer);
+}
+
 function existingEvidenceNames() {
   if (!fs.existsSync(OUT_DIR)) return [];
   return fs.readdirSync(OUT_DIR)
@@ -232,19 +267,31 @@ async function takeMoment(label, page, report) {
   save(report);
 
   log(`${label}: keep playback alive before GC`);
+  let stopWatchdog = startPhaseWatchdog(report, {
+    moment: label,
+    phase: 'keepConf01Playing',
+    expectedMs: 15_000,
+    marginMs: 30_000,
+  });
   const keepBefore = await withTimeout(
     `${label} keepConf01Playing`,
     60_000,
     keepConf01Playing(page, SPEED),
   ).catch((e) => ({
     error: String(e?.message || e),
-  }));
+  })).finally(() => stopWatchdog());
   report.moments[label].keepBefore = keepBefore;
   report.moments[label].phase = 'force-gc';
   save(report);
 
   log(`${label}: force collecting`);
-  await withTimeout(`${label} forceCollect`, 180_000, forceCollect(page));
+  stopWatchdog = startPhaseWatchdog(report, {
+    moment: label,
+    phase: 'force-gc',
+    expectedMs: 30_000,
+    marginMs: 60_000,
+  });
+  await withTimeout(`${label} forceCollect`, 180_000, forceCollect(page)).finally(() => stopWatchdog());
   const postGcMetrics = await withTimeout(
     `${label} metrics`,
     30_000,
@@ -271,12 +318,19 @@ async function takeMoment(label, page, report) {
   };
   save(report);
   log(`${label}: snapshot -> ${snapFile}`);
+  stopWatchdog = startPhaseWatchdog(report, {
+    moment: label,
+    phase: 'snapshotting',
+    expectedMs: 120_000,
+    marginMs: 120_000,
+  });
   const snapMeta = await takeEndOfArmSnapshot(page, {
     outFile: snapFile,
     capMB: SNAP_CAP_MB,
     requireFreeMB: SNAP_CAP_MB + 4096,
     timeoutMs: 900_000,
-  });
+    phase: `${label}:snapshotting`,
+  }).finally(() => stopWatchdog());
   report.moments[label] = {
     ...report.moments[label],
     completedAt: new Date().toISOString(),
