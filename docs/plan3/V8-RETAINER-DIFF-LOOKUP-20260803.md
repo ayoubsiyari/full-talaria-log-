@@ -13,6 +13,12 @@ For comparison, C's observed direction was +29.77 MB V8 in 50 minutes. A real co
 
 Active order after E's clearance: `_orderExecutionSeriesByFileId`, `_miSeriesByFileId`, then `_m20Q9PrefixByMaster`.
 
+Stopping rule before spending the active candidates:
+- Compute the combined retained size attributed to `_orderExecutionSeriesByFileId`, `_miSeriesByFileId`, and `_m20Q9PrefixByMaster` in E's forced-GC real-playback diff.
+- Compare that combined size to the measured retained-growth delta for the same window. Use C's rough slope of 36 MB/hour only as the expectation scale when the artifact reports a slope rather than an already-windowed delta.
+- If the three active candidates together account for less than one tenth of the measured retained-growth delta, D reports `V8-CANDIDATE-CENSUS-UNDERFIT` and stops naming constructors from this list.
+- In that underfit branch, the next instrument is retained size per dominator subtree, not another per-class constructor census, because the retained mass is then somewhere the class-level candidate list cannot structurally see.
+
 ## Cleared Candidate: `m20Q6CapturedClear`
 
 Location: `chart v 1.4/chart/modules/replay-system.js`

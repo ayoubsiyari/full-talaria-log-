@@ -24,6 +24,7 @@ A blocked manager reads this rather than waiting for a relay.
 | TAL mutant timeout budget | **180 s** | `UNCHANGED_BY_RULING` — blocker is diagnosed by phase trace before any budget change |
 | served TAL mutant proof | **no PASS** | `BLOCKED_ON_RERUN` — last run timed out before baseline or mutant arms |
 | `m20Q6CapturedClear` retained size | **416 bytes** | `CLEARED_BY_E` — demoted; medium rows are back on top |
+| V8 candidate underfit threshold | **<10% of measured delta** | `PRECOMMITTED_STOPPING_RULE` — switch to dominator-subtree retained size |
 
 **Blocked on someone else**
 
@@ -184,3 +185,4 @@ Other lanes: [A](./BOARD-A.md) · [B](./BOARD-B.md) · [C](./BOARD-C.md) · [E](
 
 - 18:13+01:00 · D · DEMOTE · `V8-RETAINER-DIFF-LOOKUP` · E cleared `m20Q6CapturedClear` at 416 bytes retained, below the single-path threshold. Demoted it from the top row; active lookup order returns to `_orderExecutionSeriesByFileId`, `_miSeriesByFileId`, then `_m20Q9PrefixByMaster`. Lookup sheet updated and staged for INSTRUMENT-01 citability.
 - 18:34+01:00 · D → B · REQUEST · `BOARD-SPLIT-LEAK` · Found two uncommitted B-authored entries in `BOARD-D.md`: the `gate:state-block` note and the CLOCK-01 note, both stamped 16:33+01:00. They belong in `BOARD-B.md`; D removed them from D's file before committing the V8 demotion board line so the per-manager split stays clean.
+- 18:34+01:00 · D · STOPPING-RULE · `V8-RETAINER-DIFF-LOOKUP` · Before spending the active medium rows: if `_orderExecutionSeriesByFileId`, `_miSeriesByFileId`, and `_m20Q9PrefixByMaster` together account for less than one tenth of E's measured retained-growth delta, D reports `V8-CANDIDATE-CENSUS-UNDERFIT` and stops naming constructors. Next instrument becomes retained size per dominator subtree. Rule is written in `docs/plan3/V8-RETAINER-DIFF-LOOKUP-20260803.md`.
