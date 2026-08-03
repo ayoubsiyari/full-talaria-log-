@@ -32,6 +32,7 @@ const {
   probeArmedPositions,
   probeRealmCensus,
   sampleRealmsOverWindow,
+  seedSessionStartFromLoadedData,
 } = await import(PROBES);
 
 const cells = [];
@@ -233,6 +234,30 @@ test('a realm with no replaySystem is NO_REPLAY_SYSTEM and does not throw', asyn
   const prep = await prepareRealmsForWindow({ runway: 120, speed: 10, step: 1 });
   assert.equal(prep[0].state, 'NO_REPLAY_SYSTEM');
   assert.equal(prep.length, 2);
+});
+
+test('the session start is seeded from each realm\'s own data, leaving runway', () => {
+  const world = installWorld(b126World());
+  const seeded = seedSessionStartFromLoadedData({ fractionIn: 0.1 });
+  assert.equal(seeded.length, 4);
+  // Derived per realm, so the short realm gets a proportionally early start
+  // rather than a date chosen against somebody else's series.
+  assert.equal(seeded[0].bars, 1881);
+  assert.equal(seeded[0].index, 188);
+  assert.equal(seeded[0].runwayBars, 1692);
+  assert.equal(seeded[1].bars, 4000);
+  assert.equal(seeded[1].index, 400);
+  assert.ok(seeded.every((s) => s.state === 'SEEDED'));
+  // And it is written where enterReplayMode reads it.
+  assert.equal(world.top.chart.backtestingSession.startDate, seeded[0].startDate);
+  assert.ok(Date.parse(seeded[0].startDate) > 0);
+});
+
+test('seeding a realm with no data is NO_DATA, not a crash or a silent skip', () => {
+  installWorld([{ chart: { replaySystem: null, rawData: [] } }, makeRealm({ playing: true })]);
+  const seeded = seedSessionStartFromLoadedData({ fractionIn: 0.1 });
+  assert.equal(seeded[0].state, 'NO_DATA');
+  assert.equal(seeded.length, 2, 'one row per realm even when one has nothing');
 });
 
 test('the window is sliced, and every slice carries its own rate', async () => {

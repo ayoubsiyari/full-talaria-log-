@@ -57,6 +57,7 @@ import {
   probeArmedPositions,
   probeRealmCensus,
   sampleRealmsOverWindow,
+  seedSessionStartFromLoadedData,
 } from './lib/canary-realm-probes.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -90,6 +91,13 @@ const SLICE_MS = Number(arg('slice', '10000'));
  * it applied to mine.
  */
 const RUNWAY_BARS = Number(arg('runway', '120'));
+
+/**
+ * How far into each realm's loaded series the backtest session starts. A tenth
+ * in leaves nine tenths to play through, which at speed 10 x step 1s on 1m bars
+ * is far more market time than any window this canary takes.
+ */
+const SEED_FRACTION = Number(arg('seed-fraction', '0.1'));
 
 // RUN-LOCK-01. Two lanes lost hours today to a second copy of an instrument
 // starting on top of the first and rewriting its artifact. Refuse before the
@@ -378,6 +386,26 @@ async function main() {
         };
       }
     });
+    /**
+     * Before arming, not after: `enterReplayMode` reads the session start when it
+     * places the playhead, and it is arming that calls it. Seeded a tenth of the
+     * way into each realm's own series, so the remaining nine tenths are runway
+     * and the `rd.length - 1` fallback at replay-system.js:4297 — which pinned
+     * every realm to its last bar in the 17:22+01:00 run — is never reached.
+     */
+    const sessionSeed = await page.evaluate(seedSessionStartFromLoadedData, { fractionIn: SEED_FRACTION });
+    observed.sessionSeed = { fractionIn: SEED_FRACTION, realms: sessionSeed };
+    console.log(`        session start seeded ${SEED_FRACTION * 100}% into each realm's data:`);
+    for (const s of sessionSeed) {
+      console.log(`          ${String(s.realm).padEnd(10)} ${s.state}`
+        + (s.state === 'SEEDED' ? ` index ${s.index} of ${s.bars} (${s.runwayBars} bars of runway) start ${s.startDate}` : ` ${s.why || ''}`));
+    }
+    const unseeded = sessionSeed.filter((s) => s.state !== 'SEEDED');
+    check(unseeded.length === 0, 'every realm got a session start inside its own data',
+      unseeded.length
+        ? `SESSION_SEED_FAILED: ${unseeded.map((s) => `${s.realm}=${s.state}`).join(', ')}`
+        : `${sessionSeed.length} realms, least runway ${Math.min(...sessionSeed.map((s) => s.runwayBars))} bars`);
+
     const workload = await armHeapCyclePoWorkload(page, {
       playHoldMs: 4_000,
       replaySpeed: SPEED,

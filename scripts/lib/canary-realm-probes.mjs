@@ -73,6 +73,60 @@ export function probeArmedPositions() {
 }
 
 /**
+ * Put the backtest session start inside the loaded data, in every realm.
+ *
+ * `enterReplayMode` places the playhead at the first bar at or after the session
+ * start (replay-system.js:4282). When no loaded bar is that late it falls back to
+ * `startIdx = rd.length - 1` — silently, with no state recorded — so the playhead
+ * lands on the last loaded bar and a forward step has nowhere to go. That is the
+ * `index = len - 1` signature in the b126 re-run's play log, reproduced on every
+ * realm and on every reload, and it is why a seek does not survive: the next
+ * `enterReplayMode` re-pins to the tail.
+ *
+ * So the session start is derived from the data each realm actually holds rather
+ * than from a date chosen before the data was known. `fractionIn` of the way
+ * through leaves the rest as runway.
+ */
+export function seedSessionStartFromLoadedData({ fractionIn }) {
+  const realms = [{ w: window, name: 'top' }];
+  for (const f of [...document.querySelectorAll('iframe')].slice(0, 4)) {
+    try { realms.push({ w: f.contentWindow, name: f.id || 'panel' }); } catch (_e) { /* cross-origin */ }
+  }
+  return realms.map((r) => {
+    try {
+      const ch = r.w.chart;
+      const rs = ch && ch.replaySystem;
+      const bars = (rs && Array.isArray(rs.fullRawData) && rs.fullRawData.length)
+        ? rs.fullRawData
+        : (Array.isArray(ch && ch.rawData) ? ch.rawData : null);
+      if (!ch || !bars || !bars.length) return { realm: r.name, state: 'NO_DATA' };
+      const at = Math.min(Math.max(0, Math.floor(bars.length * fractionIn)), bars.length - 1);
+      const t = bars[at] && Number(bars[at].t);
+      if (!Number.isFinite(t)) return { realm: r.name, state: 'NO_TIMESTAMP', index: at };
+      const startDate = new Date(t).toISOString();
+      // Both stores, because enterReplayMode prefers chart.backtestingSession and
+      // falls back to userStorage; leaving the stale one in place would let the
+      // fallback win on any realm whose chart object is rebuilt.
+      ch.backtestingSession = { ...(ch.backtestingSession || {}), startDate };
+      try {
+        if (r.w.userStorage && typeof r.w.userStorage.setItem === 'function') {
+          const prior = JSON.parse(r.w.userStorage.getItem('backtestingSession') || '{}');
+          r.w.userStorage.setItem('backtestingSession', JSON.stringify({ ...prior, startDate }));
+        }
+      } catch (_e) { /* the chart field is the one enterReplayMode reads first */ }
+      return {
+        realm: r.name,
+        state: 'SEEDED',
+        bars: bars.length,
+        index: at,
+        runwayBars: bars.length - 1 - at,
+        startDate,
+      };
+    } catch (e) { return { realm: r.name, state: 'SEED_THREW', why: String(e && e.message) }; }
+  });
+}
+
+/**
  * Give every realm runway, then start the ones that are not playing.
  *
  * Order matters and is the whole point: rewind first, ask the product's own

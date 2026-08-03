@@ -60,6 +60,16 @@ const mutants = [
     find: 'state: seekThrew ? \'SEEK_THREW\' : \'PREPARED\',',
     replace: 'state: \'PREPARED\',',
   },
+  {
+    name: 'the session start is seeded at the tail — the pin this whole run is about',
+    find: 'const at = Math.min(Math.max(0, Math.floor(bars.length * fractionIn)), bars.length - 1);',
+    replace: 'const at = bars.length - 1;',
+  },
+  {
+    name: 'the seeded start is not written where enterReplayMode reads it',
+    find: 'ch.backtestingSession = { ...(ch.backtestingSession || {}), startDate };',
+    replace: 'ch.__unusedBacktestingSession = { startDate };',
+  },
 ];
 
 let survived = 0;
