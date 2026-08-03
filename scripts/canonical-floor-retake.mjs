@@ -49,6 +49,7 @@ import { readUnderSettleProtocol } from './lib/settle-protocol.mjs';
 import { arenaColumns, rankRowGrowth } from './lib/arena-columns.mjs';
 import { collectMemoryDump } from './process-memory-census.mjs';
 import { gradeSettleCurve, reconcileFloors } from './lib/floor-curve.mjs';
+import { acquireRunLockOrExit, lockFlagsFromArgv, writeArtifactAtomic } from './lib/run-lock.mjs';
 
 const arg = (k, d) => {
   const hit = process.argv.find((a) => a.startsWith(`--${k}=`));
@@ -76,6 +77,23 @@ const OUT = arg('out', `_evidence/manager-C/canonical-floor-retake-${new Date().
  * rung must be far enough that a 10 MB late drop either flattens or forces another extension.
  */
 const RUNGS_SEC = (arg('rungs', '0,20,150,300,600')).split(',').map((s) => Number(s.trim())).filter((n) => Number.isFinite(n));
+
+/**
+ * WHERE THE ARENA DUMP IS TAKEN — `endpoints` (default) or `every`.
+ *
+ * A memory-infra detailed dump is not a free observation. It walks every allocator in every process
+ * and allocates while doing it, and this instrument was firing one *inside* each settle rung, on the
+ * curve it was trying to read. The b126 pass-3 boot curve came back `NOT_IDLE` — 682.5 → 634.2 →
+ * 640.7 → 640.8 → 628.2, falling, rising 6.5 MB, flat, then falling again — with the GPU process
+ * moving in step. A session with all four panels paused should not do that, and the most likely
+ * disturber is the measurement.
+ *
+ * TOTAL-01 needs the arena columns at both ENDS of the settle, not at every rung, so taking them at
+ * the first and last rung only costs nothing that is quoted and removes the suspected perturbation
+ * from the middle of the curve. `--dumpAt=every` restores the old behaviour, which is what makes
+ * this testable rather than asserted: run both and the difference is the instrument's own footprint.
+ */
+const DUMP_AT = arg('dumpAt', 'endpoints');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (m) => console.log(`[floor-retake ${new Date().toISOString().slice(11, 19)}] ${m}`);
@@ -162,6 +180,8 @@ async function settleCurve(session, { label, onProgress }) {
 
   for (const targetSec of RUNGS_SEC) {
     const incrementMs = Math.max(0, (targetSec - cumulativeSec) * 1000);
+    const isEndpoint = targetSec === RUNGS_SEC[0] || targetSec === RUNGS_SEC[RUNGS_SEC.length - 1];
+    const wantDump = DUMP_AT === 'every' || isEndpoint;
     const rung = await readUnderSettleProtocol({
       page: session.page,
       settleMs: incrementMs,
@@ -170,7 +190,9 @@ async function settleCurve(session, { label, onProgress }) {
       log: (m) => log(`  ${m}`),
       read: async () => {
         const fp = await readFootprint(session.browser);
-        const arenas = await readArenaColumns(session.browser, fp.footprintTotalMB);
+        const arenas = wantDump
+          ? await readArenaColumns(session.browser, fp.footprintTotalMB)
+          : { arenaDumpSkipped: 'not an endpoint; skipped so the dump does not perturb the settle' };
         const ph = await readPlayhead(session.page);
         return { ...fp, ...arenas, ...ph };
       },
@@ -187,6 +209,7 @@ async function settleCurve(session, { label, onProgress }) {
       forcedGcRoute: rung.route,
       protocolCompliant: rung.protocolCompliant,
       settleWaitedMs: rung.settleWaitedMs,
+      arenaDumpTaken: wantDump,
       arenas: rung.value,
     });
     log(`  ${label} @${targetSec}s: ${totalMB ?? '?'} MB (gpu ${reads.at(-1).gpuMB ?? '?'}, renderer ${reads.at(-1).rendererMB ?? '?'})`);
@@ -234,6 +257,7 @@ async function main() {
       datasetMode: HEAP_CYCLE_DATASET_MODE_SAME_SYMBOL,
       requireDeliveringPanels: 4,
       rungsSec: RUNGS_SEC,
+      dumpAt: DUMP_AT,
       protocol: 'SETTLE-PROTOCOL-V1 at every rung: settle -> forced collection -> read',
     },
     retires: {
@@ -257,14 +281,29 @@ async function main() {
     completedAt: null,
   };
 
+  // Atomic, because this file is now written at every rung: a kill landing mid-write would leave
+  // truncated JSON that parses as "no data" rather than as "interrupted", which is the failure that
+  // cost E an hour. Checkpointing without an atomic write would have traded one loss for a worse one.
   const writeArtifact = () => {
     try {
-      fs.mkdirSync(path.dirname(OUT), { recursive: true });
-      fs.writeFileSync(OUT, JSON.stringify(artifact, null, 2));
+      writeArtifactAtomic(OUT, JSON.stringify(artifact, null, 2));
     } catch (e) {
       log(`checkpoint write failed: ${String(e?.message || e).slice(0, 120)}`);
     }
   };
+
+  /**
+   * RUN-LOCK-01 before anything launches a browser. The queue decides whose turn it is; this is what
+   * actually stops two runs sharing the box, and this instrument was one of the runs it was built
+   * against — the 12:04 pass ran with no queue claim at all and A parked a canary over it.
+   * `await` is harmless on the synchronous form and is what the consumer cell looks for.
+   */
+  const runLock = await acquireRunLockOrExit({
+    artifact: OUT,
+    script: 'canonical-floor-retake.mjs',
+    ...lockFlagsFromArgv(),
+  });
+  artifact.runLock = { state: runLock.state, foreignScan: runLock.foreignScan ?? null };
 
   let session = null;
   try {
@@ -386,6 +425,7 @@ async function main() {
     delete artifact.partialWhy;
     artifact.completedAt = new Date().toISOString();
     writeArtifact();
+    try { runLock.release(); } catch (_) { /* a lock we cannot release is reaped as stale, not fatal */ }
     log(`artifact -> ${OUT} (${artifact.verdict})`);
   }
 }
