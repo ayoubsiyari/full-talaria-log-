@@ -84,6 +84,21 @@ test('the key is the artifact path: same path collides, different paths do not',
   assert.notEqual(lockPathFor(a), lockPathFor(b));
 });
 
+test('an explicit key catches a second copy that would write a different file', () => {
+  // The 12:19 shape: D's instrument auto-suffixes its output, so each launch
+  // resolves a distinct path and an artifact-keyed lock never fires. Keying on
+  // script identity is what refuses the second live copy.
+  const first = acquireRunLock({ artifact: tmpArtifact(), key: 'demo-suite.mjs', script: 'demo-suite.mjs' });
+  try {
+    assert.equal(first.state, 'LOCK_ACQUIRED');
+    const lf = planted(path.resolve('demo-suite.mjs'), JSON.stringify({ pid: process.ppid, script: 'demo-suite.mjs' }));
+    try {
+      const second = acquireRunLock({ artifact: tmpArtifact(), key: 'demo-suite.mjs', script: 'demo-suite.mjs' });
+      assert.equal(second.state, 'DUPLICATE_LAUNCH_REFUSED');
+    } finally { fs.unlinkSync(lf); }
+  } finally { first.release(); }
+});
+
 test('writeArtifactAtomic leaves no partial file and no temp behind', () => {
   const a = tmpArtifact();
   writeArtifactAtomic(a, JSON.stringify({ ok: true }));

@@ -12,6 +12,13 @@
  * two different scripts writing one path truncate each other just as well, and
  * the same script writing two paths is legitimate.
  *
+ * Known blind spot, stated because it decides whether this is the right tool:
+ * an instrument that auto-suffixes its output (`-1`, `-2`) resolves a different
+ * path per launch, so nothing collides and this lock will not fire. That is
+ * safe for truncation and useless for host contention — pass an explicit `key`
+ * (the script's own identity) when what you need to prevent is a second live
+ * copy rather than a second writer.
+ *
  * Named states, so a refusal cannot be mistaken for a crash:
  *   LOCK_ACQUIRED            this process owns the artifact
  *   DUPLICATE_LAUNCH_REFUSED a live process holds it; we exit without writing
@@ -57,19 +64,23 @@ function readLock(file) {
  * @param {object} o
  * @param {string} o.artifact  path this run will write
  * @param {string} o.script    for the refusal message
+ * @param {string} [o.key]     lock identity; defaults to the artifact path. Pass
+ *                             the script name to make a second live copy refuse
+ *                             even when it would write to a different file.
  * @param {boolean} o.allowConcurrent  explicit operator override
  * @returns {{state: string, release: () => void, holder: object|null, lockFile: string}}
  */
-export function acquireRunLock({ artifact, script = path.basename(process.argv[1] || 'unknown'), allowConcurrent = false }) {
-  if (!artifact) throw new Error('acquireRunLock: artifact path is required');
-  const lockFile = lockPathFor(artifact);
+export function acquireRunLock({ artifact, script = path.basename(process.argv[1] || 'unknown'), key = null, allowConcurrent = false }) {
+  if (!artifact && !key) throw new Error('acquireRunLock: artifact path or key is required');
+  const lockFile = lockPathFor(key || artifact);
   fs.mkdirSync(LOCK_DIR, { recursive: true });
 
   const payload = () => JSON.stringify({
     pid: process.pid,
     ppid: process.ppid,
     script,
-    artifact: path.resolve(artifact),
+    key: key || null,
+    artifact: artifact ? path.resolve(artifact) : null,
     startedAt: new Date().toISOString(),
     argv: process.argv.slice(2),
   }, null, 2);
