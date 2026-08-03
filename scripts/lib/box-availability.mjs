@@ -49,6 +49,15 @@ export function boxIsFree(opts = {}) {
  * Poll until the box frees or the budget runs out. Returns rather than throws:
  * a wait that times out is a reportable state, not a crash, and the caller has
  * an artifact to write either way.
+ *
+ * Both paths carry `free`, and they carry it because omitting it cost a slot.
+ * `boxIsFree` returns `{free, why}` while this returned `{state, waitedMs}`, so
+ * the obvious line — `if (!gate.free)` — read undefined on success and a wrapper
+ * refused its own turn, logging `WAIT_TIMEOUT — undefined` six minutes into a
+ * 180-minute budget after the box had actually cleared. Identical in shape to the
+ * `acquireRunLock` aggregate that returned `{state}` while callers guessed `{ok}`,
+ * which B lost half a suite to on the same day. A contract two sibling functions
+ * disagree about is a defect in the contract, not in the caller.
  */
 export async function waitForBox({
   owner = 'A',
@@ -61,10 +70,10 @@ export async function waitForBox({
   let lastWhy = '';
   for (;;) {
     const q = boxIsFree({ owner, ignorePids });
-    if (q.free) return { state: 'BOX_AVAILABLE', waitedMs: Date.now() - started };
+    if (q.free) return { state: 'BOX_AVAILABLE', free: true, why: null, waitedMs: Date.now() - started };
     if (q.why !== lastWhy) { log(`waiting — ${q.why}`); lastWhy = q.why; }
     if (Date.now() - started > waitMaxMs) {
-      return { state: 'WAIT_TIMEOUT', waitedMs: Date.now() - started, why: q.why };
+      return { state: 'WAIT_TIMEOUT', free: false, waitedMs: Date.now() - started, why: q.why };
     }
     await sleep(pollMs);
   }

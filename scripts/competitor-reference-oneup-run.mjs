@@ -73,7 +73,7 @@ function claim() {
   const verdict = evaluateQueue({
     state: readQueueState(), procs: readNodeProcesses(), owner: 'A', self: process.pid,
   });
-  if (!verdict.mayRun) return { ok: false, why: `${verdict.state}: ${verdict.detail || ''}` };
+  if (!verdict.mayRun) return { ok: false, state: verdict.state, why: `${verdict.state}: ${verdict.detail || ''}` };
   const state = readQueueState();
   state.claim = { owner: 'A', run: RUN_NAME, pid: process.pid, eta: '12m', at: stampUtc() };
   writeQueueState(state);
@@ -84,15 +84,43 @@ async function main() {
   log(`three arms, one slot: ${ARMS.map((a) => a.key).join(' -> ')}`);
   const gate = await waitForBox({ owner: 'A', waitMaxMs: WAIT_MAX_MS, log });
   if (!gate.free) {
-    log(`WAIT_TIMEOUT — ${gate.why}`);
+    // The state, not a guess at it: this line once printed WAIT_TIMEOUT six
+    // minutes into a 180-minute budget because `free` was absent from the
+    // success path and `why` was undefined on it.
+    log(`${gate.state} after ${Math.round(gate.waitedMs / 60000)}m — ${gate.why}`);
     process.exitCode = 2;
     return;
   }
-  const got = claim();
-  if (!got.ok) {
-    log(`QUEUE_REFUSED — ${got.why}`);
-    process.exitCode = 2;
-    return;
+  /**
+   * Waiting for the box is not the same as waiting for your turn. An empty box
+   * with another lane's reservation ahead of you is `NOT_YOUR_TURN`, and a wrapper
+   * that exits on it has to be relaunched by a human who happens to be watching —
+   * so the slot sits open while the run that wanted it is dead. Poll the queue on
+   * the same budget instead.
+   */
+  const claimDeadline = Date.now() + WAIT_MAX_MS;
+  let got = claim();
+  let saidWhy = '';
+  while (!got.ok) {
+    if (!/NOT_YOUR_TURN|UNCLAIMED_RUN|QUEUE_HELD/.test(got.why || '')) {
+      log(`QUEUE_REFUSED — ${got.why}`);
+      process.exitCode = 2;
+      return;
+    }
+    if (Date.now() > claimDeadline) {
+      log(`QUEUE_WAIT_TIMEOUT after ${Math.round(WAIT_MAX_MS / 60000)}m — ${got.why}`);
+      process.exitCode = 2;
+      return;
+    }
+    if (got.why !== saidWhy) { log(`waiting for my turn — ${got.why}`); saidWhy = got.why; }
+    await new Promise((r) => setTimeout(r, 60_000));
+    const box = await waitForBox({ owner: 'A', waitMaxMs: Math.max(0, claimDeadline - Date.now()), log });
+    if (!box.free) {
+      log(`${box.state} after ${Math.round(box.waitedMs / 60000)}m — ${box.why}`);
+      process.exitCode = 2;
+      return;
+    }
+    got = claim();
   }
   log(`claimed the queue as A/${RUN_NAME} pid ${process.pid} (${got.state})`);
 
