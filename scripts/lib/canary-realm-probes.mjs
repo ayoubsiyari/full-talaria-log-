@@ -21,6 +21,90 @@
  */
 
 /**
+ * GOVERNOR-REF-01 — refuse to launch unless the governor's reference timeframe
+ * is the minimum displayed timeframe.
+ *
+ * Host-side and pure. It is NOT shipped to the page, so unlike the probes below
+ * it may use whatever it likes; it reads what `probeFocusAndGovernor` brought
+ * back.
+ *
+ * Why a launch gate rather than a caveat in the report. The PO found the governor
+ * taking wall-seconds-per-bar from the focused panel's timeframe rather than the
+ * finest one on screen, so clicking the 5m panel speeds the whole layout up. A
+ * rate measured on a layout where those two differ is not a reading of the
+ * product at all, and the wrong moment to discover that is after ten hours. It is
+ * also the shape of every apparatus failure this lane has had today: the number
+ * came back, it was self-consistent, and it was measuring something nobody had
+ * asked for.
+ *
+ * Refusal is the default on anything it cannot read. A pre-flight that passes
+ * when it cannot see is the vacuous green it exists to prevent.
+ *
+ * @param {object} probe output of probeFocusAndGovernor
+ * @returns {{state: string, ok: boolean, why: string, referenceSeconds: number|null,
+ *            minDisplayedSeconds: number|null, offenders: object[]}}
+ */
+export function governorReferencePreflight(probe) {
+  const fail = (state, why, extra = {}) => ({
+    state, ok: false, why, referenceSeconds: null, minDisplayedSeconds: null, offenders: [], ...extra,
+  });
+
+  if (!probe || !Array.isArray(probe.rows)) {
+    return fail('PROBE_ABSENT', 'no governor probe was taken, so the reference is unknown');
+  }
+  const read = probe.rows.filter((r) => r && r.state === 'READ');
+  if (!read.length) {
+    return fail('NO_REALMS_READ', 'no realm exposed a replay system, so no reference could be read');
+  }
+
+  // Unreadable is refused, not skipped. A realm whose reference cannot be read
+  // could be the one pacing everything.
+  const unreadable = read.filter((r) => !Number.isFinite(r.chartTimeframeSeconds));
+  if (unreadable.length) {
+    return fail('REFERENCE_UNREADABLE',
+      `${unreadable.length} realm(s) did not report getChartTimeframeSeconds()`,
+      { offenders: unreadable.map((r) => ({ realm: r.realm, chartTimeframeSeconds: r.chartTimeframeSeconds })) });
+  }
+
+  const refs = read.map((r) => r.chartTimeframeSeconds);
+  const minDisplayedSeconds = Math.min(...refs);
+
+  // The PO's defect precisely: focus sitting on a panel coarser than the finest
+  // displayed. Checked before the per-realm sweep because it is the named cause
+  // and deserves its own state rather than being reported as a generic mismatch.
+  if (Number.isFinite(probe.focusedTimeframeSeconds)
+    && probe.focusedTimeframeSeconds !== minDisplayedSeconds) {
+    return fail('FOCUSED_PANEL_COARSER_THAN_MIN_DISPLAYED',
+      `focus is on ${probe.focusedPanel} at ${probe.focusedTimeframeSeconds}s while the finest panel displayed is ${minDisplayedSeconds}s`,
+      {
+        referenceSeconds: probe.focusedTimeframeSeconds,
+        minDisplayedSeconds,
+        offenders: [{ realm: probe.focusedPanel, chartTimeframeSeconds: probe.focusedTimeframeSeconds }],
+      });
+  }
+
+  const offenders = read.filter((r) => r.chartTimeframeSeconds !== minDisplayedSeconds);
+  if (offenders.length) {
+    return fail('REFERENCE_COARSER_THAN_MIN_DISPLAYED',
+      `${offenders.length} realm(s) pace off a timeframe coarser than the finest displayed (${minDisplayedSeconds}s)`,
+      {
+        referenceSeconds: Math.max(...refs),
+        minDisplayedSeconds,
+        offenders: offenders.map((r) => ({ realm: r.realm, chartTimeframeSeconds: r.chartTimeframeSeconds })),
+      });
+  }
+
+  return {
+    state: 'REFERENCE_MATCHES_MIN_DISPLAYED',
+    ok: true,
+    why: `all ${read.length} realm(s) pace off ${minDisplayedSeconds}s, which is the finest displayed`,
+    referenceSeconds: minDisplayedSeconds,
+    minDisplayedSeconds,
+    offenders: [],
+  };
+}
+
+/**
  * Which panel holds focus, and what reference timeframe each realm's governor is
  * actually using.
  *

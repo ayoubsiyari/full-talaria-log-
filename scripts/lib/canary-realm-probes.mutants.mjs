@@ -20,6 +20,34 @@ const source = fs.readFileSync(path.join(here, 'canary-realm-probes.mjs'), 'utf8
 const selftest = path.join(here, 'canary-realm-probes.selftest.mjs');
 
 const mutants = [
+  // GOVERNOR-REF-01. A launch gate that cannot be shown to refuse is a launch
+  // gate that will let the wrong layout through, and the whole point of it is
+  // that nobody will be watching when it matters.
+  {
+    name: 'GOVERNOR-REF-01 passes a mixed-timeframe layout — the PO defect itself',
+    find: '  const offenders = read.filter((r) => r.chartTimeframeSeconds !== minDisplayedSeconds);',
+    replace: '  const offenders = [];',
+  },
+  {
+    name: 'GOVERNOR-REF-01 takes the coarsest displayed timeframe as the reference',
+    find: '  const minDisplayedSeconds = Math.min(...refs);',
+    replace: '  const minDisplayedSeconds = Math.max(...refs);',
+  },
+  {
+    name: 'GOVERNOR-REF-01 skips an unreadable reference instead of refusing on it',
+    find: '  if (unreadable.length) {',
+    replace: '  if (false && unreadable.length) {',
+  },
+  {
+    name: 'GOVERNOR-REF-01 folds the focus cause into the generic mismatch, losing the named state',
+    find: '  if (Number.isFinite(probe.focusedTimeframeSeconds)\n    && probe.focusedTimeframeSeconds !== minDisplayedSeconds) {',
+    replace: '  if (false && Number.isFinite(probe.focusedTimeframeSeconds)\n    && probe.focusedTimeframeSeconds !== minDisplayedSeconds) {',
+  },
+  {
+    name: 'GOVERNOR-REF-01 treats an absent probe as a pass',
+    find: "    return fail('NO_REALMS_READ', 'no realm exposed a replay system, so no reference could be read');",
+    replace: "    return { state: 'REFERENCE_MATCHES_MIN_DISPLAYED', ok: true, why: 'nothing to check', offenders: [] };",
+  },
   {
     name: 'the runway gate never rewinds — the b126 defect itself',
     find: 'if (before.fromEnd != null && before.fromEnd < runway && typeof rs.seekTo === \'function\') {',

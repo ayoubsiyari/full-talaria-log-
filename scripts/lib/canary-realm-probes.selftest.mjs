@@ -28,6 +28,7 @@ import assert from 'node:assert/strict';
  */
 const PROBES = process.env.CANARY_PROBES_MODULE || './canary-realm-probes.mjs';
 const {
+  governorReferencePreflight,
   prepareRealmsForWindow,
   probeArmedPositions,
   probeRealmCensus,
@@ -381,6 +382,89 @@ test('a realm that never moves is diagnosed rather than left as a bare zero', as
   assert.equal(out.rows[0].diagnosis.panLoading, true);
   assert.equal(out.rows[0].diagnosis.subBarMode, true);
   assert.equal(out.rows[1].diagnosis, null, 'a healthy realm carries none');
+});
+
+/* ------------------------------------------- GOVERNOR-REF-01 launch pre-flight */
+
+const govRow = (realm, seconds) => ({
+  realm, state: 'READ', currentTimeframe: `${seconds}s`, chartTimeframeSeconds: seconds,
+  stepSeconds: 1, dataFloorSeconds: seconds, speed: 10, sessionStartIndex: 0, rawBars: 3504,
+  currentIndex: 0, hasFocus: false, floorPinnedToEnd: false,
+});
+const govProbe = (secondsList, { focusedPanel = 'host:body', focusedTimeframeSeconds = null } = {}) => ({
+  focusedPanel,
+  focusedTimeframeSeconds,
+  minDisplayedTimeframeSeconds: Math.min(...secondsList),
+  maxDisplayedTimeframeSeconds: Math.max(...secondsList),
+  rows: secondsList.map((s, i) => govRow(i === 0 ? 'top' : 'panel', s)),
+});
+
+test('pre-flight passes when every realm paces off the finest displayed timeframe', () => {
+  const out = governorReferencePreflight(govProbe([60, 60, 60, 60]));
+  assert.equal(out.state, 'REFERENCE_MATCHES_MIN_DISPLAYED');
+  assert.equal(out.ok, true);
+  assert.equal(out.referenceSeconds, 60);
+  assert.equal(out.minDisplayedSeconds, 60);
+  assert.deepEqual(out.offenders, []);
+});
+
+test('RED: this is the W1 layout, and it must still pass — all four on 1m', () => {
+  // The reading that produced 0.08 was NOT a reference mismatch, and the
+  // pre-flight must not retroactively invent one. A gate that refuses the run it
+  // was written after is a gate nobody can use.
+  const out = governorReferencePreflight(govProbe([60, 60, 60, 60], { focusedPanel: 'host:body' }));
+  assert.equal(out.ok, true, 'the W1 layout was uniform 1m and is legitimately launchable');
+});
+
+test('RED: the PO layout — mixed timeframes, so a realm paces off something coarser', () => {
+  // 1m / 5m / 15m / 1h. Clicking the 5m panel speeds everything up, which is the
+  // defect; launching at all on this layout produces a reading of the layout.
+  const out = governorReferencePreflight(govProbe([60, 300, 900, 3600]));
+  assert.equal(out.state, 'REFERENCE_COARSER_THAN_MIN_DISPLAYED');
+  assert.equal(out.ok, false);
+  assert.equal(out.minDisplayedSeconds, 60);
+  assert.equal(out.offenders.length, 3, 'the three coarser realms are named, not just counted');
+  assert.deepEqual(out.offenders.map((o) => o.chartTimeframeSeconds), [300, 900, 3600]);
+});
+
+test('RED: focus on a coarser panel gets its own state, because it is the named cause', () => {
+  const out = governorReferencePreflight(
+    govProbe([60, 300], { focusedPanel: 'panel', focusedTimeframeSeconds: 300 }),
+  );
+  assert.equal(out.state, 'FOCUSED_PANEL_COARSER_THAN_MIN_DISPLAYED');
+  assert.equal(out.ok, false);
+  assert.equal(out.referenceSeconds, 300);
+  assert.equal(out.minDisplayedSeconds, 60);
+  assert.match(out.why, /finest panel displayed is 60s/);
+});
+
+test('focus on the finest panel is fine, so the focus check is not unconditionally red', () => {
+  const out = governorReferencePreflight(
+    govProbe([60, 60], { focusedPanel: 'panel', focusedTimeframeSeconds: 60 }),
+  );
+  assert.equal(out.ok, true);
+});
+
+test('an unreadable reference refuses rather than being skipped', () => {
+  const probe = govProbe([60, 60]);
+  probe.rows[1].chartTimeframeSeconds = null;
+  const out = governorReferencePreflight(probe);
+  assert.equal(out.state, 'REFERENCE_UNREADABLE');
+  assert.equal(out.ok, false);
+  assert.equal(out.offenders.length, 1);
+});
+
+test('no probe, or no realms, refuses — absence is never a pass', () => {
+  assert.equal(governorReferencePreflight(null).state, 'PROBE_ABSENT');
+  assert.equal(governorReferencePreflight(null).ok, false);
+  assert.equal(governorReferencePreflight({ rows: [] }).state, 'NO_REALMS_READ');
+  assert.equal(governorReferencePreflight({ rows: [{ realm: 'top', state: 'NO_REPLAY' }] }).state, 'NO_REALMS_READ');
+});
+
+test('a single realm is launchable: its own timeframe is trivially the minimum', () => {
+  const out = governorReferencePreflight(govProbe([3600]));
+  assert.equal(out.ok, true);
+  assert.equal(out.minDisplayedSeconds, 3600);
 });
 
 /* --------------------------------------------------------------------- run */

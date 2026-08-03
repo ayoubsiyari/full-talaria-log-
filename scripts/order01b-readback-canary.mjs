@@ -53,6 +53,7 @@ import { armHeapCyclePoWorkload } from './lib/heap-cycle-po-workload.mjs';
 // browser; see canary-realm-probes.selftest.mjs. Passed by reference to
 // page.evaluate, which ships them by toString().
 import {
+  governorReferencePreflight,
   prepareRealmsForWindow,
   probeArmedPositions,
   probeFocusAndGovernor,
@@ -406,6 +407,32 @@ async function main() {
       unseeded.length
         ? `SESSION_SEED_FAILED: ${unseeded.map((s) => `${s.realm}=${s.state}`).join(', ')}`
         : `${sessionSeed.length} realms, least runway ${Math.min(...sessionSeed.map((s) => s.runwayBars))} bars`);
+
+    /**
+     * GOVERNOR-REF-01 pre-flight, before the workload is armed rather than after.
+     *
+     * The governor paces off a reference timeframe. If that reference is not the
+     * finest timeframe on screen, the rate every panel is held to was set by
+     * which panel happens to be focused, and the reading measures the layout
+     * rather than the product. Refusing here costs a minute; discovering it after
+     * an arm costs the arm, and after a soak costs the night.
+     *
+     * This lane produced 0.08 market-s/wall-s against a hand-measured 600 bars a
+     * minute. The apparatus, not the product — so the apparatus now refuses to
+     * start when it cannot show that it is pacing off the right clock.
+     */
+    const govPreflight = governorReferencePreflight(await page.evaluate(probeFocusAndGovernor));
+    observed.governorPreflight = govPreflight;
+    check(govPreflight.ok, 'GOVERNOR-REF-01: reference timeframe is the minimum displayed',
+      `${govPreflight.state} — ${govPreflight.why}`);
+    if (!govPreflight.ok) {
+      for (const o of govPreflight.offenders) {
+        console.log(`        offender ${String(o.realm).padEnd(12)} govRefTF=${o.chartTimeframeSeconds}s`);
+      }
+      console.log(`    LAUNCH REFUSED — ${govPreflight.state}. `
+        + 'A rate measured on this layout would be a reading of the focused panel, not of the product.');
+      throw new Error(`GOVERNOR_REF_PREFLIGHT_REFUSED: ${govPreflight.state}`);
+    }
 
     const workload = await armHeapCyclePoWorkload(page, {
       playHoldMs: 4_000,
