@@ -13,6 +13,10 @@ import {
   matchCoordinatePairs,
   readCandidateCoordinates,
 } from './lib/a3-speed-fill-journal-parity.mjs';
+import {
+  acquireRunLockOrExit,
+  writeArtifactAtomic,
+} from './lib/run-lock.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..');
@@ -35,6 +39,7 @@ const EXPECT = {
 const OUT_JSON = path.resolve(repoRoot, argOf('out', 'docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary.json'));
 const SMOKE_SCRIPT = path.join(__dirname, 'tal-po-ui-smoke-canary.mjs');
 const RUN_TIMEOUT_MS = Math.max(60_000, Number(argOf('timeout-ms', '180000')) || 180_000);
+const RUN_LOCK_IDENTITY = 'TAL-PO-UI-SMOKE-MUTANTS-LIVE';
 
 const BATCHES = Object.freeze([
   { name: 'batch1', mutants: 'fixed-box-size,value-box-moves,hover-blinks,drag-scale-mismatch' },
@@ -43,6 +48,20 @@ const BATCHES = Object.freeze([
   { name: 'release-only', mutants: 'release-only-average' },
   { name: 'analysis-only', mutants: 'analysis-only-allows-order' },
 ]);
+
+function lockFlagsFromLocalArgv(argv = process.argv) {
+  return {
+    allowConcurrent: argv.includes('--allow-concurrent'),
+  };
+}
+
+const runLock = acquireRunLockOrExit({
+  artifact: OUT_JSON,
+  script: RUN_LOCK_IDENTITY,
+  key: RUN_LOCK_IDENTITY,
+  ...lockFlagsFromLocalArgv(process.argv),
+});
+console.error(`[tal-po-ui-mutants-live] run-lock ${runLock.state} identity=${RUN_LOCK_IDENTITY}`);
 
 function batchOutPath(name) {
   const dir = path.dirname(OUT_JSON);
@@ -63,7 +82,7 @@ if (!identity.ok) {
     verdict: 'BLOCKED - candidate coordinate mismatch',
   };
   fs.mkdirSync(path.dirname(OUT_JSON), { recursive: true });
-  fs.writeFileSync(OUT_JSON, `${JSON.stringify(report, null, 2)}\n`);
+  writeArtifactAtomic(OUT_JSON, `${JSON.stringify(report, null, 2)}\n`);
   console.log(JSON.stringify(report, null, 2));
   process.exit(3);
 }
@@ -107,7 +126,7 @@ for (const batch of BATCHES) {
       stderrTail: String(child.stderr || '').slice(-4000),
     };
     fs.mkdirSync(path.dirname(OUT_JSON), { recursive: true });
-    fs.writeFileSync(OUT_JSON, `${JSON.stringify(report, null, 2)}\n`);
+    writeArtifactAtomic(OUT_JSON, `${JSON.stringify(report, null, 2)}\n`);
     console.log(JSON.stringify(report, null, 2));
     process.exit(child.status || 3);
   }
@@ -135,6 +154,6 @@ const report = {
     : 'FAILED - TAL/Rayan row mutant suite',
 };
 fs.mkdirSync(path.dirname(OUT_JSON), { recursive: true });
-fs.writeFileSync(OUT_JSON, `${JSON.stringify(report, null, 2)}\n`);
+writeArtifactAtomic(OUT_JSON, `${JSON.stringify(report, null, 2)}\n`);
 console.log(JSON.stringify(report, null, 2));
 process.exitCode = report.ok ? 0 : 3;
