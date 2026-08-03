@@ -38,7 +38,7 @@ This tip's PROC-3 run: **18 roster rows GREEN**; overall status RED only because
 
 | Suspect | Status | Why |
 | --- | --- | --- |
-| ~16.6 MB/closed-trade resident (decoded-image family) | **CLEARED** | Director 09:15 §0.1 — coefficient fails matched-bars test; bar-driven growth wearing a trade label |
+| ~16.6 MB/closed-trade resident (decoded-image family) | **CLEARED** | Director 09:15+01:00 §0.1 — coefficient fails matched-bars test; bar-driven growth wearing a trade label |
 | Residency-window-inline `9e0a8ad591` | **CLEARED** | A: `CANNOT-APPLY` — pre-image absent; EVICT-03 does not absorb it |
 
 ---
@@ -97,7 +97,7 @@ These are **not** CLEARED and **not** unfinished work. Each is a defect or hazar
 
 > **`TAL-01865-VIEWPORT-CONSUMER` was withdrawn from this section on 2026-08-03 and is now KILLED.** It was deferred at 23:27Z on the reasoning that the seal was imminent and the fix touched the engine on seal night. `b125` turned out not to be the seal build, so the premise expired; the PO reopened it in daylight and it landed at `823e32cec`. Kept visible here rather than deleted, because a deferral that vanishes without trace teaches the next reader that 4b is where things go to be forgotten. The kill is recorded below.
 
-> Count note: the ruling says "nine wrappers", the row says eleven. Eleven is correct — `enterReplayMode`, `exitReplayMode`, `pause`, `setSpeed`, `setPlaybackMode`, `setStepTimeframe`, `goToReplayTimestamp`, `requestStepForward`, `requestStepBackward`, `stepForward`, `stepBackward`. Nine was my miscount, carried into the ruling before I corrected it at 23:11. The decision is unaffected — it argues *more* strongly for deferring, not less.
+> Count note: the ruling says "nine wrappers", the row says eleven. Eleven is correct — `enterReplayMode`, `exitReplayMode`, `pause`, `setSpeed`, `setPlaybackMode`, `setStepTimeframe`, `goToReplayTimestamp`, `requestStepForward`, `requestStepBackward`, `stepForward`, `stepBackward`. Nine was my miscount, carried into the ruling before I corrected it at 23:11+01:00. The decision is unaffected — it argues *more* strongly for deferring, not less.
 
 ---
 
@@ -137,7 +137,7 @@ These are **not** CLEARED and **not** unfinished work. Each is a defect or hazar
 >
 > **b125 was retired UNSHIPPED.** Nothing was ever deployed against it and nothing was ever measured
 > against it. Its bytes were never wrong — the cut was clean, the tree was clean, the stamps were
-> uniform, and its provenance was verified green at 00:45. It died because the checkpoint image could
+> uniform, and its provenance was verified green at 00:45+01:00. It died because the checkpoint image could
 > not be built from any commit of that era, a defect in the Dockerfile copy allowlist that belonged to
 > neither the cut nor the tagger. **The cost of b125 was time only.** No artifact needs withdrawing,
 > no row needs re-taking, no number anywhere in this file rests on it.
@@ -189,7 +189,7 @@ removal of a file the module contract requires to be absent, so it removes no by
 **Therefore no swept file can have reached the b125 bundle**, and the stamp chain's provenance stands.
 
 **Ruled: the commit stands, unsplit.** Splitting it would rewrite `f16c94b70`, the final stamp whose
-provenance was verified green at 00:45. Rewriting history under a certified build is precisely what
+provenance was verified green at 00:45+01:00. Rewriting history under a certified build is precisely what
 retired b124, and it is not worth doing to correct an authorship line. PO ruling 2026-08-03.
 
 **This section did not expire when b125 was retired.** `d4015a2be` and the whole b125 stamp chain are

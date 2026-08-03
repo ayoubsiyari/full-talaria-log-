@@ -41,7 +41,9 @@ console.log('SEAL-EVIDENCE-01 EVIDENCE CLASS: SERVED_SMOKE — live HTTP against
  *
  * WHAT IT REFUSES TO CONFLATE
  *   A gate that prints the same red for "the build shipped a broken passport" and for "you
- *   pointed me at the wrong origin" is a gate nobody can act on at 03:00. Before asserting
+ *   pointed me at the wrong origin" is a gate nobody can act on at 03:00. CLOCK-01-EXEMPT:
+ *   that is the idiom for the middle of the night, not a cited event, and stamping an
+ *   offset onto it would assert a precision that was never meant. Before asserting
  *   anything about content, this triages the door and reports one of:
  *
  *     VERIFIED               a real passport, matching the expected badge and SHA

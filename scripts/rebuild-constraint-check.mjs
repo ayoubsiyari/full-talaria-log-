@@ -3,7 +3,7 @@
  * REBUILD-CONSTRAINT — does a surface actually carry tonight's work?
  *
  * The canary served 20260802b122 / source 1c69bebb4 all day. That commit is
- * from 10:13 and my tip is 123 commits past it, so nothing observed there can
+ * from 10:13+01:00 and my tip is 123 commits past it, so nothing observed there can
  * be cited about tonight. "The rebuild must carry these commits" is only useful
  * if it is checkable on the surface rather than asserted from a branch name, so
  * every required row below has a marker that is greppable in SERVED bytes.

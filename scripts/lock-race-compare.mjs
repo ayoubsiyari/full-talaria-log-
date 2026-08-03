@@ -37,7 +37,7 @@ const N = Number(process.argv[2] || 12);
 const ROUNDS = Number(process.argv[3] || 6);
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'lockrace-'));
 
-// single-launch-lock.mjs (mine) was the second arm here until 13:30, when it was
+// single-launch-lock.mjs (mine) was the second arm here until 13:30+01:00, when it was
 // retired under the one-lock ruling. It is not replaced by a stub: an arm that
 // points at an absent file prints SKIP forever and reads as coverage.
 const IMPLS = [
