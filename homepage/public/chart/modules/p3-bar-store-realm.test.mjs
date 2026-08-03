@@ -6,6 +6,8 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
+console.log('SEAL-EVIDENCE-01 EVIDENCE CLASS: SANDBOX_SIM — product source is executed here in a synthetic realm against stubs this gate wrote. Green means the logic behaves against those stubs, NOT that the shipped product does. A row can be green here and inert in the browser.');
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 /**

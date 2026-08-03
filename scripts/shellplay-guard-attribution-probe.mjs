@@ -55,6 +55,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (m) => console.log(`[shellplay-guard] ${new Date().toISOString()} ${m}`);
 
+// SEAL-EVIDENCE-01: RUNTIME_BROWSER against the LOCAL harness, not the canary.
+// Provenance stamps headSha / distV9BuildIdOnDisk so a run can be graded against
+// a sealed identity — but a green here with a mismatched badge is
+// SERVED_SMOKE_NOT_RUN for the seal, not a pass.
+console.log('SEAL-EVIDENCE-01 EVIDENCE CLASS: RUNTIME_BROWSER — local harness dist-v9; seal credit requires provenance match to the sealed buildId/SHA, not merely a green probe.');
+
 async function attribute(page, { step }) {
   return page.evaluate(async (step_) => {
     const sleepIn = (ms) => new Promise((r) => setTimeout(r, ms));

@@ -6,6 +6,8 @@ import { createRequire } from 'node:module';
 import test from 'node:test';
 import crypto from 'node:crypto';
 
+console.log('SEAL-EVIDENCE-01 EVIDENCE CLASS: STATIC_SOURCE — every verdict below was decided by matching text in a source file. It proves a marker is PRESENT. It cannot show the path runs, in this build or any build.');
+
 const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

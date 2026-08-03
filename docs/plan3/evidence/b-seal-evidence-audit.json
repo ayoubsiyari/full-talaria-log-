@@ -1,0 +1,696 @@
+{
+  "signature": "SEAL-EVIDENCE-AUDIT-V1",
+  "at": "2026-08-03T10:49:07.640Z",
+  "rows": [
+    {
+      "id": "BUILD-ID-01",
+      "kind": "canonical",
+      "path": "scripts/tests/build-id-refusal.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "RUNTIME_TOOL",
+      "all": [
+        "RUNTIME_TOOL",
+        "RUNTIME_MODULE",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 14169,
+      "textAsserts": 9,
+      "allAsserts": 42,
+      "share": 0.21428571428571427
+    },
+    {
+      "id": "CLEAN-TREE-01",
+      "kind": "canonical",
+      "path": "scripts/tests/clean-build-tree-guard.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "RUNTIME_TOOL",
+      "all": [
+        "RUNTIME_TOOL",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 17065,
+      "textAsserts": 17,
+      "allAsserts": 54,
+      "share": 0.3148148148148148
+    },
+    {
+      "id": "REBUILD-CONSTRAINT",
+      "kind": "canonical",
+      "path": "scripts/rebuild-constraint-check.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SERVED_SMOKE",
+      "all": [
+        "SERVED_SMOKE",
+        "RUNTIME_TOOL",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 13244,
+      "textAsserts": 0,
+      "allAsserts": 0,
+      "share": null
+    },
+    {
+      "id": "PASSPORT-3-REPO",
+      "kind": "canonical",
+      "path": "_evidence/manager-B/passport3-commit-sha/passport3.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "RUNTIME_TOOL",
+      "all": [
+        "RUNTIME_TOOL",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 21287,
+      "textAsserts": 0,
+      "allAsserts": 0,
+      "share": null
+    },
+    {
+      "id": "PASSPORT-3-LIVE",
+      "kind": "canonical",
+      "path": "_evidence/manager-B/passport3-commit-sha/passport3-verify.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SERVED_SMOKE",
+      "all": [
+        "SERVED_SMOKE"
+      ],
+      "declares": true,
+      "bytes": 14755,
+      "textAsserts": 0,
+      "allAsserts": 0,
+      "share": null
+    },
+    {
+      "id": "DEF-05a",
+      "kind": "canonical",
+      "path": "_evidence/manager-B/def05-bootstrap/def05a-canvas-context-recovery.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 9993,
+      "textAsserts": 0,
+      "allAsserts": 0,
+      "share": null
+    },
+    {
+      "id": "DEF-05b/DEF-07",
+      "kind": "canonical",
+      "path": "_evidence/manager-B/def05-bootstrap/def05b-def07-bootstrap-defaults.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 11470,
+      "textAsserts": 0,
+      "allAsserts": 0,
+      "share": null
+    },
+    {
+      "id": "LIFE-3",
+      "kind": "canonical",
+      "path": "_evidence/manager-B/life3-bfcache/life3-behavioural.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 9425,
+      "textAsserts": 0,
+      "allAsserts": 0,
+      "share": null
+    },
+    {
+      "id": "HOSTCACHE-TEARDOWN",
+      "kind": "canonical",
+      "path": "chart v 1.4/chart/modules/hostcache-panel-teardown-release.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 9410,
+      "textAsserts": 4,
+      "allAsserts": 20,
+      "share": 0.2
+    },
+    {
+      "id": "HOSTCACHE-TEARDOWN",
+      "kind": "mirror",
+      "path": "homepage/public/chart/modules/hostcache-panel-teardown-release.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 9410,
+      "textAsserts": 4,
+      "allAsserts": 20,
+      "share": 0.2
+    },
+    {
+      "id": "BARSTORE-1/2",
+      "kind": "canonical",
+      "path": "chart v 1.4/chart/modules/barstore-growth-bounds.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 12976,
+      "textAsserts": 0,
+      "allAsserts": 30,
+      "share": 0
+    },
+    {
+      "id": "BARSTORE-1/2",
+      "kind": "mirror",
+      "path": "homepage/public/chart/modules/barstore-growth-bounds.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 12976,
+      "textAsserts": 0,
+      "allAsserts": 30,
+      "share": 0
+    },
+    {
+      "id": "P3-BAR-STORE-REALM",
+      "kind": "canonical",
+      "path": "chart v 1.4/chart/modules/p3-bar-store-realm.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 28689,
+      "textAsserts": 0,
+      "allAsserts": 56,
+      "share": 0
+    },
+    {
+      "id": "P3-BAR-STORE-REALM",
+      "kind": "mirror",
+      "path": "homepage/public/chart/modules/p3-bar-store-realm.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 28689,
+      "textAsserts": 0,
+      "allAsserts": 56,
+      "share": 0
+    },
+    {
+      "id": "TAL-01865-PINS",
+      "kind": "canonical",
+      "path": "chart v 1.4/chart/modules/toolbar-pin-restore.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "RUNTIME_MODULE",
+      "all": [
+        "RUNTIME_MODULE",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 6620,
+      "textAsserts": 6,
+      "allAsserts": 21,
+      "share": 0.2857142857142857
+    },
+    {
+      "id": "TAL-01865-PINS",
+      "kind": "mirror",
+      "path": "homepage/public/chart/modules/toolbar-pin-restore.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "RUNTIME_MODULE",
+      "all": [
+        "RUNTIME_MODULE",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 6620,
+      "textAsserts": 6,
+      "allAsserts": 21,
+      "share": 0.2857142857142857
+    },
+    {
+      "id": "TAL-01865-PANEL-BIND",
+      "kind": "canonical",
+      "path": "chart v 1.4/chart/modules/panel-state-binding.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 25812,
+      "textAsserts": 33,
+      "allAsserts": 92,
+      "share": 0.358695652173913
+    },
+    {
+      "id": "TAL-01865-PANEL-BIND",
+      "kind": "mirror",
+      "path": "homepage/public/chart/modules/panel-state-binding.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 25812,
+      "textAsserts": 33,
+      "allAsserts": 92,
+      "share": 0.358695652173913
+    },
+    {
+      "id": "TAL-01865-PANEL-RT",
+      "kind": "canonical",
+      "path": "chart v 1.4/chart/modules/panel-state-roundtrip.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "RUNTIME_MODULE",
+      "all": [
+        "RUNTIME_MODULE"
+      ],
+      "declares": true,
+      "bytes": 13408,
+      "textAsserts": 0,
+      "allAsserts": 53,
+      "share": 0
+    },
+    {
+      "id": "TAL-01865-PANEL-RT",
+      "kind": "mirror",
+      "path": "homepage/public/chart/modules/panel-state-roundtrip.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "RUNTIME_MODULE",
+      "all": [
+        "RUNTIME_MODULE"
+      ],
+      "declares": true,
+      "bytes": 13408,
+      "textAsserts": 0,
+      "allAsserts": 53,
+      "share": 0
+    },
+    {
+      "id": "TAL-01865-VIEWPORT",
+      "kind": "canonical",
+      "path": "chart v 1.4/chart/modules/viewport-restore-consumer.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 8851,
+      "textAsserts": 1,
+      "allAsserts": 27,
+      "share": 0.037037037037037035
+    },
+    {
+      "id": "TAL-01865-VIEWPORT",
+      "kind": "mirror",
+      "path": "homepage/public/chart/modules/viewport-restore-consumer.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 8851,
+      "textAsserts": 1,
+      "allAsserts": 27,
+      "share": 0.037037037037037035
+    },
+    {
+      "id": "TAL-01865-DRAWIMPORT",
+      "kind": "canonical",
+      "path": "chart v 1.4/chart/modules/drawing-import-coordinate.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 10589,
+      "textAsserts": 10,
+      "allAsserts": 24,
+      "share": 0.4166666666666667
+    },
+    {
+      "id": "TAL-01865-DRAWIMPORT",
+      "kind": "mirror",
+      "path": "homepage/public/chart/modules/drawing-import-coordinate.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 10589,
+      "textAsserts": 10,
+      "allAsserts": 24,
+      "share": 0.4166666666666667
+    },
+    {
+      "id": "RAYAN8-SUPPORT",
+      "kind": "canonical",
+      "path": "chart v 1.4/chart/modules/supporting-symbol-surface.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 11807,
+      "textAsserts": 5,
+      "allAsserts": 21,
+      "share": 0.23809523809523808
+    },
+    {
+      "id": "RAYAN8-SUPPORT",
+      "kind": "mirror",
+      "path": "homepage/public/chart/modules/supporting-symbol-surface.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 11807,
+      "textAsserts": 5,
+      "allAsserts": 21,
+      "share": 0.23809523809523808
+    },
+    {
+      "id": "SESSION-SYM-RESTORE",
+      "kind": "canonical",
+      "path": "chart v 1.4/chart/modules/session-symbol-restore.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 11887,
+      "textAsserts": 7,
+      "allAsserts": 23,
+      "share": 0.30434782608695654
+    },
+    {
+      "id": "SESSION-SYM-RESTORE",
+      "kind": "mirror",
+      "path": "homepage/public/chart/modules/session-symbol-restore.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 11887,
+      "textAsserts": 7,
+      "allAsserts": 23,
+      "share": 0.30434782608695654
+    },
+    {
+      "id": "SESSION-SYM-EXCL",
+      "kind": "canonical",
+      "path": "chart v 1.4/chart/modules/session-symbol-exclusivity.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "RUNTIME_TOOL",
+      "all": [
+        "RUNTIME_TOOL",
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 12411,
+      "textAsserts": 4,
+      "allAsserts": 23,
+      "share": 0.17391304347826086
+    },
+    {
+      "id": "SESSION-SYM-EXCL",
+      "kind": "mirror",
+      "path": "homepage/public/chart/modules/session-symbol-exclusivity.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "RUNTIME_TOOL",
+      "all": [
+        "RUNTIME_TOOL",
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 12411,
+      "textAsserts": 4,
+      "allAsserts": 23,
+      "share": 0.17391304347826086
+    },
+    {
+      "id": "SERVER-WRITE-12",
+      "kind": "canonical",
+      "path": "chart v 1.4/chart/modules/server-write-failure-ledger.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 21241,
+      "textAsserts": 5,
+      "allAsserts": 61,
+      "share": 0.08196721311475409
+    },
+    {
+      "id": "SERVER-WRITE-12",
+      "kind": "mirror",
+      "path": "homepage/public/chart/modules/server-write-failure-ledger.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 21241,
+      "textAsserts": 5,
+      "allAsserts": 61,
+      "share": 0.08196721311475409
+    },
+    {
+      "id": "CLAIM-FAILURE-13",
+      "kind": "canonical",
+      "path": "chart v 1.4/chart/modules/claim-failure-ledger.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 18690,
+      "textAsserts": 1,
+      "allAsserts": 36,
+      "share": 0.027777777777777776
+    },
+    {
+      "id": "CLAIM-FAILURE-13",
+      "kind": "mirror",
+      "path": "homepage/public/chart/modules/claim-failure-ledger.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 18690,
+      "textAsserts": 1,
+      "allAsserts": 36,
+      "share": 0.027777777777777776
+    },
+    {
+      "id": "SHELL-PLAY-RECEIVER",
+      "kind": "canonical",
+      "path": "chart v 1.4/chart/modules/shell-play-override-receiver.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 9310,
+      "textAsserts": 4,
+      "allAsserts": 23,
+      "share": 0.17391304347826086
+    },
+    {
+      "id": "SHELL-PLAY-RECEIVER",
+      "kind": "mirror",
+      "path": "homepage/public/chart/modules/shell-play-override-receiver.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 9310,
+      "textAsserts": 4,
+      "allAsserts": 23,
+      "share": 0.17391304347826086
+    },
+    {
+      "id": "SHELL-PLAY-SHIPPED",
+      "kind": "canonical",
+      "path": "chart v 1.4/chart/modules/shell-play-shipped-equivalence.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 8615,
+      "textAsserts": 3,
+      "allAsserts": 14,
+      "share": 0.21428571428571427
+    },
+    {
+      "id": "SHELL-PLAY-SHIPPED",
+      "kind": "mirror",
+      "path": "homepage/public/chart/modules/shell-play-shipped-equivalence.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 8615,
+      "textAsserts": 3,
+      "allAsserts": 14,
+      "share": 0.21428571428571427
+    },
+    {
+      "id": "SHELLPLAY-GUARD",
+      "kind": "canonical",
+      "path": "scripts/shellplay-guard-attribution-probe.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "RUNTIME_BROWSER",
+      "all": [
+        "RUNTIME_BROWSER",
+        "SERVED_SMOKE"
+      ],
+      "declares": true,
+      "bytes": 12596,
+      "textAsserts": 0,
+      "allAsserts": 0,
+      "share": null
+    },
+    {
+      "id": "ORDER-01B",
+      "kind": "canonical",
+      "path": "chart v 1.4/chart/modules/order-01b-market-cursor.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 19240,
+      "textAsserts": 14,
+      "allAsserts": 61,
+      "share": 0.22950819672131148
+    },
+    {
+      "id": "ORDER-01B",
+      "kind": "mirror",
+      "path": "homepage/public/chart/modules/order-01b-market-cursor.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "SANDBOX_SIM",
+      "all": [
+        "SANDBOX_SIM",
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 19240,
+      "textAsserts": 14,
+      "allAsserts": 61,
+      "share": 0.22950819672131148
+    },
+    {
+      "id": "DEF-04",
+      "kind": "canonical",
+      "path": "chart v 1.4/chart/modules/def04-multitf-time-sync.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "STATIC_SOURCE",
+      "all": [
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 8431,
+      "textAsserts": 6,
+      "allAsserts": 26,
+      "share": 0.23076923076923078
+    },
+    {
+      "id": "DEF-04",
+      "kind": "mirror",
+      "path": "homepage/public/chart/modules/def04-multitf-time-sync.test.mjs",
+      "state": "CLASSIFIED",
+      "strongest": "STATIC_SOURCE",
+      "all": [
+        "STATIC_SOURCE"
+      ],
+      "declares": true,
+      "bytes": 8431,
+      "textAsserts": 6,
+      "allAsserts": 26,
+      "share": 0.23076923076923078
+    }
+  ],
+  "undeclared": 0,
+  "cannotObserve": 40,
+  "unclassified": 0
+}

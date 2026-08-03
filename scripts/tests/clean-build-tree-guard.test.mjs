@@ -25,6 +25,8 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import {
+
+console.log('SEAL-EVIDENCE-01 EVIDENCE CLASS: RUNTIME_TOOL — the real script under test is spawned and its exit code read. Green is evidence about the tool, NOT about served bytes.');
   BUILD_INPUT_ROOTS,
   DirtyTreeRefusal,
   assertCleanBuildInputs,

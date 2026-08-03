@@ -14,6 +14,8 @@
 import fs from 'node:fs';
 import vm from 'node:vm';
 
+console.log('SEAL-EVIDENCE-01 EVIDENCE CLASS: SANDBOX_SIM — product source is executed here in a synthetic realm against stubs this gate wrote. Green means the logic behaves against those stubs, NOT that the shipped product does. A row can be green here and inert in the browser.');
+
 const SRC = process.argv[2] || 'chart v 1.4/chart/modules/chart-window-limit.js';
 const source = fs.readFileSync(SRC, 'utf8');
 

@@ -22,6 +22,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
+console.log('SEAL-EVIDENCE-01 EVIDENCE CLASS: RUNTIME_TOOL — the real script under test is spawned and its exit code read. Green is evidence about the tool, NOT about served bytes.');
+
 const REPO = process.argv[2] || process.cwd();
 const SCRIPT = path.join(REPO, 'chart v 1.4/chart/scripts/bump-chart-engine-build.mjs');
 

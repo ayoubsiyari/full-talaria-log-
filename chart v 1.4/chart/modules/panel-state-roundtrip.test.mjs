@@ -22,6 +22,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+console.log('SEAL-EVIDENCE-01 EVIDENCE CLASS: RUNTIME_MODULE — the real module is imported and called in-process. Green is evidence about the module, NOT about served bytes: nothing here boots the built product.');
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**

@@ -22,6 +22,8 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+console.log('SEAL-EVIDENCE-01 EVIDENCE CLASS: RUNTIME_TOOL — the real script under test is spawned and its exit code read. Green is evidence about the tool, NOT about served bytes.');
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../..');
 const SCRIPT = path.resolve(

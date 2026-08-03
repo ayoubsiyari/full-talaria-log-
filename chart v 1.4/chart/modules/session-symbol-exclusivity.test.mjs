@@ -36,6 +36,8 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
+console.log('SEAL-EVIDENCE-01 EVIDENCE CLASS: RUNTIME_TOOL — the real script under test is spawned and its exit code read. Green is evidence about the tool, NOT about served bytes.');
+
 function findRoot(start) {
   let cursor = path.resolve(start);
   for (;;) {

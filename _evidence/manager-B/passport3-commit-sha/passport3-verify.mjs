@@ -1,4 +1,10 @@
 #!/usr/bin/env node
+// SEAL-EVIDENCE-01: SERVED_SMOKE — this verifier hits a live origin over HTTP.
+// Green is evidence about THAT origin's /chart/build-info.json, not about source
+// on disk. A run against the wrong badge or a retired identity is SERVED_SMOKE_NOT_RUN
+// for the seal, even if every cell below would still print PASS.
+console.log('SEAL-EVIDENCE-01 EVIDENCE CLASS: SERVED_SMOKE — live HTTP against the named origin; provenance must match the sealed badge/digest/SHA before this blesses a seal row.');
+
 /**
  * PASSPORT-3 live verifier — HTTP mode.
  *
