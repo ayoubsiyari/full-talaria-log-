@@ -14,8 +14,8 @@ artifact rather than quietly inheriting this one's authority.
 | trade interval | one every **120 s** | n/a |
 | orders across the arm | **300** | **0** |
 | **play** duration | **10 h** | **3.5 h** — see the matched window below |
-| **paused settle curves** | 2 × 33 min (hour 0, hour 10) | 2 × 33 min (hour 0, hour 3.5) |
-| **wall-clock duration** | **11.1 h** | **4.6 h** |
+| **paused settle curves** | 1 × 22 min (hour 0) | 1 × 22 min (hour 0) |
+| **wall-clock duration** | **10.4 h** | **3.9 h** |
 | speed | 10 bars/s requested | 10 bars/s requested |
 | panels | 4, same-symbol, E indicators | 4, same-symbol, E indicators |
 | dataset | CONF01 common window, runway declared | CONF01 common window, runway declared |
@@ -42,6 +42,40 @@ after a sleep cannot certify a floor however long the sleep.
 
 **Cost of the amendment: 2.2 h of exclusive box across both arms.** That is the price of the hoard
 floor being a floor rather than a sample.
+
+### AMENDMENT 2 — ONE CURVE PER ARM, AND IT IS THE CANONICAL FLOOR, 2026-08-03 23:52+01:00
+
+Two Director rulings land on Amendment 1 and change it in opposite directions. Recording both, because
+the arithmetic above is now wrong in the file and would otherwise be quoted.
+
+**The end-of-arm curve is removed.** *"Hoard floor curve is post-soak."* The hour-10 and hour-3.5 curves
+come out of the arms and the hoard floor is measured after the soak. Amendment 1's "these ARE the
+hoard-floor readings" no longer holds at the closing end — there is no closing curve to be one.
+
+**The hour-0 curve stays, and is promoted.** W2, the standalone exclusive window for the canonical floor
+re-take, is cancelled; the PO's completeness clause pre-declares this endpoint as the fallback. The
+hour-0 curve **is** the canonical settled floor and carries the `effective_size` confirmation with it.
+That is a better reading than W2 would have produced: the floor and the arm it grades share a build, a
+box and a minute, so nothing has to be argued across runs.
+
+**Corrected cost: 22 min per arm, 0.7 h across both** — down from 2.2 h, and it buys the canonical floor
+as well as the boot end of the hoard floor. The 33 min figure in Amendment 1 priced a longer ladder than
+the one that shipped; the implemented curve is three reads at 600 s rungs (20 min) plus the paused
+detailed dump and the capability probe.
+
+**Implementation:** `BOOT-ENDPOINT-READING-01` in `scripts/lib/boot-endpoint-reading.mjs`, wired into
+`sealed-two-arm-soak.mjs` at first-segment boot. A resumed segment does **not** re-take it: a resumed
+segment's hour 0 is a warm origin, and calling that a boot floor would understate it by everything the
+previous segment allocated.
+
+**`ARM-EQUALITY-01` is unaffected.** Both arms take the same one curve on the same ladder with the same
+pause discipline; only the trade knob differs. The change is symmetric, which is the only kind of change
+to the recipe that does not need the gate re-argued.
+
+**What the arm now does at hour 0:** `quiesce()` → 3 reads at 600 s rungs, forced collection at each →
+detailed dump while still paused → capability probe → `resumePlay()`. The reading is graded inline by
+`SETTLE-CRITERION-V2`, `BAR-BASIS-01` and `READING-VALIDITY-01`, and if any of them fails it writes a
+failure sidecar and emits **no floor number** rather than a caveated one.
 
 ### MATCHED COMPARISON WINDOW — ruled 2026-08-03 19:10+01:00
 
