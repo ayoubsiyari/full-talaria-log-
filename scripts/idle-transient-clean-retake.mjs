@@ -28,8 +28,9 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { clockOf, stampUtc } from './lib/clock.mjs';
-import { foreignRunsSync, isAlive } from './lib/run-lock.mjs';
-import { readState } from './measurement-queue.mjs';
+// The wait moved to lib/ when a second wrapper needed it. One implementation:
+// writing this twice is how three lock systems ended up live on one box.
+import { waitForBox } from './lib/box-availability.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -52,54 +53,9 @@ const ARMS = [
 
 const log = (m) => console.log(`[idle-retake ${clockOf(new Date(), { seconds: true })}] ${m}`);
 
-/**
- * Two gates, and neither is C's `preflight`, for a reason found the hard way:
- * `preflight` counts THIS wrapper as an unclaimed measurement process, and
- * `claim` refuses whenever any is visible, so a wrapper that waits for the queue
- * can never satisfy it and never claim. It waited on itself. Reported to C.
- *
- * So: another owner's live claim is honoured by reading C's state read-only, and
- * live runs come from my own scan, which excludes self and requires an observed
- * browser. The arms then take the run lock individually, which is the gate the
- * PO named — the lock, not an empty box.
- */
-function boxBlockers() {
-  const blockers = [];
-  const state = readState();
-  const claim = state && state.claim;
-  if (claim && claim.owner && claim.owner !== 'A' && isAlive(claim.pid)) {
-    blockers.push(`queue claim: ${claim.owner}/${claim.run} pid ${claim.pid} since ${claim.at}`);
-  }
-  const scan = foreignRunsSync({ ignorePids: [process.pid] });
-  for (const r of scan.runs) blockers.push(`live run: ${r.script} pid ${r.pid}`);
-  if (scan.state === 'FOREIGN_SCAN_UNAVAILABLE') blockers.push(`scan unavailable: ${scan.why}`);
-  return blockers;
-}
-
-function queueFree() {
-  const blockers = boxBlockers();
-  return { free: blockers.length === 0, why: blockers.join('; ') };
-}
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-async function waitForBox() {
-  const started = Date.now();
-  let lastWhy = '';
-  for (;;) {
-    const q = queueFree();
-    if (q.free) return { state: 'BOX_AVAILABLE', waitedMs: Date.now() - started };
-    if (q.why !== lastWhy) { log(`waiting — ${q.why}`); lastWhy = q.why; }
-    if (Date.now() - started > WAIT_MAX_MS) {
-      return { state: 'WAIT_TIMEOUT', waitedMs: Date.now() - started, why: q.why };
-    }
-    await sleep(20_000);
-  }
-}
-
 async function main() {
   log(`three arms, ${SAMPLES} idle samples at ${INTERVAL / 1000}s each, sequential`);
-  const gate = await waitForBox();
+  const gate = await waitForBox({ owner: 'A', waitMaxMs: WAIT_MAX_MS, log });
   if (gate.state !== 'BOX_AVAILABLE') {
     console.error(`[idle-retake] ${gate.state} after ${Math.round(gate.waitedMs / 60000)}m — ${gate.why}`);
     process.exit(3);
