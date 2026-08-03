@@ -67,6 +67,22 @@ export const C_LANE_GATES = [
     refuses: 'a single-arena delta quoted without its total row at both endpoints',
   },
   {
+    // The binding that matters for CLOCK-01 is the EMITTER, not the audit. An audit finds bare
+    // numbers after they are written; an emitter that carries its offset means they are never
+    // written bare. My lane's 14 instruments printed `toISOString().slice(11,19)` — UTC with the
+    // marker deliberately sliced off — so the gate here is that the emitter has callers at all.
+    id: 'CLOCK-01-EMIT',
+    symbol: 'clockOf',
+    module: 'scripts/lib/clock.mjs',
+    refuses: 'a log line, artifact field or board number written without the clock that produced it',
+  },
+  {
+    id: 'CLOCK-01-AUDIT',
+    symbol: 'scanText',
+    module: 'scripts/clock-01-audit.mjs',
+    refuses: 'a bare wall-clock number surviving in prose, a verdict line or a commit message',
+  },
+  {
     id: 'TOTAL-01-RANK',
     symbol: 'rankRowGrowth',
     module: 'scripts/lib/arena-columns.mjs',
@@ -127,14 +143,27 @@ const git = (args) => {
   }
 };
 
-/** Files under scripts/ that mention a symbol, excluding the module that defines it. */
-export function callersOf(symbol, module, { grep = null } = {}) {
+/**
+ * This module's own path. It must never count as a caller of anything.
+ *
+ * FOUND THE HARD WAY, an hour after shipping this audit: DRIFT-ABBA flipped from SELF_TEST_ONLY to
+ * BOUND with `called by: scripts/gate-binding-audit.mjs`. Nothing had been wired. The manifest below
+ * NAMES `abbaSequence`, the caller search is a text search, and so the audit certified a dead gate on
+ * the strength of its own entry for it. A check that passes because it exists is the precise defect
+ * this file was written to detect, and it had it. Excluded by path rather than by cleverness.
+ */
+export const SELF_MODULE = 'scripts/gate-binding-audit.mjs';
+
+/** Files under scripts/ that mention a symbol, excluding the module that defines it and this audit. */
+export function callersOf(symbol, module, { grep = null, selfModule = SELF_MODULE } = {}) {
   const out = (grep || ((s) => git(['grep', '-l', '--', s, 'HEAD', '--', 'scripts'])))(symbol);
+  const norm = (f) => String(f).replace(/\\/g, '/');
   return String(out)
     .split(/\r?\n/)
     .map((l) => l.replace(/^HEAD:/, '').trim())
     .filter(Boolean)
-    .filter((f) => f !== module);
+    .filter((f) => norm(f) !== norm(module))
+    .filter((f) => norm(f) !== norm(selfModule));
 }
 
 /** Does this module run as a command? Both spellings of the main-module guard, plus a shebang. */

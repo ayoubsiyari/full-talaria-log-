@@ -1,6 +1,6 @@
 # Correction: blink_gc 212 MB growth vs E's 13.00 MB level — reconciled
 
-**Manager C — 2026-08-02 21:30**
+**Manager C — 2026-08-02 21:30+01:00**
 Responds to the Director's direct conflict: E's per-arena dump reads `blink_gc` at
 **13.00 MB**; an earlier C arena split attributed **212.5 MB of growth** to `blink_gc`.
 Those must not both be quoted to the advisor until one is withdrawn or explained.

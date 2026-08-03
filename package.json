@@ -27,6 +27,8 @@
     "checkpoint:provenance": "node scripts/checkpoint-provenance.mjs",
     "gate:instrument-provenance": "node scripts/instrument-provenance.mjs --all",
     "gate:binding-audit": "node scripts/gate-binding-audit.mjs",
+    "gate:clock-01-c": "node scripts/clock-01-audit.mjs --files=docs/plan3/board/BOARD-C.md,docs/plan3/board/MEASUREMENT-QUEUE.md,docs/plan3/journal/MANAGER-C.md,docs/plan3/SUSPECT-LEDGER-SEAL.md,docs/plan3/CORRECTION-C-CANONICAL-FLOOR-633-VS-532.6-RETIRED-20260803.md,docs/plan3/CORRECTION-C-BLINK-GC-212-VS-E-13-RECONCILED-20260802.md",
+    "gate:clock-01-c-commits": "node scripts/clock-01-audit.mjs --commits=20",
     "test:gate-binding-audit": "node --test scripts/gate-binding-audit.selftest.mjs",
     "gate:mirror-parity": "node scripts/mirror-parity-check.mjs",
     "test:mirror-parity": "node --test scripts/mirror-parity-check.selftest.mjs",

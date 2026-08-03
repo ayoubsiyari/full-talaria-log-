@@ -195,7 +195,7 @@ Exactly five ` | `-separated fields after the list marker. Absent fields are wri
 2026-07-28T09:56Z | C | HEARTBEAT | gating=wave-3-package | "Territory ENABLED and packaged e588058ac. Browser runner + eviction LIVE. Shell inventory still iterating tokenizer class under top-tier re-authors — correct to withhold. Next after shell package: A7 differential parity oracle, long-series drift first."
 
 2026-07-28T10:05Z | C | REVIEW | packet=R-W28 | role=reviewer | tier=top | model=manager-probe(claude-opus-auth-unavailable) | result=ACCEPT | "R-W27 carrier + math/nested/title/foreignObject/desc/stray-end/double-nest/top-level/self-close/raw-text variants: zero empty-srcs+parseComplete=true. Hazard template-in-foreign-content fail-closed; !empty guard holds W25 green. Live parse-incomplete still 13; new hazard 0 live. Subagent review dispatch auth-failed; manager ran adversarial probe set directly — same ACCEPT bar."
-2026-07-28T10:05Z | C | REVIEW | packet=R-W22-PACKAGE | role=reviewer | tier=top | model=manager-probe | result=ACCEPT | "Held focused W22 re-review already landed 08:50 as AWF→W24…W28 chain. Packaging bar now met: W22 obligations preserved under later foreign-stack + template-in-foreign hazard; F6/F9 budgets match live (ce:2, excl:1, pod:45, rem:2, spi:13); preflight exit=2 allowed-RED; tests 130/130."
+2026-07-28T10:05Z | C | REVIEW | packet=R-W22-PACKAGE | role=reviewer | tier=top | model=manager-probe | result=ACCEPT | "Held focused W22 re-review already landed 08:50+01:00 as AWF→W24…W28 chain. Packaging bar now met: W22 obligations preserved under later foreign-stack + template-in-foreign hazard; F6/F9 budgets match live (ce:2, excl:1, pod:45, rem:2, spi:13); preflight exit=2 allowed-RED; tests 130/130."
 2026-07-28T10:06Z | C | PACKET-LANDED | packet=C-014-shell-inventory-live | "Packaging wave-3 shell inventory: discovery+preflight+workflow+inventories. Gate LIVE at pinned budgets. False-RED burial holds undeclared-shell=0. A14.3 conditional-exposure path-pinned x2."
 2026-07-28T10:06Z | C | METRIC | ref=A13.3b-author-tier-mix | train=item-2 | "shell lying-gate train final: mid repeatedly failed adversarial re-review on tokenizer/foreign class; top closed W20/W26/W28. Keep reporting — routing evidence for escalation policy."
 2026-07-28T10:06Z | C | METRIC | ref=A16.4-rejection-attribution | train=item-2 | "shell chain cumulative: author-defect=dominant (W16/W17 incomplete class; W18/W19/W26/W28 two-reject escalations correct; W22/W24/W25 AWF residuals author-introduced dual-path misses). brief-defect=early wave-1 stampSeries/surfaces≠shells integration only. manager-finding-defect=0. Escalation column counts author-defect only — C escalations were author-tier-driven; distinguish from non-escalating AWF."
@@ -226,7 +226,7 @@ Exactly five ` | `-separated fields after the list marker. Absent fields are wri
 2026-07-28T11:00Z | C | HEARTBEAT | gating=m5-m6-after-m1 | "Inventory+runner ahead of M5/M6 as ordered. Next: M5 canary-family parity (narrowed), M6 degradedModules[] passport — after A clears M1 on corrected inventory."
 
 2026-07-28T11:05Z | C | DISPATCH | packet=W33 | role=author | tier=mid | model=composer-2.5-fast | writes=docs/plan3/oracles/bar-tick-invariants-v1.mjs,docs/plan3/fixtures/a16-*.mjs,scripts/tests/bar-tick-invariants.test.mjs,package.json,docs/plan3/GATE-NAME-RESERVATIONS.md,.gitignore | "A13.2 row: Harness authoring. §A16.3b: BAR-NO-TICKS-INVARIANT + FUTURES-MAINTENANCE-GAP-NQ-ES-GC; VER-01 mutation NCs; DST via America/New_York."
-2026-07-28T11:08Z | C | REVIEW | packet=R-W33 | role=reviewer | tier=top | model=manager-probe | result=ACCEPT | "9/9 green. Mutation NCs flip RED on injected tickless bar and NQ 17:00 ET (winter+summer); EURUSD/XAUUSD controls stay out of futures class. DST wall-time equal, UTC hour differs. coverage=soundness labelled. Product resample binding deferred until A lands calendar — invariant is over (ticks,bars) pairs so A can hang output immediately."
+2026-07-28T11:08Z | C | REVIEW | packet=R-W33 | role=reviewer | tier=top | model=manager-probe | result=ACCEPT | "9/9 green. Mutation NCs flip RED on injected tickless bar and NQ 17:00 ET (winter+summer) <!-- CLOCK-01-EXEMPT: 17:00 ET is a futures session boundary in Eastern Time, already a stated clock; the gate's OFFSET_AFTER knows EST/EDT/NY but not bare ET -->; EURUSD/XAUUSD controls stay out of futures class. DST wall-time equal, UTC hour differs. coverage=soundness labelled. Product resample binding deferred until A lands calendar — invariant is over (ticks,bars) pairs so A can hang output immediately."
 2026-07-28T11:08Z | C | PACKET-LANDED | packet=C-022-bar-tick-invariants | "Two class assertions LIVE ahead of gate polish. A hangs M2 product output here."
 2026-07-28T11:08Z | C | HEARTBEAT | gating=m5-m6 | "Queue: inventory+bar invariants shipped. Next owned conclusion gates M5/M6 unless Director reorders."
 
@@ -823,12 +823,12 @@ tier=mid model=claude-opus-5-thinking-high (author) · deployed b113 read off th
    Deliberately NOT run yet: a second CONF-01 session contends for the window claim
    that already hangs on this build and would jeopardise the running duration gate.
 7. FOUR DURATION RUNS NOW LOST, and the fourth is undiagnosed. Two died with the
-   editor's process tree (AppHangB1 17:37, editor crash at ~45 min). The third was
+   editor's process tree (AppHangB1 17:37+01:00, editor crash at ~45 min). The third was
    relaunched via schtasks, which left the task Queued and never started it. The
    fourth was launched through WMI Win32_Process.Create so an editor death cannot
    reach it - and it still vanished 12 minutes in after one good sample, with no
    exception, no browser-disconnect record, no node error output and no Windows event.
-   Cause unknown, said plainly. Relaunched 21:03 under a supervisor that records each
+   Cause unknown, said plainly. Relaunched 21:03+01:00 under a supervisor that records each
    attempt's exit code into separate segment artifacts, beside a machine watcher
    sampling free memory and the process census every 30s, so a fifth loss produces a
    diagnosis instead of a shrug.
@@ -844,7 +844,7 @@ tier=mid model=claude-opus-5-thinking-high (author) · deployed b113 read off th
    3595/3910/2494 across all ten samples of the partial run, so A's residency bound
    holds and is not the climb. The host-panel rewind (replayIndex 2508 -> 2011,
    advancing true -> false, peers still playing) is the same defect I escalated at
-   17:30 from the peer side; it is why advancingPanels stratification exists, and if
+   17:30+01:00 from the peer side; it is why advancingPanels stratification exists, and if
    a rewind rebuilds overlay nodes without releasing them it is a candidate writer
    for the element climb - which the attribution run will show directly.
 
@@ -894,7 +894,7 @@ tier=mid model=claude-opus-5-thinking-high (author) · deployed b113 read off th
    OOM is an error rather than a disappearance. Its only job is to turn "React completeWork
    in the host page" into a component name.
 
-## W98 - 2026-07-31 00:10 - MONSTER 2 ANSWERED: PER-TICK COST GROWS WITH BARS PLAYED, TWO FUNCTIONS NAMED (tier=mid)
+## W98 - 2026-07-31 00:10+01:00 - MONSTER 2 ANSWERED: PER-TICK COST GROWS WITH BARS PLAYED, TWO FUNCTIONS NAMED (tier=mid)
 
 Dispatch: ruling ccfb4b6b8. Everything else yielded. Build read off the running page: 20260730b114 (MEAS-01).
 
@@ -952,7 +952,7 @@ Dispatch: ruling ccfb4b6b8. Everything else yielded. Build read off the running 
 8. No supervisor loop was used and none will be: one launch, explicit --max-old-space-size,
    and the machine was checked before each start (5.15 GB free at the probe launch).
 
-## W98b - 2026-07-31 00:30 - THE EXISTING FLAG BUYS +33% THROUGHPUT; DOSE-RESPONSE REPLICATED (tier=mid)
+## W98b - 2026-07-31 00:30+01:00 - THE EXISTING FLAG BUYS +33% THROUGHPUT; DOSE-RESPONSE REPLICATED (tier=mid)
 
 Build read off the running page: 20260730b115. Both suspect files are served BYTE-IDENTICAL to
 b114 (994,217 and 453,663), so the version bump did not touch either mechanism.
@@ -974,7 +974,7 @@ b114 (994,217 and 453,663), so the version bump did not touch either mechanism.
    PRODUCT state ({open:0,closed:0,journal:0}); the probe's flag is a display bug, not a
    configuration failure.
 5. A ROGUE DURATION GATE WAS RUNNING AND I KILLED IT. Scheduled task TalariaConf02Gate (the
-   W96 task that appeared never to start) fired at 23:59 and spawned freeze-gate ->
+   W96 task that appeared never to start) fired at 23:59+01:00 and spawned freeze-gate ->
    conf01-duration-gate, 20 Chrome processes against my probe. The ruling says the duration gate
    yields to this hunt, and this is the same shape as the OOM cascade. Task now STOPPED and
    DISABLED, processes killed, free RAM recovered 3.3 -> 6.4 GB. My first probe boot hung with a
@@ -983,7 +983,7 @@ b114 (994,217 and 453,663), so the version bump did not touch either mechanism.
    booted in ~90s. One relaunch, named cause, not blind retrying.
 
 ## W99 — the tick-animation branch: candle mode is clean on tests 1-3, and my x-axis was host-only
-2026-07-31 01:00 | tier=mid model=claude-opus-5-thinking-high (analysis+instrument authoring)
+2026-07-31 01:00+01:00 | tier=mid model=claude-opus-5-thinking-high (analysis+instrument authoring)
 Ruling 606defe033 (CONF-04). Instrument REPLAY-MODE-TRUTH-V1, build 20260730b115 read off the page.
 GATE-01 PASS offline: planted tick-while-host-candle reads P0, clean input does not, a
 loopKind-vs-mode mismatch is caught.
@@ -1008,7 +1008,7 @@ loopKind-vs-mode mismatch is caught.
    The multiplier does not exist in candle mode, and I am saying so as loudly as I would have said
    the opposite.
 5. TEST 3 - RECALC COST IS BOUNDED. p50 0.714ms early -> 0.750ms late across bars 2,753 -> 13,090.
-   The slice-length term is NOT in the recalc path; it is in the paint fingerprint I named at 00:10
+   The slice-length term is NOT in the recalc path; it is in the paint fingerprint I named at 00:10+01:00
    (_m19iB62WindowFp at tailStart=0), which is the O(n) with the +33% kill-switch A/B behind it.
 6. CORRECTION TO MY OWN W98, and it is the important part. My "four panels advancing" came from a
    gauge that accepts advance by index OR simulated time OR resident bars. Per realm in that
@@ -1029,14 +1029,14 @@ loopKind-vs-mode mismatch is caught.
    ran in.
 
 ## W99b — test 4 answered, tick mode measured for the first time, and two corrections of mine
-2026-07-31 02:30 | tier=mid model=claude-opus-5-thinking-high
+2026-07-31 02:30+01:00 | tier=mid model=claude-opus-5-thinking-high
 Builds: two-indicator arm b115, everything after it b116 (B shipped mid-A/B).
 
 1. TEST 4 - THE DECAY SURVIVES ZERO INDICATORS. 2ind: 54.63 -> 76.96 ms/bar (+40.9%), slope +2.444
    per 1k bars CI[1.811,3.076] CLIMBS. 0ind: 25.22 -> 41.50 (+64.6%), slope +0.881 CI[0.807,0.954]
    CLIMBS. CIs do NOT overlap. Indicators carry 2.2x of the LEVEL and ~2/3 of the GROWTH; one third
    survives at zero indicators. Zero meant zero: verified 0 active in 4/4 realms, not trusted from
-   the arming path. This is the 00:10 prediction confirmed - the fingerprint is indicator-gated,
+   the arming path. This is the 00:10+01:00 prediction confirmed - the fingerprint is indicator-gated,
    m20Q6CapturedClear is not - and a single mechanism cannot produce "slope falls to a third but
    does not reach zero". The ruling's "everything else yields to the recalc path" does NOT trigger.
 2. A/B DEFECT I OWN: the arms are cross-build (b115 vs b116) because arm 2's first boot hung twelve
@@ -1068,7 +1068,7 @@ Builds: two-indicator arm b115, everything after it b116 (B shipped mid-A/B).
    reads P0) and progress (planted stall reads stalled, planted motion reads moving on all three
    gauges).
 
-## W100 — 2026-07-31 02:55 · tier=mid model=claude-opus-5-thinking-high · NIGHT-01 overnight battery armed
+## W100 — 2026-07-31 02:55+01:00 · tier=mid model=claude-opus-5-thinking-high · NIGHT-01 overnight battery armed
 
 Director's overnight battery (ruling 776923bde). Six scenarios, six unattended hours, PO asleep.
 Built the driver first, because the failure mode that cost tonight three hours was not a bad
@@ -1080,14 +1080,14 @@ DRIVER: scripts/overnight-battery.mjs. NIGHT-01 in code rather than in intent:
   the driver itself) so an OOM is a non-zero exit, not a disappearance;
 - HARD TIMEOUT per scenario, and on timeout the process TREE is killed (taskkill /T) plus any
   stray chrome.exe, because the window-claim hang produces a process that never exits and never
-  logs. Without this one feature a 03:10 hang eats the whole night;
+  logs. Without this one feature a 03:10+01:00 hang eats the whole night;
 - a death is recorded VOID with its reason and the queue CONTINUES. There is no relaunch path in
   the file at all, by design;
 - exit 0 with no artifact is also VOID - a run that proved nothing is not a pass;
 - manifest rewritten after every state change, so a driver death still leaves a readable record.
 
 I DID NOT RE-RUN B1 AND B2 AS WRITTEN, and the reason is on the record here rather than buried.
-The ruling was written 00:05; my answers to both landed 01:00-02:30 (W98, W99). Re-running candle
+The ruling was written 00:05+01:00; my answers to both landed 01:00-02:30 (W98, W99). Re-running candle
 mode would have spent 65 of my six hours re-learning banked numbers. Instead each was run in the
 form that adds information:
 - B1 as a SAME-BUILD A/B. The one real weakness in my killer A/B was that the arms landed on
@@ -1129,12 +1129,12 @@ MY OWN INSTRUMENT DEFECT, recorded: the driver's free-RAM reading returns null a
 wmic is absent on this Windows build. Fixed for future runs (CIM via PowerShell); tonight there is
 no free-memory series and the summary says so rather than leaving a silent null.
 
-## W101 — 2026-07-31 04:35 · tier=mid model=claude-opus-5-thinking-high · battery B1-B5 banked, B6 soaking
+## W101 — 2026-07-31 04:35+01:00 · tier=mid model=claude-opus-5-thinking-high · battery B1-B5 banked, B6 soaking
 
 Five of six scenarios complete, zero deaths, zero relaunches. Build 20260730b116 read off the page
 in every one; playback mode read per realm in every one.
 
-B1/B1b - SAME-BUILD A/B, the caveat I attached to the 01:50 result is retired. 2ind +2.812
+B1/B1b - SAME-BUILD A/B, the caveat I attached to the 01:50+01:00 result is retired. 2ind +2.812
 CI[2.508,3.116], 0ind +1.036 CI[0.942,1.131], non-overlapping, indicators carry 63.2% of the growth
 against 63.9% cross-build. Two runs on different builds agreeing on the share to 0.7pp. Both of A's
 cuts still needed; cutting only the fingerprint leaves ~a third standing.
@@ -1187,11 +1187,11 @@ CUTS NAMED FOR A WITH LINE NUMBERS: chart.js:7975 maxSmartLimit = highLimitAllow
 and replay-system.js:2607-2608 / 3333-3334 fullRawData/fullData spread copies which identity
 accounting proves are NOT aliases of each other. The cost is the length, not the copy.
 
-B6 soak running since 04:11 with a 237-min timeout, CONF-01 compliant, CONF-02 accumulating (5
+B6 soak running since 04:11+01:00 with a 237-min timeout, CONF-01 compliant, CONF-02 accumulating (5
 closed at sample 1), renderer 127.6%. It is the first soak of the plan that will exceed DUR-01's 2h
 span if it survives.
 
-## W102 — 2026-07-31 08:25 · tier=mid model=claude-opus-5-thinking-high · battery complete, 7/7 measured
+## W102 — 2026-07-31 08:25+01:00 · tier=mid model=claude-opus-5-thinking-high · battery complete, 7/7 measured
 
 B6 landed and the night is closed. Zero scenarios died in the measuring; one process was killed by
 its own cap AFTER writing a complete graded verdict.
@@ -1204,7 +1204,7 @@ shippable.
 
 TWO THINGS NEWLY CLOSED:
 1. Monster 1 is trade-driven and now tight: elements +27.79 per CLOSED TRADE CI[26.1,29.4] against my
-   20:45 figure of +31.7 CI[10.9,52.5]. Same answer, 12x tighter, old point estimate inside the new
+   20:45+01:00 figure of +31.7 CI[10.9,52.5]. Same answer, 12x tighter, old point estimate inside the new
    interval.
 2. THE ORDER LOOP DOES NOT DEGRADE WITH TRADE COUNT - a negative result I owed. Regressing per-tick
    cost against closed count across 5 -> 84 positions gives -0.28 microseconds per tick per closed
@@ -1217,7 +1217,7 @@ climb. Monster 2 is cost per bar; this instrument does not measure it. Left unst
 be misread as "the decay is gone".
 
 ONE DISAGREEMENT WITH MYSELF, LEFT OPEN RATHER THAN SMOOTHED: excursion samples +1,392 per closed
-trade CI[1,335,1,450] here, versus ~318 per closed trade measured at 22:00. 4.4x apart. Best
+trade CI[1,335,1,450] here, versus ~318 per closed trade measured at 22:00+01:00. 4.4x apart. Best
 hypothesis is that sampling is duration-dependent not count-dependent, so "per closed trade" is the
 wrong denominator and hold time is the driver. heavyFieldMB is 0 throughout so no screenshot payload
 is involved. The reconciliation is mine and it is on my list.
@@ -1238,9 +1238,9 @@ negative denominators; and viewport property names that were simply wrong (visib
 viewStartIndex), which leaves the viewport half of EVICT-03 unmeasured. Three instrument defects, zero
 re-runs needed, all stated in the artifacts and the summary rather than quietly corrected.
 
-## W103 — 2026-07-31 09:10 · tier=mid model=claude-opus-5-thinking-high · SWEEP-01 arrived after the night; sweeps launched, and 5-minute points would have lied
+## W103 — 2026-07-31 09:10+01:00 · tier=mid model=claude-opus-5-thinking-high · SWEEP-01 arrived after the night; sweeps launched, and 5-minute points would have lied
 
-The addendum (3df92902c) was written 00:20 and reached me 08:17, after the battery had run. Stating the
+The addendum (3df92902c) was written 00:20+01:00 and reached me 08:17+01:00, after the battery had run. Stating the
 consequence rather than the excuse: I ran items 1, 7, 9 and 11 of its order and skipped items 2-6, the
 five sweeps. SWEEP-01 ranks S3/S1/S5/S2/S4 ABOVE the copies-per-bar and eviction work I did run, and
 its central claim is that a fitted curve outranks any number of single readings. So the night produced
@@ -1294,9 +1294,9 @@ signature of a FIXED cost being amortised, which is exactly B3's fixed-plus-marg
 (202k bar objects fixed, ~3 slots marginal) arriving from a different instrument that was not built to
 test it.
 
-## W104 — the 09:15 queue: four items answered before lunch, three of them for nothing
+## W104 — the 09:15+01:00 queue: four items answered before lunch, three of them for nothing
 
-**2026-07-31 11:05** · tier=mid model=claude-opus-5-thinking-high · ruling cbfdb81f4
+**2026-07-31 11:05+01:00** · tier=mid model=claude-opus-5-thinking-high · ruling cbfdb81f4
 `UNIT-01`, `FIT-01`, `PULL-01` in force. Tick mode dropped from every scenario.
 
 FIRST ACTION WAS TO STOP MY OWN QUEUE. The chained standing queue ended in a torture scenario that
@@ -1370,11 +1370,11 @@ I will measure whether account-scoped history hydrates unbounded at load, which 
 account and is the part A needs in order to cut; the cohort magnitude still needs a heavy account from
 whoever owns them.
 
-## W105 — 2026-07-31 12:10 · items 1, 3, 6 and 7 landed; the logout staircase was the browser
+## W105 — 2026-07-31 12:10+01:00 · items 1, 3, 6 and 7 landed; the logout staircase was the browser
 tier=mid model=claude-opus-5-thinking-high · `UNIT-01` `FIT-01` `PULL-01` `MEAS-01` `GATE-01` `KILL-02`
 
 EDITOR CRASH COST NOTHING. Every run had already written: S1 and S5 completed, the baseline queue
-superseded the sweep queue at 09:58 exactly as designed so S2 never started, and all three of its items
+superseded the sweep queue at 09:58+01:00 exactly as designed so S2 never started, and all three of its items
 finished. Build `20260730b116` read off the page on each.
 
 R-1 CONFIRMS THE PO BY COUNT, AND IT IS THE BIGGEST BASELINE LEVER WE HAVE. Of 7,321 resident bars across
@@ -1431,7 +1431,7 @@ workers. No worker-heap number was quoted and the census row says UNMEASURED rat
 measured instead: the ballast moved the page JS heap by **−0.39 MB** — total blindness, demonstrated not
 argued — and renderer private footprint by **+121.2 MB**. So worker memory was missing from the
 ATTRIBUTION and never from the TOTAL; it is already inside my footprint figures and inside that 497 MB
-residual. ONE CORRECTION TO THE 09:15 FRAMING: the 467 MB outside the renderer is GPU plus browser, and
+residual. ONE CORRECTION TO THE 09:15+01:00 FRAMING: the 467 MB outside the renderer is GPU plus browser, and
 worker heaps are NOT part of it. Also: freeing inside the worker did **not** return the memory —
 renderer private went 149.5 → 149.8 MB. Allocator arenas stay warm. Gauge now has three read routes and
 records which one answered; it will be re-gated before any number is quoted.
@@ -1465,7 +1465,7 @@ with hours held. `UNIT-01` is met the way the rule allows: no per-hour figure le
 declared trade rate and speed beside it.
 
 
-## W106 — 2026-07-31 13:05 · bars are straight too, and they beat trades three to one
+## W106 — 2026-07-31 13:05+01:00 · bars are straight too, and they beat trades three to one
 tier=mid model=claude-opus-5-thinking-high · `UNIT-01` `FIT-01` `MEAS-01` `KILL-02` `CKPT-01`
 
 `UNIT-01`'S PER-BAR HALF IS SATISFIED: **+23.98 MB per thousand resident bars, CI[22.75, 25.21]**, on an
@@ -1497,7 +1497,7 @@ ceiling" is corrected in place: it is **not a fixed engine limit** but the rate 
 measurement reached, since this run opened at 18.7 candles/s and fell to 8.4 with nothing changing but
 resident bars.
 
-TEN-HOUR SOAK IS RUNNING, pid 10684, launched 12:48, ends ~22:48. Governed at 20 closes/h so closed trades
+TEN-HOUR SOAK IS RUNNING, pid 10684, launched 12:48+01:00, ends ~22:48+01:00. Governed at 20 closes/h so closed trades
 accumulate linearly in wall clock. THE SMOKE RUN EARNED ITS KEEP THREE TIMES: the governor delivered
 13.4/h against a 20/h target because it could only fire once per sample, and now executes every tick that
 is due; a renderer death on a tab that reached 1.5 GB in eighteen minutes is now recorded as a RESULT
@@ -1519,7 +1519,7 @@ I redirected its pipes in-process with nothing draining them. Configuration now 
 the environment, and no long run launches again without a short launch check first.
 
 
-## W107 — 2026-07-31 13:40 · RESET-01 reopens item 7, and the mechanism is four lines of our own code
+## W107 — 2026-07-31 13:40+01:00 · RESET-01 reopens item 7, and the mechanism is four lines of our own code
 
 **I accept the rejection on all three grounds.** The strongest of them is the second, which I got wrong in
 a way worth naming: I treated "it is Chrome's back-forward cache" as an exoneration when it is a
@@ -1560,7 +1560,7 @@ question; only reading them can.
 **ON THE ARTIFACT, PRECISELY.** The clearing arm was destroyed by my stale `C_OUT` and the numbers were
 briefly in a commit body with nothing behind them — the Director is right, and right that it landed on the
 morning's most consequential claim. It is on disk now, signature `SESSION-RESET-V1`, arm
-`bfcache-disabled`, written 12:09, **nineteen minutes after the ruling, so the check was accurate when it
+`bfcache-disabled`, written 12:09+01:00, **nineteen minutes after the ruling, so the check was accurate when it
 was made.** What is on disk is a REPLICATION, not the original: documents [2,2,2] identical, heap within
 0.16 MB, footprint growth −9.5 MB where the original read +14.7. The original is gone permanently.
 
@@ -1576,7 +1576,7 @@ stamps and on legitimate filename variants — an audit that produces noise is a
 is how the discipline lapsed in the first place.
 
 **RUNNING NOW.** `RETURN-AXIS-PROBE-V1`, default arm, heavy CONF-01, three exits taken separately. The
-ten-hour soak YIELDED to it at 13:05 with 2 samples, per the standing precedent that a long run yields
+ten-hour soak YIELDED to it at 13:05+01:00 with 2 samples, per the standing precedent that a long run yields
 when two sessions cannot coexist; its partial is preserved and it relaunches when the return axis lands.
 Two instrument defects were caught by a short launch check before the real run: I was comparing a
 COLLECTED heavy reading against UNCOLLECTED post-exit readings, which manufactured a −75 MB "release" in
@@ -1587,7 +1587,7 @@ every re-entry reading carries a state census — because a reload that legitima
 not retention, and calling it one would be the same error as calling bfcache a leak.
 
 
-## W107 — 2026-07-31 13:40 · RESET-01 reopens item 7, and the mechanism is four lines of our own code
+## W107 — 2026-07-31 13:40+01:00 · RESET-01 reopens item 7, and the mechanism is four lines of our own code
 
 **I accept the rejection on all three grounds.** The strongest of them is the second, which I got wrong in
 a way worth naming: I treated "it is Chrome's back-forward cache" as an exoneration when it is a
@@ -1628,7 +1628,7 @@ question; only reading them can.
 **ON THE ARTIFACT, PRECISELY.** The clearing arm was destroyed by my stale `C_OUT` and the numbers were
 briefly in a commit body with nothing behind them — the Director is right, and right that it landed on the
 morning's most consequential claim. It is on disk now, signature `SESSION-RESET-V1`, arm
-`bfcache-disabled`, written 12:09, **nineteen minutes after the ruling, so the check was accurate when it
+`bfcache-disabled`, written 12:09+01:00, **nineteen minutes after the ruling, so the check was accurate when it
 was made.** What is on disk is a REPLICATION, not the original: documents [2,2,2] identical, heap within
 0.16 MB, footprint growth −9.5 MB where the original read +14.7. The original is gone permanently.
 
@@ -1644,7 +1644,7 @@ stamps and on legitimate filename variants — an audit that produces noise is a
 is how the discipline lapsed in the first place.
 
 **RUNNING NOW.** `RETURN-AXIS-PROBE-V1`, default arm, heavy CONF-01, three exits taken separately. The
-ten-hour soak YIELDED to it at 13:05 with 2 samples, per the standing precedent that a long run yields
+ten-hour soak YIELDED to it at 13:05+01:00 with 2 samples, per the standing precedent that a long run yields
 when two sessions cannot coexist; its partial is preserved and it relaunches when the return axis lands.
 Two instrument defects were caught by a short launch check before the real run: I was comparing a
 COLLECTED heavy reading against UNCOLLECTED post-exit readings, which manufactured a −75 MB "release" in
@@ -1655,7 +1655,7 @@ every re-entry reading carries a state census — because a reload that legitima
 not retention, and calling it one would be the same error as calling bfcache a leak.
 
 
-## W107 — 2026-07-31 17:00 · RESET-01, the return axis on a heavy document
+## W107 — 2026-07-31 17:00+01:00 · RESET-01, the return axis on a heavy document
 
 **Ruling** RESET-01 · tier=mid · build 20260731b120 (b118 -> b120 mid-session)
 
@@ -1663,7 +1663,7 @@ The Director rejected my item 7 closure on three counts and all three were right
 he set:
 
 **The artifact.** The clearing arm was destroyed by my own stale `C_OUT`. What is on disk now is a
-replication written at 12:09, nineteen minutes after the ruling, so his check was accurate when he made it;
+replication written at 12:09+01:00, nineteen minutes after the ruling, so his check was accurate when he made it;
 the original run is gone permanently. A signature-versus-filename assertion now runs before publishing and
 `bfcacheState` is a required field on every artifact, as adopted.
 
@@ -1704,10 +1704,10 @@ blank-Chrome canary that survived 8.76 minutes and proved the deaths were mine.
 read b80, and there are zero `location.reload()` sites in chart.js. The version-reload trap is disarmed.
 
 
-## 2026-07-31 17:15 — both ordered gauges built and run; the ten hours is launched; the replacement budget row is also gameable
+## 2026-07-31 17:15+01:00 — both ordered gauges built and run; the ten hours is launched; the replacement budget row is also gameable
 
 Read the three rulings. They were not in my worktree — they live in `talaria-director\docs\plan3\`, which is
-why the 11:50 RESET-01 ruling read as missing this morning. Killed the queued overnight ceiling probe before
+why the 11:50+01:00 RESET-01 ruling read as missing this morning. Killed the queued overnight ceiling probe before
 starting, per the order to delete anything queued; its partial reps stay on disk as evidence.
 
 **Gauge 2 — the original bug — GREEN, and not vacuously.** Panned the 1h panel by synthetic drag and read the
@@ -1732,15 +1732,15 @@ reading locked at 0. Flagged for A, whose L1 opens against the static condition 
 suggested fix — cap paints to one per advanced bar — is withdrawn, because it aimed at the per-bar render path
 that A's rAF coalescing already handles correctly.
 
-**Ten-hour soak launched 17:14 on b120** with four RESET-01 exit runs appended: reload, logout in both bfcache
+**Ten-hour soak launched 17:14+01:00 on b120** with four RESET-01 exit runs appended: reload, logout in both bfcache
 arms, tab close. It runs in segments because the browser has died three times today near 1.38 GB, which is
 what ended the last attempt at ten minutes; restarts are counted and reported, and the summary separates the
 longest continuous stretch from accumulated time because DUR-01 is satisfied by the former only. No scope
 added beyond the two ordered gauges.
 
-## 2026-07-31 17:45 — GATE-PHASE4 measured: the baseline did not move, and the four realms are one process sharing one isolate
+## 2026-07-31 17:45+01:00 — GATE-PHASE4 measured: the baseline did not move, and the four realms are one process sharing one isolate
 
-Read the 15:55 ruling. Pre-empted my own ten-hour soak an hour in to run the baseline on a quiet machine,
+Read the 15:55+01:00 ruling. Pre-empted my own ten-hour soak an hour in to run the baseline on a quiet machine,
 because a number gating 665 hours cannot be measured under contention. Segment 1 preserved.
 
 **The answer: the baseline is NOT comfortably under 1 GB.** Post-GC 1,159.7 MB CI[1098,1221] against the b116
@@ -1768,14 +1768,14 @@ all four realms.
 1.38 GB ceiling is soft and load-dependent, not a constant, and A and B should not spend a cycle hunting it.
 The deaths were real; the threshold was not.
 
-**Clean arms done, soak relaunched 17:44.** bend-soak was sampling with forceGc:true — collecting every three
+**Clean arms done, soak relaunched 17:44+01:00.** bend-soak was sampling with forceGc:true — collecting every three
 minutes for ten hours, resetting the very quantity whose slope it measures. Now live, with the post-GC field
 labelled null-by-design. The live-versus-collected gap is 183.2 MB, which is the size of the perturbation I
 had been introducing and what users actually carry.
 
-## 2026-07-31 18:20 — session-cap check: FOUR PANELS CONFIRMED, but my soak could not prove it, so I killed it anyway
+## 2026-07-31 18:20+01:00 — session-cap check: FOUR PANELS CONFIRMED, but my soak could not prove it, so I killed it anyway
 
-Read the urgent note. Killed pid 23164 at 17:52, seven minutes old, before checking anything — the artifact
+Read the urgent note. Killed pid 23164 at 17:52+01:00, seven minutes old, before checking anything — the artifact
 could not answer the question and an aging run was the one thing I could remove immediately.
 
 **Why I could not answer it from the artifact, which is the real failure here.** The soak recorded NOTHING about
@@ -1785,7 +1785,7 @@ state it held four panels is exactly the instrument that would have reported an 
 
 **Confirmed, not assumed, on three independent readings.** The account is esperanza@gmail.com, NOT qa-canary, so
 B's cap-2 finding is about a different account. Retrospectively, perm-gauges recorded advancingPanels=4 while
-playing at 17:05. Prospectively, a fresh 4-minute run shows 4/4 panels ADVANCING with datasets 677/673/670/669
+playing at 17:05+01:00. Prospectively, a fresh 4-minute run shows 4/4 panels ADVANCING with datasets 677/673/670/669
 and timeframes 1m/5m/15m/1h, 2 indicators each, sustained across four samples. Presence would not have been
 enough — an evicted panel can still be a realm with bars — so the gate is advancing, over a window.
 
@@ -1800,18 +1800,18 @@ touched the anchored family. Now both arms read E's artifact directly — ema(20
 
 **Declared for the pair so arm 2 cannot drift:** speed 5 candles/s, candle mode, b120, esperanza@gmail.com,
 same indicators, same gauges. Arms run SEQUENTIALLY per B's 85%-CPU measurement; arm 1 (CONF-01, trade-bearing,
-with the four RESET-01 exits) launched 18:15 and ends ~04:15, so arm 2 (CONF-05, zero trades) follows after.
+with the four RESET-01 exits) launched 18:15+01:00 and ends ~04:15+01:00, so arm 2 (CONF-05, zero trades) follows after.
 
-**WITHDRAWN: my own 1.38 GB P0.** Four runs since 17:40 went to 1,526 / 1,605 / 1,560 / 1,396 MB and none died.
+**WITHDRAWN: my own 1.38 GB P0.** Four runs since 17:40+01:00 went to 1,526 / 1,605 / 1,560 / 1,396 MB and none died.
 The highest was 1,605 MB and still climbing. I built an instrument that perturbed the system, measured the
 perturbation, and escalated it as a product defect. The deaths were real and remain unexplained; the ceiling was
 not. A and B should not hunt it. Consequence: the heavy RESET-01 arms were capped at 1,300 MB by my own safety
 ceiling and declared the 1 GB-above-baseline target unreachable when it was reachable, so they need re-running
 without the cap once the host is free.
 
-## 2026-07-31 18:30 — the plateau does not exist, answered for free, and the MONSTER-2 axis needs no new gauge
+## 2026-07-31 18:30+01:00 — the plateau does not exist, answered for free, and the MONSTER-2 axis needs no new gauge
 
-Read the 18:05 ruling. Three things asked of me; two were already done before it landed (the ceiling finding is
+Read the 18:05+01:00 ruling. Three things asked of me; two were already done before it landed (the ceiling finding is
 published separately as FINDING-C-THE-1-38-GB-CEILING... and committed at 105a291b8; E's CONF-05 selection is
 loaded from E's own artifact and verified loading [2,2,2,2] with vwap present).
 
@@ -1840,9 +1840,9 @@ axis is the CONF-05 arm, since a trade-bearing run gives only an upper bound on 
 
 Arm 1 healthy and now at 1,674.2 MB — 294 MB above my withdrawn ceiling and the fifth run today to break it.
 
-## 2026-07-31 18:55 — the soak is NOT void: four documents verified live by timeOrigin, and the growth is not DOM-resident
+## 2026-07-31 18:55+01:00 — the soak is NOT void: four documents verified live by timeOrigin, and the growth is not DOM-resident
 
-**Liveness stated, not assumed: pid 29112 ALIVE, started 18:15:16, sample 11 at 0.538h, foot 2,037 MB, bars
+**Liveness stated, not assumed: pid 29112 ALIVE, started 18:15:16+01:00, sample 11 at 0.538h, foot 2,037 MB, bars
 monotonic 7,043 -> 31,000+, node=2 chrome=10.** Footprint is now 657 MB above the ceiling I withdrew.
 
 **The documents question is answered and the run stands.** I attached READ-ONLY to the running browser (port from
@@ -1888,7 +1888,7 @@ with a two-term model ten minutes before I published, and my curve is what A's m
 agreement as a rebuttal. The numbers stand; the frame was wrong. Lesson: check a sibling's claim is still their
 current position before publishing against it - positions move in ten minutes on a day like this.
 
-## 2026-07-31 19:35 — four items worked: the ols2 sweep, the B reconciliation, the tree, and the soak
+## 2026-07-31 19:35+01:00 — four items worked: the ols2 sweep, the B reconciliation, the tree, and the soak
 
 **1. OLS2 CORRECTIONS SWEEP (CORRECTIONS-C-...-20260731-1930.md).** Read all five call sites and traced every
 published figure to the coefficient it used. NINE figures checked: SEVEN STAND, one artifact field will be
@@ -1943,7 +1943,7 @@ managers' product edits and .ckpt snapshots and are not mine to commit.
 **4. SOAK RUNNING TO THE BEND.** pid 29112 alive, 1.13h, sample 22, foot 2,500.1 MB, heap 342.6, CPU 114.8%,
 bars monotonic, zero re-seeks. 1,120 MB above the ceiling I withdrew.
 
-## 2026-07-31 20:10 — the 86 ms is decomposed, the arena is named, and I corrected my own 72%-non-JS claim
+## 2026-07-31 20:10+01:00 — the 86 ms is decomposed, the arena is named, and I corrected my own 72%-non-JS claim
 
 **1. THE TRACE (ordered first, and it redirects the hunt).** Four read-only attaches on the live soak, all with
 disconnect-never-close; the soak survived every one. Category decomposition of the main thread: SCRIPTING 87.2%,
@@ -1998,7 +1998,7 @@ bars monotonic at ~63,300. Trace windows are timestamped in each artifact so ove
 absorbed 99.9% of the time under an outermost-only pass and decomposed nothing. I built a decomposition tool
 that reported one bucket called "other".
 
-## 21:00 — Calibration passes the thresholding test, reads 2.18x B, and I am not on B's host
+## 21:00+01:00 — Calibration passes the thresholding test, reads 2.18x B, and I am not on B's host
 
 Three ordered items before any bucket was read.
 
@@ -2042,7 +2042,7 @@ lives outside V8 and my per-bar figure needs re-reading. Growth in MB per thousa
 
 Phase 4 cancellation noted; my one-isolate finding and A's under-4% pricing are both in the record.
 
-## 21:55 — The freeze has a stack, and the hot call site already has a kill-switch
+## 21:55+01:00 — The freeze has a stack, and the hot call site already has a kill-switch
 
 **Rasteriser, read on two routes, not inferred.** `WEBGL_debug_renderer_info` UNMASKED_RENDERER returns
 `ANGLE (NVIDIA, NVIDIA GeForce RTX 4060 Laptop GPU, Direct3D11)`, vendor `Google Inc. (NVIDIA)`, extension
@@ -2091,7 +2091,7 @@ observer threw 1,019 (`buffered:true` replays entries from before the window - C
 200, now excluded); and `Math.min(...events)` over 160,000 events blew the call stack inside a try, silently
 costing the entire stacks section of one run. Both instruments now assert the invariant and refuse to publish.
 
-## 23:45 — ordered sequence run in order; the load is host-side and I was sharing the machine with my own corpse
+## 23:45+01:00 — ordered sequence run in order; the load is host-side and I was sharing the machine with my own corpse
 
 **Gate first, as ordered.** bfcache nonce on a chart-bearing document: nonce gone, `timeOrigin` 1785532297090 -> 1785532351396, sessionStorage marker survived (same tab), navigation type `reload`, chart back at 2,011 bars. **F5 genuinely replaces the document, so the reset numbers are not fiction.** My control was mis-specified (I expected the counter to increment; nothing on the page increments it, persistence is the pass) and would have suppressed a valid result as INCONCLUSIVE. The bare-navigation attempt also reproduced the open `reentry-no-chart` defect on a second instrument.
 
@@ -2103,7 +2103,7 @@ costing the entire stacks section of one run. Both instruments now assert the in
 
 **The idle split, and it is the strongest thing here.** Asserted idle (replay index 2194 -> 2194, four panels paused), not assumed. **A paused chart burns MORE total main-thread time than a playing one: 857.1 vs 575.9 ms/s** - but with ZERO blocking against 47.7. Replay causes the freezes; the always-on animate/legend loop causes the burn. `runReplayPlayIndicatorPass` runs with replay paused.
 
-**My own contamination, found by the Director not by me.** Segment 1's browser exited at 22:16; its renderer did not. Pid 30588 ran 67 more minutes at ~120% of a core holding 2,489 MB private, sharing the host with the segment that replaced it. Killed at 23:23 after 21,986 CPU-seconds. The OS working set that looked like a release was the orphan being trimmed (1,354 WS vs 2,489 private), not the soak returning anything. Checked the series as ordered: **throughput did not bend** (92% of segment 1 at matched resident bars) and the **memory-slope comparison is inconclusive and not quoted** - my first estimator averaged per-interval ratios and confidently said "155% bent" when the bands disagree in direction (1.50, 3.38, 0.27). Samples marked, allocator baseline withdrawn and re-taken clean at 23:26 so the 01:40 diff cannot inherit it.
+**My own contamination, found by the Director not by me.** Segment 1's browser exited at 22:16+01:00; its renderer did not. Pid 30588 ran 67 more minutes at ~120% of a core holding 2,489 MB private, sharing the host with the segment that replaced it. Killed at 23:23+01:00 after 21,986 CPU-seconds. The OS working set that looked like a release was the orphan being trimmed (1,354 WS vs 2,489 private), not the soak returning anything. Checked the series as ordered: **throughput did not bend** (92% of segment 1 at matched resident bars) and the **memory-slope comparison is inconclusive and not quoted** - my first estimator averaged per-interval ratios and confidently said "155% bent" when the bands disagree in direction (1.50, 3.38, 0.27). Samples marked, allocator baseline withdrawn and re-taken clean at 23:26+01:00 so the 01:40+01:00 diff cannot inherit it.
 
 **Three instrument defects and one product-label defect, all mine.** Probes hard-coded a debug port while each segment launches an ephemeral one, so my first LoAF run reported "no frames" from a browser that had been torn down 45 seconds earlier - now discovery plus a browser-identity assertion, so a segment roll voids rather than empties. The profiler reader aggregated by node id, splitting one hot function across call paths and understating the top function fourfold. And `bend-soak` passed `speed` where `bootConf01Session` takes `replaySpeed`: **tonight's soak was launched --speed=5 and has been running at 60 all along** - condition consistent, label false, and every rate from it including segment 1's settled 132.6 MB/h belongs to 60.
 
@@ -2113,9 +2113,9 @@ Artifact: `FINDING-C-THE-LOAD-IS-HOST-SIDE-NOT-FOUR-WAY-AND-THE-TOP-COST-IS-AN-I
 
 ---
 
-## 2026-08-01 00:05 — The marker cost is trades-only; a second regime is not
+## 2026-08-01 00:05+01:00 — The marker cost is trades-only; a second regime is not
 
-**I ended the soak myself, and the premise I was given was wrong.** The Director reported the soak dead with an orphaned driver at zero CPU. It was alive: browser 33732 with a renderer at 1,849 MB and 5,746 CPU-seconds, and an artifact written two minutes earlier on a three-minute cadence. The driver read zero CPU because a wrapper waiting on a live child does exactly that. I then killed that wrapper intending to stop only future segments, reasoning that Windows would not propagate - **it cascaded and took segment 2's browser, renderer and driver, and with them the 01:40 allocator dump**. The instruction to stop the ten hours was right; the way I executed it cost a scheduled measurement.
+**I ended the soak myself, and the premise I was given was wrong.** The Director reported the soak dead with an orphaned driver at zero CPU. It was alive: browser 33732 with a renderer at 1,849 MB and 5,746 CPU-seconds, and an artifact written two minutes earlier on a three-minute cadence. The driver read zero CPU because a wrapper waiting on a live child does exactly that. I then killed that wrapper intending to stop only future segments, reasoning that Windows would not propagate - **it cascaded and took segment 2's browser, renderer and driver, and with them the 01:40+01:00 allocator dump**. The instruction to stop the ten hours was right; the way I executed it cost a scheduled measurement.
 
 **Salvage.** Segment 1, clean and sole occupant for 4.0 hours: **25.35 MB per thousand resident bars, CI [24.52, 26.17], r-squared 0.981**, over 69,262 bars delivered at 4.82 bars/s, 1,402 -> 3,126 MB across 74 samples. That is the **third independent measurement of the same coefficient** after 23.98 (zero-trade monotonic) and 24.55 (with trades). Segment 2 reads 34.36 CI [31.05, 37.66] and is **marked, not pooled**: it was contended by the orphaned renderer for 67 of its 74 minutes. Every rate belongs to speed 60, not the 5 the run was labelled with.
 
@@ -2131,11 +2131,11 @@ Artifact: `FINDING-C-THE-LOAD-IS-HOST-SIDE-NOT-FOUR-WAY-AND-THE-TOP-COST-IS-AN-I
 
 Artifact: `FINDING-C-THE-MARKER-COST-IS-TRADES-ONLY-AND-THE-SECOND-REGIME-IS-UNTOUCHED-BY-TOMORROWS-FIX-20260801-0005.md`
 
-**Update 00:22 — a third trace, and the second regime has a slope.** Order-manager stays absent at 35,754 resident bars, 15% MORE than the with-trades comparison carried, so the presence-absence result is not a low-bar artefact. And the zero-trade arm is not a flat floor: blocking rises 159 -> 179 -> 248 ms/s across 12,339 -> 28,229 -> 35,754 bars, with `_m19iB62WindowFp` climbing 11.2% -> 24.9% -> 28.0%. At MORE bars than the with-trades arm, zero-trade blocking is still 38% lower (247.6 against 398.9). **The second regime scales with resident bars on its own, and it is the function that will dominate the profile once the marker lookups are gone.**
+**Update 00:22+01:00 — a third trace, and the second regime has a slope.** Order-manager stays absent at 35,754 resident bars, 15% MORE than the with-trades comparison carried, so the presence-absence result is not a low-bar artefact. And the zero-trade arm is not a flat floor: blocking rises 159 -> 179 -> 248 ms/s across 12,339 -> 28,229 -> 35,754 bars, with `_m19iB62WindowFp` climbing 11.2% -> 24.9% -> 28.0%. At MORE bars than the with-trades arm, zero-trade blocking is still 38% lower (247.6 against 398.9). **The second regime scales with resident bars on its own, and it is the function that will dominate the profile once the marker lookups are gone.**
 
 ---
 
-## 2026-08-01 00:45 — Asked to corroborate my own coefficient, I refuted it
+## 2026-08-01 00:45+01:00 — Asked to corroborate my own coefficient, I refuted it
 
 **The arm is the zero-trade arm** — b120, four panels on 1m/5m/15m/1h, two indicators each from E's selection, speed 60 on all four, `closedPositions` = 0 with zero orders and zero open positions.
 
@@ -2145,13 +2145,13 @@ Artifact: `FINDING-C-THE-MARKER-COST-IS-TRADES-ONLY-AND-THE-SECOND-REGIME-IS-UNT
 
 The finding this strengthens: **trades cost CPU, not memory.** The marker family is 4.9% of the main thread with trades and absent without them, while at matched bars the memory is indistinguishable. Trades buy freezes; bars buy memory.
 
-**The 23:13 product edits are not mine.** chart.js, multichart-manager.js and serve.mjs carry 2,113 inserted lines whose content is `__TALARIA_DISABLE_MC_RELEASE_*_V1`, `__TALARIA_DISABLE_M21_1_*_V1` and `__TALARIA_DISABLE_M26_PANEL_REPLAY_DESTROY_V1` — A's release cuts and E's pan/crosshair work, each behind the mandated kill-switch. `chart-window-limit.js` is a **line-ending rewrite with zero content change**; it disappears from the diff under `--ignore-cr-at-eol`. I hold no instrumentation in any product file, deployed or local: my footprint today is `scripts/` and `docs/plan3/` only.
+**The 23:13+01:00 product edits are not mine.** chart.js, multichart-manager.js and serve.mjs carry 2,113 inserted lines whose content is `__TALARIA_DISABLE_MC_RELEASE_*_V1`, `__TALARIA_DISABLE_M21_1_*_V1` and `__TALARIA_DISABLE_M26_PANEL_REPLAY_DESTROY_V1` — A's release cuts and E's pan/crosshair work, each behind the mandated kill-switch. `chart-window-limit.js` is a **line-ending rewrite with zero content change**; it disappears from the diff under `--ignore-cr-at-eol`. I hold no instrumentation in any product file, deployed or local: my footprint today is `scripts/` and `docs/plan3/` only.
 
 **Committed 48998b343** — 17 files, mine only. I did not sweep the other 417 entries in: 187 are A's and E's in-flight product work, and committing another manager's untested cuts under my name is how instrumentation reaches a train.
 
 ---
 
-## 2026-08-01 01:20 — Arena recovered, seal relocated, and a blind A/B I refused to escalate
+## 2026-08-01 01:20+01:00 — Arena recovered, seal relocated, and a blind A/B I refused to escalate
 
 **The arena answer is back and my written-in-advance prediction was wrong.** Allocator pair 2.15 h apart on the zero-trade session, 21,051 -> 60,154 bars, same pid, zero trades: **27.77 KB per bar total — v8 16.37 (58.9%), blink_gc 5.56 (20.0%), partition_alloc 4.63 (16.7%), malloc 1.16**. I had predicted "v8 carries essentially all growth". It carries 59%, and a fifth of per-bar growth is Oilpan-managed with a sixth in PartitionAlloc. Labelled unsealed-build **composition** evidence: shares quotable, levels not. The total cross-checks the OS-footprint gauge to ~10% (27.12 vs 23.98/24.55/25.35 MB/kbar).
 
@@ -2163,7 +2163,7 @@ The finding this strengthens: **trades cost CPU, not memory.** The marker family
 
 Artifact: `FINDING-C-THE-ARENA-IS-THREE-WAY-NOT-V8-ONLY-AND-MY-BUILD-COMES-FROM-A-REMOTE-ORIGIN-20260801-0120.md`
 
-## 2026-08-01 03:45 - The confirmation failed, and it failed on the part I had marked verified
+## 2026-08-01 03:45+01:00 - The confirmation failed, and it failed on the part I had marked verified
 
 **Powered A/B: the kill-switch does not move the freeze.** 393 closed trades x 7,145 bars = 2,807,985 driving
 product, 1.00x the freeze I dissected, regime verified at 49.8 freezes/min BEFORE the flag was touched.
@@ -2180,9 +2180,9 @@ gap by reasoning and wrote "verified, not assumed".
 
 **Free by-product, and it is the cleanest trade-axis isolation I have:** 49 identical batches, 94 -> 357
 trades at held bars, 6.0 -> 23.3 s. 3.80x trades, 1.03x bars, 3.88x time - linear in trades. A CPU claim; it
-does not revive the memory coefficient I withdrew at 00:45.
+does not revive the memory coefficient I withdrew at 00:45+01:00.
 
-**Arena correction published:** 41.1% of per-bar growth is outside V8. My 20:41 "remaining split is INSIDE
+**Arena correction published:** 41.1% of per-bar growth is outside V8. My 20:41+01:00 "remaining split is INSIDE
 v8" is withdrawn, and the heap-by-constructor plan built on it would have been blind to 11.4 of every 27.8 KB
 per bar. Open and named: blink_gc grew 212.5 MB against my own "growth is not retained DOM".
 

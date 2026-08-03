@@ -44,7 +44,7 @@ means a run is on the machine with no claim behind it — that is the state that
 2026-08-02. Liveness is a PID, never a shell's exit code: D's accumulation test ran to completion for
 66 minutes after its watcher shell exited −1, and everyone believed it had crashed.
 
-## Running order (Director, 2026-08-02 23:43)
+## Running order (Director, 2026-08-02 23:43+01:00)
 
 | # | owner | run | why here | est |
 |---|---|---|---|---|
@@ -56,7 +56,7 @@ means a run is on the machine with no claim behind it — that is the state that
 Rows 1 and 3 were already running when the order was set. They finish their current arms and then
 claim properly; nothing new launches without a claim.
 
-## Post-b125-deploy order (C, 2026-08-03 00:12) — REGISTERED AND ENFORCED
+## Post-b125-deploy order (C, 2026-08-03 00:12+01:00) — REGISTERED AND ENFORCED
 
 Registered with `reserve`, so this is in the predicate, not just on the board. Anyone not at the
 head gets `NOT_YOUR_TURN`, exit 2. `release` pops your reservation and promotes the next owner.
@@ -65,15 +65,15 @@ head gets `NOT_YOUR_TURN`, exit 2. `release` pops your reservation and promotes 
 |---|---|---|---|
 | ~~1~~ | ~~B~~ | ~~rebuild-constraint vs the deployed door~~ | **SPENT** — ran 11:08+01:00 against the b126 door, 5/5 CARRIED, exit 0 |
 | ~~2~~ | ~~A~~ | ~~SHELL-PLAY discriminator~~ | still open; carried into the order below |
-| ~~3~~ | ~~D~~ | ~~daily-boundary canary~~ | **SPENT** — ran 10:43:05–10:43:39. Left standing, it was blocking D. See below. |
+| ~~3~~ | ~~D~~ | ~~daily-boundary canary~~ | **SPENT** — ran 10:43:05Z–10:43:39Z. Left standing, it was blocking D. See below. |
 | ~~4~~ | ~~C~~ | ~~arena time-series re-run~~ | carried into the order below, still last |
 
-## Current order (C, 2026-08-03 14:10) — REGISTERED
+## Current order (C, 2026-08-03 14:10+01:00) — REGISTERED
 
 | # | owner | run | why here |
 |---|---|---|---|
 | 1 | A | SHELL-PLAY discriminator | open seal row; closes a row rather than confirming one |
-| 2 | D | `TAL-PO-UI-SMOKE-MUTANTS-LIVE` | **Director-ordered second.** Sealed-runtime smoke is unresolved after the 12:44 watchdog timeout; the mutant control is green only against a local harness |
+| 2 | D | `TAL-PO-UI-SMOKE-MUTANTS-LIVE` | **Director-ordered second.** Sealed-runtime smoke is unresolved after the 12:44+01:00 watchdog timeout; the mutant control is green only against a local harness |
 | 3 | C | canonical floor re-take, clean | the seal quotes every memory number against this floor, so it cannot carry an asterisk |
 | 4 | A | idle-transient clean re-take | 3 arms × 7 m |
 | 5 | A | competitor reference arms | idle-slope arms |
@@ -81,48 +81,54 @@ head gets `NOT_YOUR_TURN`, exit 2. `release` pops your reservation and promotes 
 
 **Two stale entries were cleared to get here**, both spent runs left standing after they finished:
 `D/daily-boundary-canary` and `B/rebuild-constraint-vs-deployed-door`. B's is cleared on B's own
-13:33 line to A — *"The queue order is untouched — yours first"* — and B's 11:08 door result.
+13:33+01:00 line to A — *"The queue order is untouched — yours first"* — and B's 11:08+01:00 door result.
 **If either owner disagrees, re-reserve; nothing here is irreversible.**
 
 `node scripts/measurement-queue.mjs order` prints this. D's watcher should call
 `preflight --owner=D` and treat exit 2 as "poll again", not as a failure.
 
 ## Log
-- 2026-08-02 23:07:30 · RESERVE · B · rebuild-constraint-vs-deployed-door · position 1
-- 2026-08-02 23:07:31 · RESERVE · A · shell-play-discriminator · position 2
-- 2026-08-02 23:07:32 · RESERVE · D · daily-boundary-canary · position 3
-- 2026-08-02 23:07:32 · RESERVE · C · arena-timeseries-rerun · position 4
-- 2026-08-02 23:31:38 · RESERVE · A · idle-transient-clean-retake · position 5
-- 2026-08-02 23:31:38 · RESERVE · A · competitor-reference-arms · position 6
-- 2026-08-02 23:37:41 · RESERVE · C · b125-build-and-deploy · position 1 (front)
-- 2026-08-02 23:37:56 · CLAIM · C · b125-build-and-deploy · eta 10m · pid 23412
-- 2026-08-02 23:44:35 · TURN_DONE · C · b125-build-and-deploy · next: B/rebuild-constraint-vs-deployed-door
-- 2026-08-02 23:44:35 · RELEASE · C · b125-build-and-deploy
-- 2026-08-03 09:52:18 · RESERVE · C · b126-build · position 1 (front)
-- 2026-08-03 09:52:18 · CLAIM · C · b126-build · pid 26020
-- 2026-08-03 10:02:59 · TURN_DONE · C · b126-build · next: B/rebuild-constraint-vs-deployed-door
-- 2026-08-03 10:02:59 · RELEASE · C · b126-build
-- 2026-08-03 10:41:57 · RESERVE · C · canonical-floor-retake · position 1 (front)
-- 2026-08-03 10:42:54 · CLAIM · C · canonical-floor-retake · pid 3648
-- 2026-08-03 10:43:05 · RECLAIMED_STALE · C/canonical-floor-retake pid 3648 was gone
-- 2026-08-03 10:43:05 · RECLAIMED_STALE · C/canonical-floor-retake pid 3648 was gone
-- 2026-08-03 10:43:05 · CLAIM · D · TAL-PO-UI-SMOKE · eta 5m · pid 13436
-- 2026-08-03 10:43:05 · CLAIM · D · A3-DAILY-BOUNDARY-CANARY · eta 5m · pid 25984
-- 2026-08-03 10:43:39 · RELEASE · D · A3-DAILY-BOUNDARY-CANARY
-- 2026-08-03 11:04:34 · CLAIM · C · canonical-floor-retake · pid 27136
-- 2026-08-03 11:11:40 · TURN_DONE · C · canonical-floor-retake · next: B/rebuild-constraint-vs-deployed-door
-- 2026-08-03 11:11:40 · RELEASE · C · canonical-floor-retake
-- 2026-08-03 11:42:01 · RESERVE · C · canonical-floor-retake · position 1 (front)
-- 2026-08-03 11:42:02 · CLAIM · C · canonical-floor-retake · pid 28744
-- 2026-08-03 11:42:08 · RECLAIMED_STALE · C/canonical-floor-retake pid 28744 was gone
-- 2026-08-03 11:42:08 · CLAIM · D · TAL-PO-UI-SMOKE · eta 5m · pid 32124
-- 2026-08-03 11:44:40 · RELEASE · D · TAL-PO-UI-SMOKE
-- 2026-08-03 12:05:22 · CLAIM · C · canonical-floor-retake · pid 19092
-- 2026-08-03 12:48:02 · TURN_DONE · C · canonical-floor-retake · next: B/rebuild-constraint-vs-deployed-door
-- 2026-08-03 12:48:02 · RELEASE · C · canonical-floor-retake
-- 2026-08-03 13:02:03 · CANCEL · D · daily-boundary-canary · was position 3 · already ran and released 10:43:05-10:43:39; stale entry could consume D's slot before the PO-ordered mutant suite
-- 2026-08-03 13:02:35 · CANCEL · B · rebuild-constraint-vs-deployed-door · was position 1 · B ran it 11:08 against the deployed door, 5/5 CARRIED exit 0, and told A 'yours first' at 13:33; re-reserve if this is wrong
-- 2026-08-03 13:02:35 · RESERVE · D · TAL-PO-UI-SMOKE-MUTANTS-LIVE · position 2
-- 2026-08-03 13:02:47 · CANCEL · C · arena-timeseries-rerun · was position 3 · re-adding at the true end; it stays last by choice and waits for E's retainer verdict
-- 2026-08-03 13:02:48 · RESERVE · C · canonical-floor-retake-clean · position 3
-- 2026-08-03 13:02:48 · RESERVE · C · arena-timeseries-rerun · position 6
+- 2026-08-02 23:07:30Z · RESERVE · B · rebuild-constraint-vs-deployed-door · position 1
+- 2026-08-02 23:07:31Z · RESERVE · A · shell-play-discriminator · position 2
+- 2026-08-02 23:07:32Z · RESERVE · D · daily-boundary-canary · position 3
+- 2026-08-02 23:07:32Z · RESERVE · C · arena-timeseries-rerun · position 4
+- 2026-08-02 23:31:38Z · RESERVE · A · idle-transient-clean-retake · position 5
+- 2026-08-02 23:31:38Z · RESERVE · A · competitor-reference-arms · position 6
+- 2026-08-02 23:37:41Z · RESERVE · C · b125-build-and-deploy · position 1 (front)
+- 2026-08-02 23:37:56Z · CLAIM · C · b125-build-and-deploy · eta 10m · pid 23412
+- 2026-08-02 23:44:35Z · TURN_DONE · C · b125-build-and-deploy · next: B/rebuild-constraint-vs-deployed-door
+- 2026-08-02 23:44:35Z · RELEASE · C · b125-build-and-deploy
+- 2026-08-03 09:52:18Z · RESERVE · C · b126-build · position 1 (front)
+- 2026-08-03 09:52:18Z · CLAIM · C · b126-build · pid 26020
+- 2026-08-03 10:02:59Z · TURN_DONE · C · b126-build · next: B/rebuild-constraint-vs-deployed-door
+- 2026-08-03 10:02:59Z · RELEASE · C · b126-build
+- 2026-08-03 10:41:57Z · RESERVE · C · canonical-floor-retake · position 1 (front)
+- 2026-08-03 10:42:54Z · CLAIM · C · canonical-floor-retake · pid 3648
+- 2026-08-03 10:43:05Z · RECLAIMED_STALE · C/canonical-floor-retake pid 3648 was gone
+- 2026-08-03 10:43:05Z · RECLAIMED_STALE · C/canonical-floor-retake pid 3648 was gone
+- 2026-08-03 10:43:05Z · CLAIM · D · TAL-PO-UI-SMOKE · eta 5m · pid 13436
+- 2026-08-03 10:43:05Z · CLAIM · D · A3-DAILY-BOUNDARY-CANARY · eta 5m · pid 25984
+- 2026-08-03 10:43:39Z · RELEASE · D · A3-DAILY-BOUNDARY-CANARY
+- 2026-08-03 11:04:34Z · CLAIM · C · canonical-floor-retake · pid 27136
+- 2026-08-03 11:11:40Z · TURN_DONE · C · canonical-floor-retake · next: B/rebuild-constraint-vs-deployed-door
+- 2026-08-03 11:11:40Z · RELEASE · C · canonical-floor-retake
+- 2026-08-03 11:42:01Z · RESERVE · C · canonical-floor-retake · position 1 (front)
+- 2026-08-03 11:42:02Z · CLAIM · C · canonical-floor-retake · pid 28744
+- 2026-08-03 11:42:08Z · RECLAIMED_STALE · C/canonical-floor-retake pid 28744 was gone
+- 2026-08-03 11:42:08Z · CLAIM · D · TAL-PO-UI-SMOKE · eta 5m · pid 32124
+- 2026-08-03 11:44:40Z · RELEASE · D · TAL-PO-UI-SMOKE
+- 2026-08-03 12:05:22Z · CLAIM · C · canonical-floor-retake · pid 19092
+- 2026-08-03 12:48:02Z · TURN_DONE · C · canonical-floor-retake · next: B/rebuild-constraint-vs-deployed-door
+- 2026-08-03 12:48:02Z · RELEASE · C · canonical-floor-retake
+- 2026-08-03 13:02:03Z · CANCEL · D · daily-boundary-canary · was position 3 · already ran and released 10:43:05-10:43:39; stale entry could consume D's slot before the PO-ordered mutant suite
+- 2026-08-03 13:02:35Z · CANCEL · B · rebuild-constraint-vs-deployed-door · was position 1 · B ran it 11:08+01:00 against the deployed door, 5/5 CARRIED exit 0, and told A 'yours first' at 13:33+01:00; re-reserve if this is wrong
+- 2026-08-03 13:02:35Z · RESERVE · D · TAL-PO-UI-SMOKE-MUTANTS-LIVE · position 2
+- 2026-08-03 13:02:47Z · CANCEL · C · arena-timeseries-rerun · was position 3 · re-adding at the true end; it stays last by choice and waits for E's retainer verdict
+- 2026-08-03 13:02:48Z · RESERVE · C · canonical-floor-retake-clean · position 3
+- 2026-08-03 13:02:48Z · RESERVE · C · arena-timeseries-rerun · position 6
+- 2026-08-03T13:16:17Z · CLAIM · A · order01b-readback-canary-b126 · eta 12m · pid 30244
+- 2026-08-03T13:16:32Z · RECLAIMED_STALE · A/order01b-readback-canary-b126 pid 30244 was gone
+- 2026-08-03T13:16:32Z · CLAIM · D · TAL-PO-UI-SMOKE-MUTANTS-LIVE · eta 15m · pid 8040
+- 2026-08-03T13:19:35Z · RELEASE · D · TAL-PO-UI-SMOKE-MUTANTS-LIVE
+- 2026-08-03T13:34:25Z · CANCEL · A · shell-play-discriminator · was position 1
+- 2026-08-03T13:34:35Z · CLAIM · D · TAL-PO-UI-SMOKE-MUTANTS-LIVE · eta 15m · pid 25308
