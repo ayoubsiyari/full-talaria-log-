@@ -85,7 +85,15 @@ export function armOf(report, { expectPanels } = {}) {
   if (witness && witness.state === 'HOST_EXCLUSIVITY_UNKNOWN') {
     return { ...arm, state: 'ARM_HOST_EXCLUSIVITY_UNKNOWN', why: witness.why || 'exclusivity was not established, which is not the same as clear' };
   }
-  return arm;
+  /**
+   * A reading from before the witness existed. It is admitted, because the readings
+   * taken this evening are real and throwing them away would cost a re-run of
+   * everything — but it is NAMED, because a reading that cannot say whether the box
+   * was shared must not present as one that can. I deleted one such artifact before
+   * writing this, which was the wrong instinct: grade the evidence, do not bin it.
+   */
+  if (!witness) return { ...arm, witnessed: false };
+  return { ...arm, witnessed: true };
 }
 
 const asList = (v) => (v == null ? [] : (Array.isArray(v) ? v : [v]));
@@ -122,10 +130,15 @@ export function bandOf(arms, { label = null } = {}) {
   const state = read.length === 1
     ? 'SINGLE_OBSERVATION_NOT_A_BAND'
     : (read.length < BAND_MIN_N ? 'BAND_UNDERPOWERED' : 'BAND_READ');
+  const unwitnessed = read.filter((a) => a.witnessed === false).length;
   return {
     state,
     label: label ?? read[0].label,
     n: read.length,
+    unwitnessed,
+    witnessNote: unwitnessed
+      ? `${unwitnessed} of ${read.length} run(s) predate the host-exclusivity witness and cannot say whether the box was shared`
+      : undefined,
     panels: read[0].panels,
     dpr: read[0].dpr,
     width: read[0].width,

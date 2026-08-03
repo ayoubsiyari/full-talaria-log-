@@ -159,6 +159,26 @@ test('a reading taken beside another measurement is refused on its own witness',
   assert.equal(b.rejected[0].state, 'ARM_HOST_SHARED');
 });
 
+test('a reading from before the witness existed is admitted but named', () => {
+  // Every reading taken this evening predates the witness. Refusing them all would
+  // cost a full re-run; admitting them silently would let a reading that cannot say
+  // whether the box was shared present as one that can. So: counted and stated.
+  const b = bandOf(runs(1, [300, 310, 305], [60, 66, 63]));
+  assert.equal(b.unwitnessed, 3);
+  assert.match(b.witnessNote, /3 of 3 run\(s\) predate the host-exclusivity witness/);
+
+  const witnessed = armOf({
+    ...arena({ label: 'ours-1up', panels: 1, total: 300, gpu: 60 }),
+    hostExclusivity: { state: 'HOST_EXCLUSIVE', citable: true },
+  }, { expectPanels: 1 });
+  assert.equal(witnessed.witnessed, true);
+  const mixed = bandOf([...runs(1, [310, 305], [66, 63]), witnessed]);
+  assert.equal(mixed.unwitnessed, 2);
+  const clean = bandOf([witnessed, witnessed, witnessed]);
+  assert.equal(clean.unwitnessed, 0);
+  assert.equal(clean.witnessNote, undefined, 'a fully witnessed band carries no caveat');
+});
+
 test('an errored arm and one with no summary are named, not read as zero', () => {
   const errored = armOf(arena({ label: 'tv', panels: 1, total: 0, gpu: 0, error: 'Navigation timeout of 120000 ms exceeded\n  at foo' }), { expectPanels: 1 });
   assert.equal(errored.state, 'ARM_ERRORED');

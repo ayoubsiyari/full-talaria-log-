@@ -47,6 +47,16 @@ const MUTANTS = [
     replace: '  if (false) {',
   },
   {
+    name: 'an unwitnessed reading presents as a witnessed one',
+    find: '  if (!witness) return { ...arm, witnessed: false };',
+    replace: '  if (!witness) return { ...arm, witnessed: true };',
+  },
+  {
+    name: 'the unwitnessed count is dropped from the band',
+    find: "  const unwitnessed = read.filter((a) => a.witnessed === false).length;",
+    replace: '  const unwitnessed = 0;',
+  },
+  {
     name: 'a single run is promoted to a band — normal becomes a point again',
     find: "  const state = read.length === 1\n    ? 'SINGLE_OBSERVATION_NOT_A_BAND'",
     replace: "  const state = false\n    ? 'SINGLE_OBSERVATION_NOT_A_BAND'",

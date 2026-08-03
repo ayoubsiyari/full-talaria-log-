@@ -72,9 +72,19 @@ const ARM_SPECS = [
  * Spreading each arm's repeats across the whole slot makes host drift hit every
  * arm alike, which is what lets the intervals be compared at all.
  */
+/**
+ * A top-up run replaces specific readings rather than the whole series: after the
+ * 21:10+01:00 pass, ours-1up needed two more rounds to be a band at all and two arms
+ * had to be retaken because they ran beside a foreign instrument. `--round-start`
+ * keeps the new files from overwriting readings that were clean.
+ */
+const ONLY = (argOf('arms', '') || '').split(',').map((s) => s.trim()).filter(Boolean);
+const ROUND_START = Number(argOf('round-start', '1'));
+
 const ARMS = [];
-for (let round = 1; round <= REPEATS; round++) {
+for (let round = ROUND_START; round < ROUND_START + REPEATS; round++) {
   for (const spec of ARM_SPECS) {
+    if (ONLY.length && !ONLY.includes(spec.key)) continue;
     ARMS.push({
       key: spec.key,
       round,
@@ -170,7 +180,12 @@ async function main() {
   // Every round that produced a file, whether or not its arm succeeded: the
   // assembler names and drops a bad run itself, which is better than a wrapper
   // deciding silently which readings the report is allowed to see.
-  const group = (key) => ARMS.filter((a) => a.key === key && fs.existsSync(a.out)).map((a) => a.out).join(',');
+  // Every artifact for this arm on disk, not only the ones this invocation wrote:
+  // a top-up must add to the band rather than replace it, and the assembler is the
+  // thing that decides which readings are admissible.
+  const group = (key) => fs.readdirSync(EVIDENCE)
+    .filter((f) => new RegExp(`^reference-${key}-r\\d+\\.json$`).test(f))
+    .map((f) => path.join(EVIDENCE, f)).join(',');
   const report = spawnSync(process.execPath, [
     path.join(__dirname, 'competitor-reference-report.mjs'),
     `--ours-1up=${group('ours-1up')}`,
