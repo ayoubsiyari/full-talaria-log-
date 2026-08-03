@@ -24,6 +24,7 @@ import { fileURLToPath } from 'node:url';
 import {
   resolveRef, servedUrlForShell, declaredAbsence, contractNames,
 } from './copy-absence-census.mjs';
+import { acquireRunLock, foreignRunsSync } from './lib/run-lock.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '..');
@@ -37,7 +38,41 @@ const cell = (name, fn) => {
     fail += 1;
   }
 };
+/**
+ * The end-to-end cells bind a port and spawn census children, so they are a real
+ * user of this machine and take the shared lock like one.
+ *
+ * This suite had no lock at all, and on 2026-08-03 I launched it twice four minutes
+ * apart (15:27:44+01:00 and 15:31:50+01:00) onto a box already carrying E's V8 run
+ * — the exact class I had been reporting on other lanes' instruments that morning.
+ * Identity scope stops the second copy of me; host scope stops me walking onto
+ * someone else's measurement.
+ *
+ * Only the box-touching half is guarded. The pure cells cost nothing and must stay
+ * runnable during a queue, or the price of the lock is that the grader can never be
+ * checked while anything else is running.
+ */
+let e2eLock = null;
+let skipped = 0;
+
+/**
+ * `acquireRunLock` returns `{state, scopes, notes, holder, release}` and NO `ok`.
+ * The per-scope helper inside it does return `ok`, which is the trap: `if (!lock.ok)`
+ * reads every successful acquisition as a refusal and skips the whole section while
+ * printing `LOCK_ACQUIRED` next to the word SKIP. Written the wrong way here first,
+ * caught only because that line was self-contradictory. The state is the contract.
+ */
+const lockHeld = (l) => !!l && l.state === 'LOCK_ACQUIRED';
+
 const acell = async (name, fn) => {
+  if (!lockHeld(e2eLock)) {
+    // A skip must never be able to read as a pass. It is counted separately, named
+    // with its holder, and makes the suite exit on its own code.
+    console.log(`  SKIP  ${name}\n        E2E_UNPROVEN_BOX_BUSY: ${e2eLock ? e2eLock.state : 'lock not taken'}`
+      + `${e2eLock && e2eLock.holder ? ` — held by ${e2eLock.holder.script || 'unknown'} pid ${e2eLock.holder.pid}` : ''}`);
+    skipped += 1;
+    return;
+  }
   try { await fn(); console.log(`  PASS  ${name}`); pass += 1; } catch (err) {
     console.log(`  FAIL  ${name}\n        ${err.message.split('\n')[0]}`);
     fail += 1;
@@ -158,6 +193,38 @@ cell('contractNames: matches a contract written as a repo path when asked as a U
 
 // -------------------------------------------------- end to end, over real HTTP
 
+// Taken here rather than at the top of the file: refuse before booting anything, but
+// only for the half that boots anything.
+e2eLock = acquireRunLock({ script: 'copy-absence-census.selftest.mjs', artifact: null });
+
+/**
+ * The lock tree is not the only evidence, and on this box it is regularly the wrong
+ * evidence: at 17:08+01:00 `inspectLocks()` returned NONE while three lane processes
+ * were running, because a lane's private lock is invisible to the shared detector
+ * and a run that declined host scope registers nothing at all. Acquiring cleanly
+ * therefore does not mean the box is free — it means nobody filed a claim.
+ *
+ * So process evidence is consulted as well, and it is allowed to VETO an acquisition
+ * this script has already won. Handing the lock straight back is the honest move:
+ * holding it while refusing to work would park the box for everyone else.
+ */
+if (lockHeld(e2eLock)) {
+  const foreign = foreignRunsSync();
+  if (foreign.state === 'UNLOCKED_FOREIGN_RUN_DETECTED') {
+    e2eLock.release();
+    e2eLock = {
+      state: `${foreign.state} (${foreign.runs.length} unlocked run(s) on the box)`,
+      holder: { script: foreign.runs.map((r) => r.script).join(', '), pid: foreign.runs.map((r) => r.pid).join(',') },
+    };
+  }
+}
+
+if (!lockHeld(e2eLock)) {
+  console.log(`\n  E2E SECTION NOT RUN — ${e2eLock.state}`);
+  console.log('  These cells spawn processes and bind a port. Running them next to a live measurement');
+  console.log('  is how I put four node processes on E\'s V8 run at 15:3x+01:00.\n');
+}
+
 await acell('DISCRIMINATING: an undeclared 404 is reported SILENT_ABSENT (the census can fire)', async () => {
   const { server, port } = await serveWith(['/chart/modules/ghost.js']);
   try {
@@ -211,9 +278,13 @@ await acell('a shell the inventory calls not-servable is skipped, not counted', 
       inventoryServable: false,
     });
     const r = await runCensus({ dir, base: `http://127.0.0.1:${port}` });
-    assert.equal(r.json.counts.referencedUrls, 0, 'a not-servable shell contributes no references');
     assert.equal(r.json.state, 'NO_REFERENCES_FOUND', `state was ${r.json && r.json.state}`);
     assert.equal(r.status, 1, 'checking nothing must not exit 0');
+    // Reads `discovered`, not `counts`: this run refused, and a refusal deliberately
+    // carries no counts block for anyone to quote a zero out of.
+    assert.equal(r.json.counts, null, 'a refusal must not present a counts block');
+    assert.equal(r.json.discovered.referencesExtracted, 0, 'a not-servable shell contributes no references');
+    assert.equal(r.json.skipped.length, 1, 'the shell is recorded as skipped, so the exclusion is auditable');
   } finally { server.close(); }
 });
 
@@ -225,7 +296,21 @@ await acell('BASE_UNREACHABLE: a shut door refuses rather than reporting every U
   const r = await runCensus({ dir, base: `http://127.0.0.1:${port}` });
   assert.equal(r.status, 2, `expected exit 2, got ${r.status}`);
   assert.match(r.stdout, /BASE_UNREACHABLE/);
-  assert.equal(r.json, null, 'no artifact should be written against a shut door');
+  /**
+   * This cell used to require NO artifact at all, on the reasoning that a file
+   * against a shut door could be mistaken for a result. Half right. Writing nothing
+   * also means a refusal cannot be cited, and leaves any PREVIOUS census.json in
+   * place to be read as current -- a stale green outliving the run that refused.
+   *
+   * So the artifact is written and the burden moves to its content: it must not
+   * carry a single field that reads as a clean census. `counts: null` rather than
+   * `silentAbsent: 0`, because that field is the one anybody greps.
+   */
+  assert.ok(r.json, 'a refusal must be citable, so it writes an artifact');
+  assert.equal(r.json.state, 'BASE_UNREACHABLE');
+  assert.equal(r.json.notACensus, true);
+  assert.equal(r.json.counts, null, 'a refusal must not manufacture a zero in the field people quote');
+  assert.match(r.json.evidenceClass, /REFUSED/);
 });
 
 await acell('a 302 is carried, not absent — nginx redirects several chart paths on purpose', async () => {
@@ -251,5 +336,22 @@ cell('the artifact declares its evidence class and its limits, per SEAL-EVIDENCE
   assert.match(src, /assembled inside JavaScript at runtime/, 'the JS-internal blind spot must be stated in the artifact');
 });
 
-console.log(`\n  ${pass} passed, ${fail} failed`);
-process.exit(fail ? 1 : 0);
+if (lockHeld(e2eLock)) e2eLock.release();
+
+console.log(`\n  ${pass} passed, ${fail} failed${skipped ? `, ${skipped} SKIPPED` : ''}`);
+
+/**
+ * Three outcomes, three exit codes. A suite that skipped its discriminating half
+ * must not be able to exit 0: "the cells that prove the census can fire did not
+ * run" and "they ran and passed" are different facts, and collapsing them is the
+ * defect this whole family of gates exists to answer. It is not a failure either —
+ * nothing was found wrong — so it does not exit 1 and get triaged as a break.
+ */
+if (fail) process.exit(1);
+if (skipped) {
+  console.log(`  SUITE_INCOMPLETE_E2E_UNPROVEN — ${skipped} discriminating cell(s) never executed.`);
+  console.log('  The census\'s ability to FIRE is unproven by this run. Do not quote a census result');
+  console.log('  as detector-backed on the strength of it.');
+  process.exit(3);
+}
+process.exit(0);

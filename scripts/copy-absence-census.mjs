@@ -283,16 +283,53 @@ async function main() {
   // census that reports 40 absences against a shut door is worse than no census.
   const doorUrl = `${BASE}/chart/build-info.json`;
   const door = await head(doorUrl);
+  /**
+   * A refusal is a result and has to be citable, so it gets an artifact like any
+   * other state. Exiting with a message and no file leaves the reader with nothing
+   * to quote and the next run with nothing to diff -- and it is why the "shell the
+   * inventory calls not-servable" case produced a null artifact.
+   */
+  const refuse = (refusalState, why, extra = {}) => {
+    console.log(`\n  [copy-absence-01] ${refusalState}`);
+    writeArtifactAtomic(OUT, `${JSON.stringify({
+      signature: 'TALARIA_COPY_ABSENCE_CENSUS_V1',
+      evidenceClass: 'REFUSED — no census was taken; this artifact records why, so the absence of a count is not mistaken for a count of zero',
+      generatedAt: stampUtc(),
+      generatedAtLocal: both(),
+      base: BASE,
+      state: refusalState,
+      why,
+      roots,
+      rootsAbsent,
+      /**
+       * NULL, not zeroes. The first version of this wrote `silentAbsent: 0` and a
+       * reader -- or a script -- taking that field at face value would quote "zero
+       * silent absences" from a run that never looked. A refusal must not be able to
+       * masquerade as a clean result in the one field anybody greps for.
+       */
+      notACensus: true,
+      counts: null,
+      discovered: { shellsFound: shells.length, referencesExtracted: refs.size },
+      ...extra,
+    }, null, 2)}\n`);
+    console.log(`  artifact      ${path.relative(ROOT, OUT)}`);
+  };
+
   if (door.status === 0 || door.status >= 500) {
     console.log(`  BASE_UNREACHABLE ${doorUrl} -> ${door.status || door.error}`);
     console.log('  Refusing to report absences against a base that is not answering.');
-    process.exit(2);
+    refuse('BASE_UNREACHABLE', `${doorUrl} answered ${door.status || door.error}`,
+      { door: { url: doorUrl, status: door.status } });
+    return 2;
   }
   console.log(`  door            ${doorUrl} -> HTTP ${door.status}`);
 
   if (refs.size === 0) {
     console.log('\n  NO_REFERENCES_FOUND — nothing was checked, so nothing passed.');
-    process.exit(1);
+    refuse('NO_REFERENCES_FOUND',
+      'no shell in scope referenced a single resource, so this run can say nothing about absence',
+      { door: { url: doorUrl, status: door.status }, skipped, unaudited });
+    return 1;
   }
 
   const results = [];
@@ -413,7 +450,18 @@ async function main() {
   }, null, 2)}\n`);
   console.log(`  artifact      ${path.relative(ROOT, OUT)}`);
 
-  process.exit(silent.length || parseIncomplete.length ? 1 : 0);
+  /**
+   * `process.exit()` used to be called here, and on Windows it ABORTED instead of
+   * exiting: with undici's sockets still open, tearing the loop down mid-close trips
+   * `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` in libuv and the process
+   * dies with 3221226505. That landed on the SILENT_ABSENT path specifically -- the
+   * one path where this gate has something to report -- so a real find surfaced to
+   * any caller as a crash rather than as a refusal, and `exit === 1` never happened.
+   *
+   * Returning a code and letting the loop drain is the fix. It also means the caller
+   * sees the artifact written above, which an abort could truncate.
+   */
+  return silent.length || parseIncomplete.length ? 1 : 0;
 }
 
 export { resolveRef, servedUrlForShell, declaredAbsence, contractNames, loadContracts };
@@ -422,4 +470,11 @@ export { resolveRef, servedUrlForShell, declaredAbsence, contractNames, loadCont
 // as well as driving the whole pipeline as a child process.
 const invokedDirectly = process.argv[1]
   && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
-if (invokedDirectly) main().catch((err) => { console.error(err); process.exitCode = 2; });
+if (invokedDirectly) {
+  // exitCode, never exit(): the loop is left to drain its sockets on its own. See the
+  // note at the end of main() -- forcing it killed the process on the one path that
+  // had a finding to report.
+  main()
+    .then((code) => { process.exitCode = code; })
+    .catch((err) => { console.error(err); process.exitCode = 2; });
+}

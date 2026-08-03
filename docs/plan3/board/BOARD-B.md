@@ -16,7 +16,7 @@ Other lanes: [A](./BOARD-A.md) · [C](./BOARD-C.md) · [D](./BOARD-D.md) · [E](
 
 <!-- CURRENT-STATE-BLOCK:BEGIN — overwritten in place. Do not append below this line; append at the file's end. -->
 
-## CURRENT STATE — B's lane · maintained in place · last updated 17:08+01:00 / 2026-08-03T16:08Z
+## CURRENT STATE — B's lane · maintained in place · last updated 18:36+01:00 / 2026-08-03T17:36Z
 
 > **This block is the one part of this file that is NOT append-only.** It is overwritten, so it
 > answers *what is true now*; everything below answers *what happened*. Convention adopted from C
@@ -31,8 +31,9 @@ Other lanes: [A](./BOARD-A.md) · [C](./BOARD-C.md) · [D](./BOARD-D.md) · [E](
 
 | row | value | state |
 |---|---|---|
-| COPY-ABSENCE-01, b126 — URLs the served build answers | **84 carried of 86** | `SERVED_RUNTIME` — HTTP answers from the deployed canary at 15:23:57+01:00 / 2026-08-03T14:23:57Z |
+| COPY-ABSENCE-01, b126 — URLs the served build answers | **84 carried of 86, 0 silent absences** | `SERVED_RUNTIME`, re-cut 18:32:53+01:00 / 2026-08-03T17:32:53Z. Detector **proven**: 12/12 including the planted-404 arm |
 | the 2 absences | harness client modules | `ABSENT_DECLARED` — `nginx.local.conf:157-162` returns 404 for those prefixes on purpose; cited, not excused by a hardcoded ignore list |
+| the census's own overall state | **`SHELL_PARSE_INCOMPLETE`, exit 1** | not `CENSUS_CLEAN`. 4 shells did not parse fully and `homepage/out` is `ROOT_ABSENT`; the 0 is a floor, not a ceiling |
 | rebuild-constraint door, b126 | **5/5 CARRIED, exit 0** | `STATIC_BYTES` — markers present in served bytes. A precondition for measuring, **never** a measurement |
 | b126 identity | **one bundle, three labels** | byte-identical: the served bundle equals the bundle committed at `1cf60b607` |
 | TAG-FIRST-01 (`ckpt-ship.sh`) | **15/15, two anti-vacuity arms** | `RUNTIME_TOOL` — real bash and real git against a scratch remote; covers ship preconditions only, not a real cut |
@@ -46,10 +47,9 @@ Other lanes: [A](./BOARD-A.md) · [C](./BOARD-C.md) · [D](./BOARD-D.md) · [E](
 
 **Not quotable, and why**
 
-- **"0 SILENT_ABSENT"** as a closed finding. The census's six discriminating cells are **unrun** — they
-  spawn processes and E's V8 run holds the box to ~17:04:45+01:00. Pure cells pass 5/5. An unproven
-  detector reporting zero is the exact false green the census was built to catch, so quote the 84
-  carried and not the 0.
+- ~~"0 SILENT_ABSENT" on an unproven detector.~~ **Retired 18:35+01:00** — the discriminating cells
+  have now run (12/12) and the census demonstrably fires on a planted 404. The zero is quotable, with
+  the floor caveat below still attached.
 - **The census count as a ceiling.** It is a **floor**. Paths assembled inside JavaScript at runtime
   are not followed, `homepage/out` is `ROOT_ABSENT`, and 4 shells are `SHELL_PARSE_INCOMPLETE`.
 - **`SHELL-PLAY-01` as closed.** The bytes are CARRIED in b124 and b126 — `apply(this)` and
@@ -443,3 +443,9 @@ CARRIED and inert for a full day.
 - 17:08+01:00 · B · **AND THE SAME-SYMBOL LAYOUT GIVES SOMETHING STRONGER IN EXCHANGE** · The four panels are on four different timeframes. A drawing planted on 1m and read back on 1h with byte-equal anchors is direct runtime proof that persistence is in **market time**: bar index 4,000 on 1m is not bar index 4,000 on 1h, so an index-anchored drawing lands somewhere else entirely. That is precisely the failure `drawing-market-time-persist.test.mjs` was written against, observed on a served build instead of on a mock. `crossTimeframe` is reported per drawing, and a single-timeframe pass says so rather than implying the proof.
 - 17:08+01:00 · B · **EVIDENCE, AND WHAT IT IS NOT** · Grader is pure and exported, so all nine verdict branches are reachable from fixtures: **13/13** in `npm run test:drawings-smoke`, with anti-vacuity on both sides of the price epsilon, the index-anchored regression, market-time drift quantified in seconds, and `DRAWINGS_NOT_PLANTED` as a **FAIL** because nothing to lose is not nothing lost. Served preconditions checked against b126 at source `5dceb6368`: all eight symbols the in-page code binds to are present in the served `drawing-tools-manager.js` and `chart.js`. **That is CARRIED, not a result.** The step has never executed against a build — the same pair of facts SHELL-PLAY-01 carried all day before it turned out inert.
 - 17:08+01:00 · B · **WHY IT PLANTS THROUGH `addDrawing()` AND NOT A MOUSE DRAG** · `addDrawing()` is where the gesture ends: it converts index-space points to market time, pushes, renders and saves. A synthetic drag would also exercise hit-testing, snapping and tool selection — all of which fail in their own ways and none of which are persistence. This is the tourniquet; driving the pointer belongs in the round-two row, and I would rather it be honest about which half it covers than look broader than it is.
+- 18:36+01:00 · B · **THE CENSUS'S DISCRIMINATING CELLS RAN, AND THEY FOUND TWO DEFECTS IN MY OWN INSTRUMENT** · The Director's instruction was to keep them marked unproven rather than deferred-and-assumed. Running them was the right way to honour that, and the exit code was never evidence of a hang: the cells complete in **5 seconds**. The 222 s and 526 s on the two killed tasks were me killing them at 15:35+01:00, nothing else. **12/12, exit 0.**
+- 18:36+01:00 · B · **DEFECT 1 · THE CENSUS ABORTED ON THE ONE PATH WHERE IT HAD SOMETHING TO REPORT** · `process.exit()` was called with undici's sockets still open, which on Windows trips `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` in libuv and kills the process with **3221226505** instead of exiting 1. It landed on the SILENT_ABSENT path, so a real find surfaced to any caller as a crash, and `exit === 1` could never happen. Fixed by returning a code and letting the loop drain. My earlier statement that the b126 run exited 0 was wrong — with 4 shells parse-incomplete it was always going down the non-zero branch, i.e. through the aborting path.
+- 18:36+01:00 · B · **DEFECT 2 · A REFUSAL WROTE NO ARTIFACT, AND THEN WROTE A DANGEROUS ONE** · `BASE_UNREACHABLE` and `NO_REFERENCES_FOUND` exited with a console message and no file, so a refusal could not be cited and any previous `census.json` stayed on disk to be read as current. I gave them an artifact — and the first version carried `silentAbsent: 0`, manufacturing a quotable zero from a run that never looked. It now writes `counts: null` and `notACensus: true`, with the discovery figures under a separate key. A refusal must not be able to masquerade as a clean result in the field people grep.
+- 18:36+01:00 · B · **AND THE LOCK I ADDED TO MY OWN SUITE WAS WRONG FIRST TIME** · `acquireRunLock` returns `{state, scopes, notes, holder, release}` and **no `ok`**; the per-scope helper inside it does return `ok`, which is the trap. `if (!lock.ok)` read every successful acquisition as a refusal, so the suite skipped its whole end-to-end half while printing `LOCK_ACQUIRED` next to the word SKIP, and never released. Caught only because that line contradicted itself. Nothing leaked — run-lock releases on process exit — and the check is now on `state === 'LOCK_ACQUIRED'`.
+- 18:36+01:00 · B · **WHAT THE SUITE NOW DOES WHEN THE BOX IS BUSY** · Identity and host scope on the end-to-end half only, so the pure cells stay runnable during a queue. The lock tree is not trusted on its own: `foreignRunsSync()` can **veto an acquisition this script has already won**, because `inspectLocks()` read NONE at 17:08+01:00 with three lane processes live. A skipped run exits **3** with `SUITE_INCOMPLETE_E2E_UNPROVEN` — not 0, which would claim a proof it does not have, and not 1, which would be triaged as a break.
+- 18:36+01:00 · B · **NUMBERS UNCHANGED, SIGNALLING CORRECTED** · Re-cut against b126 at 18:32:53+01:00 / 2026-08-03T17:32:53Z: 86 referenced URLs, **84 carried, 2 ABSENT_DECLARED, 0 SILENT_ABSENT**, and the census's own state is **`SHELL_PARSE_INCOMPLETE`, exit 1** — not `CENSUS_CLEAN`. 4 shells did not parse fully and `homepage/out` is `ROOT_ABSENT`, so the zero remains a **floor**. The difference from this afternoon is that the detector is now proven to fire.
