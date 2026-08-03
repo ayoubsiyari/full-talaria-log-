@@ -19,6 +19,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   HOST_SCOPE_KEY,
   acquireRunLock,
+  browserOwningPids,
   classifyRunStrict,
   foreignRuns,
   heldFor,
@@ -185,6 +186,25 @@ test('the refusal classifier excludes the editor and the file servers it found o
   // Our own suites must not gate each other, or the tests become the outage.
   assert.equal(classifyRunStrict('node --test scripts/lib/run-lock.selftest.mjs').measurement, false);
   assert.equal(classifyRunStrict('node scripts/run-lock-status.mjs').measurement, false);
+});
+
+test('browserOwningPids distinguishes "none" from "could not ask"', () => {
+  const pids = browserOwningPids();
+  // null is the failure answer and must stay distinguishable from an empty set,
+  // or a broken query reads as a clear box.
+  assert.ok(pids === null || pids instanceof Set, String(pids));
+  if (pids instanceof Set) for (const p of pids) assert.ok(Number.isFinite(p));
+});
+
+test('a named measurement with no browser under it is advised, not blocked on', async () => {
+  // ckpt-ship-tag-first.test.mjs was on the box and matched by name. Blocking
+  // measurements behind unit gates that share the .test.mjs suffix would make
+  // this gate the outage; only an observed browser refuses.
+  const scan = await foreignRuns();
+  for (const r of scan.runs) assert.notEqual(r.hasBrowser, false);
+  for (const a of scan.advisory) {
+    if (a.excludedBecause === 'no browser process is running under it') assert.equal(a.hasBrowser, false);
+  }
 });
 
 test('the foreign scan answers in named states and never counts us as foreign', async () => {

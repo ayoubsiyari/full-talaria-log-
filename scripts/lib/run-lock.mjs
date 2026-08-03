@@ -39,6 +39,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -150,6 +151,35 @@ function takeScope({ scope, name, script, artifact, allowConcurrent }) {
 const EDITOR_PROCESS = /[\\/](?:cursor|code|vscode)[\\/]resources[\\/]|[\\/]helpers[\\/]node\.exe/i;
 const NOT_A_BROWSER_RUN = /(?:^|[\\/])(?:serve|measurement-queue|run-lock-status|mirror-parity-check|director-digest)\.mjs$|\.selftest\.mjs$/i;
 
+/**
+ * Which pids actually have a browser under them.
+ *
+ * Name-based classification cannot settle this and should not try: `.test.mjs`
+ * covers both `ckpt-ship-tag-first` (no browser) and the browser runner gates
+ * (very much a browser), so any guess from the filename is wrong in one
+ * direction or the other. What contaminates a memory reading is a browser on the
+ * box, so ask the box. Puppeteer spawns chrome.exe as a direct child of the node
+ * process, which makes the parent pid sufficient.
+ *
+ * Returns null, not an empty set, when the query fails: "no browsers" and "could
+ * not ask" must not be the same answer.
+ */
+export function browserOwningPids() {
+  try {
+    const out = execFileSync('powershell', ['-NoProfile', '-Command',
+      "Get-CimInstance Win32_Process -Filter \"Name='chrome.exe' or Name='msedge.exe' or Name='chromium.exe'\" "
+      + '| Select-Object ProcessId,ParentProcessId | ConvertTo-Json -Compress'],
+    { encoding: 'utf8', timeout: 20000, windowsHide: true });
+    const raw = (out || '').trim();
+    if (!raw) return new Set();
+    const list = JSON.parse(raw);
+    const arr = Array.isArray(list) ? list : [list];
+    return new Set(arr.map((p) => Number(p.ParentProcessId)).filter(Number.isFinite));
+  } catch {
+    return null;
+  }
+}
+
 export function classifyRunStrict(cmd) {
   const text = String(cmd || '');
   if (EDITOR_PROCESS.test(text)) return { measurement: false, why: 'editor or IDE helper process' };
@@ -196,17 +226,26 @@ export async function foreignRuns({ ignorePids = [] } = {}) {
   const skip = new Set([process.pid, process.ppid, ...ignorePids]);
   const candidates = procs.filter((p) => !skip.has(p.pid) && !lockedPids.has(p.pid));
 
+  const withBrowser = browserOwningPids();
   const runs = [];
   const advisory = [];
   for (const p of candidates) {
     const strict = classifyRunStrict(p.cmd);
     const broad = !!mod.classifyProcess(p.cmd);
+    const hasBrowser = withBrowser === null ? null : withBrowser.has(p.pid);
     const entry = {
       pid: p.pid,
       script: strict.script || (typeof mod.scriptNameOf === 'function' ? mod.scriptNameOf(p.cmd) : null),
+      hasBrowser,
       cmd: p.cmd.slice(0, 160),
     };
-    if (strict.measurement) runs.push(entry);
+    // Refuse on an observed browser. A named measurement with no browser under it
+    // is reported and not blocked on: it may be a unit gate that shares a suffix
+    // with the browser runners, and blocking those makes the gate the outage.
+    // When the browser query itself failed, fall back to the name — an unknown
+    // box is not a free one.
+    if (strict.measurement && hasBrowser !== false) runs.push(entry);
+    else if (strict.measurement) advisory.push({ ...entry, excludedBecause: 'no browser process is running under it' });
     // Matched the queue's broad test but not the refusal test. Kept visible so a
     // disagreement between the two instruments is data, not a silent drop.
     else if (broad) advisory.push({ ...entry, excludedBecause: strict.why });
