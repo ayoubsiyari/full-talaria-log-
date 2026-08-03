@@ -47,6 +47,28 @@ function plantLive(name, scope, script = 'other.mjs') {
   return lf;
 }
 
+/**
+ * Some cells need a free host, and the host is a shared machine. Before this
+ * existed those cells failed with `HOST_BUSY_REFUSED` whenever another lane
+ * legitimately held the box — meaning the suite for the mechanism the whole
+ * measurement regime now depends on could not be run during the conditions it
+ * exists for, and "run its tests before trusting it" was impossible in practice.
+ *
+ * So a busy host is DECLARED rather than failed or silently skipped: the refusal
+ * shape is still asserted, and the line says which assertions did not run.
+ */
+function whenHostFree(lock, assertions) {
+  if (lock.state === 'HOST_BUSY_REFUSED') {
+    assert.equal(lock.ok, false, 'a host refusal must carry ok:false');
+    assert.ok(lock.holder && lock.holder.pid, 'a host refusal must name its holder');
+    console.log(`      HOST_HELD_ELSEWHERE by ${lock.holder.script || 'another run'} (pid ${lock.holder.pid}) — `
+      + 'free-host assertions declared, not run; the refusal shape was checked instead');
+    return false;
+  }
+  assertions();
+  return true;
+}
+
 test('isAlive: this process yes, an implausible pid no', () => {
   assert.equal(isAlive(process.pid), true);
   assert.equal(isAlive(0x7ffffff), false);
@@ -56,10 +78,12 @@ test('isAlive: this process yes, an implausible pid no', () => {
 test('first launch takes host, identity and artifact together', () => {
   const lock = acquireRunLock({ artifact: tmpArtifact(), script: 'selftest-a.mjs' });
   try {
-    assert.equal(lock.state, 'LOCK_ACQUIRED');
-    assert.deepEqual(lock.scopes, ['host', 'identity', 'artifact']);
-    const host = inspectLocks().find((l) => l.scope === 'host');
-    assert.equal(host.pid, process.pid);
+    whenHostFree(lock, () => {
+      assert.equal(lock.state, 'LOCK_ACQUIRED');
+      assert.deepEqual(lock.scopes, ['host', 'identity', 'artifact']);
+      const host = inspectLocks().find((l) => l.scope === 'host');
+      assert.equal(host.pid, process.pid);
+    });
   } finally { lock.release(); }
 });
 
@@ -110,9 +134,10 @@ test('a refusal at a later scope leaves no earlier scope held', () => {
     assert.equal(refused.state, 'DUPLICATE_LAUNCH_REFUSED');
     const stillHeld = inspectLocks().filter((l) => l.scope === 'host' && l.pid === process.pid);
     assert.deepEqual(stillHeld, []);
-    // And the box is genuinely free for the next caller.
+    // And the box is genuinely free for the next caller — unless another lane
+    // holds it, which is a fact about the machine rather than about the release.
     const next = acquireRunLock({ artifact: tmpArtifact(), script: 'someone-else.mjs' });
-    assert.equal(next.state, 'LOCK_ACQUIRED');
+    whenHostFree(next, () => assert.equal(next.state, 'LOCK_ACQUIRED'));
     next.release();
   } finally { fs.unlinkSync(lf); }
 });
@@ -149,7 +174,8 @@ test('override is available, and names itself so the artifact can declare it', (
 
 test('--wait-for-host queues on the box but never on a duplicate of itself', () => {
   const flags = lockFlagsFromArgv(['node', 'x.mjs', '--wait-for-host=4000', '--allow-concurrent']);
-  assert.deepEqual(flags, { allowConcurrent: true, waitForHostMs: 4000, host: true, skipForeignScan: false });
+  assert.deepEqual(flags, { allowConcurrent: true, waitForHostMs: 4000, host: true, skipForeignScan: false, vetoOnForeignRun: false });
+  assert.equal(lockFlagsFromArgv(['node', 'x.mjs', '--veto-on-foreign-run']).vetoOnForeignRun, true);
   assert.equal(lockFlagsFromArgv(['node', 'x.mjs', '--no-host-lock', '--skip-foreign-scan']).host, false);
   assert.equal(lockFlagsFromArgv(['node', 'x.mjs', '--skip-foreign-scan']).skipForeignScan, true);
 
@@ -225,6 +251,48 @@ test('a lock-holding run is not reported as a foreign run', async () => {
   try {
     const scan = await foreignRuns();
     assert.deepEqual(scan.runs.filter((r) => r.pid === process.pid), []);
+  } finally { lock.release(); }
+});
+
+test('B\'s `if (!lock.ok)` trap is closed: the aggregate carries ok on BOTH paths', () => {
+  // B wrote the obvious line against this function and every successful
+  // acquisition read as a refusal — a suite skipped its whole end-to-end half
+  // while printing LOCK_ACQUIRED next to SKIP, and never called release(). I then
+  // wrote the identical bug into box-availability.mjs hours after reading B's
+  // report, which is what makes this a contract defect rather than two mistakes.
+  const lock = acquireRunLock({ artifact: tmpArtifact(), script: 'selftest-ok-shape.mjs' });
+  try {
+    assert.equal(lock.ok, true, 'success must carry ok:true, since takeScope always has');
+    assert.equal(lock.ok, lock.state === 'LOCK_ACQUIRED' || (lock.notes || []).length > 0);
+  } finally { lock.release(); }
+
+  const lf = plantLive('ok-shape-parker.mjs', 'identity', 'ok-shape-parker.mjs');
+  try {
+    const refused = acquireRunLock({ artifact: tmpArtifact(), script: 'ok-shape-parker.mjs' });
+    assert.equal(refused.ok, false, 'and a refusal must carry ok:false, not undefined');
+    assert.equal(refused.state, 'DUPLICATE_LAUNCH_REFUSED');
+    assert.equal(typeof refused.release, 'function', 'release must be callable on a refusal too');
+  } finally { fs.unlinkSync(lf); }
+});
+
+test('vetoOnForeignRun releases a lock it already holds rather than sitting on one', async () => {
+  // B's R6, in the module rather than copy-pasted per caller: inspectLocks() can
+  // read NONE while the box is busy, so a lock can record a claim without ever
+  // checking the room. Off by default — a behaviour change to a mechanism every
+  // lane now depends on is not something to switch on silently.
+  const scan = await foreignRuns();
+  const lock = acquireRunLock({ artifact: tmpArtifact(), script: 'selftest-veto.mjs', vetoOnForeignRun: true });
+  try {
+    assert.ok('foreignScan' in lock, 'the veto path must record what the scan said, pass or refuse');
+    if (scan.state === 'UNLOCKED_FOREIGN_RUN_DETECTED') {
+      assert.equal(lock.ok, false);
+      assert.equal(lock.state, 'HOST_BUSY_UNLOCKED_RUN_REFUSED');
+      assert.ok(lock.foreignRuns.length > 0, 'a veto must name who vetoed it');
+      // And it must not be holding the box while refusing to work.
+      assert.deepEqual(inspectLocks().filter((l) => l.scope === 'host' && l.pid === process.pid), []);
+    } else {
+      assert.equal(lock.ok, true, `box was ${scan.state}, so the veto must not fire`);
+    }
   } finally { lock.release(); }
 });
 

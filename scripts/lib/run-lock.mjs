@@ -334,6 +334,7 @@ export function acquireRunLock({
   host = true,
   allowConcurrent = false,
   waitForHostMs = 0,
+  vetoOnForeignRun = false,
 }) {
   if (!artifact && !script) throw new Error('acquireRunLock: script identity or artifact path is required');
   const wanted = [];
@@ -365,6 +366,15 @@ export function acquireRunLock({
       // fix becomes the outage.
       releaseAll();
       return {
+        // `ok` on both paths of the aggregate, because `takeScope` has always had
+        // it and B wrote the obvious `if (!lock.ok)` against this function: every
+        // successful acquisition read as a refusal, so a suite skipped its entire
+        // end-to-end half while printing LOCK_ACQUIRED next to SKIP, and never
+        // called release(). I then made the identical mistake in
+        // box-availability.mjs hours after reading B's report. Two lanes, one
+        // afternoon, one cause: an aggregate whose shape disagrees with the
+        // function it wraps.
+        ok: false,
         state: got.state,
         scope: w.scope,
         holder: got.holder,
@@ -378,13 +388,44 @@ export function acquireRunLock({
   for (const sig of ['exit', 'SIGINT', 'SIGTERM']) {
     process.once(sig, () => { releaseAll(); if (sig !== 'exit') process.exit(130); });
   }
-  return {
+  const lock = {
+    ok: true,
     state: states.length ? states.join(', ') : 'LOCK_ACQUIRED',
     scopes: wanted.map((w) => w.scope),
     notes: states,
     holder: null,
     release: releaseAll,
   };
+
+  /**
+   * B's R6, moved into the module rather than copy-pasted into each caller:
+   * `inspectLocks()` can read NONE while three lane processes are on the box, so
+   * a lock records a claim without ever checking the room. With this on, the scan
+   * may veto a lock we already hold — releasing immediately rather than sitting
+   * on one while refusing to work.
+   *
+   * Off by default: it is a behaviour change to a mechanism every lane now
+   * depends on, and turning it on silently is how a shared instrument stops being
+   * trusted. `--veto-on-foreign-run` or `vetoOnForeignRun: true`.
+   */
+  if (vetoOnForeignRun) {
+    const scan = foreignRunsSync();
+    lock.foreignScan = scan.state;
+    if (scan.state === 'UNLOCKED_FOREIGN_RUN_DETECTED') {
+      releaseAll();
+      return {
+        ok: false,
+        state: 'HOST_BUSY_UNLOCKED_RUN_REFUSED',
+        scope: 'host',
+        holder: { script: scan.runs[0].script, pid: scan.runs[0].pid },
+        notes: [...states, `vetoed by foreign scan: ${scan.runs.map((r) => `${r.script}#${r.pid}`).join(', ')}`],
+        foreignScan: scan.state,
+        foreignRuns: scan.runs,
+        release() {},
+      };
+    }
+  }
+  return lock;
 }
 
 function sleepSync(ms) {
@@ -455,6 +496,7 @@ export function lockFlagsFromArgv(argv = process.argv) {
     waitForHostMs: hit ? Number(hit.split('=')[1]) || 0 : 0,
     host: !argv.includes('--no-host-lock'),
     skipForeignScan: argv.includes('--skip-foreign-scan'),
+    vetoOnForeignRun: argv.includes('--veto-on-foreign-run'),
   };
 }
 
