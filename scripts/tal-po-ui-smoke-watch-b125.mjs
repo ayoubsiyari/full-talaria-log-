@@ -21,7 +21,7 @@ function argOf(name, fallback = '') {
 }
 
 const ORIGIN = String(argOf('origin', process.env.TEST_VPS_URL || 'http://31.97.192.82:3000')).replace(/\/$/, '');
-const EXPECT_BADGE = String(argOf('expect-badge', process.env.TAL_PO_UI_EXPECT_BADGE || '20260803b125'));
+const EXPECT_BADGE = String(argOf('expect-badge', process.env.TAL_PO_UI_EXPECT_BADGE || '20260803b126'));
 const EVERY_MS = Math.max(5000, Number(argOf('everyMs', '30000')) || 30000);
 const OUT_JSONL = path.resolve(repoRoot, argOf('watch-out', 'docs/plan3/evidence/tal-po-ui-smoke-watch-b125.jsonl'));
 const CANARY_OUT = path.resolve(repoRoot, argOf('canary-out', 'docs/plan3/evidence/tal-po-ui-smoke-b125.json'));

@@ -25,7 +25,7 @@ function argOf(name, fallback = '') {
 }
 
 const ORIGIN = String(argOf('origin', process.env.TEST_VPS_URL || 'http://31.97.192.82:3000')).replace(/\/$/, '');
-const EXPECT_BADGE = String(argOf('expect-badge', process.env.A3_DAILY_EXPECT_BADGE || '20260803b125'));
+const EXPECT_BADGE = String(argOf('expect-badge', process.env.A3_DAILY_EXPECT_BADGE || '20260803b126'));
 const EVERY_MS = Math.max(5000, Number(argOf('everyMs', '30000')) || 30000);
 const OUT_JSONL = path.resolve(repoRoot, argOf('watch-out', 'docs/plan3/evidence/a3-daily-canary-watch-b125.jsonl'));
 const CANARY_OUT = path.resolve(repoRoot, argOf('canary-out', 'docs/plan3/evidence/a3-daily-money-path-boundary-canary-b125.json'));
