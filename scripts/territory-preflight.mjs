@@ -58,6 +58,17 @@ const CLI_FLAGS = new Map([
   ['--manifest-path', 'manifestPath'],
   ['--root', 'root'],
   ['--out', 'out'],
+  ['--trailer-baseline', 'trailerBaseline'],
+]);
+
+/**
+ * Value-less flags, kept in their own map so the "every flag takes a value" assertion
+ * below stays true of everything in CLI_FLAGS. A boolean silently swallowing the next
+ * token would turn `--force-rebaseline --base X` into a baseline named "--base".
+ */
+const CLI_BOOLEANS = new Map([
+  ['--write-trailer-baseline', 'writeTrailerBaseline'],
+  ['--force-rebaseline', 'forceRebaseline'],
 ]);
 
 function assertKnownKeys(value, allowed, label) {
@@ -103,6 +114,94 @@ export function commitAttribution(commit) {
   assert.match(trailers.Manager, /^(?:Director|[A-Z])$/, `commit ${short}: Manager: ${trailers.Manager} is not a valid manager id`);
   assert.match(trailers.Tier, /^[123]$/, `commit ${short}: Tier: ${trailers.Tier} is not 1, 2 or 3`);
   return { sha: commit.sha, author: trailers.Manager, row: trailers.Row, packet: trailers.Packet, tier: trailers.Tier };
+}
+
+/**
+ * TERRITORY-ATTRIB-01. The same parse as commitAttribution, without throwing.
+ *
+ * commitAttribution() asserts, and an assertion in this script lands in the CLI's
+ * catch block, which prints one line and exits 1 -- the same code a real
+ * out-of-territory edit produces. Measured 21:1x+01:00: ZERO of the last 250
+ * commits carry a `Manager:` trailer, so pointing this gate at any of today's work
+ * killed it on the first commit with `required trailer Manager: is absent`. The
+ * gate has therefore never enforced anything, and the exit code could not tell
+ * "could not run" from "a manager edited outside their territory".
+ *
+ * That is the BIND-01 collapse -- a broken anchor reading as a live defect -- in
+ * the gate that governs who may touch what. So absence is now its own state with
+ * its own exit code, and it never masquerades as a territory verdict.
+ */
+export function attributionState(commit) {
+  const missing = [];
+  const invalid = [];
+  const trailers = {};
+  for (const name of REQUIRED_TRAILERS) {
+    const value = trailerValue(commit.message, name);
+    if (!value) missing.push(name); else trailers[name] = value;
+  }
+  if (trailers.Manager && !/^(?:Director|[A-Z])$/.test(trailers.Manager)) {
+    invalid.push(`Manager: ${trailers.Manager} is not a valid manager id`);
+  }
+  if (trailers.Tier && !/^[123]$/.test(trailers.Tier)) {
+    invalid.push(`Tier: ${trailers.Tier} is not 1, 2 or 3`);
+  }
+  if (missing.length || invalid.length) {
+    return {
+      state: 'UNATTRIBUTABLE',
+      sha: commit.sha,
+      subject: (commit.message || '').split('\n')[0].slice(0, 72),
+      missing,
+      invalid,
+      detail: [
+        missing.length ? `absent trailer(s): ${missing.join(', ')}` : null,
+        ...invalid,
+      ].filter(Boolean).join('; '),
+    };
+  }
+  return { state: 'ATTRIBUTED', sha: commit.sha, author: trailers.Manager };
+}
+
+export const DEFAULT_TRAILER_BASELINE = 'docs/plan3/baselines/territory-trailer-baseline.json';
+export const TRAILER_BASELINE_SIGNATURE = 'TERRITORY-TRAILER-BASELINE-V1';
+
+/**
+ * Keyed by SHA, and that is the point.
+ *
+ * CLOCK-01's board baseline fingerprints `(file, token, line text)`, which it has to,
+ * because prose gets edited in place. A commit cannot: its message is part of its
+ * hash. So a SHA baseline has a property the content baseline cannot have -- a NEW
+ * commit can never match an existing entry, so the baseline cannot quietly come to
+ * cover work it was not written for. The only way to grandfather something new is to
+ * rewrite the file deliberately, and the writer below refuses to do that silently.
+ */
+export function loadTrailerBaseline({ root = repoRoot, file = DEFAULT_TRAILER_BASELINE } = {}) {
+  const abs = path.resolve(root, file);
+  if (!fs.existsSync(abs)) return { file, present: false, shas: new Set(), capturedAt: null };
+  const raw = JSON.parse(fs.readFileSync(abs, 'utf8'));
+  assert.equal(raw.signature, TRAILER_BASELINE_SIGNATURE,
+    `territory preflight: ${file} is not a ${TRAILER_BASELINE_SIGNATURE}`);
+  return {
+    file,
+    present: true,
+    capturedAt: raw.capturedAt || null,
+    head: raw.head || null,
+    shas: new Set((raw.shas || []).map((s) => String(s).trim())),
+  };
+}
+
+/**
+ * Baselined commits are set aside BEFORE territory is judged, because a commit with
+ * no trailer cannot be judged: there is no declared manager to compare a path list
+ * against. Grandfathering them is therefore not leniency about territory, it is an
+ * honest statement that the range predates the requirement and cannot be assessed.
+ */
+export function partitionByTrailerBaseline(commits, baseline) {
+  const grandfathered = [];
+  const live = [];
+  for (const commit of commits) {
+    if (baseline.shas.has(commit.sha)) grandfathered.push(commit); else live.push(commit);
+  }
+  return { grandfathered, live };
 }
 
 // Oldest first, so the journal audit walks the packet in the order it was written.
@@ -478,6 +577,7 @@ export function runPreflight({
   git = gitRunner(root),
   manager = null,
   filesFrom = null,
+  trailerBaseline = DEFAULT_TRAILER_BASELINE,
 } = {}) {
   const manifestFile = manifestPathOption(manifestPath);
 
@@ -524,6 +624,18 @@ export function runPreflight({
         ownership,
         journal,
       }],
+      // A file list has no commits, so there is no trailer to read and nothing to
+      // grandfather. Named rather than omitted, so a reader diffing the two modes
+      // does not read a missing field as zero unattributable commits.
+      attribution: {
+        state: 'NOT_APPLICABLE_FILE_LIST',
+        baselineFile: null,
+        baselineCapturedAt: null,
+        grandfathered: 0,
+        attributed: 0,
+        unattributable: [],
+      },
+      state: ownership.ok && journal.ok ? 'GREEN' : 'RED',
       ok: ownership.ok && journal.ok,
     };
   }
@@ -532,8 +644,34 @@ export function runPreflight({
   const readManifestAt = manifestReader({ git, manifestPath: manifestFile });
   const baseRef = git(['rev-parse', '--verify', `${base}^{commit}`]).trim();
   const headRef = git(['rev-parse', '--verify', `${head}^{commit}`]).trim();
-  const commits = readCommits(git, base, head);
-  assert.ok(commits.length, `territory preflight: ${base}..${head} contains no commits`);
+  const allCommits = readCommits(git, base, head);
+  assert.ok(allCommits.length, `territory preflight: ${base}..${head} contains no commits`);
+
+  // Grandfathered first, then attribution, then territory. Each stage removes commits
+  // the next stage has nothing true to say about.
+  const baseline = loadTrailerBaseline({ root, file: trailerBaseline });
+  const { grandfathered, live } = partitionByTrailerBaseline(allCommits, baseline);
+  const attributions = live.map((commit) => ({ commit, attribution: attributionState(commit) }));
+  const unattributable = attributions
+    .filter((entry) => entry.attribution.state === 'UNATTRIBUTABLE')
+    .map((entry) => entry.attribution);
+  const commits = attributions
+    .filter((entry) => entry.attribution.state === 'ATTRIBUTED')
+    .map((entry) => entry.commit);
+
+  const attribution = {
+    state: unattributable.length ? 'TERRITORY_UNATTRIBUTABLE' : 'ATTRIBUTED',
+    baselineFile: baseline.present ? baseline.file : null,
+    baselineCapturedAt: baseline.capturedAt,
+    grandfathered: grandfathered.length,
+    attributed: commits.length,
+    unattributable,
+  };
+
+  // Nothing left to audit is not a pass. A range made entirely of baselined or
+  // unattributable commits has had its territory checked on zero commits, and saying
+  // GREEN there is the vacuous green this whole family of gates exists to refuse.
+  const auditedNothing = commits.length === 0;
   const audited = commits.map((commit) => auditCommit({ git, commit, readManifestAt, fallbackRef: baseRef, manifestPath: manifestFile }));
 
   // Declared-artifact set is the union of every manifest that governed a commit plus the
@@ -573,6 +711,20 @@ export function runPreflight({
 
   const managerCheck = auditManagerFlag(manager, audited);
 
+  const territoryOk = artifacts.ok && managerCheck.ok && audited.every((entry) => entry.ok);
+
+  /**
+   * Precedence: a proven violation outranks an unattributable one.
+   *
+   * If both are present the run is RED, because "a manager edited outside their
+   * territory" is actionable now and worse than "some commits could not be judged".
+   * The unattributable count still travels in the report, so the reader is never told
+   * the range was fully audited when part of it was skipped.
+   */
+  const state = !territoryOk ? 'RED'
+    : unattributable.length ? 'TERRITORY_UNATTRIBUTABLE'
+      : auditedNothing ? 'TERRITORY_UNATTRIBUTABLE' : 'GREEN';
+
   return {
     signature: SIGNATURE,
     manifestVersion: headManifest.ok ? headManifest.manifest.version : null,
@@ -586,8 +738,11 @@ export function runPreflight({
     tiers: [...new Set(audited.map((entry) => entry.tier))].sort(),
     manager: managerCheck,
     artifacts,
+    attribution,
+    commitsSeen: allCommits.length,
     commits: audited,
-    ok: artifacts.ok && managerCheck.ok && audited.every((entry) => entry.ok),
+    state,
+    ok: state === 'GREEN',
   };
 }
 
@@ -628,8 +783,83 @@ export function formatReport(result) {
   for (const observation of observationsOf(result)) {
     lines.push(`  OBS ${label(observation.sha)} ${observation.kind}: ${observation.path} — ${observation.detail}`);
   }
-  lines.push(`[territory-preflight] ${result.ok ? 'GREEN' : 'RED'}`);
+  const attribution = result.attribution;
+  if (attribution && attribution.state !== 'NOT_APPLICABLE_FILE_LIST') {
+    lines.push(`  attribution: ${attribution.attributed} attributed, ${attribution.grandfathered} baselined`
+      + `, ${attribution.unattributable.length} UNATTRIBUTABLE of ${result.commitsSeen} commit(s)`);
+    for (const entry of attribution.unattributable) {
+      lines.push(`  UNATTRIBUTABLE ${shortSha(entry.sha)} ${entry.detail}`);
+      lines.push(`      ${entry.subject}`);
+    }
+    if (attribution.unattributable.length) {
+      lines.push('  A commit with no Manager: trailer declares no territory, so this gate has');
+      lines.push('  nothing to compare its path list against. This is NOT a territory verdict.');
+    }
+  }
+  lines.push(`[territory-preflight] ${result.state || (result.ok ? 'GREEN' : 'RED')}`);
   return lines.join('\n');
+}
+
+/**
+ * Exit ladder. 1 stays "a manager edited outside their territory" so existing wiring
+ * keeps its meaning; 2 is already refusal/usage across this repo; 3-8 are taken by the
+ * soak and canary families. 9 was unused, and it now means exactly one thing: the gate
+ * could not attribute part of the range, so it did not judge it.
+ */
+export const EXIT = Object.freeze({
+  GREEN: 0,
+  RED: 1,
+  TERRITORY_UNATTRIBUTABLE: 9,
+});
+
+export function exitCodeFor(state) {
+  return Object.hasOwn(EXIT, state) ? EXIT[state] : EXIT.RED;
+}
+
+/**
+ * Capture, and refuse to do it quietly.
+ *
+ * CLOCK-01's `--write-baseline` overwrites whatever is there and exits 0, so the one
+ * thing standing between the baseline and silent growth is whether a human reads the
+ * diff. Here a second capture must say so out loud: the existing file is only replaced
+ * under --force-rebaseline, and the count it would absorb is printed first.
+ */
+function writeTrailerBaseline({ root, file, base, head, git, force }) {
+  const abs = path.resolve(root, file);
+  const existing = loadTrailerBaseline({ root, file });
+  const commits = readCommits(git, base, head);
+  const unattributable = commits.filter((c) => attributionState(c).state === 'UNATTRIBUTABLE');
+  if (existing.present && !force) {
+    console.error(`[territory-preflight] REFUSED: ${file} already baselines ${existing.shas.size} commit(s)`);
+    console.error(`  captured ${existing.capturedAt}. Rewriting it would grandfather`);
+    console.error(`  ${unattributable.filter((c) => !existing.shas.has(c.sha)).length} commit(s) it was not written for.`);
+    console.error('  Pass --force-rebaseline if that is genuinely the intent.');
+    return 2;
+  }
+  const now = new Date();
+  const offMin = -now.getTimezoneOffset();
+  const off = `${offMin < 0 ? '-' : '+'}${String(Math.floor(Math.abs(offMin) / 60)).padStart(2, '0')}:${String(Math.abs(offMin) % 60).padStart(2, '0')}`;
+  const local = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}${off}`;
+  const payload = {
+    signature: TRAILER_BASELINE_SIGNATURE,
+    status: 'UNATTRIBUTED',
+    capturedAt: now.toISOString(),
+    capturedAtLocal: local,
+    head: git(['rev-parse', '--verify', `${head}^{commit}`]).trim(),
+    base: git(['rev-parse', '--verify', `${base}^{commit}`]).trim(),
+    note: 'These commits predate the Manager: trailer requirement. They carry no declared '
+      + 'manager, so their territory cannot be judged and is not claimed to be clean. No '
+      + 'retrofit: the trailer is required of NEW commits only. Keyed by SHA, so a new '
+      + 'commit can never match an entry here.',
+    count: unattributable.length,
+    shas: unattributable.map((c) => c.sha),
+  };
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  fs.writeFileSync(abs, `${JSON.stringify(payload, null, 2)}\n`);
+  console.log(`[territory-preflight] baselined ${payload.count} unattributable commit(s) to ${file}`);
+  console.log(`  range ${shortSha(payload.base)}..${shortSha(payload.head)} at ${local}`);
+  console.log('  These are UNATTRIBUTED, not clean. New commits must carry the trailer.');
+  return 0;
 }
 
 // Unknown flags are refused rather than ignored. A silently dropped `--managers C` is a
@@ -638,9 +868,16 @@ export function parseArgs(argv) {
   const options = {};
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
+    if (CLI_BOOLEANS.has(token)) {
+      const flag = CLI_BOOLEANS.get(token);
+      assert.equal(Object.hasOwn(options, flag), false, `territory preflight: ${token} given more than once`);
+      options[flag] = true;
+      continue;
+    }
     assert.ok(
       CLI_FLAGS.has(token),
-      `territory preflight: unknown argument ${token}; known flags are ${[...CLI_FLAGS.keys()].join(', ')}`,
+      `territory preflight: unknown argument ${token}; known flags are `
+      + `${[...CLI_FLAGS.keys(), ...CLI_BOOLEANS.keys()].join(', ')}`,
     );
     const key = CLI_FLAGS.get(token);
     assert.equal(Object.hasOwn(options, key), false, `territory preflight: ${token} given more than once`);
@@ -653,6 +890,14 @@ export function parseArgs(argv) {
     for (const id of options.manager.split(',').map((entry) => entry.trim())) {
       assert.match(id, /^[A-Z]$/, `territory preflight: --manager ${options.manager} must be a comma-separated list of single-letter manager ids`);
     }
+  }
+  if (options.forceRebaseline) {
+    assert.ok(options.writeTrailerBaseline,
+      'territory preflight: --force-rebaseline is meaningless without --write-trailer-baseline');
+  }
+  if (options.writeTrailerBaseline) {
+    assert.ok(options.base !== undefined,
+      'territory preflight: --write-trailer-baseline requires --base');
   }
   assert.ok(options.base !== undefined || options.filesFrom !== undefined, 'territory preflight: --base or --files-from is required');
   assert.ok(
@@ -667,8 +912,20 @@ export function parseArgs(argv) {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    const { out, root: rootOption, ...options } = parseArgs(process.argv.slice(2));
+    const {
+      out, root: rootOption, writeTrailerBaseline: doWrite, forceRebaseline, ...options
+    } = parseArgs(process.argv.slice(2));
     const root = rootOption ? path.resolve(repoRoot, rootOption) : repoRoot;
+    if (doWrite) {
+      process.exit(writeTrailerBaseline({
+        root,
+        file: options.trailerBaseline || DEFAULT_TRAILER_BASELINE,
+        base: options.base,
+        head: options.head || 'HEAD',
+        git: gitRunner(root),
+        force: !!forceRebaseline,
+      }));
+    }
     const result = runPreflight({ ...options, root });
     if (out) {
       const target = path.resolve(root, out);
@@ -676,8 +933,12 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       fs.writeFileSync(target, `${JSON.stringify(result, null, 2)}\n`);
     }
     process.stdout.write(`${formatReport(result)}\n`);
-    if (!result.ok) process.exit(1);
+    const code = exitCodeFor(result.state || (result.ok ? 'GREEN' : 'RED'));
+    if (code) process.exit(code);
   } catch (error) {
+    // An exception here is the gate failing to run at all -- an unreadable manifest, a
+    // bad range, a usage error. That is neither a territory verdict nor an attribution
+    // one, so it keeps exit 1 rather than borrowing 9 and diluting it.
     console.error(`[territory-preflight] ${error.message}`);
     process.exit(1);
   }

@@ -16,10 +16,16 @@ import {
 } from '../lib/territory-manifest.mjs';
 import { appendedLines, auditJournalAppendOnly, isAppendOnly } from '../lib/journal-append-only.mjs';
 import {
+  attributionState,
   auditDeclaredArtifacts,
   commitAttribution,
+  DEFAULT_TRAILER_BASELINE,
+  EXIT,
+  exitCodeFor,
   formatReport,
   gitRunner,
+  loadTrailerBaseline,
+  partitionByTrailerBaseline,
   loadPreflightManifest,
   observationsOf,
   parseArgs,
@@ -1055,15 +1061,26 @@ test('end to end: out-of-territory, manifest self-grant, journal rewrite and jou
   }
 });
 
-test('end to end: an untrailered commit cannot be attributed and is RED', () => {
+test('end to end: an untrailered commit is TERRITORY_UNATTRIBUTABLE, not RED', () => {
+  /**
+   * This cell used to require runPreflight to THROW `trailer Manager: is absent`,
+   * which is how the gate came to be unrunnable: the throw landed in the CLI's catch,
+   * printed one line, and exited 1 -- the same code as a real out-of-territory edit.
+   * With zero of the last 250 commits carrying a trailer, that is all the gate ever
+   * did. Absence is now its own state and its own exit code, so a reader can tell
+   * "could not be judged" from "was judged and is wrong".
+   */
   const repo = scratchRepo();
   try {
     repo.write('scripts/tests/new-cell.test.mjs', '// new cell\n');
     repo.commit('test: add cell without trailers');
-    assert.throws(
-      () => runPreflight({ root: repo.dir, base: repo.base, head: 'HEAD', git: repo.git }),
-      /trailer Manager: is absent/,
-    );
+    const result = runPreflight({ root: repo.dir, base: repo.base, head: 'HEAD', git: repo.git });
+    assert.equal(result.state, 'TERRITORY_UNATTRIBUTABLE');
+    assert.equal(result.ok, false, 'unattributable is not a pass');
+    assert.equal(result.attribution.unattributable.length, 1);
+    assert.match(result.attribution.unattributable[0].detail, /absent trailer\(s\): Manager/);
+    assert.equal(result.commits.length, 0, 'nothing was judged, and the report says so');
+    assert.equal(exitCodeFor(result.state), 9);
   } finally {
     fs.rmSync(repo.dir, { recursive: true, force: true });
   }
@@ -1360,6 +1377,191 @@ function runCli(args) {
     return { status: error.status, stdout: error.stdout ?? '', stderr: error.stderr ?? '' };
   }
 }
+
+// --- TERRITORY-ATTRIB-01: unattributable is not a territory verdict -----------
+
+test('attributionState: a full trailer set is ATTRIBUTED and names the manager', () => {
+  const state = attributionState({ sha: 'a'.repeat(40), message: `feat: x\n\n${TRAILERS}` });
+  assert.equal(state.state, 'ATTRIBUTED');
+  assert.equal(state.author, 'C');
+});
+
+test('attributionState: absence is UNATTRIBUTABLE and lists every missing trailer', () => {
+  const state = attributionState({ sha: 'b'.repeat(40), message: 'feat: no trailers at all\n' });
+  assert.equal(state.state, 'UNATTRIBUTABLE');
+  assert.deepEqual(state.missing, ['Manager', 'Row', 'Packet', 'Tier']);
+  assert.match(state.detail, /absent trailer\(s\): Manager, Row, Packet, Tier/);
+  assert.equal(state.subject, 'feat: no trailers at all');
+});
+
+test('attributionState: a malformed manager id is UNATTRIBUTABLE, never a guess', () => {
+  const state = attributionState({
+    sha: 'c'.repeat(40),
+    message: 'feat: x\n\nManager: nobody\nRow: r\nPacket: p\nTier: 2\n',
+  });
+  assert.equal(state.state, 'UNATTRIBUTABLE');
+  assert.deepEqual(state.missing, []);
+  assert.match(state.detail, /Manager: nobody is not a valid manager id/);
+});
+
+test('attributionState does not throw where commitAttribution does — same input, two contracts', () => {
+  // The strict parser stays strict for callers that want an exception; the classifier
+  // exists so the CLI can report a state instead of dying in a catch block.
+  const commit = { sha: 'd'.repeat(40), message: 'feat: x\n' };
+  assert.throws(() => commitAttribution(commit));
+  assert.equal(attributionState(commit).state, 'UNATTRIBUTABLE');
+});
+
+test('exitCodeFor: 9 is unattributable and is NOT the violation code', () => {
+  assert.equal(exitCodeFor('GREEN'), 0);
+  assert.equal(exitCodeFor('RED'), 1);
+  assert.equal(exitCodeFor('TERRITORY_UNATTRIBUTABLE'), 9);
+  assert.notEqual(EXIT.TERRITORY_UNATTRIBUTABLE, EXIT.RED);
+  // An unknown state must not silently become a pass.
+  assert.equal(exitCodeFor('SOMETHING_NEW'), 1);
+});
+
+test('partitionByTrailerBaseline: SHA keys, so a new commit can never be grandfathered', () => {
+  const baseline = { shas: new Set(['1'.repeat(40)]) };
+  const { grandfathered, live } = partitionByTrailerBaseline(
+    [{ sha: '1'.repeat(40) }, { sha: '2'.repeat(40) }],
+    baseline,
+  );
+  assert.deepEqual(grandfathered.map((c) => c.sha), ['1'.repeat(40)]);
+  assert.deepEqual(live.map((c) => c.sha), ['2'.repeat(40)]);
+});
+
+test('loadTrailerBaseline: an absent file is empty, not an error', () => {
+  const baseline = loadTrailerBaseline({ root, file: 'docs/plan3/baselines/does-not-exist.json' });
+  assert.equal(baseline.present, false);
+  assert.equal(baseline.shas.size, 0);
+});
+
+test('DISCRIMINATING: a trailerless commit is TERRITORY_UNATTRIBUTABLE and exits 9, not 1', () => {
+  const repo = scratchRepo();
+  try {
+    // In territory, so there is nothing for the gate to object to except attribution.
+    repo.write('docs/plan3/journal/MANAGER-C.md', '# Manager C journal\n- base entry\n- new\n');
+    repo.commit('test: no trailers on this one\n');
+
+    const outcome = runCli(['--root', repo.dir, '--base', repo.base, '--head', 'HEAD']);
+    assert.equal(outcome.status, EXIT.TERRITORY_UNATTRIBUTABLE, outcome.stdout + outcome.stderr);
+    assert.match(outcome.stdout, /TERRITORY_UNATTRIBUTABLE/);
+    assert.match(outcome.stdout, /1 UNATTRIBUTABLE of 1 commit\(s\)/);
+    assert.match(outcome.stdout, /This is NOT a territory verdict/);
+  } finally { fs.rmSync(repo.dir, { recursive: true, force: true }); }
+});
+
+test('ANTI-VACUITY: a real out-of-territory edit WITH trailers is still RED and exits 1', () => {
+  // Without this the change could have converted every violation into exit 9 and
+  // called the gate improved.
+  const repo = scratchRepo();
+  try {
+    repo.write('chart v 1.4/chart/chart.js', '// engine\n// C edited the engine\n');
+    repo.commit(`test: out of territory\n\n${TRAILERS}`);
+
+    const outcome = runCli(['--root', repo.dir, '--base', repo.base, '--head', 'HEAD']);
+    assert.equal(outcome.status, EXIT.RED, outcome.stdout + outcome.stderr);
+    assert.match(outcome.stdout, /\[territory-preflight\] RED/);
+    assert.match(outcome.stdout, /0 UNATTRIBUTABLE of 1 commit\(s\)/);
+  } finally { fs.rmSync(repo.dir, { recursive: true, force: true }); }
+});
+
+test('precedence: a proven violation outranks an unattributable commit in the same range', () => {
+  const repo = scratchRepo();
+  try {
+    repo.write('chart v 1.4/chart/chart.js', '// engine\n// C edited the engine\n');
+    repo.commit(`test: out of territory\n\n${TRAILERS}`);
+    repo.write('docs/plan3/journal/MANAGER-C.md', '# Manager C journal\n- base entry\n- new\n');
+    repo.commit('test: and one with no trailers\n');
+
+    const outcome = runCli(['--root', repo.dir, '--base', repo.base, '--head', 'HEAD']);
+    assert.equal(outcome.status, EXIT.RED, 'the violation must win the exit code');
+    // But the unattributable commit is still disclosed, so nobody reads the range as
+    // fully audited.
+    assert.match(outcome.stdout, /1 UNATTRIBUTABLE of 2 commit\(s\)/);
+  } finally { fs.rmSync(repo.dir, { recursive: true, force: true }); }
+});
+
+test('a range of only baselined commits is UNATTRIBUTABLE, never a vacuous GREEN', () => {
+  const repo = scratchRepo();
+  try {
+    repo.write('docs/plan3/journal/MANAGER-C.md', '# Manager C journal\n- base entry\n- new\n');
+    repo.commit('test: no trailers\n');
+    const sha = repo.git(['rev-parse', 'HEAD']).trim();
+    repo.write('docs/plan3/baselines/territory-trailer-baseline.json', `${JSON.stringify({
+      signature: 'TERRITORY-TRAILER-BASELINE-V1',
+      status: 'UNATTRIBUTED',
+      capturedAt: '2026-08-03T20:00:00.000Z',
+      shas: [sha],
+    }, null, 2)}\n`);
+
+    const outcome = runCli(['--root', repo.dir, '--base', repo.base, '--head', 'HEAD']);
+    assert.match(outcome.stdout, /1 baselined/);
+    assert.match(outcome.stdout, /0 UNATTRIBUTABLE/);
+    // Zero commits were actually judged, so GREEN would be a green on nothing.
+    assert.equal(outcome.status, EXIT.TERRITORY_UNATTRIBUTABLE, outcome.stdout);
+  } finally { fs.rmSync(repo.dir, { recursive: true, force: true }); }
+});
+
+test('the baseline grandfathers the old and still reds a NEW trailerless commit', () => {
+  const repo = scratchRepo();
+  try {
+    repo.write('docs/plan3/journal/MANAGER-C.md', '# Manager C journal\n- base entry\n- old\n');
+    repo.commit('test: the old one\n');
+    const old = repo.git(['rev-parse', 'HEAD']).trim();
+    repo.write('docs/plan3/journal/MANAGER-C.md', '# Manager C journal\n- base entry\n- old\n- new\n');
+    repo.commit('test: the NEW one, still no trailers\n');
+    // Written after the commits and left untracked on purpose. The baseline is read
+    // from disk, and committing it here would touch a path the synthetic manifest
+    // grants nobody, reddening the fixture for a reason that has nothing to do with
+    // what this cell is testing.
+    repo.write('docs/plan3/baselines/territory-trailer-baseline.json', `${JSON.stringify({
+      signature: 'TERRITORY-TRAILER-BASELINE-V1',
+      status: 'UNATTRIBUTED',
+      capturedAt: '2026-08-03T20:00:00.000Z',
+      shas: [old],
+    }, null, 2)}\n`);
+
+    const outcome = runCli(['--root', repo.dir, '--base', repo.base, '--head', 'HEAD']);
+    assert.match(outcome.stdout, /1 baselined/);
+    assert.match(outcome.stdout, /1 UNATTRIBUTABLE/, 'no retrofit, but red for new');
+    assert.equal(outcome.status, EXIT.TERRITORY_UNATTRIBUTABLE);
+  } finally { fs.rmSync(repo.dir, { recursive: true, force: true }); }
+});
+
+test('--write-trailer-baseline refuses to rewrite an existing baseline without --force-rebaseline', () => {
+  const repo = scratchRepo();
+  try {
+    repo.write('docs/plan3/journal/MANAGER-C.md', '# Manager C journal\n- base entry\n- one\n');
+    repo.commit('test: first trailerless\n');
+    let outcome = runCli(['--root', repo.dir, '--base', repo.base, '--write-trailer-baseline']);
+    assert.equal(outcome.status, 0, outcome.stderr);
+    assert.match(outcome.stdout, /baselined 1 unattributable commit/);
+    assert.match(outcome.stdout, /UNATTRIBUTED, not clean/);
+
+    repo.write('docs/plan3/journal/MANAGER-C.md', '# Manager C journal\n- base entry\n- one\n- two\n');
+    repo.commit('test: second trailerless, must NOT be absorbed quietly\n');
+    outcome = runCli(['--root', repo.dir, '--base', repo.base, '--write-trailer-baseline']);
+    assert.equal(outcome.status, 2, 'a second capture is a refusal, not a silent overwrite');
+    assert.match(outcome.stderr, /REFUSED/);
+    assert.match(outcome.stderr, /would grandfather/);
+
+    outcome = runCli([
+      '--root', repo.dir, '--base', repo.base, '--write-trailer-baseline', '--force-rebaseline',
+    ]);
+    assert.equal(outcome.status, 0, 'and it is possible when stated outright');
+    assert.match(outcome.stdout, /baselined 2 unattributable commit/);
+  } finally { fs.rmSync(repo.dir, { recursive: true, force: true }); }
+});
+
+test('--force-rebaseline without --write-trailer-baseline is refused rather than ignored', () => {
+  assert.throws(() => parseArgs(['--base', 'x', '--force-rebaseline']), /meaningless without/);
+});
+
+test('the shipped baseline path is the one the CLI defaults to', () => {
+  assert.equal(DEFAULT_TRAILER_BASELINE, 'docs/plan3/baselines/territory-trailer-baseline.json');
+});
 
 test('CLI: a RED packet still writes its --out evidence before exiting 1', () => {
   const repo = scratchRepo();
