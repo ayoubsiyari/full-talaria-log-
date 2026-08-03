@@ -164,6 +164,17 @@ gate('all four panels paint after a page refresh',
   paint ? `${paint.panelsPainted}/${paint.chartsAfterRefresh} painted` : 'no post-refresh paint reading',
   'My own reentry defect produced 0 realms and 0 bars after a fresh navigation; bars in an array are not paint.');
 
+// 16b. DRAW-SMOKE-01, on the same refresh as gate 16.
+const draw = notes.find((n) => n.__drawingsPersist);
+gate('a trendline and a level survive a refresh at the planted price and market time',
+  !draw ? 'WARN' : (draw.state === 'DRAWINGS_PERSIST' ? 'PASS' : 'FAIL'),
+  draw
+    ? `${draw.state} — ${draw.verdict}${draw.detail ? `; ${draw.detail}` : ''}`
+    : 'the drawings step did not run in this window (--drawingsSmoke=1 rides --smoke)',
+  'The loudest thing a canary tester tries on day one, and the only gate on it was STATIC_SOURCE: '
+  + 'one serializer called with a mock, no browser, no storage, no reload. DRAWINGS_NOT_PLANTED is a '
+  + 'FAIL rather than a pass, because nothing to lose is not the same as nothing lost.');
+
 // 17. N4.
 const storeDiff = notes.find((n) => n.__storageDiff);
 gate('N4: storage bytes read at start, end and post-refresh',

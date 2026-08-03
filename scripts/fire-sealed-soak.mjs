@@ -184,7 +184,11 @@ if ((REHEARSAL || SMOKE) && SAMPLE_MS) args.push(`--sampleMs=${SAMPLE_MS}`);
 if (SMOKE) args.push('--endSnapshot=0');
 // N3 rides the smoke only. The ten-hour arms are judged on delivery rate, and punching a deliberate
 // outage into the series that verdict is computed from would be self-inflicted.
-if (SMOKE) args.push('--offlineProbe=1');
+  if (SMOKE) args.push('--offlineProbe=1');
+  // DRAW-SMOKE-01 rides the smoke only, for the same reason: it writes storage, and the ten-hour arms
+  // publish storage-retention figures. It costs no extra page load -- it plants before the refresh the
+  // arm already performs and reads back after it.
+  if (SMOKE) args.push('--drawingsSmoke=1');
 
 console.log(`arm:      ${ARM}`);
 console.log(`digest:   ${DIGEST}`);

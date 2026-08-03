@@ -54,6 +54,7 @@ import { installLoafCensus, readLoafCensus } from './lib/loaf-census.mjs';
 import { evaluateR3, readOldestOpenPositionAge } from './lib/r3-falsifier.mjs';
 import { takeEndOfArmSnapshot } from './lib/end-of-arm-snapshot.mjs';
 import { assertHeapCap } from './lib/heap-cap.mjs';
+import { gradeDrawingsPersistence, plantDrawings, readDrawings } from './lib/drawings-smoke.mjs';
 
 const argOf = (n, d) => { const h = process.argv.find((a) => a.startsWith(`--${n}=`)); return h ? h.split('=').slice(1).join('=') : d; };
 const ARM = argOf('arm', 'trades');                 // trades | zerotrade
@@ -120,6 +121,10 @@ const SNAPSHOT_CAP_MB = Number(argOf('snapshotCapMB', '4096'));
 // N3 rides the smoke, not the ten-hour arms: an outage deliberately punched into a run whose verdict IS
 // delivery rate would put a hole in the series that verdict is computed from.
 const OFFLINE_PROBE = argOf('offlineProbe', '0') === '1';
+// DRAW-SMOKE-01 rides the smoke for the same reason N3 does: planting drawings writes bytes, and the
+// ten-hour arms publish storage-retention figures. The planted cost is reported either way so a diff
+// that does include it can be corrected rather than guessed at.
+const DRAWINGS_SMOKE = argOf('drawingsSmoke', '0') === '1';
 
 // TOOL-01, asserted before anything expensive is opened. A cap that was requested but never applied is
 // worse than no cap, because the launch line in the log looks correct.
@@ -1001,6 +1006,39 @@ try {
     // session accumulated from what the ORIGIN keeps, which no process-memory gauge can see.
     const storageAtEnd = await readStorageCensus(session.page).catch((e) => ({ error: String(e).slice(0, 150) }));
     run.note({ __storageCensus: true, when: 'arm-end', ...storageAtEnd });
+
+    /**
+     * DRAW-SMOKE-01, planted AFTER the arm-end census and before the refresh below, so it rides the
+     * page reload that is already happening rather than adding one. A canary tester draws a trendline
+     * and a level, refreshes, and expects both back where they were; that is the first thing tried on
+     * day one and nothing in the pre-fire chain looks at it. The unit gate that covers this
+     * (`drawing-market-time-persist.test.mjs`) is STATIC_SOURCE -- it calls one serializer with a mock
+     * and never opens a browser.
+     */
+    let plantedDrawings = [];
+    if (DRAWINGS_SMOKE) {
+      try {
+        const plant = await plantDrawings(session.page, { log });
+        plantedDrawings = plant.planted;
+        run.note({
+          __drawingsPlanted: true,
+          at: new Date().toISOString(),
+          planted: plant.planted,
+          refusals: plant.refusals,
+          panelsSeen: plant.panelsSeen,
+          note: 'Storage written between the arm-end census and the post-refresh census. Any '
+            + 'endToPostRefresh storage delta includes these bytes; they are named here so the '
+            + 'retention figure can be corrected rather than guessed at.',
+        });
+        if (!plant.planted.length) {
+          log(`drawings-smoke: NOTHING PLANTED across ${plant.panelsSeen} frame(s) — `
+            + `${plant.refusals.map((r) => r.state).join(',') || 'no refusal recorded'}`);
+        }
+      } catch (err) {
+        run.note({ __drawingsPlanted: true, failed: true, why: String(err).slice(0, 200) });
+      }
+    }
+
     let storageAfterRefresh = null;
     try {
       await session.page.reload({ waitUntil: 'domcontentloaded', timeout: 120000 });
@@ -1045,6 +1083,25 @@ try {
         method: 'canvas pixel sampling for non-uniformity; a blank canvas is one colour. Bars present in an array is NOT paint.',
       });
       log(`post-refresh paint: ${painted.length}/${withChart.length} panels painted`);
+
+      // The other half of DRAW-SMOKE-01: the same refresh, read back.
+      if (DRAWINGS_SMOKE) {
+        const back = await readDrawings(session.page, { expectIds: plantedDrawings.map((d) => d.id) });
+        const graded = gradeDrawingsPersistence(plantedDrawings, back.frames);
+        run.note({
+          __drawingsPersist: true,
+          at: new Date().toISOString(),
+          ...graded,
+          waitedMsForLoad: back.waitedMs,
+          panelsRead: back.frames.map((f) => ({
+            panelId: f.panelId, timeframe: f.timeframe, fileId: f.fileId, drawings: f.drawings.length,
+          })),
+          scopeNote: 'Drawings are keyed on fileId + session, never on panel letter, and this soak is '
+            + 'same-symbol. A drawing appearing on every panel is therefore CORRECT, not a leak; '
+            + '"the correct panel" is asserted as present-on-the-panel-it-was-drawn-on.',
+        });
+        log(`drawings-smoke: ${graded.state} — ${graded.verdict}`);
+      }
     } catch (err) {
       run.note({ __storageCensus: true, when: 'post-refresh', failed: true, why: String(err).slice(0, 160) });
     }
