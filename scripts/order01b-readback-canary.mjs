@@ -55,6 +55,7 @@ import { armHeapCyclePoWorkload } from './lib/heap-cycle-po-workload.mjs';
 import {
   prepareRealmsForWindow,
   probeArmedPositions,
+  probeFocusAndGovernor,
   probeRealmCensus,
   sampleRealmsOverWindow,
   seedSessionStartFromLoadedData,
@@ -506,9 +507,50 @@ async function main() {
     // test, so it cannot also be the evidence that replay was moving: a zero
     // from a stopped replay and a zero from a broken meter are different
     // findings and only the playhead separates them.
+    // Focus and the governor's reference timeframe, on both sides of the window.
+    // The PO found the governor taking wall-seconds-per-bar from the FOCUSED
+    // panel's timeframe rather than the minimum displayed, so a rate measured
+    // without recording focus is a reading of wherever the pointer last landed.
+    const focusBefore = await page.evaluate(probeFocusAndGovernor);
+    observed.focusBefore = focusBefore;
+    console.log(`    --- focus and governor reference, before the window ---`);
+    console.log(`        focused panel: ${focusBefore.focusedPanel}`
+      + `  focusedTF=${focusBefore.focusedTimeframeSeconds}s`
+      + `  minDisplayedTF=${focusBefore.minDisplayedTimeframeSeconds}s`
+      + `  maxDisplayedTF=${focusBefore.maxDisplayedTimeframeSeconds}s`);
+    for (const r of focusBefore.rows) {
+      console.log(`        ${String(r.realm).padEnd(12)} tf=${String(r.currentTimeframe).padEnd(5)}`
+        + ` govRefTF=${String(r.chartTimeframeSeconds).padEnd(6)} step=${String(r.stepSeconds).padEnd(6)}`
+        + ` floor=${String(r.dataFloorSeconds).padEnd(6)} speed=${String(r.speed).padEnd(5)}`
+        + ` sessionStartIndex=${String(r.sessionStartIndex).padEnd(6)} of ${String(r.rawBars).padEnd(6)}`
+        + ` floorPinnedToEnd=${r.floorPinnedToEnd}`);
+    }
+
     const truth = await page.evaluate(sampleRealmsOverWindow, { sampleMs: SAMPLE_MS, sliceMs: SLICE_MS });
     observed.playhead = truth.rows;
     observed.window = { seconds: truth.windowSeconds, sliceSeconds: truth.sliceSeconds, slices: truth.slices };
+
+    const focusAfter = await page.evaluate(probeFocusAndGovernor);
+    observed.focusAfter = focusAfter;
+    check(focusBefore.focusedPanel === focusAfter.focusedPanel,
+      'focus did not move during the window',
+      focusBefore.focusedPanel === focusAfter.focusedPanel
+        ? `focus held on ${focusAfter.focusedPanel} for the whole window`
+        : `FOCUS_MOVED_MID_WINDOW: ${focusBefore.focusedPanel} -> ${focusAfter.focusedPanel}`);
+
+    // Recorded as a finding rather than asserted: if the governor's reference is
+    // the focused panel's timeframe and that is not the finest one displayed, the
+    // rate every panel is held to was set by a click.
+    const refIsFocusNotMin = Number.isFinite(focusBefore.focusedTimeframeSeconds)
+      && Number.isFinite(focusBefore.minDisplayedTimeframeSeconds)
+      && focusBefore.focusedTimeframeSeconds !== focusBefore.minDisplayedTimeframeSeconds;
+    observed.governorReference = {
+      focusedPanel: focusBefore.focusedPanel,
+      focusedTimeframeSeconds: focusBefore.focusedTimeframeSeconds,
+      minDisplayedTimeframeSeconds: focusBefore.minDisplayedTimeframeSeconds,
+      state: refIsFocusNotMin ? 'FOCUSED_TF_IS_NOT_MIN_DISPLAYED' : 'FOCUSED_TF_EQUALS_MIN_DISPLAYED',
+    };
+    console.log(`    governor reference: ${observed.governorReference.state}`);
 
     // A realm that was never asked to play and one that refuses to play look
     // the same from outside. Ask the ones that are idle, once, and see.

@@ -1,20 +1,289 @@
 {
   "signature": "TALARIA_ORDER01B_READBACK_CANARY_V1",
-  "at": "2026-08-02T20:12:28.840Z",
+  "at": "2026-08-03T23:00:15.674Z",
   "condition": {
     "speed": 10,
     "step": "1s",
     "stepSeconds": 1
   },
+  "evidenceClasses": {
+    "servedEngineMarkers": "STATIC_BYTES_PRECONDITION",
+    "rateReadBack": "OBSERVED_BEHAVIOUR",
+    "workloadReplayFigures": "CONFIGURED_INTENT_NOT_A_READING",
+    "playheadAdvance": "OBSERVED_BEHAVIOUR",
+    "note": "A pass requires observed.readBack. Markers present with no reading is ENGINE_PRESENT_BEHAVIOUR_UNOBSERVED, and workload.panels[].replay is configured intent rather than a read-back — neither is a pass.",
+    "readBackAttempted": "see observed.readBack; absent means the probe did not run, which is not the same as the field being absent"
+  },
+  "window": {
+    "seconds": 60.01,
+    "sliceSeconds": 10,
+    "slices": [
+      {
+        "sliceSeconds": 10,
+        "perRealm": [
+          {
+            "realm": "top",
+            "playing": false,
+            "marketSecAdvanced": 5,
+            "marketPerWall": 0.5,
+            "rawBars": 3504,
+            "currentIndex": 1881,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": false,
+            "marketSecAdvanced": 5,
+            "marketPerWall": 0.5,
+            "rawBars": 3504,
+            "currentIndex": 1881,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": false,
+            "marketSecAdvanced": 5,
+            "marketPerWall": 0.5,
+            "rawBars": 3504,
+            "currentIndex": 1881,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": false,
+            "marketSecAdvanced": 5,
+            "marketPerWall": 0.5,
+            "rawBars": 3504,
+            "currentIndex": 1881,
+            "barsLost": 0
+          }
+        ]
+      },
+      {
+        "sliceSeconds": 10,
+        "perRealm": [
+          {
+            "realm": "top",
+            "playing": false,
+            "marketSecAdvanced": 0,
+            "marketPerWall": 0,
+            "rawBars": 3504,
+            "currentIndex": 1881,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": false,
+            "marketSecAdvanced": 0,
+            "marketPerWall": 0,
+            "rawBars": 3504,
+            "currentIndex": 1881,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": false,
+            "marketSecAdvanced": 0,
+            "marketPerWall": 0,
+            "rawBars": 3504,
+            "currentIndex": 1881,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": false,
+            "marketSecAdvanced": 0,
+            "marketPerWall": 0,
+            "rawBars": 3504,
+            "currentIndex": 1881,
+            "barsLost": 0
+          }
+        ]
+      },
+      {
+        "sliceSeconds": 10,
+        "perRealm": [
+          {
+            "realm": "top",
+            "playing": false,
+            "marketSecAdvanced": 0,
+            "marketPerWall": 0,
+            "rawBars": 3504,
+            "currentIndex": 1881,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": false,
+            "marketSecAdvanced": 0,
+            "marketPerWall": 0,
+            "rawBars": 3504,
+            "currentIndex": 1881,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": false,
+            "marketSecAdvanced": 0,
+            "marketPerWall": 0,
+            "rawBars": 3504,
+            "currentIndex": 1881,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": false,
+            "marketSecAdvanced": 0,
+            "marketPerWall": 0,
+            "rawBars": 3504,
+            "currentIndex": 1881,
+            "barsLost": 0
+          }
+        ]
+      },
+      {
+        "sliceSeconds": 10,
+        "perRealm": [
+          {
+            "realm": "top",
+            "playing": false,
+            "marketSecAdvanced": 0,
+            "marketPerWall": 0,
+            "rawBars": 3504,
+            "currentIndex": 1881,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": false,
+            "marketSecAdvanced": 0,
+            "marketPerWall": 0,
+            "rawBars": 3504,
+            "currentIndex": 1881,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": false,
+            "marketSecAdvanced": 0,
+            "marketPerWall": 0,
+            "rawBars": 3504,
+            "currentIndex": 1881,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": false,
+            "marketSecAdvanced": 0,
+            "marketPerWall": 0,
+            "rawBars": 3504,
+            "currentIndex": 1881,
+            "barsLost": 0
+          }
+        ]
+      },
+      {
+        "sliceSeconds": 10,
+        "perRealm": [
+          {
+            "realm": "top",
+            "playing": false,
+            "marketSecAdvanced": 0,
+            "marketPerWall": 0,
+            "rawBars": 3504,
+            "currentIndex": 1881,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": false,
+            "marketSecAdvanced": 0,
+            "marketPerWall": 0,
+            "rawBars": 3504,
+            "currentIndex": 1881,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": false,
+            "marketSecAdvanced": 0,
+            "marketPerWall": 0,
+            "rawBars": 3504,
+            "currentIndex": 1881,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": false,
+            "marketSecAdvanced": 0,
+            "marketPerWall": 0,
+            "rawBars": 3504,
+            "currentIndex": 1881,
+            "barsLost": 0
+          }
+        ]
+      },
+      {
+        "sliceSeconds": 10,
+        "perRealm": [
+          {
+            "realm": "top",
+            "playing": false,
+            "marketSecAdvanced": 0,
+            "marketPerWall": 0,
+            "rawBars": 3504,
+            "currentIndex": 1881,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": false,
+            "marketSecAdvanced": 0,
+            "marketPerWall": 0,
+            "rawBars": 3504,
+            "currentIndex": 1881,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": false,
+            "marketSecAdvanced": 0,
+            "marketPerWall": 0,
+            "rawBars": 3504,
+            "currentIndex": 1881,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": false,
+            "marketSecAdvanced": 0,
+            "marketPerWall": 0,
+            "rawBars": 3504,
+            "currentIndex": 1881,
+            "barsLost": 0
+          }
+        ]
+      }
+    ]
+  },
+  "runLock": {
+    "state": "LOCK_ACQUIRED",
+    "pid": 24892
+  },
   "verdict": {
     "state": "SHELL_PLAY_OVERRIDE_INERT",
-    "why": "top: play() as installed on the instance started nothing across 2 attempts, while the engine's own play on the same object started playback with a live timer. The engine is fine; the entry point in front of it is not. Identity of the override is in observed.playIdentity."
+    "why": "top: play() as installed on the instance started nothing across 2 attempts, while the engine's own play on the same object started playback with a live timer. The engine is fine; the entry point in front of it is not. Identity of the override is in observed.playIdentity. The read-back itself was still probed and is in observed.readBack."
   },
   "checks": [
     {
       "ok": true,
+      "label": "the tree was clean, so this artifact is reproducible from HEAD",
+      "detail": "clean at 2f548462d"
+    },
+    {
+      "ok": true,
       "label": "the served engine could be read back over the wire",
-      "detail": "http://127.0.0.1:56994/chart/modules/replay-system.js?v=20260802b124 (545015 bytes)"
+      "detail": "http://127.0.0.1:60241/chart/modules/replay-system.js?v=20260803b126 (545015 bytes)"
     },
     {
       "ok": true,
@@ -23,8 +292,13 @@
     },
     {
       "ok": true,
-      "label": "replay is armed and playing",
-      "detail": "playing=3"
+      "label": "every realm got a session start inside its own data",
+      "detail": "4 realms, least runway 3599 bars"
+    },
+    {
+      "ok": false,
+      "label": "replay is armed and playing in every panel",
+      "detail": "playing=3 of 4 required (helper default is 3; this run required 4)"
     },
     {
       "ok": true,
@@ -32,26 +306,122 @@
       "detail": "no refusals"
     },
     {
-      "ok": false,
-      "label": "replay actually moved during the reading window",
-      "detail": "0s of market time"
+      "ok": true,
+      "label": "no realm was pinned at its own rollback floor",
+      "detail": "every realm could be rewound if it needed to be"
     },
     {
       "ok": true,
+      "label": "every realm finished loading before the workload was armed",
+      "detail": "settled after 6037ms — bars 4000/4000/4000/4000"
+    },
+    {
+      "ok": true,
+      "label": "every realm had runway to step into before the window opened",
+      "detail": "all 4 realms >= 120 bars from their loaded edge"
+    },
+    {
+      "ok": false,
+      "label": "every realm is playing, so this is a four-panel reading",
+      "detail": "WORKLOAD_INCOMPLETE: panel=would-not-start, panel=would-not-start, panel=would-not-start"
+    },
+    {
+      "ok": false,
+      "label": "play() as installed started every realm it was asked to",
+      "detail": "SHELL_PLAY_OVERRIDE_INERT on: top (started via prototype instead)"
+    },
+    {
+      "ok": true,
+      "label": "focus did not move during the window",
+      "detail": "focus held on host:body for the whole window"
+    },
+    {
+      "ok": false,
+      "label": "the bar series each realm was measured on did not change size under it",
+      "detail": "SERIES_REPLACED_MID_RUN: top lost 496 bars (4000->3504->3504->3504->3504->3504->3504); panel lost 496 bars (4000->3504->3504->3504->3504->3504->3504); panel lost 496 bars (4000->3504->3504->3504->3504->3504->3504); panel lost 496 bars (4000->3504->3504->3504->3504->3504->3504)"
+    },
+    {
+      "ok": false,
+      "label": "no realm sat still for a whole slice inside the window",
+      "detail": "STALLED_SLICE: top@slice2, top@slice3, top@slice4, top@slice5, top@slice6, panel@slice2"
+    },
+    {
+      "ok": true,
+      "label": "replay actually moved during the reading window",
+      "detail": "5s of market time over 60.01s"
+    },
+    {
+      "ok": false,
       "label": "no realm stopped playing during the window",
-      "detail": "all realms still playing"
+      "detail": "top after 5s"
+    },
+    {
+      "ok": true,
+      "label": "__talariaEffectiveRate reads back a finite number on the harness frame",
+      "detail": "type=number value=10.0119189511323"
+    },
+    {
+      "ok": true,
+      "label": "the reading is a live rate, not a zero placeholder",
+      "detail": "10.0119189511323"
+    },
+    {
+      "ok": true,
+      "label": "the reading names its unit, and the unit is market seconds per wall second",
+      "detail": "unit=market-seconds-per-wall-second"
+    },
+    {
+      "ok": true,
+      "label": "the reading equals speed x step, within governor tolerance",
+      "detail": "expected ~10 (10 x 1s), saw 10.0119189511323, ratio 1.001"
+    },
+    {
+      "ok": true,
+      "label": "panel frames publish too, or there are no panel frames",
+      "detail": "3 of 3 panel frames"
     }
   ],
   "observed": {
     "pageErrors": [
       "console: Failed to load resource: the server responded with a status of 404 (Not Found)",
-      "console: WebSocket connection to 'ws://127.0.0.1:56994/ws/support' failed: Error during WebSocket handshake: Unexpected response code: 404",
+      "console: WebSocket connection to 'ws://127.0.0.1:60241/ws/support' failed: Error during WebSocket handshake: Unexpected response code: 404",
       "console: Failed to load resource: the server responded with a status of 404 (Not Found)"
     ],
+    "settle": {
+      "settled": true,
+      "waitedMs": 6037,
+      "census": [
+        {
+          "realm": "top",
+          "hasReplay": true,
+          "rawBars": 4000,
+          "panLoading": false
+        },
+        {
+          "realm": "panel",
+          "hasReplay": true,
+          "rawBars": 4000,
+          "panLoading": false
+        },
+        {
+          "realm": "panel",
+          "hasReplay": true,
+          "rawBars": 4000,
+          "panLoading": false
+        },
+        {
+          "realm": "panel",
+          "hasReplay": true,
+          "rawBars": 4000,
+          "panLoading": false
+        }
+      ],
+      "polls": 3
+    },
     "servedEngine": {
       "fetched": true,
       "urls": [
-        "http://127.0.0.1:56994/chart/modules/replay-system.js?v=20260802b124"
+        "http://127.0.0.1:60241/chart/modules/replay-system.js?v=20260803b126"
       ],
       "bytes": 545015,
       "present": [
@@ -62,9 +432,59 @@
       ],
       "missing": []
     },
+    "provenance": {
+      "headSha": "2f548462d",
+      "headSubject": "soak(C): the hour-0 endpoint becomes the canonical settled floor, with its validity checklist inline",
+      "dirtyGovernedPaths": [],
+      "governedBy": "clean-build-tree-guard",
+      "buildIdOnDisk": "20260803b126",
+      "distV9BuildIdOnDisk": "20260803b126",
+      "swVersionOnDisk": "talaria-chart-20260803b126",
+      "distV9Mtime": "2026-08-03T09:52:50.176Z",
+      "buildIdInPage": "20260803b126"
+    },
+    "sessionSeed": {
+      "fractionIn": 0.1,
+      "realms": [
+        {
+          "realm": "top",
+          "state": "SEEDED",
+          "bars": 4000,
+          "index": 400,
+          "runwayBars": 3599,
+          "startDate": "2026-08-01T10:59:00.000Z"
+        },
+        {
+          "realm": "panel",
+          "state": "SEEDED",
+          "bars": 4000,
+          "index": 400,
+          "runwayBars": 3599,
+          "startDate": "2026-08-01T10:59:00.000Z"
+        },
+        {
+          "realm": "panel",
+          "state": "SEEDED",
+          "bars": 4000,
+          "index": 400,
+          "runwayBars": 3599,
+          "startDate": "2026-08-01T10:59:00.000Z"
+        },
+        {
+          "realm": "panel",
+          "state": "SEEDED",
+          "bars": 4000,
+          "index": 400,
+          "runwayBars": 3599,
+          "startDate": "2026-08-01T10:59:00.000Z"
+        }
+      ]
+    },
     "workload": {
-      "armed": true,
+      "armed": false,
       "observedPlaying": 3,
+      "playingRequired": 4,
+      "playingArmedCount": 3,
       "stepRefusals": [],
       "panels": [
         {
@@ -82,6 +502,10 @@
             "stepSetError": null,
             "stepHonoured": true,
             "marketSecondsPerWallSecond": 10
+          },
+          "playing": {
+            "ok": false,
+            "isPlaying": false
           }
         },
         {
@@ -99,6 +523,10 @@
             "stepSetError": null,
             "stepHonoured": true,
             "marketSecondsPerWallSecond": 10
+          },
+          "playing": {
+            "ok": true,
+            "isPlaying": true
           }
         },
         {
@@ -116,6 +544,10 @@
             "stepSetError": null,
             "stepHonoured": true,
             "marketSecondsPerWallSecond": 10
+          },
+          "playing": {
+            "ok": true,
+            "isPlaying": true
           }
         },
         {
@@ -133,6 +565,10 @@
             "stepSetError": null,
             "stepHonoured": true,
             "marketSecondsPerWallSecond": 10
+          },
+          "playing": {
+            "ok": true,
+            "isPlaying": true
           }
         }
       ]
@@ -141,45 +577,227 @@
       {
         "realm": "top",
         "currentIndex": 1880,
-        "rawBars": 1881,
-        "fromEnd": 0,
-        "playing": false
+        "rawBars": 2000,
+        "fromEnd": 119,
+        "playing": false,
+        "sessionStartIndex": 1774,
+        "floorPinnedToEnd": false
       },
       {
         "realm": "panel",
-        "currentIndex": 2724,
+        "currentIndex": 205,
         "rawBars": 4000,
-        "fromEnd": 1275,
-        "playing": true
+        "fromEnd": 3794,
+        "playing": true,
+        "sessionStartIndex": 0,
+        "floorPinnedToEnd": false
       },
       {
         "realm": "panel",
-        "currentIndex": 2724,
+        "currentIndex": 205,
         "rawBars": 4000,
-        "fromEnd": 1275,
-        "playing": true
+        "fromEnd": 3794,
+        "playing": true,
+        "sessionStartIndex": 0,
+        "floorPinnedToEnd": false
       },
       {
         "realm": "panel",
-        "currentIndex": 2724,
+        "currentIndex": 205,
         "rawBars": 4000,
-        "fromEnd": 1275,
-        "playing": true
+        "fromEnd": 3794,
+        "playing": true,
+        "sessionStartIndex": 0,
+        "floorPinnedToEnd": false
       }
     ],
+    "prep": [
+      {
+        "realm": "top",
+        "state": "PREPARED",
+        "before": {
+          "rawBars": 2000,
+          "currentIndex": 1880,
+          "fromEnd": 119,
+          "playing": false,
+          "sessionStartIndex": 1774
+        },
+        "seekedTo": 1879,
+        "seekHeld": true,
+        "runwayBlocked": null,
+        "startedVia": "prototype-fallback",
+        "after": {
+          "rawBars": 3504,
+          "currentIndex": 1880,
+          "fromEnd": 1623,
+          "playing": true,
+          "stepSeconds": 1,
+          "sessionStartIndex": 1775
+        },
+        "asked": {
+          "speed": 10,
+          "step": 1
+        }
+      },
+      {
+        "realm": "panel",
+        "state": "PREPARED",
+        "before": {
+          "rawBars": 3504,
+          "currentIndex": 1880,
+          "fromEnd": 1623,
+          "playing": false,
+          "sessionStartIndex": 0
+        },
+        "seekedTo": null,
+        "seekHeld": null,
+        "runwayBlocked": null,
+        "startedVia": "would-not-start",
+        "after": {
+          "rawBars": 3504,
+          "currentIndex": 1880,
+          "fromEnd": 1623,
+          "playing": false,
+          "stepSeconds": 1,
+          "sessionStartIndex": 0
+        },
+        "asked": {
+          "speed": 10,
+          "step": 1
+        }
+      },
+      {
+        "realm": "panel",
+        "state": "PREPARED",
+        "before": {
+          "rawBars": 3504,
+          "currentIndex": 1880,
+          "fromEnd": 1623,
+          "playing": false,
+          "sessionStartIndex": 0
+        },
+        "seekedTo": null,
+        "seekHeld": null,
+        "runwayBlocked": null,
+        "startedVia": "would-not-start",
+        "after": {
+          "rawBars": 3504,
+          "currentIndex": 1880,
+          "fromEnd": 1623,
+          "playing": false,
+          "stepSeconds": 1,
+          "sessionStartIndex": 0
+        },
+        "asked": {
+          "speed": 10,
+          "step": 1
+        }
+      },
+      {
+        "realm": "panel",
+        "state": "PREPARED",
+        "before": {
+          "rawBars": 3504,
+          "currentIndex": 1880,
+          "fromEnd": 1623,
+          "playing": false,
+          "sessionStartIndex": 0
+        },
+        "seekedTo": null,
+        "seekHeld": null,
+        "runwayBlocked": null,
+        "startedVia": "would-not-start",
+        "after": {
+          "rawBars": 3504,
+          "currentIndex": 1880,
+          "fromEnd": 1623,
+          "playing": false,
+          "stepSeconds": 1,
+          "sessionStartIndex": 0
+        },
+        "asked": {
+          "speed": 10,
+          "step": 1
+        }
+      }
+    ],
+    "focusBefore": {
+      "focusedPanel": "host:body",
+      "focusedTimeframeSeconds": null,
+      "minDisplayedTimeframeSeconds": 60,
+      "maxDisplayedTimeframeSeconds": 60,
+      "rows": [
+        {
+          "realm": "top",
+          "state": "READ",
+          "currentTimeframe": "1m",
+          "chartTimeframeSeconds": 60,
+          "stepSeconds": 1,
+          "dataFloorSeconds": 60,
+          "speed": 10,
+          "sessionStartIndex": 1775,
+          "rawBars": 3504,
+          "currentIndex": 1880,
+          "hasFocus": true,
+          "floorPinnedToEnd": false
+        },
+        {
+          "realm": "panel",
+          "state": "READ",
+          "currentTimeframe": "1m",
+          "chartTimeframeSeconds": 60,
+          "stepSeconds": 1,
+          "dataFloorSeconds": 60,
+          "speed": 10,
+          "sessionStartIndex": 0,
+          "rawBars": 3504,
+          "currentIndex": 1880,
+          "hasFocus": false,
+          "floorPinnedToEnd": false
+        },
+        {
+          "realm": "panel",
+          "state": "READ",
+          "currentTimeframe": "1m",
+          "chartTimeframeSeconds": 60,
+          "stepSeconds": 1,
+          "dataFloorSeconds": 60,
+          "speed": 10,
+          "sessionStartIndex": 0,
+          "rawBars": 3504,
+          "currentIndex": 1880,
+          "hasFocus": false,
+          "floorPinnedToEnd": false
+        },
+        {
+          "realm": "panel",
+          "state": "READ",
+          "currentTimeframe": "1m",
+          "chartTimeframeSeconds": 60,
+          "stepSeconds": 1,
+          "dataFloorSeconds": 60,
+          "speed": 10,
+          "sessionStartIndex": 0,
+          "rawBars": 3504,
+          "currentIndex": 1880,
+          "hasFocus": false,
+          "floorPinnedToEnd": false
+        }
+      ]
+    },
     "playhead": [
       {
         "realm": "top",
-        "playingBefore": false,
+        "playingBefore": true,
         "playingAfter": false,
-        "marketSecAdvanced": 0,
-        "marketPerWall": 0,
+        "marketSecAdvanced": 5,
+        "marketPerWall": 0.08,
         "diagnosis": {
           "active": true,
           "mode": "candle",
-          "currentIndex": 1880,
-          "rawBars": 1881,
-          "atLastBar": true,
+          "currentIndex": 1881,
+          "rawBars": 3504,
+          "atLastBar": false,
           "noOpAtEnd": false,
           "subBarMode": true,
           "edgeWait": false,
@@ -189,9 +807,9 @@
           "hidden": false,
           "timer": false,
           "interval": false,
-          "edgeWaits": null,
+          "edgeWaits": 0,
           "probeRetries": 0,
-          "panLoading": true,
+          "panLoading": false,
           "fileId": 25,
           "sessionEnd": null,
           "playheadAtSessionEnd": null
@@ -199,29 +817,414 @@
       },
       {
         "realm": "panel",
-        "playingBefore": true,
-        "playingAfter": true,
-        "marketSecAdvanced": 80,
-        "marketPerWall": 10,
-        "diagnosis": null
+        "playingBefore": false,
+        "playingAfter": false,
+        "marketSecAdvanced": 5,
+        "marketPerWall": 0.08,
+        "diagnosis": {
+          "active": true,
+          "mode": "candle",
+          "currentIndex": 1881,
+          "rawBars": 3504,
+          "atLastBar": false,
+          "noOpAtEnd": false,
+          "subBarMode": true,
+          "edgeWait": false,
+          "hasMoreRight": true,
+          "windowBlocked": false,
+          "playStarting": false,
+          "hidden": false,
+          "timer": false,
+          "interval": false,
+          "edgeWaits": 0,
+          "probeRetries": 0,
+          "panLoading": false,
+          "fileId": "25",
+          "sessionEnd": null,
+          "playheadAtSessionEnd": null
+        }
       },
       {
         "realm": "panel",
-        "playingBefore": true,
-        "playingAfter": true,
-        "marketSecAdvanced": 80,
-        "marketPerWall": 10,
-        "diagnosis": null
+        "playingBefore": false,
+        "playingAfter": false,
+        "marketSecAdvanced": 5,
+        "marketPerWall": 0.08,
+        "diagnosis": {
+          "active": true,
+          "mode": "candle",
+          "currentIndex": 1881,
+          "rawBars": 3504,
+          "atLastBar": false,
+          "noOpAtEnd": false,
+          "subBarMode": true,
+          "edgeWait": false,
+          "hasMoreRight": true,
+          "windowBlocked": false,
+          "playStarting": false,
+          "hidden": false,
+          "timer": false,
+          "interval": false,
+          "edgeWaits": 0,
+          "probeRetries": 0,
+          "panLoading": false,
+          "fileId": "25",
+          "sessionEnd": null,
+          "playheadAtSessionEnd": null
+        }
       },
       {
         "realm": "panel",
-        "playingBefore": true,
-        "playingAfter": true,
-        "marketSecAdvanced": 80,
-        "marketPerWall": 10,
-        "diagnosis": null
+        "playingBefore": false,
+        "playingAfter": false,
+        "marketSecAdvanced": 5,
+        "marketPerWall": 0.08,
+        "diagnosis": {
+          "active": true,
+          "mode": "candle",
+          "currentIndex": 1881,
+          "rawBars": 3504,
+          "atLastBar": false,
+          "noOpAtEnd": false,
+          "subBarMode": true,
+          "edgeWait": false,
+          "hasMoreRight": true,
+          "windowBlocked": false,
+          "playStarting": false,
+          "hidden": false,
+          "timer": false,
+          "interval": false,
+          "edgeWaits": 0,
+          "probeRetries": 0,
+          "panLoading": false,
+          "fileId": "25",
+          "sessionEnd": null,
+          "playheadAtSessionEnd": null
+        }
       }
     ],
+    "window": {
+      "seconds": 60.01,
+      "sliceSeconds": 10,
+      "slices": [
+        {
+          "sliceSeconds": 10,
+          "perRealm": [
+            {
+              "realm": "top",
+              "playing": false,
+              "marketSecAdvanced": 5,
+              "marketPerWall": 0.5,
+              "rawBars": 3504,
+              "currentIndex": 1881,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": false,
+              "marketSecAdvanced": 5,
+              "marketPerWall": 0.5,
+              "rawBars": 3504,
+              "currentIndex": 1881,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": false,
+              "marketSecAdvanced": 5,
+              "marketPerWall": 0.5,
+              "rawBars": 3504,
+              "currentIndex": 1881,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": false,
+              "marketSecAdvanced": 5,
+              "marketPerWall": 0.5,
+              "rawBars": 3504,
+              "currentIndex": 1881,
+              "barsLost": 0
+            }
+          ]
+        },
+        {
+          "sliceSeconds": 10,
+          "perRealm": [
+            {
+              "realm": "top",
+              "playing": false,
+              "marketSecAdvanced": 0,
+              "marketPerWall": 0,
+              "rawBars": 3504,
+              "currentIndex": 1881,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": false,
+              "marketSecAdvanced": 0,
+              "marketPerWall": 0,
+              "rawBars": 3504,
+              "currentIndex": 1881,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": false,
+              "marketSecAdvanced": 0,
+              "marketPerWall": 0,
+              "rawBars": 3504,
+              "currentIndex": 1881,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": false,
+              "marketSecAdvanced": 0,
+              "marketPerWall": 0,
+              "rawBars": 3504,
+              "currentIndex": 1881,
+              "barsLost": 0
+            }
+          ]
+        },
+        {
+          "sliceSeconds": 10,
+          "perRealm": [
+            {
+              "realm": "top",
+              "playing": false,
+              "marketSecAdvanced": 0,
+              "marketPerWall": 0,
+              "rawBars": 3504,
+              "currentIndex": 1881,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": false,
+              "marketSecAdvanced": 0,
+              "marketPerWall": 0,
+              "rawBars": 3504,
+              "currentIndex": 1881,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": false,
+              "marketSecAdvanced": 0,
+              "marketPerWall": 0,
+              "rawBars": 3504,
+              "currentIndex": 1881,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": false,
+              "marketSecAdvanced": 0,
+              "marketPerWall": 0,
+              "rawBars": 3504,
+              "currentIndex": 1881,
+              "barsLost": 0
+            }
+          ]
+        },
+        {
+          "sliceSeconds": 10,
+          "perRealm": [
+            {
+              "realm": "top",
+              "playing": false,
+              "marketSecAdvanced": 0,
+              "marketPerWall": 0,
+              "rawBars": 3504,
+              "currentIndex": 1881,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": false,
+              "marketSecAdvanced": 0,
+              "marketPerWall": 0,
+              "rawBars": 3504,
+              "currentIndex": 1881,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": false,
+              "marketSecAdvanced": 0,
+              "marketPerWall": 0,
+              "rawBars": 3504,
+              "currentIndex": 1881,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": false,
+              "marketSecAdvanced": 0,
+              "marketPerWall": 0,
+              "rawBars": 3504,
+              "currentIndex": 1881,
+              "barsLost": 0
+            }
+          ]
+        },
+        {
+          "sliceSeconds": 10,
+          "perRealm": [
+            {
+              "realm": "top",
+              "playing": false,
+              "marketSecAdvanced": 0,
+              "marketPerWall": 0,
+              "rawBars": 3504,
+              "currentIndex": 1881,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": false,
+              "marketSecAdvanced": 0,
+              "marketPerWall": 0,
+              "rawBars": 3504,
+              "currentIndex": 1881,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": false,
+              "marketSecAdvanced": 0,
+              "marketPerWall": 0,
+              "rawBars": 3504,
+              "currentIndex": 1881,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": false,
+              "marketSecAdvanced": 0,
+              "marketPerWall": 0,
+              "rawBars": 3504,
+              "currentIndex": 1881,
+              "barsLost": 0
+            }
+          ]
+        },
+        {
+          "sliceSeconds": 10,
+          "perRealm": [
+            {
+              "realm": "top",
+              "playing": false,
+              "marketSecAdvanced": 0,
+              "marketPerWall": 0,
+              "rawBars": 3504,
+              "currentIndex": 1881,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": false,
+              "marketSecAdvanced": 0,
+              "marketPerWall": 0,
+              "rawBars": 3504,
+              "currentIndex": 1881,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": false,
+              "marketSecAdvanced": 0,
+              "marketPerWall": 0,
+              "rawBars": 3504,
+              "currentIndex": 1881,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": false,
+              "marketSecAdvanced": 0,
+              "marketPerWall": 0,
+              "rawBars": 3504,
+              "currentIndex": 1881,
+              "barsLost": 0
+            }
+          ]
+        }
+      ]
+    },
+    "focusAfter": {
+      "focusedPanel": "host:body",
+      "focusedTimeframeSeconds": null,
+      "minDisplayedTimeframeSeconds": 60,
+      "maxDisplayedTimeframeSeconds": 60,
+      "rows": [
+        {
+          "realm": "top",
+          "state": "READ",
+          "currentTimeframe": "1m",
+          "chartTimeframeSeconds": 60,
+          "stepSeconds": 1,
+          "dataFloorSeconds": 60,
+          "speed": 10,
+          "sessionStartIndex": 1775,
+          "rawBars": 3504,
+          "currentIndex": 1881,
+          "hasFocus": true,
+          "floorPinnedToEnd": false
+        },
+        {
+          "realm": "panel",
+          "state": "READ",
+          "currentTimeframe": "1m",
+          "chartTimeframeSeconds": 60,
+          "stepSeconds": 1,
+          "dataFloorSeconds": 60,
+          "speed": 10,
+          "sessionStartIndex": 0,
+          "rawBars": 3504,
+          "currentIndex": 1881,
+          "hasFocus": false,
+          "floorPinnedToEnd": false
+        },
+        {
+          "realm": "panel",
+          "state": "READ",
+          "currentTimeframe": "1m",
+          "chartTimeframeSeconds": 60,
+          "stepSeconds": 1,
+          "dataFloorSeconds": 60,
+          "speed": 10,
+          "sessionStartIndex": 0,
+          "rawBars": 3504,
+          "currentIndex": 1881,
+          "hasFocus": false,
+          "floorPinnedToEnd": false
+        },
+        {
+          "realm": "panel",
+          "state": "READ",
+          "currentTimeframe": "1m",
+          "chartTimeframeSeconds": 60,
+          "stepSeconds": 1,
+          "dataFloorSeconds": 60,
+          "speed": 10,
+          "sessionStartIndex": 0,
+          "rawBars": 3504,
+          "currentIndex": 1881,
+          "hasFocus": false,
+          "floorPinnedToEnd": false
+        }
+      ]
+    },
+    "governorReference": {
+      "focusedPanel": "host:body",
+      "focusedTimeframeSeconds": null,
+      "minDisplayedTimeframeSeconds": 60,
+      "state": "FOCUSED_TF_EQUALS_MIN_DISPLAYED"
+    },
     "revived": [
       {
         "realm": "top",
@@ -230,19 +1233,27 @@
             "attempt": 1,
             "playing": false,
             "timer": false,
-            "advancedSec": 0
+            "advancedSec": 0,
+            "isPlayStartingOnReturn": false,
+            "playStartRafScheduled": false,
+            "isPlayStartingAfterSettle": false
           },
           {
             "attempt": 2,
             "playing": false,
             "timer": false,
-            "advancedSec": 0
+            "advancedSec": 0,
+            "isPlayStartingOnReturn": false,
+            "playStartRafScheduled": false,
+            "isPlayStartingAfterSettle": false
           }
         ],
         "viaClassMethod": {
           "playing": true,
-          "timer": true,
-          "advancedSec": 5
+          "timer": false,
+          "advancedSec": 10,
+          "isPlayStartingOnReturn": true,
+          "playStartRafScheduled": true
         }
       },
       {
@@ -252,19 +1263,27 @@
             "attempt": 1,
             "playing": false,
             "timer": false,
-            "advancedSec": 16
+            "advancedSec": 13,
+            "isPlayStartingOnReturn": true,
+            "playStartRafScheduled": true,
+            "isPlayStartingAfterSettle": false
           },
           {
             "attempt": 2,
             "playing": false,
             "timer": false,
-            "advancedSec": 11
+            "advancedSec": 12,
+            "isPlayStartingOnReturn": true,
+            "playStartRafScheduled": true,
+            "isPlayStartingAfterSettle": false
           }
         ],
         "viaClassMethod": {
           "playing": false,
           "timer": false,
-          "advancedSec": 12
+          "advancedSec": 13,
+          "isPlayStartingOnReturn": true,
+          "playStartRafScheduled": true
         }
       },
       {
@@ -274,26 +1293,58 @@
             "attempt": 1,
             "playing": false,
             "timer": false,
-            "advancedSec": 12
+            "advancedSec": 12,
+            "isPlayStartingOnReturn": true,
+            "playStartRafScheduled": true,
+            "isPlayStartingAfterSettle": false
           },
           {
             "attempt": 2,
-            "playing": true,
-            "timer": true,
-            "advancedSec": 3
+            "playing": false,
+            "timer": false,
+            "advancedSec": 12,
+            "isPlayStartingOnReturn": true,
+            "playStartRafScheduled": true,
+            "isPlayStartingAfterSettle": false
           }
-        ]
+        ],
+        "viaClassMethod": {
+          "playing": false,
+          "timer": false,
+          "advancedSec": 13,
+          "isPlayStartingOnReturn": true,
+          "playStartRafScheduled": true
+        }
       },
       {
         "realm": "panel",
         "viaInstanceProperty": [
           {
             "attempt": 1,
-            "playing": true,
-            "timer": true,
-            "advancedSec": 3
+            "playing": false,
+            "timer": false,
+            "advancedSec": 11,
+            "isPlayStartingOnReturn": true,
+            "playStartRafScheduled": true,
+            "isPlayStartingAfterSettle": false
+          },
+          {
+            "attempt": 2,
+            "playing": false,
+            "timer": false,
+            "advancedSec": 13,
+            "isPlayStartingOnReturn": true,
+            "playStartRafScheduled": true,
+            "isPlayStartingAfterSettle": false
           }
-        ]
+        ],
+        "viaClassMethod": {
+          "playing": false,
+          "timer": false,
+          "advancedSec": 12,
+          "isPlayStartingOnReturn": true,
+          "playStartRafScheduled": true
+        }
       }
     ],
     "finishLog": [],
@@ -304,17 +1355,18 @@
       "iframes": 3
     },
     "trace": {
-      "total": 6877,
+      "total": 19652,
       "counts": {
-        "getPlaybackMode": 6755,
-        "_isReplayPageHidden": 31,
-        "_playWouldBeNoOpAtSessionEnd": 2,
-        "_shouldUseTickAnimation": 1,
-        "_capturePlaybackViewportLock": 1,
-        "stopAllPlayback": 1,
-        "startCandleByCandle": 1,
-        "_runCandlePlaybackTick": 16,
-        "simpleStepForward": 69
+        "getPlaybackMode": 19250,
+        "_isReplayPageHidden": 32,
+        "_shouldUseTickAnimation": 2,
+        "_playWouldBeNoOpAtSessionEnd": 3,
+        "_capturePlaybackViewportLock": 2,
+        "stopAllPlayback": 2,
+        "startCandleByCandle": 2,
+        "_runCandlePlaybackTick": 174,
+        "simpleStepForward": 184,
+        "pause": 1
       },
       "firstInOrder": [
         "getPlaybackMode",
@@ -348,307 +1400,433 @@
       "ownProperty": true,
       "isPrototypeMethod": false,
       "name": "",
-      "head": "function(...ue){const Ee=oM()?rr.apply(this,ue):rr.call(ve);try{const it=!!(this.isPlaying||this.isPlayStarting);this.__shellPlayOverrideInert=!it;const $e=Number(this.speed)||1,Qe=typeof this.getPlaybackMode==\"function\"?this.getPlaybackMod",
-      "full": "function(...ue){const Ee=oM()?rr.apply(this,ue):rr.call(ve);try{const it=!!(this.isPlaying||this.isPlayStarting);this.__shellPlayOverrideInert=!it;const $e=Number(this.speed)||1,Qe=typeof this.getPlaybackMode==\"function\"?this.getPlaybackMode():this.playbackMode||\"tick\",Dt=rf(this);if(bt(\"replaySetStepTf\",{tf:Dt??null}),!it&&oM())return Ee;bt(\"replayPlay\",{speed:$e,mode:Qe});const Kt=this;requestAnimationFrame(()=>{requestAnimationFrame(()=>{try{typeof Kt._multichartBroadcastReplayFrame==\"function\"&&Kt._multichartBroadcastReplayFrame()}catch{}})})}catch{}return Ee}"
+      "head": "function(...pe){const Te=cM()?ir.apply(this,pe):ir.call(ve);try{const ft=!!(this.isPlaying||this.isPlayStarting);this.__shellPlayOverrideInert=!ft;const We=Number(this.speed)||1,Qe=typeof this.getPlaybackMode==\"function\"?this.getPlaybackMod",
+      "full": "function(...pe){const Te=cM()?ir.apply(this,pe):ir.call(ve);try{const ft=!!(this.isPlaying||this.isPlayStarting);this.__shellPlayOverrideInert=!ft;const We=Number(this.speed)||1,Qe=typeof this.getPlaybackMode==\"function\"?this.getPlaybackMode():this.playbackMode||\"tick\",Rt=lf(this);if(vt(\"replaySetStepTf\",{tf:Rt??null}),!ft&&cM())return Te;vt(\"replayPlay\",{speed:We,mode:Qe});const Kt=this;requestAnimationFrame(()=>{requestAnimationFrame(()=>{try{typeof Kt._multichartBroadcastReplayFrame==\"function\"&&Kt._multichartBroadcastReplayFrame()}catch{}})})}catch{}return Te}"
     },
     "playLog": [
       {
-        "at": 7881,
+        "at": 11194,
         "active": true,
         "windowBlocked": false,
         "hidden": false,
         "index": 2010,
         "len": 4000,
         "subBar": true,
-        "playingOnReturn": false
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": false,
+        "playStartRafScheduled": false
       },
       {
-        "at": 11119,
+        "at": 14442,
         "active": true,
         "windowBlocked": false,
         "hidden": false,
-        "index": 1999,
+        "index": 376,
         "len": 2000,
         "subBar": true,
-        "playingOnReturn": false
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": false,
+        "playStartRafScheduled": false
       },
       {
-        "at": 14411,
-        "active": true,
-        "windowBlocked": false,
-        "hidden": false,
-        "index": 1999,
-        "len": 2000,
-        "subBar": true,
-        "playingOnReturn": false
-      },
-      {
-        "at": 14611,
-        "active": true,
-        "windowBlocked": false,
-        "hidden": false,
-        "index": 1999,
-        "len": 2000,
-        "subBar": true,
-        "playingOnReturn": false
-      },
-      {
-        "at": 14850,
-        "active": true,
-        "windowBlocked": false,
-        "hidden": false,
-        "index": 1999,
-        "len": 2000,
-        "subBar": true,
-        "playingOnReturn": false
-      },
-      {
-        "at": 15085,
-        "active": true,
-        "windowBlocked": false,
-        "hidden": false,
-        "index": 1999,
-        "len": 2000,
-        "subBar": true,
-        "playingOnReturn": false
-      },
-      {
-        "at": 15321,
-        "active": true,
-        "windowBlocked": false,
-        "hidden": false,
-        "index": 1999,
-        "len": 2000,
-        "subBar": true,
-        "playingOnReturn": false
-      },
-      {
-        "at": 15468,
-        "active": true,
-        "windowBlocked": false,
-        "hidden": false,
-        "index": 1999,
-        "len": 2000,
-        "subBar": true,
-        "playingOnReturn": false
-      },
-      {
-        "at": 15586,
-        "active": true,
-        "windowBlocked": false,
-        "hidden": false,
-        "index": 1999,
-        "len": 2000,
-        "subBar": true,
-        "playingOnReturn": false
-      },
-      {
-        "at": 15698,
-        "active": true,
-        "windowBlocked": false,
-        "hidden": false,
-        "index": 1999,
-        "len": 2000,
-        "subBar": true,
-        "playingOnReturn": false
-      },
-      {
-        "at": 15814,
-        "active": true,
-        "windowBlocked": false,
-        "hidden": false,
-        "index": 1999,
-        "len": 2000,
-        "subBar": true,
-        "playingOnReturn": false
-      },
-      {
-        "at": 15929,
-        "active": true,
-        "windowBlocked": false,
-        "hidden": false,
-        "index": 1999,
-        "len": 2000,
-        "subBar": true,
-        "playingOnReturn": false
-      },
-      {
-        "at": 16085,
-        "active": true,
-        "windowBlocked": false,
-        "hidden": false,
-        "index": 1999,
-        "len": 2000,
-        "subBar": true,
-        "playingOnReturn": false
-      },
-      {
-        "at": 16217,
-        "active": true,
-        "windowBlocked": false,
-        "hidden": false,
-        "index": 1999,
-        "len": 2000,
-        "subBar": true,
-        "playingOnReturn": false
-      },
-      {
-        "at": 16353,
-        "active": true,
-        "windowBlocked": false,
-        "hidden": false,
-        "index": 1999,
-        "len": 2000,
-        "subBar": true,
-        "playingOnReturn": false
-      },
-      {
-        "at": 16469,
-        "active": true,
-        "windowBlocked": false,
-        "hidden": false,
-        "index": 1999,
-        "len": 2000,
-        "subBar": true,
-        "playingOnReturn": false
-      },
-      {
-        "at": 16587,
-        "active": true,
-        "windowBlocked": false,
-        "hidden": false,
-        "index": 1999,
-        "len": 2000,
-        "subBar": true,
-        "playingOnReturn": false
-      },
-      {
-        "at": 16708,
-        "active": true,
-        "windowBlocked": false,
-        "hidden": false,
-        "index": 1965,
-        "len": 1966,
-        "subBar": true,
-        "playingOnReturn": false
-      },
-      {
-        "at": 16858,
+        "at": 17776,
         "active": true,
         "windowBlocked": false,
         "hidden": false,
         "index": 1880,
-        "len": 1881,
+        "len": 2000,
         "subBar": true,
-        "playingOnReturn": false
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": false,
+        "playStartRafScheduled": false
       },
       {
-        "at": 17060,
+        "at": 18029,
         "active": true,
         "windowBlocked": false,
         "hidden": false,
         "index": 1880,
-        "len": 1881,
+        "len": 2000,
         "subBar": true,
-        "playingOnReturn": false
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": false,
+        "playStartRafScheduled": false
       },
       {
-        "at": 17249,
+        "at": 18219,
         "active": true,
         "windowBlocked": false,
         "hidden": false,
         "index": 1880,
-        "len": 1881,
+        "len": 2000,
         "subBar": true,
-        "playingOnReturn": false
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": false,
+        "playStartRafScheduled": false
       },
       {
-        "at": 17441,
+        "at": 18458,
         "active": true,
         "windowBlocked": false,
         "hidden": false,
         "index": 1880,
-        "len": 1881,
+        "len": 2000,
         "subBar": true,
-        "playingOnReturn": false
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": false,
+        "playStartRafScheduled": false
       },
       {
-        "at": 17621,
+        "at": 18683,
         "active": true,
         "windowBlocked": false,
         "hidden": false,
         "index": 1880,
-        "len": 1881,
+        "len": 2000,
         "subBar": true,
-        "playingOnReturn": false
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": false,
+        "playStartRafScheduled": false
       },
       {
-        "at": 17806,
+        "at": 18862,
         "active": true,
         "windowBlocked": false,
         "hidden": false,
         "index": 1880,
-        "len": 1881,
+        "len": 2000,
         "subBar": true,
-        "playingOnReturn": false
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": false,
+        "playStartRafScheduled": false
       },
       {
-        "at": 18023,
+        "at": 19040,
         "active": true,
         "windowBlocked": false,
         "hidden": false,
         "index": 1880,
-        "len": 1881,
+        "len": 2000,
         "subBar": true,
-        "playingOnReturn": false
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": false,
+        "playStartRafScheduled": false
       },
       {
-        "at": 18210,
+        "at": 19216,
         "active": true,
         "windowBlocked": false,
         "hidden": false,
         "index": 1880,
-        "len": 1881,
+        "len": 2000,
         "subBar": true,
-        "playingOnReturn": false
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": false,
+        "playStartRafScheduled": false
       },
       {
-        "at": 26467,
+        "at": 19392,
         "active": true,
         "windowBlocked": false,
         "hidden": false,
         "index": 1880,
-        "len": 1881,
+        "len": 2000,
         "subBar": true,
-        "playingOnReturn": false
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": false,
+        "playStartRafScheduled": false
       },
       {
-        "at": 27668,
+        "at": 19569,
         "active": true,
         "windowBlocked": false,
         "hidden": false,
         "index": 1880,
-        "len": 1881,
+        "len": 2000,
         "subBar": true,
-        "playingOnReturn": false
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": false,
+        "playStartRafScheduled": false
+      },
+      {
+        "at": 19746,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1880,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": false,
+        "playStartRafScheduled": false
+      },
+      {
+        "at": 19916,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1880,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": false,
+        "playStartRafScheduled": false
+      },
+      {
+        "at": 20098,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1880,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": false,
+        "playStartRafScheduled": false
+      },
+      {
+        "at": 20278,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1880,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": false,
+        "playStartRafScheduled": false
+      },
+      {
+        "at": 20462,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1880,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": false,
+        "playStartRafScheduled": false
+      },
+      {
+        "at": 20634,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1880,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": false,
+        "playStartRafScheduled": false
+      },
+      {
+        "at": 20802,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1880,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": false,
+        "playStartRafScheduled": false
+      },
+      {
+        "at": 20972,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1880,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": false,
+        "playStartRafScheduled": false
+      },
+      {
+        "at": 21144,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1880,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": false,
+        "playStartRafScheduled": false
+      },
+      {
+        "at": 21326,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1880,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": false,
+        "playStartRafScheduled": false
+      },
+      {
+        "at": 21501,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1880,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": false,
+        "playStartRafScheduled": false
+      },
+      {
+        "at": 21664,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1880,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": false,
+        "playStartRafScheduled": false
+      },
+      {
+        "at": 22254,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1879,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": false,
+        "playStartRafScheduled": false
+      },
+      {
+        "at": 89103,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1881,
+        "len": 3504,
+        "subBar": true,
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": false,
+        "playStartRafScheduled": false
+      },
+      {
+        "at": 90303,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1879,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": false,
+        "playStartRafScheduled": false
       }
     ],
     "noOpLog": [
       {
-        "at": 26464,
+        "at": 23057,
         "answer": false,
         "index": 1880,
         "cursorsPresent": true,
         "hasMoreRight": true,
-        "panLoading": true
+        "panLoading": false
       },
       {
-        "at": 28869,
+        "at": 89098,
         "answer": false,
-        "index": 1880,
+        "index": 1881,
         "cursorsPresent": true,
         "hasMoreRight": true,
-        "panLoading": true
+        "panLoading": false
+      },
+      {
+        "at": 91505,
+        "answer": false,
+        "index": 1879,
+        "cursorsPresent": true,
+        "hasMoreRight": true,
+        "panLoading": false
+      }
+    ],
+    "readBack": [
+      {
+        "realm": "top",
+        "type": "number",
+        "value": 10.0119189511323,
+        "gov": {
+          "unit": "market-seconds-per-wall-second",
+          "stepSeconds": 1,
+          "stepsPerWallSecond": 10,
+          "target": 10,
+          "effective": 10.0119189511323
+        },
+        "engine": {
+          "stepSeconds": 1,
+          "marketPerWall": 10,
+          "stepsPerWall": 10,
+          "tf": 60
+        }
+      },
+      {
+        "realm": "panel",
+        "type": "number",
+        "value": 0,
+        "gov": {
+          "unit": "market-seconds-per-wall-second",
+          "stepSeconds": 1,
+          "stepsPerWallSecond": 10,
+          "target": 10,
+          "effective": 0
+        },
+        "engine": {
+          "stepSeconds": 1,
+          "marketPerWall": 10,
+          "stepsPerWall": 10,
+          "tf": 60
+        }
+      },
+      {
+        "realm": "panel",
+        "type": "number",
+        "value": 0,
+        "gov": {
+          "unit": "market-seconds-per-wall-second",
+          "stepSeconds": 1,
+          "stepsPerWallSecond": 10,
+          "target": 10,
+          "effective": 0
+        },
+        "engine": {
+          "stepSeconds": 1,
+          "marketPerWall": 10,
+          "stepsPerWall": 10,
+          "tf": 60
+        }
+      },
+      {
+        "realm": "panel",
+        "type": "number",
+        "value": 0,
+        "gov": {
+          "unit": "market-seconds-per-wall-second",
+          "stepSeconds": 1,
+          "stepsPerWallSecond": 10,
+          "target": 10,
+          "effective": 0
+        },
+        "engine": {
+          "stepSeconds": 1,
+          "marketPerWall": 10,
+          "stepsPerWall": 10,
+          "tf": 60
+        }
       }
     ]
   }

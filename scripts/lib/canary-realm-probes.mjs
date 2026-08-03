@@ -21,6 +21,85 @@
  */
 
 /**
+ * Which panel holds focus, and what reference timeframe each realm's governor is
+ * actually using.
+ *
+ * The reason this is recorded rather than assumed: the PO found the governor
+ * deriving wall-seconds-per-bar from the FOCUSED panel's timeframe rather than
+ * the minimum displayed, so clicking the 5m panel speeds the whole layout up. A
+ * four-panel rate measured without recording focus is therefore not a reading of
+ * the product, it is a reading of wherever the mouse last landed — and it would
+ * explain a 9.891 and a 0.07 coming off the same build.
+ *
+ * Taken on both sides of the window. Focus moving mid-window is not something to
+ * promise in prose; either the two samples agree or the reading says they did not.
+ *
+ * Self-contained by necessity: puppeteer ships this by toString().
+ */
+export function probeFocusAndGovernor() {
+  const realms = [{ w: window, name: 'top' }];
+  for (const f of [...document.querySelectorAll('iframe')].slice(0, 4)) {
+    try { realms.push({ w: f.contentWindow, name: f.id || 'panel' }); } catch (_e) { /* cross-origin */ }
+  }
+
+  // Which iframe, if any, currently holds focus in the host document.
+  let focusedPanel = null;
+  try {
+    const active = document.activeElement;
+    if (active && active.tagName === 'IFRAME') focusedPanel = active.id || 'panel';
+    else if (active) focusedPanel = `host:${active.tagName.toLowerCase()}`;
+  } catch (_e) { focusedPanel = 'FOCUS_UNREADABLE'; }
+
+  const rows = realms.map((r) => {
+    try {
+      const ch = r.w.chart;
+      const rs = ch && ch.replaySystem;
+      if (!rs) return { realm: r.name, state: 'NO_REPLAY' };
+      const num = (fn) => {
+        try {
+          const v = typeof rs[fn] === 'function' ? rs[fn]() : null;
+          return Number.isFinite(Number(v)) ? Number(v) : null;
+        } catch (_e) { return null; }
+      };
+      return {
+        realm: r.name,
+        state: 'READ',
+        currentTimeframe: (ch && ch.currentTimeframe) || null,
+        // The reference the governor used, straight from the engine rather than
+        // recomputed here. A number this instrument derives itself would agree
+        // with itself and prove nothing.
+        chartTimeframeSeconds: num('getChartTimeframeSeconds'),
+        stepSeconds: num('getStepSeconds'),
+        dataFloorSeconds: num('getDataFloorSeconds'),
+        speed: Number.isFinite(Number(rs.speed)) ? Number(rs.speed) : null,
+        sessionStartIndex: Number.isFinite(Number(rs.sessionStartIndex)) ? Number(rs.sessionStartIndex) : null,
+        rawBars: Array.isArray(rs.fullRawData) ? rs.fullRawData.length : null,
+        currentIndex: Number.isFinite(Number(rs.currentIndex)) ? Number(rs.currentIndex) : null,
+        hasFocus: (() => { try { return r.w.document.hasFocus(); } catch (_e) { return null; } })(),
+      };
+    } catch (e) { return { realm: r.name, state: 'PROBE_THREW', why: String(e && e.message) }; }
+  });
+
+  // floorPinnedToEnd: a session floor sitting on the last loaded bar has no
+  // runway, so its zero delivery is a seeding artefact and not a product rate.
+  for (const row of rows) {
+    row.floorPinnedToEnd = (row.sessionStartIndex !== null && row.rawBars)
+      ? row.sessionStartIndex >= row.rawBars - 1
+      : null;
+  }
+
+  const tfs = rows.map((r) => r.chartTimeframeSeconds).filter((v) => Number.isFinite(v));
+  const focusedRow = rows.find((r) => r.realm === focusedPanel) || null;
+  return {
+    focusedPanel,
+    focusedTimeframeSeconds: focusedRow ? focusedRow.chartTimeframeSeconds : null,
+    minDisplayedTimeframeSeconds: tfs.length ? Math.min(...tfs) : null,
+    maxDisplayedTimeframeSeconds: tfs.length ? Math.max(...tfs) : null,
+    rows,
+  };
+}
+
+/**
  * Every realm's bar count and whether it still has a fetch in flight.
  * @returns {{realm: string, hasReplay: boolean, rawBars: number|null, panLoading: boolean}[]}
  */

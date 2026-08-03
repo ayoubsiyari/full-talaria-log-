@@ -7,9 +7,9 @@ A blocked manager reads this rather than waiting for a relay.
 
 ---
 
-## CURRENT STATE — A's lane · maintained in place · last updated 22:32+01:00
+## CURRENT STATE — A's lane · maintained in place · last updated 00:09+01:00
 
-<!-- STATE-BLOCK-FRESHNESS entriesBelow=260 -->
+<!-- STATE-BLOCK-FRESHNESS entriesBelow=264 -->
 
 > **This block is the one part of this file that is NOT append-only.** It is overwritten, so it
 > answers *what is true now*; everything below answers *what happened*. Convention taken from C
@@ -24,7 +24,8 @@ A blocked manager reads this rather than waiting for a relay.
 | row | value | grade |
 |---|---|---|
 | `__talariaEffectiveRate`, b126 | **9.891 market-s/wall-s** | `LIVE_READING_INSTANTANEOUS` — browser read, `order01b-readback-canary-b126-rerun2.json`, HEAD `96a2f2a26` clean, unit `market-seconds-per-wall-second`, target 10 = speed 10 × step 1 s, ratio 0.989. **Not throughput** — see below |
-| sustained 4-panel delivery, step 1 s | **0.07 market-s/wall-s** | `MEASURED_PLAYHEAD_DELTA` — 4 market-s over 60.01 s in 6 slices, independent of the meter |
+| **W1 soak go/no-go, sealed b126** | **0.08 market-s/wall-s — NO-GO against ≥ 8.0** | `MEASURED_PLAYHEAD_DELTA` — all four realms, 5 market-s over 60.01 s in 6 × 10 s slices, clean tree, focus pinned. 1% of the nominal 10 = speed 10 × step 1 s. `order01b-readback-canary.json` |
+| sustained 4-panel delivery, step 1 s | **0.07 market-s/wall-s** | `MEASURED_PLAYHEAD_DELTA` — 4 market-s over 60.01 s in 6 slices, independent of the meter. Superseded as the go/no-go by W1 above, which agrees with it |
 | series shrink under a live measurement | **496 bars, 4000 → 3504, all 4 realms** | `MEASURED_PER_SLICE` — `SERIES_REPLACED_MID_RUN` |
 | session floor pinned to last bar | **`replay-system.js:4297` → `:4301`** | `SOURCE_READ_CONFIRMED_AT_RUNTIME` — `seekTo(1760)` left four realms at 1880; floor observed at 1774 and 1880 |
 | served bundle vs deployed b126 | **byte-identical** | `RUNTIME_EVIDENCE` — SHA256 over entry + all linked assets, satisfies SEAL-EVIDENCE-01 |
@@ -1854,3 +1855,15 @@ throws `GATE_VACUOUS` on a zero-capture arm.
 - 19:10+01:00 **`isPlaying` IS NOT A RELIABLE NUMERATOR AND THIS RUN PROMOTES THAT FROM CAUTION TO FINDING.** `observed.revived`: three panels report `playing: false` while their playheads advanced **10, 12 and 13 market-seconds** during the attempt, with `isPlayStartingOnReturn: true` and `playStartRafScheduled: true`. So a realm can be moving and read as stopped. `observedPlaying` counts `isPlaying`, therefore it can **under**count as well as over-report, and `WORKLOAD_INCOMPLETE: panel=would-not-start ×3` in this run is partly that: the panels were advancing when the gate called them dead. **The playhead delta is the only numerator I will quote from now on**, and it is recorded per slice for exactly this reason. This also bears on any lane using `observedPlaying` as a workload witness.
 - 19:10+01:00 **`SERIES_REPLACED_MID_RUN` FIRED ON ITS FIRST REAL RUN: ALL FOUR REALMS LOST 496 BARS, 4000 → 3504, INSIDE THE WINDOW.** The play log shows the intermediate step too — `index 2010 len 4000` then `index 376 len 2000` on the next call. So the series a measurement is taken on is replaced at least twice during a two-minute run, and until this check existed that was invisible in every artifact any lane has produced on this workload. Anyone quoting a per-bar or per-kbar figure from a run on this surface is quoting a denominator that moved.
 - 19:08+01:00 **RE-RUN 2 ARMED, WAITING BEHIND AN UNCLAIMED SOAK.** `sealed-two-arm-soak.mjs` pid 25748 is on the box holding no claim, so the wrapper is waiting on it rather than landing on top of a soak. Reserved position 1 as `order01b-readback-canary-rerun2-seeded`, out to `order01b-readback-canary-b126-rerun2.json`. Also cancelled a duplicate `A/order01b-readback-canary-seeded` reservation so the same run cannot fire twice under two labels, and added `--run-name` to the runner for exactly that reason.
+- 00:00+01:00 (4 Aug) **W1 — SOAK GO/NO-GO: 0.08 market-s/wall-s. NO-GO against ≥ 8.0.** Run 23:58:28+01:00 (3 Aug) to 00:00:20+01:00 (4 Aug), sealed b126, tree clean, zero dirty governed paths. Window 60.01 s in 6 × 10 s slices. Numerator is the **playhead delta** — not `__talariaEffectiveRate`, not `observedPlaying`, both of which this lane has shown lie, and in opposite directions. Delivered 1% of the nominal 10 = speed 10 × step 1 s. Artifact `docs/plan3/evidence/order01b-readback-canary.json`.
+
+| realm | market-s advanced | market-s/wall-s | per slice (6 × 10 s) | playing before → after | sessionStartIndex | rawBars | floorPinnedToEnd | currentIndex at end |
+|---|---|---|---|---|---|---|---|---|
+| top | 5 | **0.08** | 0.5 0 0 0 0 0 | true → false | 1775 | 3504 | false | 1881 |
+| panel | 5 | **0.08** | 0.5 0 0 0 0 0 | false → false | 0 | 3504 | false | 1881 |
+| panel | 5 | **0.08** | 0.5 0 0 0 0 0 | false → false | 0 | 3504 | false | 1881 |
+| panel | 5 | **0.08** | 0.5 0 0 0 0 0 | false → false | 0 | 3504 | false | 1881 |
+
+- 00:00+01:00 (4 Aug) **FOCUS WAS PINNED AND RECORDED, AND IT IS NOT THE EXPLANATION IN THIS CONFIGURATION.** Focus held on `host:body` for the whole window, verified by a probe on **both sides** of it rather than promised in prose — `focus did not move during the window` PASS. The governor's reference timeframe, read out of the engine rather than recomputed by the instrument: all four realms `currentTimeframe 1m`, `getChartTimeframeSeconds() 60`, `getStepSeconds() 1`, `getDataFloorSeconds() 60`, `speed 10`. So `FOCUSED_TF_EQUALS_MIN_DISPLAYED`: every panel sat on the same timeframe, which means the PO's focused-panel-versus-minimum-displayed defect **could not bite here and cannot be this run's cause**. It remains a real defect on a mixed-timeframe layout, and this reading does not test it. `probeFocusAndGovernor` records focus, reference timeframe, step, floor, speed, `sessionStartIndex` and `floorPinnedToEnd` per realm on every future run.
+- 00:00+01:00 (4 Aug) **THE 9.891-VERSUS-0.07 CONTRADICTION IS REPRODUCED IN ONE ARTIFACT, AND THE METER IS THE LIAR.** Same run, same moment: `__talariaEffectiveRate` publishes **10.0119** on the top realm and **0** on all three panels, while the playhead delivered **0.08** on all four. All four read-back clauses still PASS — finite, live, unit named, equals speed × step within tolerance — so the field is *correct about its own question* and is not a throughput figure. Anything quoting it as delivery is off by two orders of magnitude.
+- 00:00+01:00 (4 Aug) **THE CAUSE IS THE STALL, NOT THE FLOOR AND NOT EXHAUSTION — B's SEED HELD.** `floorPinnedToEnd false` on all four realms and `sessionStartIndex` 1775 / 0 / 0 / 0 of 3504, so the seed fix did its job and no realm was parked at its rollback floor. Every realm delivered in slice 1 and then sat still for five consecutive 10 s slices with `currentIndex 1881` of `rawBars 3504` — **1623 bars of runway in hand**. `SHELL_PLAY_OVERRIDE_INERT` again: `play()` as installed started nothing across 2 attempts while the engine's own prototype `play()` on the same object started playback. The series was also replaced under the reading — `len 4000` then `len 2000`, `index 376` then `1880` — so both known defects are present in the one window. First delivery diagnostic goes to D.
