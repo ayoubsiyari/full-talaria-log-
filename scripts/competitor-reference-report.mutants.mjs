@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 /**
  * Mutation arm for the reference assembler. Each mutant is a way this instrument
- * could produce a confident wrong comparison, and the cells must fail on it. A
+ * could publish a confident wrong number, and the cells must fail on it. A
  * refusal that can be deleted without any cell noticing is not a refusal.
  */
 
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -19,11 +18,11 @@ const original = fs.readFileSync(SUBJECT, 'utf8');
 const MUTANTS = [
   {
     name: 'the panel-count check is dropped, so one chart may be set against four',
-    find: "  if (expectPanels != null && arm.panels !== expectPanels) {",
-    replace: "  if (false && expectPanels != null && arm.panels !== expectPanels) {",
+    find: '  if (expectPanels != null && arm.panels !== expectPanels) {',
+    replace: '  if (false && expectPanels != null && arm.panels !== expectPanels) {',
   },
   {
-    name: 'comparability ignores panel count — the PO\'s exact objection, reinstated',
+    name: "comparability ignores panel count — the PO's exact objection, reinstated",
     find: '  if (a.panels !== b.panels) {',
     replace: '  if (false) {',
   },
@@ -33,34 +32,79 @@ const MUTANTS = [
     replace: '    if (false) reasons.push(`${k.toUpperCase()}_MISMATCH: ${a[k]} vs ${b[k]}`);',
   },
   {
-    name: 'an incomplete pair still publishes a headline',
-    find: "  if (ours1up.state !== 'ARM_READ' || tv1up.state !== 'ARM_READ') {",
-    replace: "  if (false) {",
-  },
-  {
-    name: 'the coverage limit is dropped from the artifact',
-    find: "      competitorPanelCountsMeasured: [1],",
-    replace: "      competitorPanelCountsMeasured: [1, 4],",
-  },
-  {
-    name: 'our own four-up loses its label and reads as a comparison',
-    find: "      label: 'OURS_ONLY_NOT_A_COMPARISON',",
-    replace: "      label: 'comparison',",
-  },
-  {
     name: 'a page that drew nothing is read as a cheap competitor',
     find: '  if (census === 0) {',
     replace: '  if (false) {',
   },
   {
-    name: 'an errored arm is read as a reading',
-    find: "  if (report.error) return { state: 'ARM_ERRORED', why: String(report.error).split('\\n')[0] };",
-    replace: '  if (false) return null;',
+    name: 'a single run is promoted to a band — normal becomes a point again',
+    find: "  const state = read.length === 1\n    ? 'SINGLE_OBSERVATION_NOT_A_BAND'",
+    replace: "  const state = false\n    ? 'SINGLE_OBSERVATION_NOT_A_BAND'",
   },
   {
-    name: 'the marginal cost per added panel is a plain difference, not per panel',
-    find: '      ? +((ours4up.totalPrivateMB - ours1up.totalPrivateMB) / (ours4up.panels - ours1up.panels)).toFixed(2)',
-    replace: '      ? +(ours4up.totalPrivateMB - ours1up.totalPrivateMB).toFixed(2)',
+    name: 'the underpowered grade is dropped, so n=2 reads like n=3',
+    find: "    : (read.length < BAND_MIN_N ? 'BAND_UNDERPOWERED' : 'BAND_READ');",
+    replace: "    : 'BAND_READ';",
+  },
+  {
+    name: 'a rejected run is counted in the interval, so a blank page becomes our floor',
+    find: "  const read = asList(arms).filter((a) => a && a.state === 'ARM_READ');",
+    replace: '  const read = asList(arms).filter((a) => a);',
+  },
+  {
+    name: 'overlapping bands are reported as a difference of medians',
+    find: '  const overlap = x.min <= y.max && y.min <= x.max;',
+    replace: '  const overlap = false;',
+  },
+  {
+    name: 'the gap is quoted from the far edges, overstating what the runs support',
+    find: '  const gap = weAreHigher ? +(x.min - y.max).toFixed(2) : +(y.min - x.max).toFixed(2);',
+    replace: '  const gap = weAreHigher ? +(x.max - y.min).toFixed(2) : +(y.max - x.min).toFixed(2);',
+  },
+  {
+    name: 'the marginal is a total difference, not per added panel',
+    find: "    perPanelMB: [+((y.min - x.max) / dPanels).toFixed(2), +((y.max - x.min) / dPanels).toFixed(2)],",
+    replace: '    perPanelMB: [+(y.min - x.max).toFixed(2), +(y.max - x.min).toFixed(2)],',
+  },
+  {
+    name: 'a zero panel step divides anyway',
+    find: '  if (!(dPanels > 0)) return { state: \'PANEL_STEP_NOT_POSITIVE\', key, from: small.panels, to: big.panels };',
+    replace: '  if (false) return { state: \'PANEL_STEP_NOT_POSITIVE\', key, from: small.panels, to: big.panels };',
+  },
+  {
+    name: 'an inverted curve publishes a negative marginal — the 20:55+01:00 artefact, as a product claim',
+    find: '  if (inversions.length) {',
+    replace: '  if (false) {',
+  },
+  {
+    name: 'the inversion test triggers on any overlap, suppressing curves that are merely noisy',
+    find: '    if (lo && hi && hi.max < lo.min) {',
+    replace: '    if (lo && hi && hi.max < lo.max) {',
+  },
+  {
+    name: 'a curve is drawn through one point',
+    find: '  if (steps.length >= 2) {',
+    replace: '  if (steps.length >= 1) {',
+  },
+  {
+    name: 'our own curve loses its label and reads as a comparison',
+    find: "      label: 'OURS_ONLY_NOT_A_COMPARISON',\n      why: 'no competitor arm exists at 2 or 4 panels",
+    replace: "      label: 'comparison',\n      why: 'no competitor arm exists at 2 or 4 panels",
+  },
+  {
+    name: 'the fixed share is a point rather than a band',
+    find: '        ? [+((one.min / four.max) * 100).toFixed(1), +((one.max / four.min) * 100).toFixed(1)]',
+    replace: '        ? +((one.median / four.median) * 100).toFixed(1)',
+  },
+  {
+    name: 'an incomplete pair still publishes a headline',
+    find: '  if (!usable(bands.ours1up) || !usable(bands.tv1up)) {',
+    replace: '  if (false) {',
+  },
+  {
+    name: 'the coverage limit is widened to claim competitor multi-chart data',
+    find: '      competitorPanelCountsMeasured: [1],',
+    replace: '      competitorPanelCountsMeasured: [1, 2, 4],',
   },
 ];
 
@@ -70,7 +114,7 @@ const lines = [];
 try {
   for (const m of MUTANTS) {
     if (!original.includes(m.find)) {
-      lines.push(['ANCHOR_MISSING', m.name, `the anchor is not in the subject: ${m.find.slice(0, 60)}`]);
+      lines.push(['ANCHOR_MISSING', m.name, `the anchor is not in the subject: ${m.find.slice(0, 70)}`]);
       survived++;
       continue;
     }

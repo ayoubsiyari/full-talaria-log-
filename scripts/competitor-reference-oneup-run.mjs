@@ -43,26 +43,46 @@ const TV_URL = argOf('tv-url', 'https://www.tradingview.com/chart/');
 /** One set of settings for every arm. Changing one here changes all three. */
 const COMMON = ['--dpr=2', '--width=1440', '--height=960', '--settle=20000', '--idle-samples=1', '--idle-interval=30000'];
 
-const ARMS = [
-  {
-    key: 'ours-1up',
-    out: path.join(EVIDENCE, 'reference-ours-1up.json'),
-    args: ['--self', '--panels=1', '--label=ours-1up', '--warmup=20000'],
-  },
+const REPEATS = Number(argOf('repeats', '3'));
+
+/**
+ * Four arms: the like-for-like pair, and our own 1 -> 2 -> 4 curve on the same
+ * probe and scenario. The marginal cost per added panel is the figure no
+ * competitor can supply, because no free tier will render four charts — and it is
+ * the figure that decides whether a four-up total is four charts or one chart plus
+ * fixed cost.
+ */
+const ARM_SPECS = [
+  { key: 'ours-1up', args: ['--self', '--panels=1', '--label=ours-1up', '--warmup=20000'] },
   {
     key: 'tradingview-1up',
-    out: path.join(EVIDENCE, 'reference-tradingview-1up.json'),
-    // A longer warmup than our own arm: a third-party chart has to fetch its own
-    // data over the network before it has drawn anything worth measuring, and an
+    // A longer warmup than our own arm: a third-party chart fetches its own data
+    // over the network before it has drawn anything worth measuring, and an
     // undrawn page measured early is the ARM_DREW_NOTHING failure.
     args: [`--url=${TV_URL}`, '--panels=1', '--label=tradingview-1up', '--warmup=60000'],
   },
-  {
-    key: 'ours-4up',
-    out: path.join(EVIDENCE, 'reference-ours-4up.json'),
-    args: ['--self', '--panels=4', '--label=ours-4up', '--warmup=20000'],
-  },
+  { key: 'ours-2up', args: ['--self', '--panels=2', '--label=ours-2up', '--warmup=20000'] },
+  { key: 'ours-4up', args: ['--self', '--panels=4', '--label=ours-4up', '--warmup=20000'] },
 ];
+
+/**
+ * Round-robin rather than three of each in a block. Repeats of one arm taken
+ * back to back share whatever the host was doing in that window, so a block
+ * ordering confounds arm with time and the bands come out tight and wrong.
+ * Spreading each arm's repeats across the whole slot makes host drift hit every
+ * arm alike, which is what lets the intervals be compared at all.
+ */
+const ARMS = [];
+for (let round = 1; round <= REPEATS; round++) {
+  for (const spec of ARM_SPECS) {
+    ARMS.push({
+      key: spec.key,
+      round,
+      out: path.join(EVIDENCE, `reference-${spec.key}-r${round}.json`),
+      args: spec.args,
+    });
+  }
+}
 
 const log = (...a) => console.log(`[reference-run ${clockOf(new Date(), { seconds: true })}]`, ...a);
 
@@ -75,7 +95,10 @@ function claim() {
   });
   if (!verdict.mayRun) return { ok: false, state: verdict.state, why: `${verdict.state}: ${verdict.detail || ''}` };
   const state = readQueueState();
-  state.claim = { owner: 'A', run: RUN_NAME, pid: process.pid, eta: '12m', at: stampUtc() };
+  // An eta the queue can hold others to: 4 arms x REPEATS rounds, roughly two
+  // minutes each plus the 15s gaps that keep two browsers off the GPU at once.
+  const etaMin = Math.ceil((ARMS.length * 135) / 60);
+  state.claim = { owner: 'A', run: RUN_NAME, pid: process.pid, eta: `${etaMin}m`, at: stampUtc() };
   writeQueueState(state);
   return { ok: true, state: verdict.state };
 }
@@ -127,7 +150,7 @@ async function main() {
   const ran = [];
   try {
     for (const arm of ARMS) {
-      log(`arm ${arm.key} -> ${path.basename(arm.out)}`);
+      log(`arm ${arm.key} round ${arm.round}/${REPEATS} -> ${path.basename(arm.out)}`);
       const res = spawnSync(process.execPath, [ARENA, ...arm.args, ...COMMON, `--out=${arm.out}`], {
         cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'inherit', 'inherit'],
       });
@@ -144,11 +167,16 @@ async function main() {
     } catch (e) { log(`release failed: ${e.message}`); }
   }
 
+  // Every round that produced a file, whether or not its arm succeeded: the
+  // assembler names and drops a bad run itself, which is better than a wrapper
+  // deciding silently which readings the report is allowed to see.
+  const group = (key) => ARMS.filter((a) => a.key === key && fs.existsSync(a.out)).map((a) => a.out).join(',');
   const report = spawnSync(process.execPath, [
     path.join(__dirname, 'competitor-reference-report.mjs'),
-    `--ours-1up=${ARMS[0].out}`,
-    `--tv-1up=${ARMS[1].out}`,
-    `--ours-4up=${ARMS[2].out}`,
+    `--ours-1up=${group('ours-1up')}`,
+    `--tv-1up=${group('tradingview-1up')}`,
+    `--ours-2up=${group('ours-2up')}`,
+    `--ours-4up=${group('ours-4up')}`,
     `--out=${path.join(EVIDENCE, 'competitor-reference-oneup.json')}`,
   ], { cwd: REPO_ROOT, encoding: 'utf8' });
   process.stdout.write(report.stdout || '');

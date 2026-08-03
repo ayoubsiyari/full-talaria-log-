@@ -1,0 +1,166 @@
+{
+  "signature": "COMPETITOR-ARENA-REFERENCE-V1",
+  "at": "2026-08-03T19:51:18.017Z",
+  "runLock": {
+    "state": "LOCK_ACQUIRED",
+    "pid": 23948
+  },
+  "label": "tradingview-1up",
+  "inputs": {
+    "url": "https://www.tradingview.com/chart/",
+    "panels": 1,
+    "settleMs": 20000,
+    "viewport": {
+      "width": 1440,
+      "height": 960
+    },
+    "dpr": 2,
+    "manual": false,
+    "headful": false,
+    "warmupMs": 60000,
+    "probeWebgl": false
+  },
+  "method": {
+    "memory": "forced CDP collection, then settle, then collect again, then OS private memory per process",
+    "why": "a ~1s post-GC reading overstates our own four-panel floor by ~111 MB total / ~82 MB GPU; the settle is what makes any cross-product number comparable",
+    "comparability": "the SELF arm must be run from this same script at the same viewport, dpr, panel count and settle",
+    "caveats": [
+      "browser process accounting includes the browser and network processes; compare renderer+GPU as well as total",
+      "webglContexts is null unless --probe-webgl: detecting a context requires requesting one, which allocates on any canvas that had none, inside the measurement itself",
+      "panel count must be verified from the surface census, not assumed from the layout that was requested"
+    ]
+  },
+  "coverage": {
+    "panelsThisArm": 1,
+    "competitorArms": "TradingView free only, one chart per layout",
+    "notMeasured": [
+      "no multi-chart competitor data at any panel count",
+      "paid tiers not purchased, so competitor multi-chart layouts were never reachable",
+      "TradeZella and FX Replay dropped by the PO — no data, not a null result"
+    ],
+    "headlineComparison": "one-up ours versus one-up TradingView; any other pairing is not like-for-like",
+    "ourFourUp": "OUR_OWN_SCALING_CURVE_NOT_A_COMPARISON"
+  },
+  "samples": [
+    {
+      "label": "loaded",
+      "at": "2026-08-03T19:52:44.736Z",
+      "process": {
+        "totalPrivateMB": 821.38,
+        "rendererPrivateMB": 247.48,
+        "gpuPrivateMB": 477.58,
+        "processCount": 8
+      },
+      "surface": {
+        "frameCount": 1,
+        "canvasCount": 20,
+        "canvasBackingMB": 31.491,
+        "webglContexts": null,
+        "dpr": 2,
+        "viewport": {
+          "w": 1440,
+          "h": 960
+        },
+        "perFrame": [
+          {
+            "url": "https://www.tradingview.com/chart/",
+            "canvasCount": 20,
+            "canvasBackingMB": 31.491,
+            "largestCanvas": {
+              "px": 3322304,
+              "w": 1952,
+              "h": 1702
+            },
+            "dpr": 2,
+            "innerW": 1440,
+            "innerH": 960,
+            "webglContexts": null
+          }
+        ]
+      }
+    },
+    {
+      "label": "idle+30s",
+      "at": "2026-08-03T19:53:39.544Z",
+      "process": {
+        "totalPrivateMB": 779.99,
+        "rendererPrivateMB": 241.69,
+        "gpuPrivateMB": 446.58,
+        "processCount": 8
+      },
+      "surface": {
+        "frameCount": 1,
+        "canvasCount": 20,
+        "canvasBackingMB": 31.491,
+        "webglContexts": null,
+        "dpr": 2,
+        "viewport": {
+          "w": 1440,
+          "h": 960
+        },
+        "perFrame": [
+          {
+            "url": "https://www.tradingview.com/chart/",
+            "canvasCount": 20,
+            "canvasBackingMB": 31.491,
+            "largestCanvas": {
+              "px": 3322304,
+              "w": 1952,
+              "h": 1702
+            },
+            "dpr": 2,
+            "innerW": 1440,
+            "innerH": 960,
+            "webglContexts": null
+          }
+        ]
+      }
+    }
+  ],
+  "browser": {
+    "version": "Chrome/148.0.7778.97"
+  },
+  "partial": null,
+  "summary": {
+    "label": "tradingview-1up",
+    "panelsRequested": 1,
+    "canvasCount": 20,
+    "canvasBackingMB": 31.491,
+    "webglContexts": null,
+    "dpr": 2,
+    "totalPrivateMB": 779.99,
+    "rendererPrivateMB": 241.69,
+    "gpuPrivateMB": 446.58,
+    "perPanelByDivision": {
+      "derivation": "ARITHMETIC_NOT_A_MEASUREMENT",
+      "divisor": 1,
+      "totalPrivateMB": 779.99,
+      "rendererPrivateMB": 241.69,
+      "gpuPrivateMB": 446.58
+    },
+    "driftBetweenSamplesMB": -41.39,
+    "idleSlope": {
+      "spanMinutes": 0.91,
+      "totalPrivateMB": -41.39,
+      "rendererPrivateMB": -5.79,
+      "gpuPrivateMB": -31,
+      "totalMBPerMinute": -45.31,
+      "gpuMBPerMinute": -33.94,
+      "monotonicRise": false,
+      "series": [
+        {
+          "label": "loaded",
+          "total": 821.38,
+          "gpu": 477.58,
+          "renderer": 247.48
+        },
+        {
+          "label": "idle+30s",
+          "total": 779.99,
+          "gpu": 446.58,
+          "renderer": 241.69
+        }
+      ]
+    }
+  }
+}
