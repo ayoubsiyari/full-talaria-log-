@@ -225,10 +225,17 @@ if (isMain) {
   if (cmd === 'reserve') {
     const run = arg('run');
     if (!owner || !run) { console.error('[queue] reserve needs --owner= and --run='); process.exit(1); }
-    state.reservations = [...(state.reservations || []), { owner, run, note: arg('note'), at: stamp() }];
+    const entry = { owner, run, note: arg('note'), at: stamp() };
+    // `--front` is for a PRECONDITION rather than a queue slot: the b125 deploy is not competing
+    // with the runs behind it, it is the thing they are all waiting on.
+    const front = process.argv.includes('--front');
+    state.reservations = front
+      ? [entry, ...(state.reservations || [])]
+      : [...(state.reservations || []), entry];
+    const position = front ? 1 : state.reservations.length;
     writeState(state);
-    appendLog(`- ${stamp()} · RESERVE · ${owner} · ${run} · position ${state.reservations.length}`);
-    console.log(`[queue] reserved position ${state.reservations.length} for ${owner}/${run}.`);
+    appendLog(`- ${stamp()} · RESERVE · ${owner} · ${run} · position ${position}${front ? ' (front)' : ''}`);
+    console.log(`[queue] reserved position ${position} for ${owner}/${run}.`);
     process.exit(0);
   }
   if (cmd === 'order') {

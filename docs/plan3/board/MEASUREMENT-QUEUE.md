@@ -47,3 +47,9 @@ head gets `NOT_YOUR_TURN`, exit 2. `release` pops your reservation and promotes 
 - 2026-08-02 23:07:31 · RESERVE · A · shell-play-discriminator · position 2
 - 2026-08-02 23:07:32 · RESERVE · D · daily-boundary-canary · position 3
 - 2026-08-02 23:07:32 · RESERVE · C · arena-timeseries-rerun · position 4
+- 2026-08-02 23:31:38 · RESERVE · A · idle-transient-clean-retake · position 5
+- 2026-08-02 23:31:38 · RESERVE · A · competitor-reference-arms · position 6
+- 2026-08-02 23:37:41 · RESERVE · C · b125-build-and-deploy · position 1 (front)
+- 2026-08-02 23:37:56 · CLAIM · C · b125-build-and-deploy · eta 10m · pid 23412
+- 2026-08-02 23:44:35 · TURN_DONE · C · b125-build-and-deploy · next: B/rebuild-constraint-vs-deployed-door
+- 2026-08-02 23:44:35 · RELEASE · C · b125-build-and-deploy
