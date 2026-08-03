@@ -302,9 +302,15 @@ function main() {
       }
       if (r.findings.length > 40) console.log(`   ... and ${r.findings.length - 40} more`);
     }
+    /**
+     * The scanned count leads, because "across 0 file(s)" meant "0 files had
+     * violations" and I read it as "0 files were examined" — then quoted CLOCK_OK on a
+     * board I had not verified. A summary whose green is indistinguishable from
+     * having looked at nothing is the same fault this gate exists to catch.
+     */
     console.log(`[clock-01] ${bare.length ? 'BARE_WALL_CLOCK' : 'CLOCK_OK'} — `
-      + `${bare.reduce((n, r) => n + r.findings.length, 0)} bare number(s) across ${bare.length} file(s); `
-      + `${vacuous.length} scanned with no time tokens; ${absent.length} absent`);
+      + `${results.length} scanned, ${bare.reduce((n, r) => n + r.findings.length, 0)} bare number(s) `
+      + `in ${bare.length} file(s); ${vacuous.length} with no time tokens; ${absent.length} absent`);
   }
   process.exitCode = bare.length ? 1 : absent.length ? 2 : 0;
 }
