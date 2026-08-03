@@ -1,0 +1,460 @@
+{
+  "rule": "SEAL-EVIDENCE-01 provenance match",
+  "at": "2026-08-03T13:18:44Z",
+  "atLocal": "14:18:44+01:00",
+  "base": "http://31.97.192.82:3000",
+  "entry": "chart/dist-v9/index.html",
+  "verdict": "BYTE_IDENTICAL",
+  "establishes": "the local bytes a harness boots are the bytes the site serves",
+  "doesNotEstablish": "any runtime behaviour; that needs the run itself",
+  "rows": [
+    {
+      "asset": "chart/dist-v9/index.html",
+      "state": "BYTE_IDENTICAL",
+      "served": "40d562da41429879",
+      "local": "40d562da41429879",
+      "bytes": 93328
+    },
+    {
+      "asset": "chart/modules/chart-window-limit.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "4da262bfbd7b15b6",
+      "local": "4da262bfbd7b15b6",
+      "bytes": 37504
+    },
+    {
+      "asset": "chart/vendor/d3.min.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "d6b03aefc9f6c44c",
+      "local": "d6b03aefc9f6c44c",
+      "bytes": 279633
+    },
+    {
+      "asset": "chart/vendor/lz-string.min.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "95f4d1cbf099f571",
+      "local": "95f4d1cbf099f571",
+      "bytes": 4814
+    },
+    {
+      "asset": "chart/modules/server-write-failure-ledger.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "53631ac3ea9968f5",
+      "local": "53631ac3ea9968f5",
+      "bytes": 8023
+    },
+    {
+      "asset": "chart/modules/settings-write-breaker.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "f8c077c3915650ac",
+      "local": "f8c077c3915650ac",
+      "bytes": 10138
+    },
+    {
+      "asset": "chart/modules/preferences-sync.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "24baa174ed153b13",
+      "local": "24baa174ed153b13",
+      "bytes": 55775
+    },
+    {
+      "asset": "chart/modules/preferences-init.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "551cdde2c2cbad38",
+      "local": "551cdde2c2cbad38",
+      "bytes": 7962
+    },
+    {
+      "asset": "chart/modules/market-calculations.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "22b71d97ee7ecc3b",
+      "local": "22b71d97ee7ecc3b",
+      "bytes": 58046
+    },
+    {
+      "asset": "chart/modules/chart-env.defaults.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "c97df3a0b8bfa548",
+      "local": "c97df3a0b8bfa548",
+      "bytes": 534
+    },
+    {
+      "asset": "chart/modules/chart-env.generated.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "217ed4972d774fba",
+      "local": "217ed4972d774fba",
+      "bytes": 188
+    },
+    {
+      "asset": "chart/modules/drawing-tools-base.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "8d16aac42f2e2c1f",
+      "local": "8d16aac42f2e2c1f",
+      "bytes": 158871
+    },
+    {
+      "asset": "chart/modules/drawing-tools-lines.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "58400ccae4100cff",
+      "local": "58400ccae4100cff",
+      "bytes": 142609
+    },
+    {
+      "asset": "chart/modules/drawing-tools-shapes.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "688917f09b434838",
+      "local": "688917f09b434838",
+      "bytes": 90155
+    },
+    {
+      "asset": "chart/modules/drawing-tools-fibonacci.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "b67b5d47fa937f8a",
+      "local": "b67b5d47fa937f8a",
+      "bytes": 23738
+    },
+    {
+      "asset": "chart/modules/drawing-tools-text.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "d29875155d819852",
+      "local": "d29875155d819852",
+      "bytes": 226888
+    },
+    {
+      "asset": "chart/modules/drawing-tools-emoji.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "2fc402fc724ac0be",
+      "local": "2fc402fc724ac0be",
+      "bytes": 14572
+    },
+    {
+      "asset": "chart/modules/drawing-tools-image.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "22e5753d17aed818",
+      "local": "22e5753d17aed818",
+      "bytes": 28872
+    },
+    {
+      "asset": "chart/modules/emoji-picker.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "7acf8cdfb61ee8cf",
+      "local": "7acf8cdfb61ee8cf",
+      "bytes": 13809
+    },
+    {
+      "asset": "chart/modules/emoji-picker-simple.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "3980016eef705a06",
+      "local": "3980016eef705a06",
+      "bytes": 28512
+    },
+    {
+      "asset": "chart/modules/drawing-tools-advanced-volume.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "c96486d34c3b502e",
+      "local": "c96486d34c3b502e",
+      "bytes": 121133
+    },
+    {
+      "asset": "chart/modules/drawing-tools-advanced.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "5271b3a67d0b8bb9",
+      "local": "5271b3a67d0b8bb9",
+      "bytes": 218905
+    },
+    {
+      "asset": "chart/modules/drawing-tools-extended.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "62fe18c628039e67",
+      "local": "62fe18c628039e67",
+      "bytes": 93270
+    },
+    {
+      "asset": "chart/modules/drawing-tools-patterns.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "40def40e762368d7",
+      "local": "40def40e762368d7",
+      "bytes": 107619
+    },
+    {
+      "asset": "chart/modules/drawing-tools-fib-gann.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "263af94dce0beb1c",
+      "local": "263af94dce0beb1c",
+      "bytes": 218356
+    },
+    {
+      "asset": "chart/modules/drawing-tools-channels.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "4e875cd9a1ecfd3b",
+      "local": "4e875cd9a1ecfd3b",
+      "bytes": 91735
+    },
+    {
+      "asset": "chart/modules/drawing-tools-ui.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "b16f182881d2ca1d",
+      "local": "b16f182881d2ca1d",
+      "bytes": 891312
+    },
+    {
+      "asset": "chart/modules/color-picker.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "d4223a954706d408",
+      "local": "d4223a954706d408",
+      "bytes": 18007
+    },
+    {
+      "asset": "chart/modules/drawing-toolbar.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "ca205c5bfa5509e8",
+      "local": "ca205c5bfa5509e8",
+      "bytes": 110592
+    },
+    {
+      "asset": "chart/modules/undo-redo-manager.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "4b4a258d692cd92b",
+      "local": "4b4a258d692cd92b",
+      "bytes": 22183
+    },
+    {
+      "asset": "chart/modules/tool-lifecycle-store.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "6a644def60a0aafd",
+      "local": "6a644def60a0aafd",
+      "bytes": 5798
+    },
+    {
+      "asset": "chart/modules/drawing-tools-manager.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "b118c898d5ad47ae",
+      "local": "b118c898d5ad47ae",
+      "bytes": 814626
+    },
+    {
+      "asset": "chart/modules/chart-regression-cases.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "0c3c9e8f5fc17c8c",
+      "local": "0c3c9e8f5fc17c8c",
+      "bytes": 1977
+    },
+    {
+      "asset": "chart/modules/chart-regression-smoke.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "852f1718cf5016e0",
+      "local": "852f1718cf5016e0",
+      "bytes": 12756
+    },
+    {
+      "asset": "chart/modules/favorites-manager.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "c5781419c23f4ffb",
+      "local": "c5781419c23f4ffb",
+      "bytes": 69036
+    },
+    {
+      "asset": "chart/modules/keyboard-shortcuts.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "55364e2151416f8f",
+      "local": "55364e2151416f8f",
+      "bytes": 66224
+    },
+    {
+      "asset": "chart/modules/timezone-manager.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "32f059095772ca19",
+      "local": "32f059095772ca19",
+      "bytes": 28464
+    },
+    {
+      "asset": "chart/modules/viewport-data-manager.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "425b29cb585785f6",
+      "local": "425b29cb585785f6",
+      "bytes": 17705
+    },
+    {
+      "asset": "chart/modules/chart-data-pipeline.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "ec0a15a31469cb15",
+      "local": "ec0a15a31469cb15",
+      "bytes": 27475
+    },
+    {
+      "asset": "chart/modules/talaria-toast-stack.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "8c847334a41b6487",
+      "local": "8c847334a41b6487",
+      "bytes": 11619
+    },
+    {
+      "asset": "chart/modules/module-presence-runtime.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "9f1824020f058871",
+      "local": "9f1824020f058871",
+      "bytes": 6032
+    },
+    {
+      "asset": "chart/modules/session-calendar.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "047fead814e71c35",
+      "local": "047fead814e71c35",
+      "bytes": 36497
+    },
+    {
+      "asset": "chart/chart.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "6241cabed950b867",
+      "local": "6241cabed950b867",
+      "bytes": 2083191
+    },
+    {
+      "asset": "chart/modules/v9-theme-bridge.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "7864ad9f54802461",
+      "local": "7864ad9f54802461",
+      "bytes": 11562
+    },
+    {
+      "asset": "chart/modules/replay-system.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "b52c868c9c141fa5",
+      "local": "b52c868c9c141fa5",
+      "bytes": 545839
+    },
+    {
+      "asset": "chart/modules/replay-dashboard-sync.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "812aaf41c16c6470",
+      "local": "812aaf41c16c6470",
+      "bytes": 4010
+    },
+    {
+      "asset": "chart/modules/order-event-bus.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "5f2ee3611607ba49",
+      "local": "5f2ee3611607ba49",
+      "bytes": 1635
+    },
+    {
+      "asset": "chart/modules/order-service.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "f75f63eb8e78ff61",
+      "local": "f75f63eb8e78ff61",
+      "bytes": 28544
+    },
+    {
+      "asset": "chart/modules/order-manager.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "2a15aba1397f6fa0",
+      "local": "2a15aba1397f6fa0",
+      "bytes": 2551456
+    },
+    {
+      "asset": "chart/modules/indicator-persist-rehydrate.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "ae0192f1caa40498",
+      "local": "ae0192f1caa40498",
+      "bytes": 4063
+    },
+    {
+      "asset": "chart/modules/indicator-settings-apply.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "0cf2fda912e1e749",
+      "local": "0cf2fda912e1e749",
+      "bytes": 4567
+    },
+    {
+      "asset": "chart/modules/indicator-visibility.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "d9a8b6ede4beecec",
+      "local": "d9a8b6ede4beecec",
+      "bytes": 4734
+    },
+    {
+      "asset": "chart/modules/indicator-lifecycle-store.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "96d764747b3284ef",
+      "local": "96d764747b3284ef",
+      "bytes": 6268
+    },
+    {
+      "asset": "chart/modules/talaria-fvg-indicator.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "bcc54c9c421ee768",
+      "local": "bcc54c9c421ee768",
+      "bytes": 26400
+    },
+    {
+      "asset": "chart/modules/talaria-ratio-gap-indicator.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "d2300cacd8ab294f",
+      "local": "d2300cacd8ab294f",
+      "bytes": 34736
+    },
+    {
+      "asset": "chart/modules/talaria-weekly-map-indicator.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "796b9e5db1114639",
+      "local": "796b9e5db1114639",
+      "bytes": 28124
+    },
+    {
+      "asset": "chart/modules/talaria-simple-smc-indicator.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "4ffa29a108c8ae1e",
+      "local": "4ffa29a108c8ae1e",
+      "bytes": 26305
+    },
+    {
+      "asset": "chart/modules/indicator-performance.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "f8fadde4f9d839c7",
+      "local": "f8fadde4f9d839c7",
+      "bytes": 12508
+    },
+    {
+      "asset": "chart/modules/chart-indicators-full.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "7054a0726384b082",
+      "local": "7054a0726384b082",
+      "bytes": 998544
+    },
+    {
+      "asset": "chart/modules/indicator-ui.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "4b153349fee34f36",
+      "local": "4b153349fee34f36",
+      "bytes": 337531
+    },
+    {
+      "asset": "chart/modules/economic-news-sidebar.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "31a20659815a9131",
+      "local": "31a20659815a9131",
+      "bytes": 68829
+    },
+    {
+      "asset": "chart/dist-v9/assets/talaria-v9-live.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "c5e524e065b35cad",
+      "local": "c5e524e065b35cad",
+      "bytes": 1733125
+    },
+    {
+      "asset": "chart/pwa-install.js?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "7629d764351ee8ec",
+      "local": "7629d764351ee8ec",
+      "bytes": 3349
+    },
+    {
+      "asset": "chart/fonts/talaria-fonts.css?v=20260803b126",
+      "state": "BYTE_IDENTICAL",
+      "served": "2ca8985833c327de",
+      "local": "2ca8985833c327de",
+      "bytes": 51600
+    }
+  ]
+}
