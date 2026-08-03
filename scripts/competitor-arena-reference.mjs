@@ -214,6 +214,23 @@ async function main() {
         'panel count must be verified from the surface census, not assumed from the layout that was requested',
       ],
     },
+    /**
+     * The coverage limit travels with the arm, because an artifact outlives the
+     * conversation that produced it. A one-chart reference read later as a
+     * four-chart one would manufacture a 3-4x gap out of panel count alone,
+     * which is the specific misreading this block exists to prevent.
+     */
+    coverage: {
+      panelsThisArm: panels,
+      competitorArms: 'TradingView free only, one chart per layout',
+      notMeasured: [
+        'no multi-chart competitor data at any panel count',
+        'paid tiers not purchased, so competitor multi-chart layouts were never reachable',
+        'TradeZella and FX Replay dropped by the PO — no data, not a null result',
+      ],
+      headlineComparison: 'one-up ours versus one-up TradingView; any other pairing is not like-for-like',
+      ourFourUp: 'OUR_OWN_SCALING_CURVE_NOT_A_COMPARISON',
+    },
     samples: [],
   };
   const save = (phase) => {
@@ -305,9 +322,16 @@ async function main() {
       totalPrivateMB: last.process.totalPrivateMB,
       rendererPrivateMB: last.process.rendererPrivateMB,
       gpuPrivateMB: last.process.gpuPrivateMB,
-      // Per-panel is the comparable unit: plan limits mean a competitor may only
-      // reach 1-up or 2-up, and the question is cost per chart, not per layout.
-      perPanel: {
+      /**
+       * Division, not measurement, and named so nobody quotes it as one. A
+       * browser's fixed cost — GPU process, compositor, browser and network
+       * processes — does not scale with panel count, so our 4-up total over four
+       * is not our 1-up cost and cannot stand in for a 1-up arm. Measure the
+       * panel count you intend to compare.
+       */
+      perPanelByDivision: {
+        derivation: 'ARITHMETIC_NOT_A_MEASUREMENT',
+        divisor: observedPanels,
         totalPrivateMB: +(last.process.totalPrivateMB / observedPanels).toFixed(2),
         rendererPrivateMB: +(last.process.rendererPrivateMB / observedPanels).toFixed(2),
         gpuPrivateMB: +(last.process.gpuPrivateMB / observedPanels).toFixed(2),
