@@ -25,3 +25,9 @@ Forbidden forms:
 
 When fixing older text, preserve the original meaning and add the offset rather
 than converting the clock unless the source explicitly records the target zone.
+
+Board check:
+
+```
+node scripts/clock01-board-time-offset-gate.mjs
+```
