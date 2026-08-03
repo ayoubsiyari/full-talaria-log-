@@ -427,7 +427,7 @@ managers:
       - pattern: docs/plan3/journal/MANAGER-D.md
         provenance: ruling
         authority: A16.1 - each manager holds a positive grant to its own journal
-      - pattern: docs/plan3/D[0-9]*.md
+        - pattern: "docs/plan3/D[0-9]*.md"
         provenance: ruling
         reason: D's own findings, prefixed to avoid collision with the Director's docs/plan3/*.md grant
     denied_paths:
