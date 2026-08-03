@@ -13,6 +13,36 @@ test('a clean climb outside the flat band is CLIMBS', () => {
   assert.ok(t.slopeCi95[0] > 5, 'CI lower bound must clear the band');
 });
 
+/**
+ * The defect these three cover, found in a published artifact: DECAY-REGRADE-V1 reported
+ * `spanHours: 11.682` and `durationOk: true` for a run that lasted 18.5 wall minutes, because its
+ * x-axis is thousands of bars and 11,682 bars were played. A duration gate cannot be satisfied by
+ * an axis that is not a duration.
+ */
+test('a non-time axis declares its unit rather than inheriting hours', () => {
+  const t = fitTrend(series([100, 110, 120, 130, 140, 150]), { flatBandPerHour: 5, xUnit: 'kbars' });
+  assert.equal(t.xUnit, 'kbars');
+  assert.equal(t.xSpan, t.spanHours, 'spanHours is kept as an alias, not a second quantity');
+  assert.equal(t.slopePerX, t.perHour);
+});
+
+test('DUR-01 is not assessed on a non-time axis, and is never true there', () => {
+  const bars = fitTrend(series([100, 110, 120, 130, 140, 150]), { flatBandPerHour: 5, minSpanHours: 0, xUnit: 'kbars' });
+  assert.equal(bars.durationOk, null, 'a bar axis cannot satisfy a duration gate');
+  assert.match(bars.durationNote, /not time/);
+  // The same call on a time axis is unchanged, so no existing caller moves.
+  const hours = fitTrend(series([100, 110, 120, 130, 140, 150]), { flatBandPerHour: 5, minSpanHours: 0 });
+  assert.equal(hours.durationOk, true);
+  assert.equal(hours.durationNote, undefined);
+  assert.equal(hours.xUnit, 'hours');
+});
+
+test('a verdict still stands on a non-time axis — only the duration claim is withheld', () => {
+  const t = fitTrend(series([100, 110, 120, 130, 140, 150]), { flatBandPerHour: 5, minSpanHours: 0, xUnit: 'kbars' });
+  assert.equal(t.verdict, 'CLIMBS', 'the slope is real whatever the axis is called');
+  assert.equal(t.durationOk, null);
+});
+
 test('a flat series inside the band is BOUNDED', () => {
   const t = fitTrend(series([100, 100.4, 99.7, 100.2, 100.1, 99.9]), { flatBandPerHour: 5 });
   assert.equal(t.verdict, 'BOUNDED');

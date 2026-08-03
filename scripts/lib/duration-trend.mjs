@@ -28,14 +28,29 @@ export function tCritical95(df) {
 }
 
 /**
- * Least-squares fit of value against hours, with a 95% CI on the slope.
+ * Least-squares fit of value against x, with a 95% CI on the slope.
  *
- * @param {Array<{hours:number, value:number}>} points
- * @param {{label?:string, flatBandPerHour?:number, minSpanHours?:number}} opts
- *   flatBandPerHour — the largest per-hour drift that still counts as flat. Must
+ * THE X-AXIS IS NOT ALWAYS TIME, AND THE FIELD NAMES USED TO PRETEND IT WAS. The point field is
+ * called `hours` and the outputs are called `spanHours`, `perHour` and `projectedPerHourAt8h`, but
+ * half the callers in this repo fit against bars, kilobars or closed trades. That mislabelling
+ * reached a published artifact: DECAY-REGRADE-V1 reports `spanHours: 11.682` for a run that lasted
+ * 18.5 wall minutes, because its x-axis is thousands of bars and 11,682 bars were played.
+ *
+ * `xUnit` makes the axis self-declaring and every result now carries it. The legacy `spanHours` /
+ * `perHour` keys are kept so no existing reader breaks, but they are aliases of `xSpan` /
+ * `slopePerX` and mean "per unit of xUnit".
+ *
+ * DUR-01 IS A STATEMENT ABOUT TIME, so when the axis is not time `durationOk` is null rather than
+ * true. It previously returned true for any non-time axis whose caller passed `minSpanHours: 0` —
+ * a duration gate reporting green on a quantity that is not a duration.
+ *
+ * @param {Array<{hours:number, value:number}>} points — `hours` carries the x value in `xUnit`.
+ * @param {{label?:string, flatBandPerHour?:number, minSpanHours?:number, xUnit?:string}} opts
+ *   flatBandPerHour — the largest per-xUnit drift that still counts as flat. Must
  *   come from a measured noise floor, never from taste.
  */
-export function fitTrend(points, { label = '', flatBandPerHour = 0, minSpanHours = 2 } = {}) {
+export function fitTrend(points, { label = '', flatBandPerHour = 0, minSpanHours = 2, xUnit = 'hours' } = {}) {
+  const axisIsTime = xUnit === 'hours';
   const rows = (points || [])
     .filter((p) => Number.isFinite(p?.hours) && Number.isFinite(p?.value))
     .slice()
@@ -44,7 +59,7 @@ export function fitTrend(points, { label = '', flatBandPerHour = 0, minSpanHours
   if (rows.length < 4) {
     return {
       label, n: rows.length, verdict: 'INSUFFICIENT', reason: 'fewer than 4 samples',
-      flatBandPerHour: band, durationOk: false,
+      flatBandPerHour: band, durationOk: false, xUnit,
     };
   }
   const n = rows.length;
@@ -57,7 +72,7 @@ export function fitTrend(points, { label = '', flatBandPerHour = 0, minSpanHours
     sxx += (p.hours - meanX) ** 2;
   }
   if (!(sxx > 0)) {
-    return { label, n, verdict: 'INSUFFICIENT', reason: 'zero span in x', flatBandPerHour: band, durationOk: false };
+    return { label, n, verdict: 'INSUFFICIENT', reason: 'zero span in x', flatBandPerHour: band, durationOk: false, xUnit };
   }
   const slope = sxy / sxx;
   const intercept = meanY - slope * meanX;
@@ -129,8 +144,16 @@ export function fitTrend(points, { label = '', flatBandPerHour = 0, minSpanHours
   return {
     label,
     n,
+    /** The axis these numbers are per. Read every `…PerHour` field below as `…per xUnit`. */
+    xUnit,
+    xSpan: +spanHours.toFixed(3),
+    slopePerX: +slope.toFixed(3),
     spanHours: +spanHours.toFixed(3),
-    durationOk: spanHours >= minSpanHours,
+    // DUR-01 grades elapsed time. On a bar or trade axis there is no elapsed time here to grade,
+    // so the honest answer is "not assessed", never "satisfied".
+    durationOk: axisIsTime ? spanHours >= minSpanHours : null,
+    durationNote: axisIsTime ? undefined
+      : `x-axis is ${xUnit}, not time — DUR-01 not assessed by this fit; the caller must grade duration separately`,
     first: +values[0].toFixed(2),
     last: +values[n - 1].toFixed(2),
     min: +Math.min(...values).toFixed(2),
@@ -145,6 +168,8 @@ export function fitTrend(points, { label = '', flatBandPerHour = 0, minSpanHours
     extrapolable: straightEnough === true && (quadraticGain == null || quadraticGain < 0.1),
     flatBandPerHour: +band.toFixed(3),
     projectedPerHourAt8h: +(slope * 8).toFixed(1),
+    /** Same number, named for what it is: the fitted rise across 8 units of xUnit. */
+    projectedAtX8: +(slope * 8).toFixed(1),
     verdict,
   };
 }

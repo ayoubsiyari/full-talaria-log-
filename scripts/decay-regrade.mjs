@@ -41,12 +41,14 @@ export function regradeDecay(report) {
       longTaskMsPerBar: Number.isFinite(b.longTaskMsTotal) ? +(b.longTaskMsTotal / bars).toFixed(2) : null,
     });
   }
-  const fit = (pick, label, band) => ({
-    xUnit: 'per 1,000 bars played (all four panels summed)',
-    ...fitTrend(windows.map((w) => ({ hours: w.atBars / 1_000, value: pick(w) }))
+  // The axis is kilobars, not time. It is declared into the fit rather than pasted beside it, so
+  // `spanHours` cannot be read as hours: an earlier artifact published `spanHours: 11.682` for a
+  // run of 18.5 wall minutes, which is 11,682 bars wearing an hours label.
+  const fit = (pick, label, band) => fitTrend(
+    windows.map((w) => ({ hours: w.atBars / 1_000, value: pick(w) }))
       .filter((p) => Number.isFinite(p.hours) && Number.isFinite(p.value)),
-    { label, flatBandPerHour: band, minSpanHours: 0 }),
-  });
+    { label, flatBandPerHour: band, minSpanHours: 0, xUnit: 'kbars (1,000 bars played, all four panels summed)' },
+  );
   const first = windows.slice(0, 5);
   const last = windows.slice(-5);
   const mean = (rows, k) => {
@@ -60,6 +62,8 @@ export function regradeDecay(report) {
     zeroTradeControl: report.tradeControl ?? null,
     windows: windows.length,
     barSpan: windows.length ? { from: windows[0].atBars, to: windows.at(-1).atBars } : null,
+    /** Recorded because every trend below is per-kbar, so nothing else in this file states how long the run was. */
+    wallClockMinutes: windows.length ? +(windows.at(-1).minutes - windows[0].minutes).toFixed(2) : null,
     trends: {
       cpuMsPerBar: fit((w) => w.cpuMsPerBar, 'renderer CPU-ms per bar', 0.5),
       barsPerSec: fit((w) => w.barsPerSec, 'throughput', 0.1),
