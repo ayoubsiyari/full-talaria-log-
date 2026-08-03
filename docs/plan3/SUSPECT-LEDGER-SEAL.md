@@ -125,6 +125,57 @@ These are **not** CLEARED and **not** unfinished work. Each is a defect or hazar
 | `20260802b122` | Shakedown only | Never the seal. Passport above. |
 | `20260802b123` | Superseded | Local stamp; never deployed. |
 | `20260802b124` | **RETIRED — never citable** | Its bundle was compiled from a tree containing uncommitted source, so it cannot be reproduced from the SHA it is stamped with. No measurement taken against b124 can be cited, including A's `order01b-readback-canary-step1s-b124.json`, whose served engine of 545,015 bytes matches no committed state. Retired by the PO 2026-08-02, on the provenance evidence. |
-| `20260802b125` | **NEXT CUT** | Clean tree, explicit `BUILD_ID`, under `CLEAN-TREE-01`. C times it. This build is what unblocks A's canary run and B's `SHELL-PLAY-01` discriminator. Verify with `npm run rebuild-constraint:provenance` after stamping. |
+| `20260803b125` | **CUT, TAGGED, AWAITING DEPLOY** | Clean tree, explicit `BUILD_ID`, under `CLEAN-TREE-01`. Cut 2026-08-03; source tag `roster-20260803b125-source` pushed (tag object `fb9c2171d5e1b9d`, peels to `dd2ae121e73668c`), annotated and peeled as `deploy-test-checkpoint.sh` requires. 18 files carry the stamp; **zero served surfaces carry b122, b123 or b124**. Canary still answers `20260802b122` until the checkpoint is deployed on the VPS. Note the date: cut on the 3rd, so the id is `20260803b125`, not `20260802b125` as this table previously said. |
 
 > b124 is retired as an *identity*, not as work: the source rows compiled into it are committed and will recompile into b125. Nothing in `scripts/` or `package.json` pins b124, so retiring it costs no tooling changes — checked, not assumed.
+
+## 7 · Mixed-provenance commits inside the b125 stamp chain
+
+One commit in the b125 chain has two authors. It is recorded here so nobody later reads it as one
+manager's work, and so nobody "cleans it up" in a way that destroys the other manager's.
+
+**`d4015a2be` — "REVERT A14.3 REGRESSION: remove the public legacy shell my b125 commit resurrected"**
+
+| Field | Value |
+| --- | --- |
+| Committed by | **C** |
+| Intended content | Deletion of `homepage/public/chart/legacy-index.html` (61,584 lines) — the A14.3 revert |
+| Also contains, unintentionally | **A's** four instruments and three of A's documents, 1,566 lines |
+| Position | Between `60960ecc7` (stamp phase two) and `f16c94b70` (b125 final stamp) |
+| Total paths | 9 |
+
+**The four swept instruments, all A's:**
+
+- `scripts/c02-pairswitch-pane-measure.mjs`
+- `scripts/c09-c12-scratch-zero-measure.mjs`
+- `scripts/competitor-arena-reference.mjs`
+- `scripts/order01b-edge-play-probe.mjs`
+
+Plus `docs/plan3/COMPETITOR-ARENA-REFERENCE-PROTOCOL.md`, `docs/plan3/CANVAS-LIFECYCLE-MATRIX-20260802.md`
+and `docs/plan3/board/BOARD-A.md` (A's), and `docs/plan3/A-TO-B-SHELL-PLAY-STILL-INERT-ON-B124.md`.
+
+**How it happened:** the git index is shared on this box. A had staged their INSTRUMENT-01 work and had
+not yet committed; C's `git commit` took the whole index. A's own `git commit` then reported
+*"no changes added to commit"* because the bytes were already in C's. Nothing was lost — all six of A's
+files verify byte-identical between worktree and HEAD — but the authorship in `git log` is wrong.
+
+**b125's bytes are clean, and this is the fact that makes the commit survivable.** Verified rather than
+assumed: the governed build roots are `chart v 1.4/talaria-design/src/`, `chart v 1.4/talaria-design/live/`
+and `chart v 1.4/chart/` (per `clean-build-tree-guard.mjs --list`), and the **intersection of those roots
+with `d4015a2be`'s nine paths is empty**. The sweep landed entirely in `scripts/` and `docs/`, neither of
+which is a build input. The one non-script path, the `legacy-index.html` deletion, is a mirror-side
+removal of a file the module contract requires to be absent, so it removes no byte the build emits.
+**Therefore no swept file can have reached the b125 bundle**, and the stamp chain's provenance stands.
+
+**Ruled: the commit stands, unsplit.** Splitting it would rewrite `f16c94b70`, the final stamp whose
+provenance was verified green at 00:45. Rewriting history under a certified build is precisely what
+retired b124, and it is not worth doing to correct an authorship line. PO ruling 2026-08-03.
+
+**Two standing warnings:**
+
+1. **Never revert `d4015a2be` wholesale.** It would silently delete A's four instruments along with the
+   legacy-shell deletion. Revert by path if the deletion ever needs undoing — which it should not, since
+   the contract requires that file absent and `sync-v9-to-homepage` no longer recreates it (`77620b615`).
+2. **The mechanism is not fixed, only known.** Use `git commit --only <paths>` on this box. A second
+   variant surfaced the same morning: `git reset HEAD~1` discards whoever is at HEAD rather than whoever
+   typed it, and it deleted C's commit `99958ebcc` (re-landed as `dd2ae121e`).
