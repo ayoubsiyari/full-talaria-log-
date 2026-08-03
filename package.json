@@ -49,6 +49,8 @@
     "test:state-block": "node scripts/board-state-block.selftest.mjs",
     "gate:copy-absence": "node scripts/copy-absence-census.mjs",
     "test:copy-absence": "node scripts/copy-absence-census.selftest.mjs",
+    "digest": "node scripts/director-digest.mjs",
+    "test:digest-attrib": "node scripts/director-digest.selftest.mjs",
     "gate:detailed-dump-capture": "node --test scripts/detailed-dump-parser.selftest.mjs",
     "test:detailed-dump-capture": "node --test scripts/detailed-dump-parser.selftest.mjs",
     "gate:v8-dominator-subtree": "node --test scripts/v8-dominator-subtree-diff.selftest.mjs",
