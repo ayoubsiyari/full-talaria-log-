@@ -1,0 +1,32 @@
+# D Suspect Ledger Rows for B Packet Section 2
+
+Timestamp: 2026-08-03 23:28+01:00  
+Owner lane: D  
+Purpose: paste-ready D-owned rows for B's suspect-ledger packet section. Every named D suspect below has exactly one state: `KILLED`, `CLEARED`, or `DEFERRED`.
+
+## KILLED / CLEARED Rows
+
+| Row | State | Evidence for B |
+| --- | --- | --- |
+| TAL-01696 order-line visual cluster | **KILLED** | Fix commits `a1a270692` and `c0a0d7620`; gates `order-stable-label-hover-dom.test.mjs`, `preview-label-drag-freeze.test.mjs`, `order-type-live-label-refresh.test.mjs`, `order-line-drag-scale-and-multitp-live.test.mjs`; served mutant evidence `docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary.json` killed `fixed-box-size`, `value-box-moves`, `hover-blinks`, `drag-scale-mismatch`, `missing-size-unit`, `market-size-drift`, `control-button-moves`, `font-baseline-drift`, and `duplicate-activation-box`. |
+| TAL-01698 multi-TP average live update | **KILLED** | Fix commit `231df7bb5`; gates `order-line-drag-scale-and-multitp-live.test.mjs` and `multi-tp-preview-drag-sync.test.mjs`; served mutant `release-only-average` killed in `docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary.json`. |
+| Rayan #8 analysis-only/supporting-symbol order path | **KILLED** | Fix commit `f2e9d4fdb`; gate `analysis-only-symbol-order-gate.test.mjs`; served mutants `analysis-only-allows-order`, `session-overlap-allowed`, `supporting-gold-missing`, and `supporting-compare-missing` killed in `docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary.json`; visual checklist rows 13-17 committed in `434ce9266`. |
+| TAL-01865 visual/restore seal rows | **KILLED** | Served mutant suite `710313adc` / evidence `docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary.json` killed `tool-label-timezone-drift`, `candle-timezone-static`, `refresh-symbol-resets`, `refresh-replay-starts-over`, and `drawings-index-persist`; PO checklist seal boundary and rows committed in `434ce9266`, addendum methods in `e56b8b284` and `41d40f68f`. |
+| M24 quota retry dropping `order_counters` | **KILLED** | Fix commit `47b1c5f05`; gate `m24-order-id-restore-stability.test.mjs` exercises the `QuotaExceededError` retry and preserves `order_counters`; related display-id switch/gate family `__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1` remains the restore-stability RED discriminator. |
+| M19 hot/durable tier merge dropping durable summaries | **KILLED** | Fix commit `bebedd412`; gate `m19-persist-trim-contract.test.mjs` proves `journal_by_ticker` and `per_instrument_stats` survive a newer slim hot payload by merging from the durable tier. |
+| Money-path refresh survival | **KILLED** | Fix commit `f2e9d4fdb`; gate `order-refresh-money-path-survival.test.mjs` covers open positions, pending orders, journal, balance, and order counters across refresh. |
+| Drawing market-time persistence | **KILLED** | Fix commit `f2e9d4fdb`; gate `drawing-market-time-persist.test.mjs`; served mutant `drawings-index-persist` killed in `docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary.json`. |
+| Pause drain as a memory release point | **KILLED** | Fix commit `f2e9d4fdb`; gate `replay-pause-drain.test.mjs`; PO visual addendum row 31 names expected state `PAUSE_DRAIN_RELEASES_MEMORY` and the 60-second Browser Task Manager observation window. |
+| QW-3 Stack 2/3 80% allocation-reduction target | **CLEARED** | PO ruling withdrew the >=80% acceptance bar after memory measurements showed JS heap was a minor contributor; stacks closed as implemented/kill-switched with measured improvement recorded in `docs/plan3/QW3-RESAMPLE-HOLD-20260802.md`. |
+| `m20Q6CapturedClear` as V8 retainer owner | **CLEARED** | E real-playback heap verdict measured 416 bytes retained; D demoted it in `docs/plan3/V8-RETAINER-DIFF-LOOKUP-20260803.md` and `docs/plan3/board/BOARD-D.md`; below the 2 MB single-path threshold. |
+| Pair-switch arena accumulation alarm | **CLEARED** | `scripts/pair-switch-arena-accumulation.mjs` showed ten switches cost 10.57 MB, not the feared 127 MB; first-switch cost decays and only shallow later creep remains. |
+
+## DEFERRED Rows
+
+| POST-SOAK-LEDGER seat | Row | State | PO signature | Revisit condition | Evidence / reason |
+| --- | --- | --- | --- | --- | --- |
+| POST-SOAK-LEDGER-D-001 | `TAL-DATA-LOAD-ERROR-SURFACE` | **DEFERRED** | `PO-SIGNED: ____________________` | After seal, scope and fix chart bootstrap error surfacing for bad or stale data seeds. | Raised during b126 TAL smoke seed triage: `/api/file/:id/bars` 404 plus `/smart` fallback 404 initializes chart/order UI but leaves the user in an apparent infinite loading state with no surfaced failed-state message. Ledger row exists in `docs/plan3/TICKET-STATUS-LEDGER-20260729.md`. |
+| POST-SOAK-LEDGER-D-002 | `_orderExecutionSeriesByFileId` V8 retainer candidate | **DEFERRED** | `PO-SIGNED: ____________________` | After E's real-playback forced-GC diff, clear or perturb this map only if the retainer path accounts for material retained growth. | Candidate lookup in `docs/plan3/V8-RETAINER-DIFF-LOOKUP-20260803.md`; expected path `OrderManager -> _orderExecutionSeriesByFileId -> Map -> per-file Map -> series:Array`. |
+| POST-SOAK-LEDGER-D-003 | `_miSeriesByFileId` V8 retainer candidate | **DEFERRED** | `PO-SIGNED: ____________________` | After E's real-playback forced-GC diff, clear/bypass the background MI series fetch only if the retained `raw:Array` path is material. | Candidate lookup in `docs/plan3/V8-RETAINER-DIFF-LOOKUP-20260803.md`; expected path `OrderManager -> _miSeriesByFileId -> Map -> { raw, builtForEndTs, timeframe }`. |
+| POST-SOAK-LEDGER-D-004 | `_m20Q9PrefixByMaster` V8 retainer candidate | **DEFERRED** | `PO-SIGNED: ____________________` | After E's real-playback forced-GC diff, invalidate prefixes or run `__TALARIA_DISABLE_M20_PREFIX_SLICE_V1` only if WeakMap prefix arrays account for material retained growth. | Candidate lookup in `docs/plan3/V8-RETAINER-DIFF-LOOKUP-20260803.md`; expected path `ReplaySystem -> _m20Q9PrefixByMaster -> WeakMap value -> prefix Array`. |
+| POST-SOAK-LEDGER-D-005 | V8 candidate-list underfit branch | **DEFERRED** | `PO-SIGNED: ____________________` | If D-002 through D-004 together account for less than one tenth of the measured retained-growth delta, stop naming constructors and switch to retained size by dominator subtree. | Stopping rule precommitted in `docs/plan3/V8-RETAINER-DIFF-LOOKUP-20260803.md`; this is not a product fix, it is the next diagnostic branch. |
