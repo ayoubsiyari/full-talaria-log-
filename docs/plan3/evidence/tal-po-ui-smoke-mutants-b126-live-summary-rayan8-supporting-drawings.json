@@ -1,6 +1,6 @@
 {
   "signature": "TAL-PO-UI-SMOKE-CANARY-V1",
-  "at": "2026-08-03T21:26:12.525Z",
+  "at": "2026-08-03T21:24:13.018Z",
   "origin": "http://31.97.192.82:3000",
   "expectedCoordinates": {
     "badge": "20260803b126",
@@ -617,70 +617,139 @@
     "baselineFailures": [],
     "rows": [
       {
-        "id": "fixed-box-size",
-        "target": "TAL-01696 fixed box size",
+        "id": "session-overlap-allowed",
+        "target": "Rayan #8 session creation refuses trading/supporting overlap",
         "ok": true,
         "failedRows": [
-          "TAL-01696 fixed box size"
+          "Rayan #8 session creation refuses trading/supporting overlap"
         ],
         "targetState": "OBSERVED_WRONG",
         "targetDetail": {
-          "stopDims": {
-            "width": 260,
-            "height": 24
-          },
-          "limitDims": {
-            "width": 277,
-            "height": 24
-          },
-          "mutant": "fixed-box-size"
+          "trading": [
+            "EURUSD",
+            "GBPUSD"
+          ],
+          "supporting": [
+            "EURUSD",
+            "USDJPY"
+          ],
+          "overlap": [],
+          "mutant": "session-overlap-allowed"
         }
       },
       {
-        "id": "value-box-moves",
-        "target": "TAL-01696 values update mid-drag without moving the box",
+        "id": "supporting-gold-missing",
+        "target": "Rayan #8 supporting symbols render gold in dropdown",
         "ok": true,
         "failedRows": [
-          "TAL-01696 values update mid-drag without moving the box"
+          "Rayan #8 supporting symbols render gold in dropdown"
         ],
         "targetState": "OBSERVED_WRONG",
         "targetDetail": {
-          "shellReused": true,
-          "shellCount": 1,
-          "bgX": "5",
-          "bgY": "0",
-          "detailX": "139",
-          "mutant": "value-box-moves"
+          "supportingColor": "#text",
+          "tradableColor": "#text",
+          "expectedGold": "rgba(232,194,82,0.9)",
+          "mutant": "supporting-gold-missing"
         }
       },
       {
-        "id": "hover-blinks",
-        "target": "TAL-01696 hover buttons vanish rather than blink during drag",
+        "id": "supporting-compare-missing",
+        "target": "Rayan #8 Compare button remains available with supporting symbols",
         "ok": true,
         "failedRows": [
-          "TAL-01696 hover buttons vanish rather than blink during drag"
+          "Rayan #8 Compare button remains available with supporting symbols"
         ],
         "targetState": "OBSERVED_WRONG",
         "targetDetail": {
-          "opacity": "1",
-          "pointerEvents": "all",
-          "hoverClass": true,
-          "mutant": "hover-blinks"
+          "fileIds": [],
+          "compareButton": false,
+          "sessionFileIds": [
+            25,
+            27
+          ],
+          "mutant": "supporting-compare-missing"
         }
       },
       {
-        "id": "drag-scale-mismatch",
-        "target": "TAL-01696 SL and entry drag scale follows cursor",
+        "id": "drawings-index-persist",
+        "target": "TAL-01865 drawings persist by market time across panels",
         "ok": true,
         "failedRows": [
-          "TAL-01696 SL and entry drag scale follows cursor"
+          "TAL-01865 drawings persist by market time across panels"
         ],
         "targetState": "OBSERVED_WRONG",
         "targetDetail": {
-          "y0": 0,
-          "y1": 5,
-          "delta": 5,
-          "mutant": "drag-scale-mismatch"
+          "serialized": [
+            {
+              "panelId": "A",
+              "trend": {
+                "id": "A-trend-line",
+                "type": "trend-line",
+                "points": [
+                  {
+                    "timestamp": 1311536841000,
+                    "price": 0
+                  }
+                ],
+                "coordinateSystem": "timestamp",
+                "locked": true
+              },
+              "horizontal": {
+                "id": "A-horizontal-line",
+                "type": "horizontal-line",
+                "points": [
+                  {
+                    "timestamp": 1311536841000,
+                    "price": 0
+                  }
+                ],
+                "coordinateSystem": "timestamp",
+                "locked": true
+              },
+              "expectedTrendTs": [
+                1311537840000,
+                1311537960000
+              ],
+              "expectedHorizontalTs": [
+                1311537900000
+              ]
+            },
+            {
+              "panelId": "B",
+              "trend": {
+                "id": "B-trend-line",
+                "type": "trend-line",
+                "points": [
+                  {
+                    "timestamp": 1311536841000,
+                    "price": 0
+                  }
+                ],
+                "coordinateSystem": "timestamp",
+                "locked": true
+              },
+              "horizontal": {
+                "id": "B-horizontal-line",
+                "type": "horizontal-line",
+                "points": [
+                  {
+                    "timestamp": 1311536841000,
+                    "price": 0
+                  }
+                ],
+                "coordinateSystem": "timestamp",
+                "locked": true
+              },
+              "expectedTrendTs": [
+                1311538440000,
+                1311538560000
+              ],
+              "expectedHorizontalTs": [
+                1311538500000
+              ]
+            }
+          ],
+          "mutant": "drawings-index-persist"
         }
       }
     ]

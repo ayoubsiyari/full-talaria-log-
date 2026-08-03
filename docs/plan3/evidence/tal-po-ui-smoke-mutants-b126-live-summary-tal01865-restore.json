@@ -1,6 +1,6 @@
 {
   "signature": "TAL-PO-UI-SMOKE-CANARY-V1",
-  "at": "2026-08-03T21:26:12.525Z",
+  "at": "2026-08-03T21:29:41.523Z",
   "origin": "http://31.97.192.82:3000",
   "expectedCoordinates": {
     "badge": "20260803b126",
@@ -617,70 +617,127 @@
     "baselineFailures": [],
     "rows": [
       {
-        "id": "fixed-box-size",
-        "target": "TAL-01696 fixed box size",
+        "id": "tool-label-timezone-drift",
+        "target": "TAL-01865 four FX crosshair and line-tool labels agree",
         "ok": true,
         "failedRows": [
-          "TAL-01696 fixed box size"
+          "TAL-01865 four FX crosshair and line-tool labels agree"
         ],
         "targetState": "OBSERVED_WRONG",
         "targetDetail": {
-          "stopDims": {
-            "width": 260,
-            "height": 24
+          "rows": [
+            {
+              "ticker": "EURUSD",
+              "fileId": 25,
+              "present": true,
+              "crosshair": "Sun 24 Jul '11  16:04",
+              "tool": "24 Jul '11 21:04",
+              "clockEqual": false,
+              "dayEqual": true
+            },
+            {
+              "ticker": "GBPUSD",
+              "fileId": 27,
+              "present": true,
+              "crosshair": "Sun 24 Jul '11  16:04",
+              "tool": "24 Jul '11 21:04",
+              "clockEqual": false,
+              "dayEqual": true
+            },
+            {
+              "ticker": "AUDUSD",
+              "fileId": 22,
+              "present": true,
+              "crosshair": "Sun 24 Jul '11  16:04",
+              "tool": "24 Jul '11 21:04",
+              "clockEqual": false,
+              "dayEqual": true
+            },
+            {
+              "ticker": "USDJPY",
+              "fileId": 29,
+              "present": true,
+              "crosshair": "Sun 24 Jul '11  16:04",
+              "tool": "24 Jul '11 21:04",
+              "clockEqual": false,
+              "dayEqual": true
+            }
+          ],
+          "seedSet": "ticket-symbols-four-fx",
+          "mutant": "tool-label-timezone-drift"
+        }
+      },
+      {
+        "id": "candle-timezone-static",
+        "target": "TAL-01865 displayed candles follow selected timezone",
+        "ok": true,
+        "failedRows": [
+          "TAL-01865 displayed candles follow selected timezone"
+        ],
+        "targetState": "OBSERVED_WRONG",
+        "targetDetail": {
+          "labels": {
+            "America/New_York": "Sun 24 Jul '11  20:04",
+            "UTC": "Sun 24 Jul '11  20:04",
+            "Asia/Kolkata": "Sun 24 Jul '11  20:04"
           },
-          "limitDims": {
-            "width": 277,
-            "height": 24
+          "mutant": "candle-timezone-static"
+        }
+      },
+      {
+        "id": "refresh-symbol-resets",
+        "target": "TAL-01865 refresh restores onscreen symbol",
+        "ok": true,
+        "failedRows": [
+          "TAL-01865 refresh restores onscreen symbol"
+        ],
+        "targetState": "OBSERVED_WRONG",
+        "targetDetail": {
+          "target": {
+            "fileId": 29,
+            "ticker": "USDJPY",
+            "originalName": "USDJPY_1min.csv",
+            "hasDateRange": false,
+            "range": null,
+            "preferredIndex": 3,
+            "index": 139
           },
-          "mutant": "fixed-box-size"
+          "fallback": {
+            "fileId": 25,
+            "ticker": "EURUSD",
+            "originalName": "EURUSD_1min.csv",
+            "hasDateRange": false,
+            "range": null,
+            "preferredIndex": 0,
+            "index": 143
+          },
+          "restored": {
+            "fileId": 25,
+            "ticker": "EURUSD"
+          },
+          "mutant": "refresh-symbol-resets"
         }
       },
       {
-        "id": "value-box-moves",
-        "target": "TAL-01696 values update mid-drag without moving the box",
+        "id": "refresh-replay-starts-over",
+        "target": "TAL-01865 refresh restores replay position",
         "ok": true,
         "failedRows": [
-          "TAL-01696 values update mid-drag without moving the box"
+          "TAL-01865 refresh restores replay position"
         ],
         "targetState": "OBSERVED_WRONG",
         "targetDetail": {
-          "shellReused": true,
-          "shellCount": 1,
-          "bgX": "5",
-          "bgY": "0",
-          "detailX": "139",
-          "mutant": "value-box-moves"
-        }
-      },
-      {
-        "id": "hover-blinks",
-        "target": "TAL-01696 hover buttons vanish rather than blink during drag",
-        "ok": true,
-        "failedRows": [
-          "TAL-01696 hover buttons vanish rather than blink during drag"
-        ],
-        "targetState": "OBSERVED_WRONG",
-        "targetDetail": {
-          "opacity": "1",
-          "pointerEvents": "all",
-          "hoverClass": true,
-          "mutant": "hover-blinks"
-        }
-      },
-      {
-        "id": "drag-scale-mismatch",
-        "target": "TAL-01696 SL and entry drag scale follows cursor",
-        "ok": true,
-        "failedRows": [
-          "TAL-01696 SL and entry drag scale follows cursor"
-        ],
-        "targetState": "OBSERVED_WRONG",
-        "targetDetail": {
-          "y0": 0,
-          "y1": 5,
-          "delta": 5,
-          "mutant": "drag-scale-mismatch"
+          "payload": {
+            "replay": {
+              "currentIndex": 37,
+              "replayTimestamp": 1311540060000
+            }
+          },
+          "restored": {
+            "currentIndex": 0,
+            "replayTimestamp": 1311537840000
+          },
+          "mutant": "refresh-replay-starts-over"
         }
       }
     ]

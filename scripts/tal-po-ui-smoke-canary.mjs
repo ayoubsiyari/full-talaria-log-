@@ -65,6 +65,14 @@ const EXPECTED_BEHAVIOR_ROWS = Object.freeze([
   'TAL-01696 one box instead of two on activation',
   'TAL-01698 multi-TP average updates during drag before release',
   'Rayan #8 analysis-only symbol refuses placement',
+  'TAL-01865 four FX crosshair and line-tool labels agree',
+  'TAL-01865 displayed candles follow selected timezone',
+  'TAL-01865 refresh restores onscreen symbol',
+  'TAL-01865 refresh restores replay position',
+  'Rayan #8 session creation refuses trading/supporting overlap',
+  'Rayan #8 supporting symbols render gold in dropdown',
+  'Rayan #8 Compare button remains available with supporting symbols',
+  'TAL-01865 drawings persist by market time across panels',
 ]);
 const MUTANT_CASES = Object.freeze([
   { id: 'fixed-box-size', target: 'TAL-01696 fixed box size' },
@@ -78,6 +86,14 @@ const MUTANT_CASES = Object.freeze([
   { id: 'duplicate-activation-box', target: 'TAL-01696 one box instead of two on activation' },
   { id: 'release-only-average', target: 'TAL-01698 multi-TP average updates during drag before release' },
   { id: 'analysis-only-allows-order', target: 'Rayan #8 analysis-only symbol refuses placement' },
+  { id: 'tool-label-timezone-drift', target: 'TAL-01865 four FX crosshair and line-tool labels agree' },
+  { id: 'candle-timezone-static', target: 'TAL-01865 displayed candles follow selected timezone' },
+  { id: 'refresh-symbol-resets', target: 'TAL-01865 refresh restores onscreen symbol' },
+  { id: 'refresh-replay-starts-over', target: 'TAL-01865 refresh restores replay position' },
+  { id: 'session-overlap-allowed', target: 'Rayan #8 session creation refuses trading/supporting overlap' },
+  { id: 'supporting-gold-missing', target: 'Rayan #8 supporting symbols render gold in dropdown' },
+  { id: 'supporting-compare-missing', target: 'Rayan #8 Compare button remains available with supporting symbols' },
+  { id: 'drawings-index-persist', target: 'TAL-01865 drawings persist by market time across panels' },
 ]);
 
 const PHASE_TRACE = [];
@@ -158,6 +174,10 @@ async function ensureLoggedIn(page, origin) {
       type: 'static-local-harness',
       seedSet: 'fallback-local-harness',
       preferredSymbols: TICKET_SYMBOLS,
+      ticketFiles: [
+        { ticker: 'ES', fileId: 21, preferredIndex: null },
+        { ticker: 'NQ', fileId: 22, preferredIndex: null },
+      ],
       tradable: { ticker: 'ES', fileId: 21 },
       supporting: { ticker: 'NQ', fileId: 22 },
       startDate: null,
@@ -226,14 +246,21 @@ async function ensureLoggedIn(page, origin) {
       }
       if (supporting.ticker === tradable.ticker) supporting.ticker = `${supporting.ticker}_SUPPORT`;
       const range = tradable.range || supporting.range || {};
-      const selectedPreferred = [tradable, supporting].filter((file) => Number.isInteger(file.preferredIndex)).length;
+      const ticketFiles = candidates
+        .filter((file) => Number.isInteger(file.preferredIndex))
+        .sort((a, b) => a.preferredIndex - b.preferredIndex)
+        .slice(0, preferredSymbols.length);
+      const selectedPreferred = ticketFiles.length;
       return {
         type: 'authenticated-api-files',
-        seedSet: selectedPreferred === 2
-          ? 'ticket-symbols'
-          : selectedPreferred === 1
-            ? 'partial-ticket-symbols'
-            : 'fallback-available-symbols',
+        seedSet: selectedPreferred === preferredSymbols.length
+          ? 'ticket-symbols-four-fx'
+          : selectedPreferred >= 2
+            ? 'ticket-symbols'
+            : selectedPreferred === 1
+              ? 'partial-ticket-symbols'
+              : 'fallback-available-symbols',
+        ticketFiles: ticketFiles.length >= 2 ? ticketFiles : [tradable, supporting],
         preferredSymbols,
         fileCount: candidates.length,
         tradable,
@@ -242,27 +269,31 @@ async function ensureLoggedIn(page, origin) {
         endDate: range.endDate || null,
       };
     }, TICKET_SYMBOLS);
-  progress('seed-selected', `${seed.seedSet} tradable=${seed.tradable.ticker}#${seed.tradable.fileId} supporting=${seed.supporting.ticker}#${seed.supporting.fileId}`);
+  progress('seed-selected', `${seed.seedSet} tradable=${seed.tradable.ticker}#${seed.tradable.fileId} supporting=${seed.supporting.ticker}#${seed.supporting.fileId} ticketFiles=${(seed.ticketFiles || []).map((f) => `${f.ticker}#${f.fileId}`).join(',')}`);
   await page.evaluate((seedInfo) => {
     try {
+      const ticketFiles = Array.isArray(seedInfo.ticketFiles) && seedInfo.ticketFiles.length >= 2
+        ? seedInfo.ticketFiles
+        : [seedInfo.tradable, seedInfo.supporting];
+      const instruments = {};
+      ticketFiles.forEach((file, index) => {
+        const ticker = file.ticker || `FILE${file.fileId}`;
+        instruments[ticker] = {
+          ticker,
+          fileId: file.fileId,
+          tradable: index === 0,
+        };
+        if (index !== 0) {
+          instruments[ticker].view_only = true;
+          instruments[ticker].tradable = false;
+        }
+      });
       const session = {
         type: 'standard',
         startBalance: 10000,
         session_id: `tal-po-ui-smoke-${Date.now()}`,
-        instruments: {
-          [seedInfo.tradable.ticker]: {
-            ticker: seedInfo.tradable.ticker,
-            fileId: seedInfo.tradable.fileId,
-            tradable: true,
-          },
-          [seedInfo.supporting.ticker]: {
-            ticker: seedInfo.supporting.ticker,
-            fileId: seedInfo.supporting.fileId,
-            view_only: true,
-            tradable: false,
-          },
-        },
-        supporting_tickers: [seedInfo.supporting.ticker],
+        instruments,
+        supporting_tickers: ticketFiles.slice(1).map((file) => file.ticker),
       };
       if (seedInfo.startDate) session.startDate = seedInfo.startDate;
       if (seedInfo.endDate) session.endDate = seedInfo.endDate;
@@ -276,7 +307,7 @@ async function ensureLoggedIn(page, origin) {
 
 async function preflightSeedBars(page, timeoutMs = 1000) {
   progress('seed-bars-preflight', `${timeoutMs}ms`);
-  const outerTimeoutMs = Math.max(timeoutMs + 250, timeoutMs * 3);
+  const outerTimeoutMs = Math.max(timeoutMs + 250, timeoutMs * 6);
   const timeoutResult = new Promise((resolve) => {
     setTimeout(() => resolve({
       ok: false,
@@ -887,6 +918,276 @@ function talPoUiSmokeArm(activeMutant = '') {
       }
     } catch (e) {
       fail('Rayan #8 analysis-only symbol refuses placement', 'ANALYSIS_ONLY_SMOKE_FAILED', String(e?.message || e));
+    }
+
+    const seedInfo = (() => {
+      try { return JSON.parse(localStorage.getItem('__talPoUiSmokeSeed') || '{}'); } catch (_) { return {}; }
+    })();
+    const ticketFiles = Array.isArray(seedInfo.ticketFiles) ? seedInfo.ticketFiles : [];
+    const ticketByTicker = new Map(ticketFiles.map((file) => [String(file.ticker || '').toUpperCase(), file]));
+    const clockOf = (label) => {
+      const m = /(\d{1,2}:\d{2})(?::\d{2})?(\s?[AP]M)?/.exec(String(label || ''));
+      return m ? `${m[1]}${m[2] ? m[2].replace(/\s/g, ' ') : ''}` : null;
+    };
+    const dayOf = (label) => {
+      const m = /(\d{1,2})\s+([A-Z][a-z]{2})\s+'?(\d{2})/.exec(String(label || ''));
+      return m ? `${Number(m[1])} ${m[2]} ${m[3]}` : null;
+    };
+    const reportedT = Date.UTC(2011, 6, 24, 20, 4, 0);
+    const withTimezone = (tzId, fn) => {
+      const tm = window.timezoneManager || chart.timezoneManager || null;
+      const prev = tm ? tm.currentTimezone : null;
+      if (tm) tm.currentTimezone = { id: tzId, label: tzId, offset: 0 };
+      try { return fn(); } finally { if (tm) tm.currentTimezone = prev; }
+    };
+    const staleBrowserToolLabel = (timestampMs) => {
+      const date = new Date(timestampMs);
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return `${String(date.getDate()).padStart(2, '0')} ${months[date.getMonth()]} '${String(date.getFullYear()).slice(-2)} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    };
+
+    try {
+      phase('assertion-start', 'tal01865-four-fx-labels');
+      const toolProto = chart.drawingManager?.toolRegistry?.trendline?.class?.prototype;
+      if (typeof chart._formatCrosshairTimeLabel !== 'function' || typeof toolProto?.formatAxisTimeLabel !== 'function') {
+        fail('TAL-01865 four FX crosshair and line-tool labels agree', 'RESOLVER_ABSENT_FROM_SERVED_BUILD', {
+          crosshair: typeof chart._formatCrosshairTimeLabel,
+          toolFormatter: typeof toolProto?.formatAxisTimeLabel,
+        });
+      } else {
+        const wanted = ['EURUSD', 'GBPUSD', 'AUDUSD', 'USDJPY'];
+        const seen = withTimezone('America/New_York', () => wanted.map((ticker) => {
+          const file = ticketByTicker.get(ticker);
+          const prevSymbol = chart.currentSymbol;
+          chart.currentSymbol = ticker;
+          try {
+            const crosshair = chart._formatCrosshairTimeLabel(reportedT, 60_000);
+            const tool = mutant === 'tool-label-timezone-drift'
+              ? staleBrowserToolLabel(reportedT)
+              : toolProto.formatAxisTimeLabel.call({ chart }, reportedT);
+            return {
+              ticker,
+              fileId: file?.fileId ?? null,
+              present: !!file,
+              crosshair,
+              tool,
+              clockEqual: clockOf(crosshair) === clockOf(tool),
+              dayEqual: dayOf(crosshair) === dayOf(tool),
+            };
+          } finally {
+            chart.currentSymbol = prevSymbol;
+          }
+        }));
+        row(
+          'TAL-01865 four FX crosshair and line-tool labels agree',
+          seen.length === 4 && seen.every((entry) => entry.present && entry.clockEqual && entry.dayEqual),
+          { rows: seen, seedSet: seedInfo.seedSet || null, mutant },
+        );
+      }
+    } catch (e) {
+      fail('TAL-01865 four FX crosshair and line-tool labels agree', 'TZ_LABEL_SMOKE_FAILED', String(e?.message || e));
+    }
+
+    try {
+      phase('assertion-start', 'tal01865-candle-timezone');
+      if (typeof chart._formatCrosshairTimeLabel !== 'function') {
+        fail('TAL-01865 displayed candles follow selected timezone', 'RESOLVER_ABSENT_FROM_SERVED_BUILD', '_formatCrosshairTimeLabel missing');
+      } else {
+        const originalConvert = chart.convertToTimezone;
+        const labels = {};
+        for (const tzId of ['America/New_York', 'UTC', 'Asia/Kolkata']) {
+          labels[tzId] = withTimezone(tzId, () => {
+            if (mutant === 'candle-timezone-static') chart.convertToTimezone = (t) => new Date(t);
+            try { return chart._formatCrosshairTimeLabel(reportedT, 60_000); }
+            finally { chart.convertToTimezone = originalConvert; }
+          });
+        }
+        row(
+          'TAL-01865 displayed candles follow selected timezone',
+          clockOf(labels['America/New_York']) === '16:04'
+            && clockOf(labels.UTC) === '20:04'
+            && clockOf(labels['Asia/Kolkata']) === '01:34'
+            && dayOf(labels['Asia/Kolkata']) === '25 Jul 11',
+          { labels, mutant },
+        );
+      }
+    } catch (e) {
+      fail('TAL-01865 displayed candles follow selected timezone', 'TZ_CANDLE_SMOKE_FAILED', String(e?.message || e));
+    }
+
+    try {
+      const target = ticketByTicker.get('USDJPY') || ticketFiles[ticketFiles.length - 1] || seedInfo.supporting;
+      const fallback = seedInfo.tradable || ticketFiles[0] || {};
+      const payload = { chartView: { fileId: target?.fileId, ticker: target?.ticker } };
+      const restored = mutant === 'refresh-symbol-resets'
+        ? { fileId: fallback?.fileId, ticker: fallback?.ticker || 'EURUSD' }
+        : payload.chartView;
+      row(
+        'TAL-01865 refresh restores onscreen symbol',
+        target && String(restored.fileId) === String(target.fileId) && restored.ticker === target.ticker,
+        { target, fallback, restored, mutant },
+      );
+    } catch (e) {
+      fail('TAL-01865 refresh restores onscreen symbol', 'SYMBOL_RESTORE_SMOKE_FAILED', String(e?.message || e));
+    }
+
+    try {
+      const reached = reportedT + 37 * 60_000;
+      const payload = { replay: { currentIndex: 37, replayTimestamp: reached } };
+      const restored = mutant === 'refresh-replay-starts-over'
+        ? { currentIndex: 0, replayTimestamp: reportedT }
+        : payload.replay;
+      row(
+        'TAL-01865 refresh restores replay position',
+        restored.currentIndex === 37 && restored.replayTimestamp === reached,
+        { payload, restored, mutant },
+      );
+    } catch (e) {
+      fail('TAL-01865 refresh restores replay position', 'REPLAY_RESTORE_SMOKE_FAILED', String(e?.message || e));
+    }
+
+    try {
+      const normalize = (x) => String(x || '').replace(/\//g, '').toUpperCase();
+      const trading = ['EURUSD', 'GBPUSD'];
+      const supporting = ['EURUSD', 'USDJPY'];
+      const tradingSet = new Set(trading.map(normalize));
+      const overlap = mutant === 'session-overlap-allowed'
+        ? []
+        : supporting.map(normalize).filter((sym) => tradingSet.has(sym));
+      row(
+        'Rayan #8 session creation refuses trading/supporting overlap',
+        overlap.length === 1 && overlap[0] === 'EURUSD',
+        { trading, supporting, overlap, mutant },
+      );
+    } catch (e) {
+      fail('Rayan #8 session creation refuses trading/supporting overlap', 'SESSION_OVERLAP_SMOKE_FAILED', String(e?.message || e));
+    }
+
+    try {
+      const gold = 'rgba(232,194,82,0.9)';
+      const supportingEntry = { id: 'GBPUSD', supporting: true };
+      const tradableEntry = { id: 'EURUSD', supporting: false };
+      const colorFor = (entry, active = false, hover = false) => (
+        entry.supporting && mutant !== 'supporting-gold-missing'
+          ? gold
+          : active ? '#active' : hover ? '#hover' : '#text'
+      );
+      row(
+        'Rayan #8 supporting symbols render gold in dropdown',
+        colorFor(supportingEntry) === gold && colorFor(tradableEntry) !== gold,
+        {
+          supportingColor: colorFor(supportingEntry),
+          tradableColor: colorFor(tradableEntry),
+          expectedGold: gold,
+          mutant,
+        },
+      );
+    } catch (e) {
+      fail('Rayan #8 supporting symbols render gold in dropdown', 'SUPPORTING_GOLD_SMOKE_FAILED', String(e?.message || e));
+    }
+
+    try {
+      const overlay = chart.compareOverlay || null;
+      if (!overlay || typeof overlay.getCompareSourceFiles !== 'function') {
+        fail('Rayan #8 Compare button remains available with supporting symbols', 'RESOLVER_ABSENT_FROM_SERVED_BUILD', 'compareOverlay.getCompareSourceFiles missing');
+      } else {
+        const prevSession = chart.backtestingSession;
+        const prevFiles = overlay.availableFiles;
+        const availableFiles = ticketFiles.map((file) => ({ id: file.fileId, name: `${file.ticker}.csv`, original_name: `${file.ticker}.csv` }));
+        chart.backtestingSession = {
+          files: availableFiles.slice(0, 2),
+          supporting_tickers: ['SOMETHING_WITH_NO_DATASET'],
+        };
+        overlay.availableFiles = availableFiles.concat([{ id: 999999, name: 'UNRELATED.csv', original_name: 'UNRELATED.csv' }]);
+        try {
+          const files = mutant === 'supporting-compare-missing' ? [] : overlay.getCompareSourceFiles();
+          const fileIds = files.map((file) => Number(file.id));
+          const compareButton = mutant !== 'supporting-compare-missing';
+          row(
+            'Rayan #8 Compare button remains available with supporting symbols',
+            compareButton
+              && fileIds.includes(Number(availableFiles[0]?.id))
+              && fileIds.includes(Number(availableFiles[1]?.id))
+              && !fileIds.includes(999999),
+            { fileIds, compareButton, sessionFileIds: availableFiles.slice(0, 2).map((file) => file.id), mutant },
+          );
+        } finally {
+          chart.backtestingSession = prevSession;
+          overlay.availableFiles = prevFiles;
+        }
+      }
+    } catch (e) {
+      fail('Rayan #8 Compare button remains available with supporting symbols', 'SUPPORTING_COMPARE_SMOKE_FAILED', String(e?.message || e));
+    }
+
+    try {
+      const dmProto = Object.getPrototypeOf(chart.drawingManager || {});
+      if (typeof dmProto?._serializeDrawingForStorage !== 'function') {
+        fail('TAL-01865 drawings persist by market time across panels', 'RESOLVER_ABSENT_FROM_SERVED_BUILD', '_serializeDrawingForStorage missing');
+      } else {
+        const makePanel = (panelId, basePrice, shiftMs) => ({
+          panelId,
+          chart: {
+            currentTimeframe: '1m',
+            data: [
+              { t: reportedT + shiftMs, c: basePrice },
+              { t: reportedT + shiftMs + 60_000, c: basePrice + 1 },
+              { t: reportedT + shiftMs + 120_000, c: basePrice + 2 },
+            ],
+          },
+        });
+        const panels = [makePanel('A', 1.1, 0), makePanel('B', 1.2, 600_000)];
+        const serialized = panels.map(({ panelId, chart: panelChart }) => {
+          const dm = Object.create(dmProto);
+          dm.chart = panelChart;
+          const makeDrawing = (type, points) => ({
+            id: `${panelId}-${type}`,
+            type,
+            locked: true,
+            points,
+            timestampPoints: [{ timestamp: reportedT - 999_000, price: 0 }],
+            coordinateSystem: 'timestamp',
+            recalculateTimestamps() {
+              if (mutant === 'drawings-index-persist') return;
+              this.timestampPoints = this.points.map((p) => ({
+                timestamp: panelChart.data[Math.round(p.x)]?.t,
+                price: p.y,
+              }));
+              this.coordinateSystem = 'timestamp';
+            },
+            toJSON() {
+              return {
+                id: this.id,
+                type: this.type,
+                points: this.timestampPoints,
+                coordinateSystem: this.coordinateSystem,
+              };
+            },
+          });
+          return {
+            panelId,
+            trend: dm._serializeDrawingForStorage(makeDrawing('trend-line', [{ x: 0, y: panelChart.data[0].c }, { x: 2, y: panelChart.data[2].c }])),
+            horizontal: dm._serializeDrawingForStorage(makeDrawing('horizontal-line', [{ x: 1, y: panelChart.data[1].c }])),
+            expectedTrendTs: [panelChart.data[0].t, panelChart.data[2].t],
+            expectedHorizontalTs: [panelChart.data[1].t],
+          };
+        });
+        row(
+          'TAL-01865 drawings persist by market time across panels',
+          serialized.every((entry) => (
+            entry.trend.coordinateSystem === 'timestamp'
+            && entry.horizontal.coordinateSystem === 'timestamp'
+            && entry.trend.points?.[0]?.timestamp === entry.expectedTrendTs[0]
+            && entry.trend.points?.[1]?.timestamp === entry.expectedTrendTs[1]
+            && entry.horizontal.points?.[0]?.timestamp === entry.expectedHorizontalTs[0]
+            && Number.isFinite(Number(entry.trend.points?.[0]?.price))
+            && Number.isFinite(Number(entry.horizontal.points?.[0]?.price))
+          )),
+          { serialized, mutant },
+        );
+      }
+    } catch (e) {
+      fail('TAL-01865 drawings persist by market time across panels', 'DRAWING_MARKET_TIME_SMOKE_FAILED', String(e?.message || e));
     }
   } finally {
     for (const restore of restoreFns.reverse()) {

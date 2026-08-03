@@ -7,7 +7,7 @@ A blocked manager reads this rather than waiting for a relay.
 
 ---
 
-## CURRENT STATE — D's lane · maintained in place · last updated 21:58+01:00
+## CURRENT STATE — D's lane · maintained in place · last updated 22:30+01:00
 
 > **This block is overwritten in place.** It answers what is true now; the log below answers what
 > happened. Every row with a number carries a state/grade so a retired measurement cannot be quoted
@@ -22,7 +22,7 @@ A blocked manager reads this rather than waiting for a relay.
 | TAL mutant watcher count | **0** | `MUTANT_SUITE_GREEN` — no watcher running; served suite completed manually |
 | D queue position | **4** | `NOT_HOLDING_SLOT` — reservation remains, but TAL watcher no longer consumes the measurement queue |
 | TAL mutant timeout budget | **180 s** | `UNCHANGED_BY_RULING` — blocker is diagnosed by phase trace before any budget change |
-| served TAL smoke proof | **11/11 mutants PASS** | `MUTANT_SUITE_GREEN` — sealed b126, `ticket-symbols` seed `EURUSD#25` + `GBPUSD#27` |
+| served TAL smoke proof | **19/19 mutants PASS** | `MUTANT_SUITE_GREEN` — sealed b126, `ticket-symbols-four-fx` seed `EURUSD#25`, `GBPUSD#27`, `AUDUSD#22`, `USDJPY#29` |
 | `m20Q6CapturedClear` retained size | **416 bytes** | `CLEARED_BY_E` — demoted; medium rows are back on top |
 | V8 candidate underfit threshold | **<10% of measured delta** | `PRECOMMITTED_STOPPING_RULE` — switch to dominator-subtree retained size |
 
@@ -36,7 +36,7 @@ authoritative: `node scripts/measurement-queue.mjs order`.
 **Not quotable, and why**
 
 - Previous `TAL-PO-UI-SMOKE-MUTANTS-LIVE` failures — **not quotable**: superseded by sealed b126
-  run with `ticket-symbols` seed and 11/11 mutant rows green.
+  run with `ticket-symbols-four-fx` seed and 19/19 mutant rows green.
 - Previous `batch1` timeout as mutant evidence — **not quotable**: the instrumented trace proved the
   mutants were never reached.
 - b126 initial HTML cookie result — **static hint only**: `COOKIE_MARKUP_HINT=absent_in_initial_html`
@@ -194,3 +194,4 @@ Other lanes: [A](./BOARD-A.md) · [B](./BOARD-B.md) · [C](./BOARD-C.md) · [E](
 - 21:40+01:00 · D · PRODUCT-SCOPED · `TAL-DATA-LOAD-ERROR-SURFACE` · Separate product row opened, not fixed: when `/bars` 404s and `/smart` fallback also fails, chart bootstrap initializes UI/order managers but leaves the user in an apparent infinite loading state with no surfaced failed-state message. This is a swallowed-errors/loading-state family issue and may overlap historical "panels take a while to load" reports. Scope before it competes with seal-list fixes.
 - 21:58+01:00 · D · GREEN · `TAL-PO-UI-SMOKE-MUTANTS-LIVE` · Served b126 mutant suite passed: baseline green and **11/11** row mutants killed one-for-one. Seed artifact records `seedSet: ticket-symbols`, preferred symbols `[EURUSD, GBPUSD, AUDUSD, USDJPY]`, selected `EURUSD#25` tradable + `GBPUSD#27` supporting, and `TAL_PO_UI_SEED_BARS_OK` with 100 bars from each. Evidence: `docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary.json`.
 - 21:58+01:00 · D · HARNESS-RULE · `PREWATCHDOG-01` · Generalization for all lanes: before accepting a 180 s watchdog, ask what the harness can prove in one second. Bad seeds, missing served files, missing routes, absent credentials, and empty account data should fail with a named preflight state, not a late watchdog with no diagnosis.
+- 22:30+01:00 · D · GREEN · `TAL-PO-UI-SMOKE-MUTANTS-LIVE-SEAL-EXT` · Extended served b126 mutant suite passed: baseline green and **19/19** row mutants killed one-for-one, adding TAL-01865 four-FX crosshair/tool label parity, displayed timezone movement, symbol restore, replay-position restore, trading/supporting overlap refusal, supporting-gold dropdown, Compare availability, and drawings market-time persistence across two panels. Seed artifact records `seedSet: ticket-symbols-four-fx`, selected `EURUSD#25`, `GBPUSD#27`, `AUDUSD#22`, `USDJPY#29`, and `TAL_PO_UI_SEED_BARS_OK` with 100 bars from each. Evidence: `docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary.json`.

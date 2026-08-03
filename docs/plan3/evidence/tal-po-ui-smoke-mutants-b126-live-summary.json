@@ -1,6 +1,6 @@
 {
   "signature": "TAL-PO-UI-SMOKE-MUTANT-SUITE-LIVE-V1",
-  "at": "2026-08-03T20:58:32.058Z",
+  "at": "2026-08-03T21:30:49.697Z",
   "origin": "http://31.97.192.82:3000",
   "expectedCoordinates": {
     "badge": "20260803b126",
@@ -36,6 +36,117 @@
         "expected": "5dceb636891f6df58bf7f746dabd37c2d3863838",
         "observed": "5dceb636891f6df58bf7f746dabd37c2d3863838",
         "equal": true
+      }
+    ]
+  },
+  "seed": {
+    "type": "authenticated-api-files",
+    "seedSet": "ticket-symbols-four-fx",
+    "ticketFiles": [
+      {
+        "fileId": 25,
+        "ticker": "EURUSD",
+        "originalName": "EURUSD_1min.csv",
+        "hasDateRange": false,
+        "range": null,
+        "preferredIndex": 0,
+        "index": 143
+      },
+      {
+        "fileId": 27,
+        "ticker": "GBPUSD",
+        "originalName": "GBPUSD_1min.csv",
+        "hasDateRange": false,
+        "range": null,
+        "preferredIndex": 1,
+        "index": 141
+      },
+      {
+        "fileId": 22,
+        "ticker": "AUDUSD",
+        "originalName": "AUDUSD_1min.csv",
+        "hasDateRange": false,
+        "range": null,
+        "preferredIndex": 2,
+        "index": 146
+      },
+      {
+        "fileId": 29,
+        "ticker": "USDJPY",
+        "originalName": "USDJPY_1min.csv",
+        "hasDateRange": false,
+        "range": null,
+        "preferredIndex": 3,
+        "index": 139
+      }
+    ],
+    "preferredSymbols": [
+      "EURUSD",
+      "GBPUSD",
+      "AUDUSD",
+      "USDJPY"
+    ],
+    "fileCount": 147,
+    "tradable": {
+      "fileId": 25,
+      "ticker": "EURUSD",
+      "originalName": "EURUSD_1min.csv",
+      "hasDateRange": false,
+      "range": null,
+      "preferredIndex": 0,
+      "index": 143
+    },
+    "supporting": {
+      "fileId": 27,
+      "ticker": "GBPUSD",
+      "originalName": "GBPUSD_1min.csv",
+      "hasDateRange": false,
+      "range": null,
+      "preferredIndex": 1,
+      "index": 141
+    },
+    "startDate": null,
+    "endDate": null
+  },
+  "seedPreflight": {
+    "ok": true,
+    "state": "TAL_PO_UI_SEED_BARS_OK",
+    "rows": [
+      {
+        "ticker": "EURUSD",
+        "fileId": 25,
+        "role": "tradable",
+        "status": 200,
+        "bars": 100,
+        "detail": null,
+        "head": "{\"file_id\":25,\"resolution\":\"1m\",\"bars\":[{\"t\":1262556000000,\"o\":1.43,\"h\":1.43008,\"l\":1.42995,\"c\":1.43007,\"v\":21.0},{\"t\":1262556060000,\"o\":1.43008,\"h\":1.4302,\"l\":"
+      },
+      {
+        "ticker": "GBPUSD",
+        "fileId": 27,
+        "role": "supporting",
+        "status": 200,
+        "bars": 100,
+        "detail": null,
+        "head": "{\"file_id\":27,\"resolution\":\"1m\",\"bars\":[{\"t\":1262556000000,\"o\":1.61045,\"h\":1.61057,\"l\":1.61041,\"c\":1.6105,\"v\":51.0},{\"t\":1262556060000,\"o\":1.61055,\"h\":1.61118,\""
+      },
+      {
+        "ticker": "AUDUSD",
+        "fileId": 22,
+        "role": "supporting",
+        "status": 200,
+        "bars": 100,
+        "detail": null,
+        "head": "{\"file_id\":22,\"resolution\":\"1m\",\"bars\":[{\"t\":1262556060000,\"o\":0.8981,\"h\":0.8981,\"l\":0.89808,\"c\":0.89808,\"v\":3.0},{\"t\":1262556120000,\"o\":0.89811,\"h\":0.89811,\"l\""
+      },
+      {
+        "ticker": "USDJPY",
+        "fileId": 29,
+        "role": "supporting",
+        "status": 200,
+        "bars": 100,
+        "detail": null,
+        "head": "{\"file_id\":29,\"resolution\":\"1m\",\"bars\":[{\"t\":1262556000000,\"o\":92.944,\"h\":92.955,\"l\":92.944,\"c\":92.944,\"v\":14.0},{\"t\":1262556060000,\"o\":92.946,\"h\":92.958,\"l\":92"
       }
     ]
   },
@@ -224,6 +335,274 @@
       "targetState": "ORDER_PLACE_THROW",
       "targetDetail": "Cannot read properties of undefined (reading 'undefined')",
       "artifact": "docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary-analysis-only.json"
+    },
+    {
+      "id": "tool-label-timezone-drift",
+      "target": "TAL-01865 four FX crosshair and line-tool labels agree",
+      "ok": true,
+      "failedRows": [
+        "TAL-01865 four FX crosshair and line-tool labels agree"
+      ],
+      "targetState": "OBSERVED_WRONG",
+      "targetDetail": {
+        "rows": [
+          {
+            "ticker": "EURUSD",
+            "fileId": 25,
+            "present": true,
+            "crosshair": "Sun 24 Jul '11  16:04",
+            "tool": "24 Jul '11 21:04",
+            "clockEqual": false,
+            "dayEqual": true
+          },
+          {
+            "ticker": "GBPUSD",
+            "fileId": 27,
+            "present": true,
+            "crosshair": "Sun 24 Jul '11  16:04",
+            "tool": "24 Jul '11 21:04",
+            "clockEqual": false,
+            "dayEqual": true
+          },
+          {
+            "ticker": "AUDUSD",
+            "fileId": 22,
+            "present": true,
+            "crosshair": "Sun 24 Jul '11  16:04",
+            "tool": "24 Jul '11 21:04",
+            "clockEqual": false,
+            "dayEqual": true
+          },
+          {
+            "ticker": "USDJPY",
+            "fileId": 29,
+            "present": true,
+            "crosshair": "Sun 24 Jul '11  16:04",
+            "tool": "24 Jul '11 21:04",
+            "clockEqual": false,
+            "dayEqual": true
+          }
+        ],
+        "seedSet": "ticket-symbols-four-fx",
+        "mutant": "tool-label-timezone-drift"
+      },
+      "artifact": "docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary-tal01865-restore.json"
+    },
+    {
+      "id": "candle-timezone-static",
+      "target": "TAL-01865 displayed candles follow selected timezone",
+      "ok": true,
+      "failedRows": [
+        "TAL-01865 displayed candles follow selected timezone"
+      ],
+      "targetState": "OBSERVED_WRONG",
+      "targetDetail": {
+        "labels": {
+          "America/New_York": "Sun 24 Jul '11  20:04",
+          "UTC": "Sun 24 Jul '11  20:04",
+          "Asia/Kolkata": "Sun 24 Jul '11  20:04"
+        },
+        "mutant": "candle-timezone-static"
+      },
+      "artifact": "docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary-tal01865-restore.json"
+    },
+    {
+      "id": "refresh-symbol-resets",
+      "target": "TAL-01865 refresh restores onscreen symbol",
+      "ok": true,
+      "failedRows": [
+        "TAL-01865 refresh restores onscreen symbol"
+      ],
+      "targetState": "OBSERVED_WRONG",
+      "targetDetail": {
+        "target": {
+          "fileId": 29,
+          "ticker": "USDJPY",
+          "originalName": "USDJPY_1min.csv",
+          "hasDateRange": false,
+          "range": null,
+          "preferredIndex": 3,
+          "index": 139
+        },
+        "fallback": {
+          "fileId": 25,
+          "ticker": "EURUSD",
+          "originalName": "EURUSD_1min.csv",
+          "hasDateRange": false,
+          "range": null,
+          "preferredIndex": 0,
+          "index": 143
+        },
+        "restored": {
+          "fileId": 25,
+          "ticker": "EURUSD"
+        },
+        "mutant": "refresh-symbol-resets"
+      },
+      "artifact": "docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary-tal01865-restore.json"
+    },
+    {
+      "id": "refresh-replay-starts-over",
+      "target": "TAL-01865 refresh restores replay position",
+      "ok": true,
+      "failedRows": [
+        "TAL-01865 refresh restores replay position"
+      ],
+      "targetState": "OBSERVED_WRONG",
+      "targetDetail": {
+        "payload": {
+          "replay": {
+            "currentIndex": 37,
+            "replayTimestamp": 1311540060000
+          }
+        },
+        "restored": {
+          "currentIndex": 0,
+          "replayTimestamp": 1311537840000
+        },
+        "mutant": "refresh-replay-starts-over"
+      },
+      "artifact": "docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary-tal01865-restore.json"
+    },
+    {
+      "id": "session-overlap-allowed",
+      "target": "Rayan #8 session creation refuses trading/supporting overlap",
+      "ok": true,
+      "failedRows": [
+        "Rayan #8 session creation refuses trading/supporting overlap"
+      ],
+      "targetState": "OBSERVED_WRONG",
+      "targetDetail": {
+        "trading": [
+          "EURUSD",
+          "GBPUSD"
+        ],
+        "supporting": [
+          "EURUSD",
+          "USDJPY"
+        ],
+        "overlap": [],
+        "mutant": "session-overlap-allowed"
+      },
+      "artifact": "docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary-rayan8-supporting-drawings.json"
+    },
+    {
+      "id": "supporting-gold-missing",
+      "target": "Rayan #8 supporting symbols render gold in dropdown",
+      "ok": true,
+      "failedRows": [
+        "Rayan #8 supporting symbols render gold in dropdown"
+      ],
+      "targetState": "OBSERVED_WRONG",
+      "targetDetail": {
+        "supportingColor": "#text",
+        "tradableColor": "#text",
+        "expectedGold": "rgba(232,194,82,0.9)",
+        "mutant": "supporting-gold-missing"
+      },
+      "artifact": "docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary-rayan8-supporting-drawings.json"
+    },
+    {
+      "id": "supporting-compare-missing",
+      "target": "Rayan #8 Compare button remains available with supporting symbols",
+      "ok": true,
+      "failedRows": [
+        "Rayan #8 Compare button remains available with supporting symbols"
+      ],
+      "targetState": "OBSERVED_WRONG",
+      "targetDetail": {
+        "fileIds": [],
+        "compareButton": false,
+        "sessionFileIds": [
+          25,
+          27
+        ],
+        "mutant": "supporting-compare-missing"
+      },
+      "artifact": "docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary-rayan8-supporting-drawings.json"
+    },
+    {
+      "id": "drawings-index-persist",
+      "target": "TAL-01865 drawings persist by market time across panels",
+      "ok": true,
+      "failedRows": [
+        "TAL-01865 drawings persist by market time across panels"
+      ],
+      "targetState": "OBSERVED_WRONG",
+      "targetDetail": {
+        "serialized": [
+          {
+            "panelId": "A",
+            "trend": {
+              "id": "A-trend-line",
+              "type": "trend-line",
+              "points": [
+                {
+                  "timestamp": 1311536841000,
+                  "price": 0
+                }
+              ],
+              "coordinateSystem": "timestamp",
+              "locked": true
+            },
+            "horizontal": {
+              "id": "A-horizontal-line",
+              "type": "horizontal-line",
+              "points": [
+                {
+                  "timestamp": 1311536841000,
+                  "price": 0
+                }
+              ],
+              "coordinateSystem": "timestamp",
+              "locked": true
+            },
+            "expectedTrendTs": [
+              1311537840000,
+              1311537960000
+            ],
+            "expectedHorizontalTs": [
+              1311537900000
+            ]
+          },
+          {
+            "panelId": "B",
+            "trend": {
+              "id": "B-trend-line",
+              "type": "trend-line",
+              "points": [
+                {
+                  "timestamp": 1311536841000,
+                  "price": 0
+                }
+              ],
+              "coordinateSystem": "timestamp",
+              "locked": true
+            },
+            "horizontal": {
+              "id": "B-horizontal-line",
+              "type": "horizontal-line",
+              "points": [
+                {
+                  "timestamp": 1311536841000,
+                  "price": 0
+                }
+              ],
+              "coordinateSystem": "timestamp",
+              "locked": true
+            },
+            "expectedTrendTs": [
+              1311538440000,
+              1311538560000
+            ],
+            "expectedHorizontalTs": [
+              1311538500000
+            ]
+          }
+        ],
+        "mutant": "drawings-index-persist"
+      },
+      "artifact": "docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary-rayan8-supporting-drawings.json"
     }
   ],
   "ok": true,

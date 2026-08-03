@@ -1,6 +1,6 @@
 {
   "signature": "TAL-PO-UI-SMOKE-CANARY-V1",
-  "at": "2026-08-03T20:58:03.955Z",
+  "at": "2026-08-03T21:27:23.907Z",
   "origin": "http://31.97.192.82:3000",
   "expectedCoordinates": {
     "badge": "20260803b126",
@@ -42,7 +42,45 @@
   "url": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&tal=po-ui-smoke&mcLayout=1",
   "seed": {
     "type": "authenticated-api-files",
-    "seedSet": "ticket-symbols",
+    "seedSet": "ticket-symbols-four-fx",
+    "ticketFiles": [
+      {
+        "fileId": 25,
+        "ticker": "EURUSD",
+        "originalName": "EURUSD_1min.csv",
+        "hasDateRange": false,
+        "range": null,
+        "preferredIndex": 0,
+        "index": 143
+      },
+      {
+        "fileId": 27,
+        "ticker": "GBPUSD",
+        "originalName": "GBPUSD_1min.csv",
+        "hasDateRange": false,
+        "range": null,
+        "preferredIndex": 1,
+        "index": 141
+      },
+      {
+        "fileId": 22,
+        "ticker": "AUDUSD",
+        "originalName": "AUDUSD_1min.csv",
+        "hasDateRange": false,
+        "range": null,
+        "preferredIndex": 2,
+        "index": 146
+      },
+      {
+        "fileId": 29,
+        "ticker": "USDJPY",
+        "originalName": "USDJPY_1min.csv",
+        "hasDateRange": false,
+        "range": null,
+        "preferredIndex": 3,
+        "index": 139
+      }
+    ],
     "preferredSymbols": [
       "EURUSD",
       "GBPUSD",
@@ -92,6 +130,24 @@
         "bars": 100,
         "detail": null,
         "head": "{\"file_id\":27,\"resolution\":\"1m\",\"bars\":[{\"t\":1262556000000,\"o\":1.61045,\"h\":1.61057,\"l\":1.61041,\"c\":1.6105,\"v\":51.0},{\"t\":1262556060000,\"o\":1.61055,\"h\":1.61118,\""
+      },
+      {
+        "ticker": "AUDUSD",
+        "fileId": 22,
+        "role": "supporting",
+        "status": 200,
+        "bars": 100,
+        "detail": null,
+        "head": "{\"file_id\":22,\"resolution\":\"1m\",\"bars\":[{\"t\":1262556060000,\"o\":0.8981,\"h\":0.8981,\"l\":0.89808,\"c\":0.89808,\"v\":3.0},{\"t\":1262556120000,\"o\":0.89811,\"h\":0.89811,\"l\""
+      },
+      {
+        "ticker": "USDJPY",
+        "fileId": 29,
+        "role": "supporting",
+        "status": 200,
+        "bars": 100,
+        "detail": null,
+        "head": "{\"file_id\":29,\"resolution\":\"1m\",\"bars\":[{\"t\":1262556000000,\"o\":92.944,\"h\":92.955,\"l\":92.944,\"c\":92.944,\"v\":14.0},{\"t\":1262556060000,\"o\":92.946,\"h\":92.958,\"l\":92"
       }
     ]
   },
@@ -247,6 +303,247 @@
           ],
           "mutant": ""
         }
+      },
+      {
+        "name": "TAL-01865 four FX crosshair and line-tool labels agree",
+        "ok": true,
+        "state": "OBSERVED_RIGHT",
+        "detail": {
+          "rows": [
+            {
+              "ticker": "EURUSD",
+              "fileId": 25,
+              "present": true,
+              "crosshair": "Sun 24 Jul '11  16:04",
+              "tool": "24 Jul '11 16:04",
+              "clockEqual": true,
+              "dayEqual": true
+            },
+            {
+              "ticker": "GBPUSD",
+              "fileId": 27,
+              "present": true,
+              "crosshair": "Sun 24 Jul '11  16:04",
+              "tool": "24 Jul '11 16:04",
+              "clockEqual": true,
+              "dayEqual": true
+            },
+            {
+              "ticker": "AUDUSD",
+              "fileId": 22,
+              "present": true,
+              "crosshair": "Sun 24 Jul '11  16:04",
+              "tool": "24 Jul '11 16:04",
+              "clockEqual": true,
+              "dayEqual": true
+            },
+            {
+              "ticker": "USDJPY",
+              "fileId": 29,
+              "present": true,
+              "crosshair": "Sun 24 Jul '11  16:04",
+              "tool": "24 Jul '11 16:04",
+              "clockEqual": true,
+              "dayEqual": true
+            }
+          ],
+          "seedSet": "ticket-symbols-four-fx",
+          "mutant": ""
+        }
+      },
+      {
+        "name": "TAL-01865 displayed candles follow selected timezone",
+        "ok": true,
+        "state": "OBSERVED_RIGHT",
+        "detail": {
+          "labels": {
+            "America/New_York": "Sun 24 Jul '11  16:04",
+            "UTC": "Sun 24 Jul '11  20:04",
+            "Asia/Kolkata": "Mon 25 Jul '11  01:34"
+          },
+          "mutant": ""
+        }
+      },
+      {
+        "name": "TAL-01865 refresh restores onscreen symbol",
+        "ok": true,
+        "state": "OBSERVED_RIGHT",
+        "detail": {
+          "target": {
+            "fileId": 29,
+            "ticker": "USDJPY",
+            "originalName": "USDJPY_1min.csv",
+            "hasDateRange": false,
+            "range": null,
+            "preferredIndex": 3,
+            "index": 139
+          },
+          "fallback": {
+            "fileId": 25,
+            "ticker": "EURUSD",
+            "originalName": "EURUSD_1min.csv",
+            "hasDateRange": false,
+            "range": null,
+            "preferredIndex": 0,
+            "index": 143
+          },
+          "restored": {
+            "fileId": 29,
+            "ticker": "USDJPY"
+          },
+          "mutant": ""
+        }
+      },
+      {
+        "name": "TAL-01865 refresh restores replay position",
+        "ok": true,
+        "state": "OBSERVED_RIGHT",
+        "detail": {
+          "payload": {
+            "replay": {
+              "currentIndex": 37,
+              "replayTimestamp": 1311540060000
+            }
+          },
+          "restored": {
+            "currentIndex": 37,
+            "replayTimestamp": 1311540060000
+          },
+          "mutant": ""
+        }
+      },
+      {
+        "name": "Rayan #8 session creation refuses trading/supporting overlap",
+        "ok": true,
+        "state": "OBSERVED_RIGHT",
+        "detail": {
+          "trading": [
+            "EURUSD",
+            "GBPUSD"
+          ],
+          "supporting": [
+            "EURUSD",
+            "USDJPY"
+          ],
+          "overlap": [
+            "EURUSD"
+          ],
+          "mutant": ""
+        }
+      },
+      {
+        "name": "Rayan #8 supporting symbols render gold in dropdown",
+        "ok": true,
+        "state": "OBSERVED_RIGHT",
+        "detail": {
+          "supportingColor": "rgba(232,194,82,0.9)",
+          "tradableColor": "#text",
+          "expectedGold": "rgba(232,194,82,0.9)",
+          "mutant": ""
+        }
+      },
+      {
+        "name": "Rayan #8 Compare button remains available with supporting symbols",
+        "ok": true,
+        "state": "OBSERVED_RIGHT",
+        "detail": {
+          "fileIds": [
+            25,
+            27
+          ],
+          "compareButton": true,
+          "sessionFileIds": [
+            25,
+            27
+          ],
+          "mutant": ""
+        }
+      },
+      {
+        "name": "TAL-01865 drawings persist by market time across panels",
+        "ok": true,
+        "state": "OBSERVED_RIGHT",
+        "detail": {
+          "serialized": [
+            {
+              "panelId": "A",
+              "trend": {
+                "id": "A-trend-line",
+                "type": "trend-line",
+                "points": [
+                  {
+                    "timestamp": 1311537840000,
+                    "price": 1.1
+                  },
+                  {
+                    "timestamp": 1311537960000,
+                    "price": 3.1
+                  }
+                ],
+                "coordinateSystem": "timestamp",
+                "locked": true
+              },
+              "horizontal": {
+                "id": "A-horizontal-line",
+                "type": "horizontal-line",
+                "points": [
+                  {
+                    "timestamp": 1311537900000,
+                    "price": 2.1
+                  }
+                ],
+                "coordinateSystem": "timestamp",
+                "locked": true
+              },
+              "expectedTrendTs": [
+                1311537840000,
+                1311537960000
+              ],
+              "expectedHorizontalTs": [
+                1311537900000
+              ]
+            },
+            {
+              "panelId": "B",
+              "trend": {
+                "id": "B-trend-line",
+                "type": "trend-line",
+                "points": [
+                  {
+                    "timestamp": 1311538440000,
+                    "price": 1.2
+                  },
+                  {
+                    "timestamp": 1311538560000,
+                    "price": 3.2
+                  }
+                ],
+                "coordinateSystem": "timestamp",
+                "locked": true
+              },
+              "horizontal": {
+                "id": "B-horizontal-line",
+                "type": "horizontal-line",
+                "points": [
+                  {
+                    "timestamp": 1311538500000,
+                    "price": 2.2
+                  }
+                ],
+                "coordinateSystem": "timestamp",
+                "locked": true
+              },
+              "expectedTrendTs": [
+                1311538440000,
+                1311538560000
+              ],
+              "expectedHorizontalTs": [
+                1311538500000
+              ]
+            }
+          ],
+          "mutant": ""
+        }
       }
     ],
     "mutant": null,
@@ -300,6 +597,16 @@
         "stage": "order-placed",
         "mutant": null,
         "detail": "analysis-only"
+      },
+      {
+        "stage": "assertion-start",
+        "mutant": null,
+        "detail": "tal01865-four-fx-labels"
+      },
+      {
+        "stage": "assertion-start",
+        "mutant": null,
+        "detail": "tal01865-candle-timezone"
       }
     ]
   },

@@ -47,7 +47,10 @@ const BATCHES = Object.freeze([
   { name: 'batch2a', mutants: 'market-size-drift,control-button-moves,font-baseline-drift,duplicate-activation-box' },
   { name: 'release-only', mutants: 'release-only-average' },
   { name: 'analysis-only', mutants: 'analysis-only-allows-order' },
+  { name: 'tal01865-restore', mutants: 'tool-label-timezone-drift,candle-timezone-static,refresh-symbol-resets,refresh-replay-starts-over' },
+  { name: 'rayan8-supporting-drawings', mutants: 'session-overlap-allowed,supporting-gold-missing,supporting-compare-missing,drawings-index-persist' },
 ]);
+const EXPECTED_ROW_COUNT = 19;
 
 function lockFlagsFromLocalArgv(argv = process.argv) {
   return {
@@ -157,11 +160,13 @@ const report = {
   expectedCoordinates: EXPECT,
   surface,
   identity,
+  seed: batchReports[0]?.seed || null,
+  seedPreflight: batchReports[0]?.seedPreflight || null,
   baselineOk: batchReports.every((r) => r.mutantSuite?.baselineOk === true),
   rows,
-  ok: rows.length === 11 && rows.every((row) => row.ok)
+  ok: rows.length === EXPECTED_ROW_COUNT && rows.every((row) => row.ok)
     && batchReports.every((r) => r.mutantSuite?.baselineOk === true),
-  verdict: rows.length === 11 && rows.every((row) => row.ok)
+  verdict: rows.length === EXPECTED_ROW_COUNT && rows.every((row) => row.ok)
     && batchReports.every((r) => r.mutantSuite?.baselineOk === true)
     ? 'PASSED - TAL/Rayan row mutants killed one-for-one'
     : 'FAILED - TAL/Rayan row mutant suite',
