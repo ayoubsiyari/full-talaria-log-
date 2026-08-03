@@ -219,9 +219,13 @@ function scanCommits(n) {
 export function fixFile(rel, offset) {
   const abs = path.join(REPO_ROOT, rel);
   const src = fs.readFileSync(abs, 'utf8');
-  const lines = src.split(/\r?\n/);
+  // Terminators are kept and written back unchanged. Joining on '\n' rewrites
+  // every line of a CRLF file, which on a shared board turns an 11-number sweep
+  // into a 102-line diff and a conflict for whoever is mid-entry. BOARD-E.md is
+  // CRLF and BOARD-B.md is LF, so this is not hypothetical here.
+  const parts = src.split(/(\r\n|\n)/);
   const changed = [];
-  const out = lines.map((line, i) => {
+  const stampLine = (line, i) => {
     // One decision, taken once. This loop used to re-test OFFSET_AFTER and
     // NOT_A_CLOCK itself, so the fixer and the gate could disagree -- and they
     // did: after the list-of-times narrowing landed in scanText only, the gate
@@ -235,8 +239,11 @@ export function fixFile(rel, offset) {
       .reduce((acc, f) => acc.slice(0, f.endsAt) + offset + acc.slice(f.endsAt), line);
     changed.push({ line: i + 1, from: line.trim().slice(0, 120), to: next.trim().slice(0, 120) });
     return next;
-  });
-  fs.writeFileSync(abs, out.join('\n'));
+  };
+  for (let i = 0; i < parts.length; i += 2) {
+    parts[i] = stampLine(parts[i], i / 2);
+  }
+  fs.writeFileSync(abs, parts.join(''));
   return changed;
 }
 

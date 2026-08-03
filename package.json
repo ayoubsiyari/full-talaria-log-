@@ -36,6 +36,7 @@
     "gate:run-lock-status": "node scripts/run-lock-status.mjs",
     "gate:clock-01": "node scripts/clock-01-audit.mjs",
     "test:clock-01": "node --test scripts/clock-01-audit.selftest.mjs",
+    "clock-01:stamp-lines": "node scripts/clock-01-stamp-lines.mjs",
     "test:checkpoint-provenance": "node --test scripts/tests/checkpoint-provenance.test.mjs",
     "preflight:order-overlay-browser": "node scripts/order-overlay-browser-runner.mjs",
     "test:order-overlay-browser": "node --test scripts/tests/order-overlay-browser-runner.test.mjs",

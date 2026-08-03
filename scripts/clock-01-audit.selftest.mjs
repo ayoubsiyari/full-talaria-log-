@@ -210,6 +210,32 @@ test('B: ANTI-VACUITY — restoring the pair excuse un-narrowed makes the list c
     }
   });
 
+test('B: --fix preserves CRLF, because boards are shared files', () => {
+  // BOARD-E.md is CRLF; BOARD-B.md is LF. Writing back with join('\n') rewrote
+  // all 102 lines of E's board while stamping 11 of them. Nothing was lost, but a
+  // whole-file diff on someone else's board is a guaranteed conflict for whoever
+  // is mid-entry, and it buries the 11 real changes where no reviewer will find
+  // them. A sweep that cannot be read is not reviewable, and the rule for a
+  // mechanical sweep is that you read the diff.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clock-eol-'));
+  try {
+    for (const [name, eol] of [['crlf.md', '\r\n'], ['lf.md', '\n']]) {
+      const abs = path.join(dir, name);
+      const body = ['- 09:14 · E · first', '- untouched line', '- 11:03 · E · second'].join(eol);
+      fs.writeFileSync(abs, body);
+      const changed = fixFile(path.relative(REPO_ROOT, abs), '+01:00');
+      assert.equal(changed.length, 2, `${name}: expected two stamped lines`);
+      const after = fs.readFileSync(abs, 'utf8');
+      assert.match(after, /09:14\+01:00/, `${name}: did not stamp`);
+      assert.equal((after.match(/\r\n/g) || []).length, eol === '\r\n' ? 2 : 0,
+        `${name}: line endings were rewritten, so the diff will show every line`);
+      assert.equal(after.split(eol).length, 3, `${name}: line count changed`);
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('B: the default scope covers every lane board, or a green means one lane', () => {
   // The rule is repo-wide and boards are the surface it names first. While the
   // default was A-lane only, `gate:clock-01` could read green with 32 bare numbers
