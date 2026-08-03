@@ -7,7 +7,7 @@ A blocked manager reads this rather than waiting for a relay.
 
 ---
 
-## CURRENT STATE — E's lane · maintained in place · last updated 21:28+01:00
+## CURRENT STATE — E's lane · maintained in place · last updated 21:44+01:00
 
 > **This block is the one part of this file that is NOT append-only.** It is overwritten, so it
 > answers *what is true now*; everything below answers *what happened*. Every number here carries
@@ -22,7 +22,8 @@ A blocked manager reads this rather than waiting for a relay.
 | Item 6 live capture | **attempted at 19:14:30+01:00** | `NO_LIVE_SOAK_BROWSER_STRUCTURAL` — queue claim/release worked, but empty queue meant no chart browser; artifact `_evidence/manager-E/detailed-dump-capture-20260803/2026-08-03T18-14-29-735Z/watch-report.json` |
 | C handoff | **basis corrected at 21:28+01:00** | `HANDOFF_READY_OWNER_DETAIL_ONLY` — `docs/plan3/E-TO-C-DETAILED-DUMP-CAPTURE-HANDOFF-20260803.md` now forbids computing COV-01 from single-pid detailed roots against all-Chrome private memory; C keeps coverage on its corrected basis |
 | V8 dominator subtree fallback | **gate PASS 3/3 at 21:28+01:00** | `APPLIED_TO_DIAGNOSTIC_SNAPSHOTS` — instrument now aggregates repeated logical paths across panels before diffing; reports written beside A/B/C snapshots |
-| V8 dominator owner lead | **`_smartPrefetchCache` 0.384 → 10.827 → 13.239 MB** | `NAMED_MULTI_MB_OWNER_FLATTENING` — retained subtree deltas: A-B **+10.443 MB**, B-C **+2.413 MB**, A-C **+12.855 MB** across 4 cache instances; product owner signal, not full JS heap-used explanation |
+| V8 dominator owner lead | **`_smartPrefetchCache` 0.384 → 10.827 → 13.239 MB** | `ASYMPTOTIC_HOARD_NOT_SLOPE_ANSWER` — retained subtree deltas: A-B **+10.443 MB**, B-C **+2.413 MB**, A-C **+12.855 MB** across 4 cache instances; one cache per panel filling toward capacity, not caches multiplying and not the monotone **36 MB/hour** slope owner |
+| `_smartPrefetchCache` hoard questions | **2 no/unproven answers at 21:44+01:00** | `FIX_ROW` — count-capped at 48 entries and 15 min TTL, but not proven capped to the standing **5,000 + 2,048** price-window rule; `destroy()` does not clear it; return-to-single survival unproven; refresh survival not indicated |
 | C canonical floor parse | **10 samples parsed at 18:56+01:00** | `ROOTS_ONLY_PARSED_BASIS_MISMATCH_CONFIRMED` — `_evidence/manager-E/detailed-dump-parser-canonical-floor-pass3-20260803.json` preserves final **59.84% coverage / 271.05 MB unattributed** as C's old single-pid-over-all-Chrome basis, not missing detail |
 | V8 playback rerun | **complete** | `DIAGNOSTIC_CAPTURED_CONTAMINATED` — CONF-01 same-symbol, 4 panels, playback at 10 bars/s, zero-trade reproduction; useful retainer data, not authoritative plateau/slope read |
 | Snapshot A | **captured at 15:36:47+01:00** | `OBSERVED_ARTIFACT` — `_evidence/manager-E/v8-playback-heap-slope-20260803/2026-08-03T14-34-45-491Z/A.heapsnapshot` |
@@ -58,9 +59,9 @@ positive constructor self-size and `m20Q6CapturedClear +7.270 MB`, are quotable 
 salvage, not as flattening/slope evidence. `BUFFER-PARTITION-DISCRIMINATOR-V1` did not assign the
 120 MB buffer shelf; its arm numbers are negative/weak-transient owner eliminations, not an owner claim.
 
-**Next required update** — V8: carry `_smartPrefetchCache` as the named dominator lead, then either
-perturb/disable that path or run the authoritative read to test whether the remaining CDP heap-used slope
-persists after the cache flattens. Item 6: C wires the ownership-detail call into the sampler and emits
+**Next required update** — V8: take the perturbation run next. Disable or bypass `_smartPrefetchCache`
+to remove the asymptotic hoard, then measure whether the monotone **36 MB/hour** JS-side slope remains.
+Item 6: C wires the ownership-detail call into the sampler and emits
 four detailed dump artifacts: `zerotrade:start`, `zerotrade:end`, `trades:start`, `trades:end`. E then
 parses those artifacts with `node scripts/detailed-dump-parser.mjs <files> --out=<report>`.
 
@@ -188,3 +189,4 @@ and the M17-DI2 restore in `1c8892c51`.
 - 21:28+01:00 · E · CORRECTED · `DETAILED-DUMP-CAPTURE-BASIS` · C's correction accepted: the **59.84% / 271.05 MB** shortfall was single-pid arena roots divided by all-Chrome private memory, not missing child detail. E's handoff snippet no longer passes all-Chrome `totalPrivateMB` into single-pid `arenaColumns(...)`; item 6 remains wanted for root subdivision and product-owner attribution, and it moves that old coverage percentage by zero.
 - 21:28+01:00 · E · APPLIED · `V8-DOMINATOR-SUBTREE-FALLBACK` · Found and fixed an undercount in the fallback before using it: repeated logical paths across panels were collapsed instead of aggregated. New regression proves repeated `Chart -> Map._smartPrefetchCache` paths aggregate before diffing. Verification: `npm run gate:v8-dominator-subtree` PASS 3/3 at 21:28+01:00.
 - 21:28+01:00 · E · DIAGNOSTIC OWNER LEAD · `V8-SLOPE-DOMINATOR-SUBTREE` · Applied the fixed dominator diff to the completed diagnostic CONF-01 four-panel playback snapshots. Reports: `A-B-dominator-subtree-diff.json`, `B-C-dominator-subtree-diff.json`, `A-C-dominator-subtree-diff.json` under `_evidence/manager-E/v8-playback-heap-slope-20260803/2026-08-03T14-34-45-491Z/`. Named owner lead is `Chart -> Map._smartPrefetchCache`: **0.384 → 10.827 → 13.239 MB**, deltas **+10.443 MB A-B**, **+2.413 MB B-C**, **+12.855 MB A-C**, occurrence count **4 → 4 → 4**. Verdict: named multi-MB product owner, flattening tail; it explains the retained-node snapshot delta lead, not the full CDP `jsHeapUsedMB` slope.
+- 21:44+01:00 · E · RECLASSIFIED · `SMART-PREFETCH-HOARD-NOT-SLOPE` · Shape is one cache per panel filling, not cache multiplication: occurrence count stays **4 → 4 → 4** while retained MB grows **+10.443 A-B** then only **+2.413 B-C**. This is an asymptotic hoard and strong evidence it is not the monotone **36 MB/hour** JS-side slope owner. Four hoard questions: capped = only entry-count capped (**48 entries**, **15 min** TTL), not proven to the standing **5,000 + 2,048** price-window rule; teardown release = **NO** by code (`destroy()` drops series/canvas but not `_smartPrefetchCache`); return-to-single survival = **UNPROVEN** and must be measured; refresh survival = **NO EVIDENCE** beyond normal document replacement. Because teardown/window discipline is not green, this is a fix row, not just a finding.

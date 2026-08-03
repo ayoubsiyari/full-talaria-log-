@@ -32,6 +32,8 @@ const SNAPSHOTS = Math.max(3, Number(arg('snapshots', '3')));
 const SNAP_CAP_MB = Number(arg('snapCapMB', '3072'));
 const TOP_N = Number(arg('topN', '25'));
 const SPEED = Number(arg('speed', '10'));
+const PERTURBATION = arg('perturbation', 'none');
+const DISABLE_SMART_PREFETCH_CACHE = PERTURBATION === 'disable-smart-prefetch-cache';
 const SNAPSHOT_INTERVAL_MS = Math.round((TOTAL_MIN * 60_000) / (SNAPSHOTS - 1));
 const LOCK_FILE = path.join(OUT_DIR, '.v8-playback-heap-slope.lock');
 
@@ -277,6 +279,53 @@ async function readPlayheadSnapshot(page) {
   }).catch((e) => [{ error: String(e?.message || e) }]);
 }
 
+async function applySmartCachePerturbation(page, label) {
+  if (!DISABLE_SMART_PREFETCH_CACHE) return null;
+  const rows = await page.evaluate((phaseLabel) => {
+    const patch = (w, realm) => {
+      try {
+        const ch = w.chart || null;
+        if (!ch) return { realm, phaseLabel, state: 'NO_CHART' };
+        const beforeSize = ch._smartPrefetchCache?.size ?? null;
+        if (!ch._smartPrefetchCache || typeof ch._smartPrefetchCache.clear !== 'function') {
+          ch._smartPrefetchCache = new Map();
+        }
+        ch._smartPrefetchCache.clear();
+        ch._smartCacheMaxEntries = 0;
+        ch._smartCacheTtlMs = 1;
+        ch._getSmartCachedPayload = function disabledSmartCacheGet() { return null; };
+        ch._tryTakeSmartPrefetch = function disabledSmartCacheTake() { return null; };
+        ch._setSmartCachedPayload = function disabledSmartCacheSet() {};
+        ch._setSmartPrefetchCacheEntry = function disabledSmartCacheEntrySet() {};
+        if (typeof ch._trimSmartPrefetchCache === 'function') ch._trimSmartPrefetchCache();
+        return {
+          realm,
+          phaseLabel,
+          state: 'SMART_PREFETCH_CACHE_DISABLED',
+          beforeSize,
+          afterSize: ch._smartPrefetchCache?.size ?? null,
+          maxEntries: ch._smartCacheMaxEntries,
+        };
+      } catch (e) {
+        return { realm, phaseLabel, state: 'SMART_PREFETCH_CACHE_PATCH_ERROR', error: String(e?.message || e) };
+      }
+    };
+    const out = [patch(window, 'host')];
+    for (let i = 0; i < window.frames.length; i += 1) {
+      try { out.push(patch(window.frames[i], `frame-${i}`)); } catch (e) {
+        out.push({ realm: `frame-${i}`, phaseLabel, state: 'FRAME_PATCH_ERROR', error: String(e?.message || e) });
+      }
+    }
+    return out;
+  }, label).catch((e) => [{ phaseLabel: label, state: 'SMART_PREFETCH_CACHE_PERTURBATION_ERROR', error: String(e?.message || e) }]);
+  return {
+    at: new Date().toISOString(),
+    label,
+    state: rows.some((r) => /ERROR/.test(String(r?.state || ''))) ? 'PERTURBATION_PARTIAL' : 'PERTURBATION_APPLIED',
+    rows,
+  };
+}
+
 export async function waitWithHeartbeats(ms, report, page, segmentLabel, {
   sleepFn = sleep,
   keepAlive = () => keepConf01Playing(page, SPEED),
@@ -331,6 +380,11 @@ export async function waitWithHeartbeats(ms, report, page, segmentLabel, {
 }
 
 async function takeMoment(label, page, report) {
+  const perturbation = await applySmartCachePerturbation(page, `${label}:before-moment`);
+  if (perturbation) {
+    report.perturbationApplications.push(perturbation);
+    save(report);
+  }
   report.moments[label] = {
     at: new Date().toISOString(),
     phase: 'starting',
@@ -511,11 +565,13 @@ async function main() {
       snapshotIntervalMin: +(SNAPSHOT_INTERVAL_MS / 60_000).toFixed(2),
       snapshotCapMB: SNAP_CAP_MB,
       topN: TOP_N,
+      perturbation: PERTURBATION,
       pairSwitches: 0,
       nullThreshold: 'No named sustained multi-MB constructor/retainer across adjacent segments and end-to-end means warm-up plateau/floor-story; a named sustained grower means V8 slope owner.',
     },
     moments: {},
     heartbeats: [],
+    perturbationApplications: [],
   };
 
   let session = null;
@@ -539,6 +595,14 @@ async function main() {
     report.conf01 = session.conf01;
     report.bootPlaybackState = await playbackState(page, 'boot');
     report.bootMetrics = await metrics(page, 'boot');
+    if (DISABLE_SMART_PREFETCH_CACHE) {
+      report.perturbation = {
+        state: 'DISABLE_SMART_PREFETCH_CACHE',
+        why: 'Perturbation arm: remove the asymptotic _smartPrefetchCache hoard and test whether the remaining CDP JS heap-used slope persists.',
+      };
+      const bootPatch = await applySmartCachePerturbation(page, 'boot');
+      report.perturbationApplications.push(bootPatch);
+    }
     save(report);
 
     const labels = Array.from({ length: SNAPSHOTS }, (_, i) => String.fromCharCode('A'.charCodeAt(0) + i));
@@ -548,6 +612,11 @@ async function main() {
       if (i < labels.length - 1) {
         const segmentLabel = `${label}-${labels[i + 1]}`;
         log(`waiting ${+(SNAPSHOT_INTERVAL_MS / 60_000).toFixed(2)} minutes for ${segmentLabel}`);
+        const intervalPatch = await applySmartCachePerturbation(page, `${segmentLabel}:before-wait`);
+        if (intervalPatch) {
+          report.perturbationApplications.push(intervalPatch);
+          save(report);
+        }
         await keepConf01Playing(page, SPEED).catch(() => null);
         await waitWithHeartbeats(SNAPSHOT_INTERVAL_MS, report, page, segmentLabel);
       }
