@@ -84,6 +84,14 @@ export const C_LANE_GATES = [
       + 'separately, a pair with no contrast at all, whose delta is zero by construction',
   },
   {
+    id: 'BAR-BASIS-01',
+    symbol: 'assessAgainstBar',
+    module: 'scripts/lib/bar-basis.mjs',
+    refuses: 'the hoard floor and the canonical floor being graded against one bar on two different '
+      + 'bases, so both read green while disagreeing — and, separately, an unsettled reading being '
+      + 'compared against a bar that binds at settled post-GC',
+  },
+  {
     id: 'KNOWN-WEAKNESS-01',
     symbol: 'assessHeadline',
     module: 'scripts/lib/known-weakness.mjs',

@@ -18,6 +18,7 @@
  */
 
 import { forceCollection, gradeSettle, SETTLE_DEFAULT_MS, SETTLE_MIN_MS } from './settle-protocol.mjs';
+import { assessAgainstBar } from './bar-basis.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -124,6 +125,21 @@ export async function forcedGcPauseProbe(page, {
   out.forcedGcFloorMB = gcFloor;
   /** The field the soak already reads. Points at the REAL floor now, not the pause reading. */
   out.hoardFloorMB = gcFloor;
+  /**
+   * BAR-BASIS-01. The hoard floor is the soak's second gate behind RATE-HOLD, and it is compared
+   * against the same 1,024 MB bar. Measured on a different basis from the bar, the two gates could
+   * disagree while both reading green — so the split comes from one shared definition rather than
+   * from each gate's own arithmetic.
+   *
+   * `settled` is the probe's OWN grade, not an assertion: a probe that waited less than the protocol
+   * minimum reports BAR_NOT_APPLICABLE_UNSETTLED rather than a pass. That is the defect that let a
+   * 3-second reading be quoted against a bar that binds at settled post-GC.
+   */
+  out.barBasis = assessAgainstBar(floorRec, {
+    settled: grade.protocolCompliant === true,
+    settleMs: settleWaitedMs,
+    what: 'the hoard floor',
+  });
   out.pauseAndWaitInflationMB = (pauseFloor != null && gcFloor != null) ? +(pauseFloor - gcFloor).toFixed(1) : null;
   out.frothDrainedByPauseMB = (run != null && pauseFloor != null) ? +(run - pauseFloor).toFixed(1) : null;
   out.releasedByCollectionMB = (pauseFloor != null && gcFloor != null) ? +(pauseFloor - gcFloor).toFixed(1) : null;

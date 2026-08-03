@@ -53,6 +53,7 @@ import { acquireRunLockOrExit, lockFlagsFromArgv, writeArtifactAtomic } from './
 import { assessQuotability } from './lib/memory-validity.mjs';
 import { captureDetailedDump } from './lib/detailed-dump-capture.mjs';
 import { assessHeadline } from './lib/known-weakness.mjs';
+import { assessAgainstBar } from './lib/bar-basis.mjs';
 import { clockOf, both } from './lib/clock.mjs';
 
 const arg = (k, d) => {
@@ -536,6 +537,23 @@ async function main() {
      * The dispositions are declared HERE, in the instrument, rather than passed at the call site, so
      * that adding a weakness to a rung cannot be silently waived by a flag on the command line.
      */
+    /**
+     * BAR-BASIS-01 on the floor, from the same shared definition the hoard-floor probe uses. Two
+     * gates comparing against one bar on two bases can disagree while both read green, which is the
+     * failure the PO's three-row ruling exists to close.
+     */
+    {
+      const lastPost = [...(artifact.postPlayFloor?.reads || [])].reverse()
+        .find((r) => r?.footprintTotalMB != null);
+      if (lastPost) {
+        artifact.barBasis = assessAgainstBar(lastPost, {
+          settled: artifact.postPlayFloor?.verdict === 'FLOOR_FOUND',
+          what: 'the canonical post-play floor',
+        });
+        log(`BAR-BASIS-01 ${artifact.barBasis.barState} — ${artifact.barBasis.reason}`);
+      }
+    }
+
     const weakness = assessHeadline({
       headline: 'the canonical floor',
       rung: artifact,
