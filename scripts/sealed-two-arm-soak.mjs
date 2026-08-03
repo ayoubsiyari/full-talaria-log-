@@ -80,7 +80,21 @@ const SAMPLE_MS = Number(argOf('sampleMs', '180000'));
  */
 const SPEED_LADDER = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 const SPEED = Number(argOf('speed', '10'));
-const CLOSES_PER_HOUR = Number(argOf('closesPerHour', '20'));
+/**
+ * TRADE-GOVERNOR-V2 — 30 closed round-trips per hour, one every two minutes, 300 orders across the
+ * 10-hour arm. Ruled 2026-08-03 16:26+01:00, replacing 20/hour everywhere: harness, recipe docs and
+ * every prediction stated against the old rate.
+ *
+ * This is still a **certification workload, not a stress test**. The distinction is what the number
+ * is for: it is meant to be a defensible statement about the product under a realistic session, so
+ * the rate has to be one a real trader could produce. Raising it to find a breaking point would make
+ * the run a different experiment with a different claim attached, and the seal quotes this one.
+ *
+ * The zero-trade arm is **unchanged** and takes no governor at all — it is the control that isolates
+ * bar-driven growth with the trade term absent by construction, so changing it would destroy the
+ * comparison this pair exists to make.
+ */
+const CLOSES_PER_HOUR = Number(argOf('closesPerHour', '30'));
 /**
  * CONF01-COMMON-WINDOW-V1: the market time this arm will consume, computed from its own knobs
  * rather than assumed. The host panel is 1m under same-symbol, so each bar is 60 market seconds.
@@ -376,7 +390,20 @@ const run = openRun({
   meta: {
     signature: 'SEALED-TWO-ARM-SOAK-V1',
     arm: ARM,
-    armMeaning: ARM === 'zerotrade' ? 'CONF-05: four panels, E indicators, ZERO trades — bar-driven growth with the trade term absent by construction' : 'CONF-01: four panels, E indicators, governor holding ~20 closes/hour',
+    // Read from the knob rather than restated, so the artifact cannot describe a rate the run did
+    // not use. A hardcoded description of a configurable value is the shape that let DECAY-REGRADE
+    // publish an 18-minute run as 11.7 hours.
+    armMeaning: ARM === 'zerotrade'
+      ? 'CONF-05: four panels, E indicators, ZERO trades — bar-driven growth with the trade term absent by construction'
+      : `CONF-01: four panels, E indicators, governor holding ${CLOSES_PER_HOUR} closed round-trips/hour `
+        + `(one every ${(3600 / Math.max(1, CLOSES_PER_HOUR)).toFixed(0)}s, ${CLOSES_PER_HOUR * HOURS} orders across the ${HOURS}h arm)`,
+    tradeGovernor: ARM === 'zerotrade' ? null : {
+      spec: 'TRADE-GOVERNOR-V2',
+      closedRoundTripsPerHour: CLOSES_PER_HOUR,
+      everyMs: 3_600_000 / Math.max(1, CLOSES_PER_HOUR),
+      ordersPlanned: CLOSES_PER_HOUR * HOURS,
+      workloadClass: 'CERTIFICATION',
+    },
     bfcacheState: 'default (enabled) — a long-running session, no reset axis measured here.',
     seal,
     // PASSPORT-3: badge + digest describe the BYTES; sourceCommitSha names the TREE that produced them.

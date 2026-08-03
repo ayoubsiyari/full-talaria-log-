@@ -77,6 +77,13 @@ export const C_LANE_GATES = [
     refuses: 'a log line, artifact field or board number written without the clock that produced it',
   },
   {
+    id: 'COV-01-VALIDITY',
+    symbol: 'assessQuotability',
+    module: 'scripts/lib/memory-validity.mjs',
+    refuses: 'an authoritative memory number being quoted with under 95% named coverage — and, '
+      + 'separately, a broken coverage instrument being reported as a low-coverage reading',
+  },
+  {
     id: 'ORPHAN-SERVER-01',
     symbol: 'censusOf',
     module: 'scripts/orphan-server-census.mjs',

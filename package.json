@@ -36,6 +36,7 @@
     "test:queue": "node --test scripts/measurement-queue.selftest.mjs",
     "gate:queue-status": "node scripts/measurement-queue.mjs status",
     "gate:orphan-servers": "node scripts/orphan-server-census.mjs",
+    "test:memory-validity": "node --test scripts/lib/memory-validity.selftest.mjs",
     "test:orphan-servers": "node --test scripts/orphan-server-census.selftest.mjs",
     "gate:run-lock-status": "node scripts/run-lock-status.mjs",
     "gate:clock-01": "node scripts/clock-01-audit.mjs",

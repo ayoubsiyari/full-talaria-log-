@@ -50,6 +50,7 @@ import { arenaColumns, rankRowGrowth } from './lib/arena-columns.mjs';
 import { collectMemoryDump } from './process-memory-census.mjs';
 import { gradeSettleCurve, reconcileFloors } from './lib/floor-curve.mjs';
 import { acquireRunLockOrExit, lockFlagsFromArgv, writeArtifactAtomic } from './lib/run-lock.mjs';
+import { assessQuotability } from './lib/memory-validity.mjs';
 import { clockOf, both } from './lib/clock.mjs';
 
 const arg = (k, d) => {
@@ -423,7 +424,37 @@ async function main() {
         postPlayUpperBoundMB: artifact.postPlayFloor.grade.upperBoundMB ?? null,
       };
     }
+    /**
+     * COV-01-VALIDITY, ruled 2026-08-03 16:26+01:00. This instrument produces the authoritative
+     * memory number, so it is the place the coverage threshold has to bind. Coverage was already
+     * being measured on every rung and consumed by nothing, which meant a 55%-coverage floor
+     * published identically to a 99% one.
+     *
+     * Note the two verdicts are deliberately independent: `FLOOR_FOUND` says the curve flattened,
+     * `quotable` says enough of the number has a name. A floor can be genuinely found and still not
+     * be quotable, and collapsing those into one word is how the missing half gets forgotten.
+     */
+    // The COV-01 columns live on the rung's `arenas` sub-object, not on the rung itself. Reading
+    // them from the wrong level returns undefined, which assessQuotability would report as
+    // COVERAGE_UNKNOWN — a broken-instrument state — so the level matters more than it looks.
+    const coverageOf = (curve) => {
+      const reads = curve?.reads || [];
+      const last = [...reads].reverse().find((r) => r?.arenas?.arenaCoveragePct != null);
+      return { pct: last?.arenas?.arenaCoveragePct ?? null, unattributedMB: last?.arenas?.arenaUnattributedMB ?? null,
+        hasTotalRow: last?.arenas?.totalPrivateMB != null };
+    };
+    const postCov = coverageOf(artifact.postPlayFloor);
+    artifact.validity = {
+      postPlayFloor: assessQuotability({
+        coveragePct: postCov.pct, unattributedMB: postCov.unattributedMB,
+        hasTotalRow: postCov.hasTotalRow, what: 'the canonical post-play floor',
+      }),
+      bootFloor: (() => { const c = coverageOf(artifact.bootFloor); return assessQuotability({
+        coveragePct: c.pct, unattributedMB: c.unattributedMB, hasTotalRow: c.hasTotalRow,
+        what: 'the canonical boot floor' }); })(),
+    };
     log(`VERDICT ${artifact.verdict}`);
+    log(`COV-01 post-play: ${artifact.validity.postPlayFloor.state} (${artifact.validity.postPlayFloor.coveragePct ?? 'n/a'}%)`);
   } catch (e) {
     artifact.verdict = 'ERROR';
     artifact.error = String(e?.stack || e).slice(0, 1600);

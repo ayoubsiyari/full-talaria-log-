@@ -90,7 +90,12 @@ const EV = 'c:\\Users\\user\\Desktop\\talaria1\\_evidence\\manager-C';
 // trade term absent by construction, and R3 needs enough span to distinguish a plateau from a slow climb.
 const prefix = REHEARSAL ? 'REHEARSAL' : (SMOKE ? 'SMOKE' : 'SEALED');
 const ARMS = {
-  trades: { closesPerHour: '20', hours: SMOKE ? '0.34' : '10', out: path.join(EV, `${prefix}-SOAK-TRADES.jsonl`) },
+  // TRADE-GOVERNOR-V2, ruled 2026-08-03 16:26+01:00: 30 closed round-trips/hour, one every 120 s,
+  // 300 orders across the 10 h arm. Replaces 20/hour. Still a CERTIFICATION workload, not a stress
+  // test — the rate has to be one a real trader could produce, or the seal quotes a different claim
+  // than the one it thinks it is quoting.
+  trades: { closesPerHour: '30', hours: SMOKE ? '0.34' : '10', out: path.join(EV, `${prefix}-SOAK-TRADES.jsonl`) },
+  // Unchanged, and deliberately so: zero is the control that removes the trade term by construction.
   zerotrade: { closesPerHour: '0', hours: SMOKE ? '0.34' : '3.5', out: path.join(EV, `${prefix}-SOAK-ZEROTRADE.jsonl`) },
 };
 
