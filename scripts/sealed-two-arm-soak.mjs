@@ -48,6 +48,7 @@ import { arenaColumns, rankRowGrowth } from './lib/arena-columns.mjs';
 import { collectMemoryDump } from './process-memory-census.mjs';
 import { readStorageCensus, diffStorage } from './lib/storage-census.mjs';
 import { offlineToggle } from './lib/offline-toggle.mjs';
+import { createPhaseRecorder, SOAK_PHASE_BUDGETS_MS } from './lib/bounded-phase.mjs';
 import { readHostHealth } from './lib/host-health.mjs';
 import { installLoafCensus, readLoafCensus } from './lib/loaf-census.mjs';
 import { evaluateR3, readOldestOpenPositionAge } from './lib/r3-falsifier.mjs';
@@ -502,7 +503,14 @@ try {
         return { value: answered ? answered.value : null, route: answered ? answered.route : null, routes: seen };
       }).catch((e) => ({ value: null, route: null, why: String(e).slice(0, 100) }));
       const eff = effRead.value;
-      const panels = await readPanels(session.page);
+      // Segment boot runs before the sample loop's recorder exists, and a park HERE is the worst
+      // case of the lot: the arm never reaches its first sample, so there is no series at all to
+      // show for the hours spent. Bounded on its own recorder for that reason.
+      const bootPhases = createPhaseRecorder({
+        onEvent: (e) => { if (e.state === 'PHASE_OVERDUE' || e.state === 'PHASE_TIMEOUT') log(`${e.state} ${e.phase} (segment boot)`); },
+      });
+      const panels = (await bootPhases.run('boot.readPanels', SOAK_PHASE_BUDGETS_MS['sample.readPanels.before'],
+        () => readPanels(session.page), { fallback: [] })).value;
       // CDP injection, per segment because a new browser is a new set of documents. Registered for future
       // documents AND evaluated into the live ones - registration alone reaches nothing that already
       // exists, which on this soak is every frame that matters.
@@ -569,23 +577,57 @@ try {
     let frameRate = {};
     let footprint = {};
     let arenas = {};
-    try {
-      before = await readPanels(session.page);
-      // The liveness window already costs 20 s of wall clock. Blocking is observed ACROSS it rather than
-      // after it, so the lag series is free and lands at exactly the same cadence as the memory series.
-    blocking = await measureBlocking(session.page.mainFrame(), 20000);
-    frameRate = await measureFrameRate(session.page.mainFrame(), 3000);
-    after = await readPanels(session.page);
-      footprint = await readFootprint(session.browser);
-      // ARENA-COLUMNS (item 1): per-arena columns on the same 3-min cadence as the memory series, in
-      // this row format. A dump failure degrades to null columns rather than dropping the sample.
-      arenas = await readArenaColumns(session.browser, footprint.footprintTotalMB);
-    } catch (err) {
-      log(`sample read failed (${String(err).slice(0, 80)}) — treating as a dead browser and resuming`);
-    }
+    /**
+     * BOUNDED-PHASE-01, from E's `UNBOUNDED-READBACK-PARKS-NODE` handoff.
+     *
+     * The `try/catch` below was never the protection it looked like. A catch fires on a promise that
+     * REJECTS; it does nothing at all for one that never settles, and a readback that never settles
+     * is exactly what E reproduced. The old shape left node alive, the artifact frozen and the run
+     * looking healthy from outside — for ten hours, in this instrument's case.
+     *
+     * Each read now carries its own deadline and its own name. A timeout is a named state rather
+     * than a throw, so one stalled read degrades a sample instead of aborting the loop, and the
+     * browser-lost path below still catches the case where the reads produce nothing.
+     */
+    const phases = createPhaseRecorder({
+      onEvent: (e) => {
+        if (e.state === 'PHASE_OVERDUE') log(`PHASE_OVERDUE ${e.phase} — ${Math.round(e.waitingMs / 1000)}s of a ${Math.round(e.timeoutMs / 1000)}s budget`);
+        else if (e.state === 'PHASE_TIMEOUT') log(`PHASE_TIMEOUT ${e.phase} after ${Math.round(e.ms / 1000)}s — abandoned, sample degraded`);
+        else if (e.state === 'PHASE_LATE_REJECT') log(`PHASE_LATE_REJECT ${e.phase} rejected ${Math.round(e.afterMs / 1000)}s in, long after we stopped waiting`);
+      },
+    });
+    const budget = (name) => SOAK_PHASE_BUDGETS_MS[name];
+
+    before = (await phases.run('sample.readPanels.before', budget('sample.readPanels.before'),
+      () => readPanels(session.page))).value;
+    // The liveness window already costs 20 s of wall clock. Blocking is observed ACROSS it rather than
+    // after it, so the lag series is free and lands at exactly the same cadence as the memory series.
+    blocking = (await phases.run('sample.measureBlocking', budget('sample.measureBlocking'),
+      () => measureBlocking(session.page.mainFrame(), 20000), { fallback: {} })).value;
+    frameRate = (await phases.run('sample.measureFrameRate', budget('sample.measureFrameRate'),
+      () => measureFrameRate(session.page.mainFrame(), 3000), { fallback: {} })).value;
+    after = (await phases.run('sample.readPanels.after', budget('sample.readPanels.after'),
+      () => readPanels(session.page))).value;
+    footprint = (await phases.run('sample.readFootprint', budget('sample.readFootprint'),
+      () => readFootprint(session.browser), { fallback: {} })).value;
+    // ARENA-COLUMNS (item 1): per-arena columns on the same 3-min cadence as the memory series, in
+    // this row format. A dump failure degrades to null columns rather than dropping the sample.
+    arenas = (await phases.run('sample.readArenaColumns', budget('sample.readArenaColumns'),
+      () => readArenaColumns(session.browser, footprint?.footprintTotalMB ?? null), { fallback: {} })).value;
 
     if (!before || !after || !after.length) {
-      run.note({ __browserLost: true, segment, at: new Date().toISOString(), why: 'Browser stopped answering. Auto-resuming into a new segment.' });
+      // A stalled read and a dead browser both land here, but they are not the same thing and the
+      // note now says which: `phases` carries the state of every read that was attempted.
+      const ph = phases.summary();
+      run.note({
+        __browserLost: true,
+        segment,
+        at: new Date().toISOString(),
+        why: ph.timeouts
+          ? `Reads timed out (${ph.sampleState}). Node was alive and the browser was not answering, which is the parked-readback shape rather than a crash. Auto-resuming into a new segment.`
+          : 'Browser stopped answering. Auto-resuming into a new segment.',
+        phases: ph,
+      });
       try { await session.browser.close(); } catch { /* already gone */ }
       session = null;
       segment += 1;
@@ -596,7 +638,8 @@ try {
     const live = after.filter((r, i) => (r.playhead != null && before[i]?.playhead != null && r.playhead !== before[i].playhead) || r.bars > (before[i]?.bars ?? 0)).length;
     const liveByBars = after.filter((r, i) => r.bars > (before[i]?.bars ?? 0)).length;
 
-    const closed = await readClosed(session.page);
+    const closed = (await phases.run('sample.readClosed', budget('sample.readClosed'),
+      () => readClosed(session.page), { fallback: null })).value;
     if (ARM !== 'zerotrade' && Date.now() >= nextGovernorAt) {
       await cycleTrades(session.page, { open: 1, close: 1, holdMs: 800 }).catch(() => null);
       nextGovernorAt = Date.now() + governorEveryMs;
@@ -624,8 +667,12 @@ try {
     // the digest of the build a user gets. An instrument that changed it would defeat SOAK-SEAL through
     // the instrument instead of the code.
     const host = readHostHealth();                                    // system headroom + node.exe aggregate
-    const loaf = await readLoafCensus(session.page).catch(() => ({ ok: false, why: 'census read threw' }));
-    const posn = await readOldestOpenPositionAge(session.page).catch(() => ({ route: 'threw', openCount: null, oldestAgeBars: null }));
+    // These two carried `.catch()` and looked covered. A catch handles a rejection; neither of these
+    // could survive a page that simply stops answering, which is the case E proved.
+    const loaf = (await phases.run('sample.readLoafCensus', budget('sample.readLoafCensus'),
+      () => readLoafCensus(session.page), { fallback: { ok: false, why: 'census read timed out or threw' } })).value;
+    const posn = (await phases.run('sample.readOldestOpenPositionAge', budget('sample.readOldestOpenPositionAge'),
+      () => readOldestOpenPositionAge(session.page), { fallback: { route: 'timeout-or-threw', openCount: null, oldestAgeBars: null } })).value;
 
     const residentBars = after.reduce((s, r) => s + r.bars, 0);
 
@@ -649,7 +696,8 @@ try {
       ? { hours: +((Date.now() - t0) / 3600000).toFixed(4), marketSecPerWallSec: rate.marketSecPerWallSec, barsPerSec: rate.barsPerSec, barsPerSecDenominatorSec: rate.barsPerSecDenominatorSec, speed: SPEED, livePanels: null }
       : null;
     if (rateEntry) rateSeries.push(rateEntry);
-    const rateReadback = await readEffectiveRateReadback(session.page).catch(() => ({ present: false, readError: true }));
+    const rateReadback = (await phases.run('sample.readEffectiveRateReadback', budget('sample.readEffectiveRateReadback'),
+      () => readEffectiveRateReadback(session.page), { fallback: { present: false, readError: true } })).value;
 
     /**
      * PER-PANEL DELIVERY, because the host-anchored rate above has a blind spot I would otherwise have
@@ -696,10 +744,23 @@ try {
       if (!firstArenaRow) firstArenaRow = arenas;
       lastArenaRow = arenas;
     }
+    const phaseSummary = phases.summary();
     run.append({
       segment,
       hours: +((Date.now() - t0) / 3600000).toFixed(4),
       residentBars,
+      /**
+       * BOUNDED-PHASE-01 travels with the sample rather than living only in the log. A sample whose
+       * reads timed out still lands — it is a real row with real gaps — and the only way to tell it
+       * from a healthy one after the fact is this field. `sampleState` is the one to filter on:
+       * PHASES_COMPLETE is a clean sample, ALL_PHASES_TIMED_OUT is a parked browser that produced a
+       * row anyway, and quoting the second as if it were the first is how a stall becomes a finding.
+       */
+      phaseState: phaseSummary.sampleState,
+      phaseTimeouts: phaseSummary.timeouts,
+      phaseOverdue: phaseSummary.overdue,
+      phaseSlowestMs: phaseSummary.slowestPhase?.ms ?? null,
+      phaseSlowest: phaseSummary.slowestPhase?.phase ?? null,
       // RATE-HOLD inputs, per sample.
       // RATE-HOLD primary unit: market-seconds delivered per wall-second. bars/s is derived display.
       marketSecPerWallSec: rate.ok ? rate.marketSecPerWallSec : null,
@@ -802,7 +863,9 @@ try {
     if (OFFLINE_PROBE && !offlineProbeDone && session?.page && rateSeries.length >= 2) {
       offlineProbeDone = true;
       log('N3: 30 s offline toggle mid-replay');
-      const off = await offlineToggle(session.page, { log }).catch((e) => ({ verdict: 'VOID', why: `probe threw: ${String(e).slice(0, 160)}` }));
+      const off = (await phases.run('probe.offlineToggle', budget('probe.offlineToggle'),
+        () => offlineToggle(session.page, { log }),
+        { fallback: { verdict: 'VOID', why: 'probe timed out or threw' } })).value;
       run.note({ __offlineToggle: true, segment, at: new Date().toISOString(), ...off });
       rateExcludedWindows.push({ fromMs: Date.now() - 75000, toMs: Date.now(), why: 'N3 offline toggle' });
       prevRateSample = null;
@@ -814,12 +877,14 @@ try {
     if (!r3ProbeDone && r3.verdict && r3.verdict !== 'INSUFFICIENT' && session?.page) {
       r3ProbeDone = true;
       log('forced-GC pause-probe at the R3 checkpoint — separating froth from hoard');
-      const probe = await forcedGcPauseProbe(session.page, {
-        readFootprint: () => readFootprint(session.browser),
-        readArenas: () => readArenaColumns(session.browser),
-        label: `r3-checkpoint-${ARM}`,
-        log,
-      }).catch((e) => ({ verdict: 'VOID', why: `probe threw: ${String(e).slice(0, 160)}` }));
+      const probe = (await phases.run('probe.forcedGcPauseProbe', budget('probe.forcedGcPauseProbe'),
+        () => forcedGcPauseProbe(session.page, {
+          readFootprint: () => readFootprint(session.browser),
+          readArenas: () => readArenaColumns(session.browser),
+          label: `r3-checkpoint-${ARM}`,
+          log,
+        }),
+        { fallback: { verdict: 'VOID', why: 'probe timed out or threw' } })).value;
       run.note({ __pauseProbe: true, segment, at: new Date().toISOString(), ...probe });
       // The probe's own span is not a delivery measurement.
       rateExcludedWindows.push({ fromMs: Date.now() - (probe.probeSpanSec ?? 0) * 1000, toMs: Date.now(), why: 'pause-probe' });
@@ -858,12 +923,20 @@ try {
   // the very froth the probe exists to measure. Order matters and is deliberate.
   if (session?.page) {
     log('end-of-arm forced-GC pause-probe');
-    const endProbe = await forcedGcPauseProbe(session.page, {
-      readFootprint: () => readFootprint(session.browser),
-      readArenas: () => readArenaColumns(session.browser),
-      label: `end-of-arm-${ARM}`,
-      log,
-    }).catch((e) => ({ verdict: 'VOID', why: `probe threw: ${String(e).slice(0, 160)}` }));
+    // Its own recorder: this runs after the sample loop, so the loop's is out of scope. Bounded for
+    // the same reason as the rest — this is the last thing between ten hours of run and an artifact,
+    // and a park here loses the whole arm at the moment it was about to be written down.
+    const endPhases = createPhaseRecorder({
+      onEvent: (e) => { if (e.state === 'PHASE_OVERDUE' || e.state === 'PHASE_TIMEOUT') log(`${e.state} ${e.phase}`); },
+    });
+    const endProbe = (await endPhases.run('probe.forcedGcPauseProbe', SOAK_PHASE_BUDGETS_MS['probe.forcedGcPauseProbe'],
+      () => forcedGcPauseProbe(session.page, {
+        readFootprint: () => readFootprint(session.browser),
+        readArenas: () => readArenaColumns(session.browser),
+        label: `end-of-arm-${ARM}`,
+        log,
+      }),
+      { fallback: { verdict: 'VOID', why: 'probe timed out or threw' } })).value;
     run.note({ __pauseProbe: true, when: 'end-of-arm', at: new Date().toISOString(), ...endProbe });
 
     /**
