@@ -403,6 +403,46 @@ function sustainedGrowerConstructors(segmentGrowth, endToEnd) {
   return [...new Set([...positiveEverySegment, ...endTop.slice(0, 8)])].slice(0, 12);
 }
 
+function summarizeRuntimeAnomalies(report) {
+  const timeoutBeats = (report.heartbeats || [])
+    .filter((beat) => beat?.state && beat.state !== 'HEARTBEAT_OK')
+    .map((beat) => ({
+      state: beat.state,
+      at: beat.at,
+      segment: beat.segment,
+      elapsedMin: beat.elapsedMin,
+      keepPlaying: beat.keepPlaying?.state || null,
+      playheadStates: Array.isArray(beat.playhead)
+        ? beat.playhead.map((row) => row?.state).filter(Boolean)
+        : [],
+    }));
+  const phaseOverdue = (report.phaseEvents || [])
+    .filter((event) => event?.state === 'PHASE_OVERDUE')
+    .map((event) => ({
+      at: event.at,
+      moment: event.moment,
+      phase: event.phase,
+      elapsedMs: event.elapsedMs,
+      expectedMs: event.expectedMs,
+      marginMs: event.marginMs,
+      sequence: event.sequence,
+    }));
+  return {
+    hasAnomaly: timeoutBeats.length > 0 || phaseOverdue.length > 0,
+    heartbeatTimeouts: timeoutBeats,
+    phaseOverdue,
+  };
+}
+
+function buildVerdictLine(report, verdict) {
+  const anomalies = report.runtimeAnomalies || summarizeRuntimeAnomalies(report);
+  const workload = `workload=CONF-01 same-symbol four panels playing at ${SPEED} bars/s, zero pair switches`;
+  const anomalyText = anomalies.hasAnomaly
+    ? `runtimeAnomaly=YES heartbeatTimeouts=${anomalies.heartbeatTimeouts.length} phaseOverdue=${anomalies.phaseOverdue.length}`
+    : 'runtimeAnomaly=NO heartbeatTimeouts=0 phaseOverdue=0';
+  return `V8-PLAYBACK-HEAP-SLOPE-90M ${verdict}: ${workload}; ${anomalyText}`;
+}
+
 async function main() {
   let outDirLockAcquired = false;
   const report = {
@@ -491,6 +531,8 @@ async function main() {
     report.finalPlaybackState = await playbackState(page, 'final');
     report.finalMetrics = await metrics(page, 'final');
     report.verdict = 'CAPTURED';
+    report.runtimeAnomalies = summarizeRuntimeAnomalies(report);
+    report.verdictLine = buildVerdictLine(report, report.verdict);
     save(report);
     log(`artifact -> ${path.join(OUT_DIR, 'report.json')}`);
 
@@ -498,6 +540,8 @@ async function main() {
   } catch (e) {
     report.verdict = 'ERROR';
     report.error = String(e?.stack || e).slice(0, 3000);
+    report.runtimeAnomalies = summarizeRuntimeAnomalies(report);
+    report.verdictLine = buildVerdictLine(report, report.verdict);
     if (outDirLockAcquired) save(report);
     log(`ERROR ${String(e?.message || e)}`);
     process.exitCode = 1;
