@@ -1,0 +1,1325 @@
+{
+  "signature": "TALARIA_ORDER01B_READBACK_CANARY_V1",
+  "at": "2026-08-03T23:38:48.902Z",
+  "condition": {
+    "speed": 10,
+    "step": "60s",
+    "stepSeconds": 60
+  },
+  "evidenceClasses": {
+    "servedEngineMarkers": "STATIC_BYTES_PRECONDITION",
+    "rateReadBack": "OBSERVED_BEHAVIOUR",
+    "workloadReplayFigures": "CONFIGURED_INTENT_NOT_A_READING",
+    "playheadAdvance": "OBSERVED_BEHAVIOUR",
+    "note": "A pass requires observed.readBack. Markers present with no reading is ENGINE_PRESENT_BEHAVIOUR_UNOBSERVED, and workload.panels[].replay is configured intent rather than a read-back — neither is a pass.",
+    "readBackAttempted": "see observed.readBack; absent means the probe did not run, which is not the same as the field being absent"
+  },
+  "window": {
+    "seconds": 60.33,
+    "sliceSeconds": 10,
+    "slices": [
+      {
+        "sliceSeconds": 10.01,
+        "perRealm": [
+          {
+            "realm": "top",
+            "playing": true,
+            "marketSecAdvanced": 6000,
+            "marketPerWall": 599.25,
+            "rawBars": 4000,
+            "currentIndex": 2185,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": true,
+            "marketSecAdvanced": 6000,
+            "marketPerWall": 599.25,
+            "rawBars": 4000,
+            "currentIndex": 2185,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": true,
+            "marketSecAdvanced": 6120,
+            "marketPerWall": 611.24,
+            "rawBars": 4000,
+            "currentIndex": 2186,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": true,
+            "marketSecAdvanced": 6060,
+            "marketPerWall": 605.24,
+            "rawBars": 4000,
+            "currentIndex": 2186,
+            "barsLost": 0
+          }
+        ]
+      },
+      {
+        "sliceSeconds": 10.02,
+        "perRealm": [
+          {
+            "realm": "top",
+            "playing": true,
+            "marketSecAdvanced": 5940,
+            "marketPerWall": 592.78,
+            "rawBars": 4000,
+            "currentIndex": 2284,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": true,
+            "marketSecAdvanced": 5940,
+            "marketPerWall": 592.78,
+            "rawBars": 4000,
+            "currentIndex": 2284,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": true,
+            "marketSecAdvanced": 5940,
+            "marketPerWall": 592.78,
+            "rawBars": 4000,
+            "currentIndex": 2285,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": true,
+            "marketSecAdvanced": 5940,
+            "marketPerWall": 592.78,
+            "rawBars": 4000,
+            "currentIndex": 2285,
+            "barsLost": 0
+          }
+        ]
+      },
+      {
+        "sliceSeconds": 10.12,
+        "perRealm": [
+          {
+            "realm": "top",
+            "playing": true,
+            "marketSecAdvanced": 6060,
+            "marketPerWall": 598.6,
+            "rawBars": 4000,
+            "currentIndex": 2385,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": true,
+            "marketSecAdvanced": 6060,
+            "marketPerWall": 598.6,
+            "rawBars": 4000,
+            "currentIndex": 2385,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": true,
+            "marketSecAdvanced": 5940,
+            "marketPerWall": 586.75,
+            "rawBars": 4000,
+            "currentIndex": 2384,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": true,
+            "marketSecAdvanced": 5940,
+            "marketPerWall": 586.75,
+            "rawBars": 4000,
+            "currentIndex": 2384,
+            "barsLost": 0
+          }
+        ]
+      },
+      {
+        "sliceSeconds": 10.05,
+        "perRealm": [
+          {
+            "realm": "top",
+            "playing": true,
+            "marketSecAdvanced": 6060,
+            "marketPerWall": 603.1,
+            "rawBars": 4000,
+            "currentIndex": 2486,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": true,
+            "marketSecAdvanced": 6120,
+            "marketPerWall": 609.07,
+            "rawBars": 4000,
+            "currentIndex": 2487,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": true,
+            "marketSecAdvanced": 6120,
+            "marketPerWall": 609.07,
+            "rawBars": 4000,
+            "currentIndex": 2486,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": true,
+            "marketSecAdvanced": 6180,
+            "marketPerWall": 615.04,
+            "rawBars": 4000,
+            "currentIndex": 2487,
+            "barsLost": 0
+          }
+        ]
+      },
+      {
+        "sliceSeconds": 10.1,
+        "perRealm": [
+          {
+            "realm": "top",
+            "playing": true,
+            "marketSecAdvanced": 6000,
+            "marketPerWall": 594.35,
+            "rawBars": 4000,
+            "currentIndex": 2586,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": true,
+            "marketSecAdvanced": 5940,
+            "marketPerWall": 588.41,
+            "rawBars": 4000,
+            "currentIndex": 2586,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": true,
+            "marketSecAdvanced": 6120,
+            "marketPerWall": 606.24,
+            "rawBars": 4000,
+            "currentIndex": 2588,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": true,
+            "marketSecAdvanced": 5940,
+            "marketPerWall": 588.41,
+            "rawBars": 4000,
+            "currentIndex": 2586,
+            "barsLost": 0
+          }
+        ]
+      },
+      {
+        "sliceSeconds": 10.03,
+        "perRealm": [
+          {
+            "realm": "top",
+            "playing": true,
+            "marketSecAdvanced": 6240,
+            "marketPerWall": 621.85,
+            "rawBars": 4000,
+            "currentIndex": 2690,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": true,
+            "marketSecAdvanced": 6240,
+            "marketPerWall": 621.85,
+            "rawBars": 4000,
+            "currentIndex": 2690,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": true,
+            "marketSecAdvanced": 6180,
+            "marketPerWall": 615.88,
+            "rawBars": 4000,
+            "currentIndex": 2691,
+            "barsLost": 0
+          },
+          {
+            "realm": "panel",
+            "playing": true,
+            "marketSecAdvanced": 6300,
+            "marketPerWall": 627.83,
+            "rawBars": 4000,
+            "currentIndex": 2691,
+            "barsLost": 0
+          }
+        ]
+      }
+    ]
+  },
+  "runLock": {
+    "state": "LOCK_ACQUIRED",
+    "pid": 32900
+  },
+  "verdict": {
+    "state": "PUBLISH_CORRECT",
+    "why": "read-back 583.0903790087464 market-s/wall-s at speed 10 x step 60s, measured over 60.33s in 6 slices"
+  },
+  "checks": [
+    {
+      "ok": true,
+      "label": "the tree was clean, so this artifact is reproducible from HEAD",
+      "detail": "clean at 30262c421"
+    },
+    {
+      "ok": true,
+      "label": "the served engine could be read back over the wire",
+      "detail": "http://127.0.0.1:50130/chart/modules/replay-system.js?v=20260803b126 (545015 bytes)"
+    },
+    {
+      "ok": true,
+      "label": "the served engine carries ORDER-01B",
+      "detail": "all 4 markers present"
+    },
+    {
+      "ok": true,
+      "label": "every realm got a session start inside its own data",
+      "detail": "4 realms, least runway 3599 bars"
+    },
+    {
+      "ok": true,
+      "label": "replay is armed and playing in every panel",
+      "detail": "playing=4 of 4 required (helper default is 3; this run required 4)"
+    },
+    {
+      "ok": true,
+      "label": "the engine accepted the step it was asked for",
+      "detail": "no refusals"
+    },
+    {
+      "ok": true,
+      "label": "no realm was pinned at its own rollback floor",
+      "detail": "every realm could be rewound if it needed to be"
+    },
+    {
+      "ok": true,
+      "label": "every realm finished loading before the workload was armed",
+      "detail": "settled after 6060ms — bars 4000/4000/4000/4000"
+    },
+    {
+      "ok": true,
+      "label": "every realm had runway to step into before the window opened",
+      "detail": "all 4 realms >= 120 bars from their loaded edge"
+    },
+    {
+      "ok": true,
+      "label": "every realm is playing, so this is a four-panel reading",
+      "detail": "4 of 4 playing"
+    },
+    {
+      "ok": true,
+      "label": "play() as installed started every realm it was asked to",
+      "detail": "no realm needed the prototype fallback"
+    },
+    {
+      "ok": true,
+      "label": "focus did not move during the window",
+      "detail": "focus held on host:body for the whole window"
+    },
+    {
+      "ok": true,
+      "label": "the bar series each realm was measured on did not change size under it",
+      "detail": "every realm kept the series it settled with"
+    },
+    {
+      "ok": true,
+      "label": "no realm sat still for a whole slice inside the window",
+      "detail": "all realms advanced in all 6 slices"
+    },
+    {
+      "ok": true,
+      "label": "replay actually moved during the reading window",
+      "detail": "36300s of market time over 60.33s"
+    },
+    {
+      "ok": true,
+      "label": "no realm stopped playing during the window",
+      "detail": "all realms still playing"
+    },
+    {
+      "ok": true,
+      "label": "__talariaEffectiveRate reads back a finite number on the harness frame",
+      "detail": "type=number value=583.0903790087464"
+    },
+    {
+      "ok": true,
+      "label": "the reading is a live rate, not a zero placeholder",
+      "detail": "583.0903790087464"
+    },
+    {
+      "ok": true,
+      "label": "the reading names its unit, and the unit is market seconds per wall second",
+      "detail": "unit=market-seconds-per-wall-second"
+    },
+    {
+      "ok": true,
+      "label": "the reading equals speed x step, within governor tolerance",
+      "detail": "expected ~600 (10 x 60s), saw 583.0903790087464, ratio 0.972"
+    },
+    {
+      "ok": true,
+      "label": "the scalar is market seconds, not the bars-per-second it used to be",
+      "detail": "bars/s would read ~10; market-s/wall-s reads 583.0903790087464 on a 60s timeframe"
+    },
+    {
+      "ok": true,
+      "label": "panel frames publish too, or there are no panel frames",
+      "detail": "3 of 3 panel frames"
+    }
+  ],
+  "observed": {
+    "pageErrors": [
+      "console: Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "console: WebSocket connection to 'ws://127.0.0.1:50130/ws/support' failed: Error during WebSocket handshake: Unexpected response code: 404",
+      "console: Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "settle": {
+      "settled": true,
+      "waitedMs": 6060,
+      "census": [
+        {
+          "realm": "top",
+          "hasReplay": true,
+          "rawBars": 4000,
+          "panLoading": false
+        },
+        {
+          "realm": "panel",
+          "hasReplay": true,
+          "rawBars": 4000,
+          "panLoading": false
+        },
+        {
+          "realm": "panel",
+          "hasReplay": true,
+          "rawBars": 4000,
+          "panLoading": false
+        },
+        {
+          "realm": "panel",
+          "hasReplay": true,
+          "rawBars": 4000,
+          "panLoading": false
+        }
+      ],
+      "polls": 3
+    },
+    "servedEngine": {
+      "fetched": true,
+      "urls": [
+        "http://127.0.0.1:50130/chart/modules/replay-system.js?v=20260803b126"
+      ],
+      "bytes": 545015,
+      "present": [
+        "ORDER01B_STEP_CANDIDATE_SECONDS",
+        "getMarketSecondsPerWallSecond",
+        "market-seconds-per-wall-second",
+        "_waitAtLoadedEdgeWhenServerHasMore"
+      ],
+      "missing": []
+    },
+    "provenance": {
+      "headSha": "30262c421",
+      "headSubject": "Park the gate-execution repairs; the sweep itself is frozen",
+      "dirtyGovernedPaths": [],
+      "governedBy": "clean-build-tree-guard",
+      "buildIdOnDisk": "20260803b126",
+      "distV9BuildIdOnDisk": "20260803b126",
+      "swVersionOnDisk": "talaria-chart-20260803b126",
+      "distV9Mtime": "2026-08-03T09:52:50.176Z",
+      "buildIdInPage": "20260803b126"
+    },
+    "sessionSeed": {
+      "fractionIn": 0.1,
+      "realms": [
+        {
+          "realm": "top",
+          "state": "SEEDED",
+          "bars": 4000,
+          "index": 400,
+          "runwayBars": 3599,
+          "startDate": "2026-08-01T11:38:00.000Z"
+        },
+        {
+          "realm": "panel",
+          "state": "SEEDED",
+          "bars": 4000,
+          "index": 400,
+          "runwayBars": 3599,
+          "startDate": "2026-08-01T11:38:00.000Z"
+        },
+        {
+          "realm": "panel",
+          "state": "SEEDED",
+          "bars": 4000,
+          "index": 400,
+          "runwayBars": 3599,
+          "startDate": "2026-08-01T11:38:00.000Z"
+        },
+        {
+          "realm": "panel",
+          "state": "SEEDED",
+          "bars": 4000,
+          "index": 400,
+          "runwayBars": 3599,
+          "startDate": "2026-08-01T11:38:00.000Z"
+        }
+      ]
+    },
+    "workload": {
+      "armed": true,
+      "observedPlaying": 4,
+      "playingRequired": 4,
+      "playingArmedCount": 4,
+      "stepRefusals": [],
+      "panels": [
+        {
+          "id": "A",
+          "replay": {
+            "ok": true,
+            "isActive": true,
+            "requestedSpeed": 10,
+            "effectiveSpeed": 10,
+            "speedRoute": "getTargetBarsPerSecond()",
+            "speedSetError": null,
+            "speedHonoured": true,
+            "requestedStepSeconds": 60,
+            "effectiveStepSeconds": 60,
+            "stepSetError": null,
+            "stepHonoured": true,
+            "marketSecondsPerWallSecond": 600
+          },
+          "playing": {
+            "ok": true,
+            "isPlaying": true
+          }
+        },
+        {
+          "id": "B",
+          "replay": {
+            "ok": true,
+            "isActive": true,
+            "requestedSpeed": 10,
+            "effectiveSpeed": 10,
+            "speedRoute": "getTargetBarsPerSecond()",
+            "speedSetError": null,
+            "speedHonoured": true,
+            "requestedStepSeconds": 60,
+            "effectiveStepSeconds": 60,
+            "stepSetError": null,
+            "stepHonoured": true,
+            "marketSecondsPerWallSecond": 600
+          },
+          "playing": {
+            "ok": true,
+            "isPlaying": true
+          }
+        },
+        {
+          "id": "C",
+          "replay": {
+            "ok": true,
+            "isActive": true,
+            "requestedSpeed": 10,
+            "effectiveSpeed": 10,
+            "speedRoute": "getTargetBarsPerSecond()",
+            "speedSetError": null,
+            "speedHonoured": true,
+            "requestedStepSeconds": 60,
+            "effectiveStepSeconds": 60,
+            "stepSetError": null,
+            "stepHonoured": true,
+            "marketSecondsPerWallSecond": 600
+          },
+          "playing": {
+            "ok": true,
+            "isPlaying": true
+          }
+        },
+        {
+          "id": "D",
+          "replay": {
+            "ok": true,
+            "isActive": true,
+            "requestedSpeed": 10,
+            "effectiveSpeed": 10,
+            "speedRoute": "getTargetBarsPerSecond()",
+            "speedSetError": null,
+            "speedHonoured": true,
+            "requestedStepSeconds": 60,
+            "effectiveStepSeconds": 60,
+            "stepSetError": null,
+            "stepHonoured": true,
+            "marketSecondsPerWallSecond": 600
+          },
+          "playing": {
+            "ok": true,
+            "isPlaying": true
+          }
+        }
+      ]
+    },
+    "armedAt": [
+      {
+        "realm": "top",
+        "currentIndex": 2084,
+        "rawBars": 4000,
+        "fromEnd": 1915,
+        "playing": true,
+        "sessionStartIndex": 2010,
+        "floorPinnedToEnd": false
+      },
+      {
+        "realm": "panel",
+        "currentIndex": 2084,
+        "rawBars": 4000,
+        "fromEnd": 1915,
+        "playing": true,
+        "sessionStartIndex": 0,
+        "floorPinnedToEnd": false
+      },
+      {
+        "realm": "panel",
+        "currentIndex": 2083,
+        "rawBars": 4000,
+        "fromEnd": 1916,
+        "playing": true,
+        "sessionStartIndex": 0,
+        "floorPinnedToEnd": false
+      },
+      {
+        "realm": "panel",
+        "currentIndex": 2084,
+        "rawBars": 4000,
+        "fromEnd": 1915,
+        "playing": true,
+        "sessionStartIndex": 0,
+        "floorPinnedToEnd": false
+      }
+    ],
+    "prep": [
+      {
+        "realm": "top",
+        "state": "PREPARED",
+        "before": {
+          "rawBars": 4000,
+          "currentIndex": 2084,
+          "fromEnd": 1915,
+          "playing": true,
+          "sessionStartIndex": 2010
+        },
+        "seekedTo": null,
+        "seekHeld": null,
+        "runwayBlocked": null,
+        "startedVia": "already-playing",
+        "after": {
+          "rawBars": 4000,
+          "currentIndex": 2084,
+          "fromEnd": 1915,
+          "playing": true,
+          "stepSeconds": 60,
+          "sessionStartIndex": 2010
+        },
+        "asked": {
+          "speed": 10,
+          "step": 60
+        }
+      },
+      {
+        "realm": "panel",
+        "state": "PREPARED",
+        "before": {
+          "rawBars": 4000,
+          "currentIndex": 2084,
+          "fromEnd": 1915,
+          "playing": true,
+          "sessionStartIndex": 0
+        },
+        "seekedTo": null,
+        "seekHeld": null,
+        "runwayBlocked": null,
+        "startedVia": "already-playing",
+        "after": {
+          "rawBars": 4000,
+          "currentIndex": 2084,
+          "fromEnd": 1915,
+          "playing": true,
+          "stepSeconds": 60,
+          "sessionStartIndex": 0
+        },
+        "asked": {
+          "speed": 10,
+          "step": 60
+        }
+      },
+      {
+        "realm": "panel",
+        "state": "PREPARED",
+        "before": {
+          "rawBars": 4000,
+          "currentIndex": 2084,
+          "fromEnd": 1915,
+          "playing": true,
+          "sessionStartIndex": 0
+        },
+        "seekedTo": null,
+        "seekHeld": null,
+        "runwayBlocked": null,
+        "startedVia": "already-playing",
+        "after": {
+          "rawBars": 4000,
+          "currentIndex": 2084,
+          "fromEnd": 1915,
+          "playing": true,
+          "stepSeconds": 60,
+          "sessionStartIndex": 0
+        },
+        "asked": {
+          "speed": 10,
+          "step": 60
+        }
+      },
+      {
+        "realm": "panel",
+        "state": "PREPARED",
+        "before": {
+          "rawBars": 4000,
+          "currentIndex": 2084,
+          "fromEnd": 1915,
+          "playing": true,
+          "sessionStartIndex": 0
+        },
+        "seekedTo": null,
+        "seekHeld": null,
+        "runwayBlocked": null,
+        "startedVia": "already-playing",
+        "after": {
+          "rawBars": 4000,
+          "currentIndex": 2084,
+          "fromEnd": 1915,
+          "playing": true,
+          "stepSeconds": 60,
+          "sessionStartIndex": 0
+        },
+        "asked": {
+          "speed": 10,
+          "step": 60
+        }
+      }
+    ],
+    "focusBefore": {
+      "focusedPanel": "host:body",
+      "focusedTimeframeSeconds": null,
+      "minDisplayedTimeframeSeconds": 60,
+      "maxDisplayedTimeframeSeconds": 60,
+      "rows": [
+        {
+          "realm": "top",
+          "state": "READ",
+          "currentTimeframe": "1m",
+          "chartTimeframeSeconds": 60,
+          "stepSeconds": 60,
+          "dataFloorSeconds": 60,
+          "speed": 10,
+          "sessionStartIndex": 2010,
+          "rawBars": 4000,
+          "currentIndex": 2085,
+          "hasFocus": true,
+          "floorPinnedToEnd": false
+        },
+        {
+          "realm": "panel",
+          "state": "READ",
+          "currentTimeframe": "1m",
+          "chartTimeframeSeconds": 60,
+          "stepSeconds": 60,
+          "dataFloorSeconds": 60,
+          "speed": 10,
+          "sessionStartIndex": 0,
+          "rawBars": 4000,
+          "currentIndex": 2085,
+          "hasFocus": false,
+          "floorPinnedToEnd": false
+        },
+        {
+          "realm": "panel",
+          "state": "READ",
+          "currentTimeframe": "1m",
+          "chartTimeframeSeconds": 60,
+          "stepSeconds": 60,
+          "dataFloorSeconds": 60,
+          "speed": 10,
+          "sessionStartIndex": 0,
+          "rawBars": 4000,
+          "currentIndex": 2084,
+          "hasFocus": false,
+          "floorPinnedToEnd": false
+        },
+        {
+          "realm": "panel",
+          "state": "READ",
+          "currentTimeframe": "1m",
+          "chartTimeframeSeconds": 60,
+          "stepSeconds": 60,
+          "dataFloorSeconds": 60,
+          "speed": 10,
+          "sessionStartIndex": 0,
+          "rawBars": 4000,
+          "currentIndex": 2084,
+          "hasFocus": false,
+          "floorPinnedToEnd": false
+        }
+      ]
+    },
+    "playhead": [
+      {
+        "realm": "top",
+        "playingBefore": true,
+        "playingAfter": true,
+        "marketSecAdvanced": 36300,
+        "marketPerWall": 601.65,
+        "diagnosis": null
+      },
+      {
+        "realm": "panel",
+        "playingBefore": true,
+        "playingAfter": true,
+        "marketSecAdvanced": 36300,
+        "marketPerWall": 601.65,
+        "diagnosis": null
+      },
+      {
+        "realm": "panel",
+        "playingBefore": true,
+        "playingAfter": true,
+        "marketSecAdvanced": 36420,
+        "marketPerWall": 603.64,
+        "diagnosis": null
+      },
+      {
+        "realm": "panel",
+        "playingBefore": true,
+        "playingAfter": true,
+        "marketSecAdvanced": 36360,
+        "marketPerWall": 602.64,
+        "diagnosis": null
+      }
+    ],
+    "window": {
+      "seconds": 60.33,
+      "sliceSeconds": 10,
+      "slices": [
+        {
+          "sliceSeconds": 10.01,
+          "perRealm": [
+            {
+              "realm": "top",
+              "playing": true,
+              "marketSecAdvanced": 6000,
+              "marketPerWall": 599.25,
+              "rawBars": 4000,
+              "currentIndex": 2185,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": true,
+              "marketSecAdvanced": 6000,
+              "marketPerWall": 599.25,
+              "rawBars": 4000,
+              "currentIndex": 2185,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": true,
+              "marketSecAdvanced": 6120,
+              "marketPerWall": 611.24,
+              "rawBars": 4000,
+              "currentIndex": 2186,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": true,
+              "marketSecAdvanced": 6060,
+              "marketPerWall": 605.24,
+              "rawBars": 4000,
+              "currentIndex": 2186,
+              "barsLost": 0
+            }
+          ]
+        },
+        {
+          "sliceSeconds": 10.02,
+          "perRealm": [
+            {
+              "realm": "top",
+              "playing": true,
+              "marketSecAdvanced": 5940,
+              "marketPerWall": 592.78,
+              "rawBars": 4000,
+              "currentIndex": 2284,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": true,
+              "marketSecAdvanced": 5940,
+              "marketPerWall": 592.78,
+              "rawBars": 4000,
+              "currentIndex": 2284,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": true,
+              "marketSecAdvanced": 5940,
+              "marketPerWall": 592.78,
+              "rawBars": 4000,
+              "currentIndex": 2285,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": true,
+              "marketSecAdvanced": 5940,
+              "marketPerWall": 592.78,
+              "rawBars": 4000,
+              "currentIndex": 2285,
+              "barsLost": 0
+            }
+          ]
+        },
+        {
+          "sliceSeconds": 10.12,
+          "perRealm": [
+            {
+              "realm": "top",
+              "playing": true,
+              "marketSecAdvanced": 6060,
+              "marketPerWall": 598.6,
+              "rawBars": 4000,
+              "currentIndex": 2385,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": true,
+              "marketSecAdvanced": 6060,
+              "marketPerWall": 598.6,
+              "rawBars": 4000,
+              "currentIndex": 2385,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": true,
+              "marketSecAdvanced": 5940,
+              "marketPerWall": 586.75,
+              "rawBars": 4000,
+              "currentIndex": 2384,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": true,
+              "marketSecAdvanced": 5940,
+              "marketPerWall": 586.75,
+              "rawBars": 4000,
+              "currentIndex": 2384,
+              "barsLost": 0
+            }
+          ]
+        },
+        {
+          "sliceSeconds": 10.05,
+          "perRealm": [
+            {
+              "realm": "top",
+              "playing": true,
+              "marketSecAdvanced": 6060,
+              "marketPerWall": 603.1,
+              "rawBars": 4000,
+              "currentIndex": 2486,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": true,
+              "marketSecAdvanced": 6120,
+              "marketPerWall": 609.07,
+              "rawBars": 4000,
+              "currentIndex": 2487,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": true,
+              "marketSecAdvanced": 6120,
+              "marketPerWall": 609.07,
+              "rawBars": 4000,
+              "currentIndex": 2486,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": true,
+              "marketSecAdvanced": 6180,
+              "marketPerWall": 615.04,
+              "rawBars": 4000,
+              "currentIndex": 2487,
+              "barsLost": 0
+            }
+          ]
+        },
+        {
+          "sliceSeconds": 10.1,
+          "perRealm": [
+            {
+              "realm": "top",
+              "playing": true,
+              "marketSecAdvanced": 6000,
+              "marketPerWall": 594.35,
+              "rawBars": 4000,
+              "currentIndex": 2586,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": true,
+              "marketSecAdvanced": 5940,
+              "marketPerWall": 588.41,
+              "rawBars": 4000,
+              "currentIndex": 2586,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": true,
+              "marketSecAdvanced": 6120,
+              "marketPerWall": 606.24,
+              "rawBars": 4000,
+              "currentIndex": 2588,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": true,
+              "marketSecAdvanced": 5940,
+              "marketPerWall": 588.41,
+              "rawBars": 4000,
+              "currentIndex": 2586,
+              "barsLost": 0
+            }
+          ]
+        },
+        {
+          "sliceSeconds": 10.03,
+          "perRealm": [
+            {
+              "realm": "top",
+              "playing": true,
+              "marketSecAdvanced": 6240,
+              "marketPerWall": 621.85,
+              "rawBars": 4000,
+              "currentIndex": 2690,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": true,
+              "marketSecAdvanced": 6240,
+              "marketPerWall": 621.85,
+              "rawBars": 4000,
+              "currentIndex": 2690,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": true,
+              "marketSecAdvanced": 6180,
+              "marketPerWall": 615.88,
+              "rawBars": 4000,
+              "currentIndex": 2691,
+              "barsLost": 0
+            },
+            {
+              "realm": "panel",
+              "playing": true,
+              "marketSecAdvanced": 6300,
+              "marketPerWall": 627.83,
+              "rawBars": 4000,
+              "currentIndex": 2691,
+              "barsLost": 0
+            }
+          ]
+        }
+      ]
+    },
+    "focusAfter": {
+      "focusedPanel": "host:body",
+      "focusedTimeframeSeconds": null,
+      "minDisplayedTimeframeSeconds": 60,
+      "maxDisplayedTimeframeSeconds": 60,
+      "rows": [
+        {
+          "realm": "top",
+          "state": "READ",
+          "currentTimeframe": "1m",
+          "chartTimeframeSeconds": 60,
+          "stepSeconds": 60,
+          "dataFloorSeconds": 60,
+          "speed": 10,
+          "sessionStartIndex": 2010,
+          "rawBars": 4000,
+          "currentIndex": 2691,
+          "hasFocus": true,
+          "floorPinnedToEnd": false
+        },
+        {
+          "realm": "panel",
+          "state": "READ",
+          "currentTimeframe": "1m",
+          "chartTimeframeSeconds": 60,
+          "stepSeconds": 60,
+          "dataFloorSeconds": 60,
+          "speed": 10,
+          "sessionStartIndex": 0,
+          "rawBars": 4000,
+          "currentIndex": 2691,
+          "hasFocus": false,
+          "floorPinnedToEnd": false
+        },
+        {
+          "realm": "panel",
+          "state": "READ",
+          "currentTimeframe": "1m",
+          "chartTimeframeSeconds": 60,
+          "stepSeconds": 60,
+          "dataFloorSeconds": 60,
+          "speed": 10,
+          "sessionStartIndex": 0,
+          "rawBars": 4000,
+          "currentIndex": 2691,
+          "hasFocus": false,
+          "floorPinnedToEnd": false
+        },
+        {
+          "realm": "panel",
+          "state": "READ",
+          "currentTimeframe": "1m",
+          "chartTimeframeSeconds": 60,
+          "stepSeconds": 60,
+          "dataFloorSeconds": 60,
+          "speed": 10,
+          "sessionStartIndex": 0,
+          "rawBars": 4000,
+          "currentIndex": 2691,
+          "hasFocus": false,
+          "floorPinnedToEnd": false
+        }
+      ]
+    },
+    "governorReference": {
+      "focusedPanel": "host:body",
+      "focusedTimeframeSeconds": null,
+      "minDisplayedTimeframeSeconds": 60,
+      "state": "FOCUSED_TF_EQUALS_MIN_DISPLAYED"
+    },
+    "revived": [],
+    "finishLog": [],
+    "patchState": {
+      "sameChart": true,
+      "sameReplaySystem": true,
+      "stillWrapped": false,
+      "iframes": 3
+    },
+    "trace": {
+      "total": 44005,
+      "counts": {
+        "getPlaybackMode": 42655,
+        "_isReplayPageHidden": 6,
+        "_shouldUseTickAnimation": 2,
+        "_playWouldBeNoOpAtSessionEnd": 2,
+        "_capturePlaybackViewportLock": 2,
+        "stopAllPlayback": 2,
+        "startCandleByCandle": 2,
+        "_runCandlePlaybackTick": 651,
+        "simpleStepForward": 682,
+        "pause": 1
+      },
+      "firstInOrder": [
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "_isReplayPageHidden",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "_shouldUseTickAnimation"
+      ],
+      "threw": []
+    },
+    "playIdentity": {
+      "ownProperty": true,
+      "isPrototypeMethod": false,
+      "name": "",
+      "head": "function(...pe){const Te=cM()?ir.apply(this,pe):ir.call(ve);try{const ft=!!(this.isPlaying||this.isPlayStarting);this.__shellPlayOverrideInert=!ft;const We=Number(this.speed)||1,Qe=typeof this.getPlaybackMode==\"function\"?this.getPlaybackMod",
+      "full": "function(...pe){const Te=cM()?ir.apply(this,pe):ir.call(ve);try{const ft=!!(this.isPlaying||this.isPlayStarting);this.__shellPlayOverrideInert=!ft;const We=Number(this.speed)||1,Qe=typeof this.getPlaybackMode==\"function\"?this.getPlaybackMode():this.playbackMode||\"tick\",Rt=lf(this);if(vt(\"replaySetStepTf\",{tf:Rt??null}),!ft&&cM())return Te;vt(\"replayPlay\",{speed:We,mode:Qe});const Kt=this;requestAnimationFrame(()=>{requestAnimationFrame(()=>{try{typeof Kt._multichartBroadcastReplayFrame==\"function\"&&Kt._multichartBroadcastReplayFrame()}catch{}})})}catch{}return Te}"
+    },
+    "playLog": [
+      {
+        "at": 11059,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 2010,
+        "len": 4000,
+        "subBar": false,
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": true,
+        "playStartRafScheduled": true
+      },
+      {
+        "at": 15092,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 2048,
+        "len": 4000,
+        "subBar": false,
+        "playingOnReturn": false,
+        "isPlayStartingOnReturn": true,
+        "playStartRafScheduled": true
+      }
+    ],
+    "noOpLog": [
+      {
+        "at": 11059,
+        "answer": false,
+        "index": 2010,
+        "cursorsPresent": true,
+        "hasMoreRight": true,
+        "panLoading": false
+      },
+      {
+        "at": 15092,
+        "answer": false,
+        "index": 2048,
+        "cursorsPresent": true,
+        "hasMoreRight": true,
+        "panLoading": false
+      }
+    ],
+    "readBack": [
+      {
+        "realm": "top",
+        "type": "number",
+        "value": 583.0903790087464,
+        "gov": {
+          "unit": "market-seconds-per-wall-second",
+          "stepSeconds": 60,
+          "stepsPerWallSecond": 10,
+          "target": 600,
+          "effective": 583.0903790087464
+        },
+        "engine": {
+          "stepSeconds": 60,
+          "marketPerWall": 600,
+          "stepsPerWall": 10,
+          "tf": 60
+        }
+      },
+      {
+        "realm": "panel",
+        "type": "number",
+        "value": 601.5755550250657,
+        "gov": {
+          "unit": "market-seconds-per-wall-second",
+          "stepSeconds": 60,
+          "stepsPerWallSecond": 10,
+          "target": 600,
+          "effective": 601.5755550250657
+        },
+        "engine": {
+          "stepSeconds": 60,
+          "marketPerWall": 600,
+          "stepsPerWall": 10,
+          "tf": 60
+        }
+      },
+      {
+        "realm": "panel",
+        "type": "number",
+        "value": 588.9859625016578,
+        "gov": {
+          "unit": "market-seconds-per-wall-second",
+          "stepSeconds": 60,
+          "stepsPerWallSecond": 10,
+          "target": 600,
+          "effective": 588.9859625016578
+        },
+        "engine": {
+          "stepSeconds": 60,
+          "marketPerWall": 600,
+          "stepsPerWall": 10,
+          "tf": 60
+        }
+      },
+      {
+        "realm": "panel",
+        "type": "number",
+        "value": 583.0903790087464,
+        "gov": {
+          "unit": "market-seconds-per-wall-second",
+          "stepSeconds": 60,
+          "stepsPerWallSecond": 10,
+          "target": 600,
+          "effective": 583.0903790087464
+        },
+        "engine": {
+          "stepSeconds": 60,
+          "marketPerWall": 600,
+          "stepsPerWall": 10,
+          "tf": 60
+        }
+      }
+    ]
+  }
+}
