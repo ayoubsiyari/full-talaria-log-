@@ -50,6 +50,7 @@ import { arenaColumns, rankRowGrowth } from './lib/arena-columns.mjs';
 import { collectMemoryDump } from './process-memory-census.mjs';
 import { gradeSettleCurve, reconcileFloors } from './lib/floor-curve.mjs';
 import { acquireRunLockOrExit, lockFlagsFromArgv, writeArtifactAtomic } from './lib/run-lock.mjs';
+import { clockOf, both } from './lib/clock.mjs';
 
 const arg = (k, d) => {
   const hit = process.argv.find((a) => a.startsWith(`--${k}=`));
@@ -96,7 +97,14 @@ const RUNGS_SEC = (arg('rungs', '0,20,150,300,600')).split(',').map((s) => Numbe
 const DUMP_AT = arg('dumpAt', 'endpoints');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const log = (m) => console.log(`[floor-retake ${new Date().toISOString().slice(11, 19)}] ${m}`);
+/**
+ * CLOCK-01. This printed `toISOString().slice(11,19)` — UTC with the `Z` sliced off — while the
+ * boards quote this instrument's run times in `+01:00`. That is how one run acquired two identities:
+ * A read this instrument's start from the process table as `12:04:34+01:00` and correctly published
+ * it, my own log line for the same instant said `11:04`, and a consistent sequence read as an hour
+ * of drift. The offset is now emitted rather than remembered.
+ */
+const log = (m) => console.log(`[floor-retake ${clockOf(new Date(), { seconds: true })}] ${m}`);
 
 async function pauseAll(page) {
   return page.evaluate(() => {
@@ -307,6 +315,9 @@ async function main() {
 
   let session = null;
   try {
+    // Both clocks once, at the top, because this is the line another lane will quote back when it
+    // cross-references this run against the process table or against an artifact's UTC field.
+    log(`started ${both()} — pid ${process.pid}`);
     log(`booting same-symbol CONF-01 speed=${SPEED}`);
     session = await bootConf01Session({
       indicators: loadConf05Indicators().pairs,

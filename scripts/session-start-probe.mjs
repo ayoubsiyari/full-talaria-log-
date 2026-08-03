@@ -17,13 +17,14 @@ import fs from 'fs';
 import path from 'path';
 import { bootConf01Session } from './lib/conf01-session.mjs';
 import { loadConf05Indicators } from './lib/conf05-indicators.mjs';
+import { clockOf } from './lib/clock.mjs';
 
 const arg = (k, d) => {
   const hit = process.argv.find((a) => a.startsWith(`--${k}=`));
   return hit ? hit.split('=').slice(1).join('=') : d;
 };
 const OUT = arg('out', `_evidence/manager-C/session-start-probe-${Date.now()}.json`);
-const log = (m) => console.log(`[session-start ${new Date().toISOString().slice(11, 19)}] ${m}`);
+const log = (m) => console.log(`[session-start ${clockOf(new Date(), { seconds: true })}] ${m}`);
 
 async function readRealms(page) {
   return page.evaluate(() => {

@@ -17,11 +17,12 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import puppeteer from 'puppeteer';
 import { uiLoginDeployed } from './lib/heap-cycle-browser.mjs';
+import { clockOf } from './lib/clock.mjs';
 
 const EV = 'c:\\Users\\user\\Desktop\\talaria1\\_evidence\\manager-C';
 const ORIGIN = (process.env.TEST_VPS_URL || 'http://31.97.192.82:3000').replace(/\/$/, '');
 const tag = (s) => (s ? crypto.createHash('sha256').update(String(s).trim().toLowerCase()).digest('hex').slice(0, 8) : null);
-const log = (m) => console.log(`[${new Date().toISOString().slice(11, 19)}] ${m}`);
+const log = (m) => console.log(`[${clockOf(new Date(), { seconds: true })}] ${m}`);
 
 const ARMS = [
   { label: 'heavy', email: process.env.TEST_EMAIL, password: process.env.TEST_PASSWORD },

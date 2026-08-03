@@ -50,7 +50,7 @@ const TOP_N = Number(arg('topN', '5'));
 const SNAP_CAP_MB = Number(arg('snapCapMB', '3072'));
 
 const log = (m) => {
-  const line = `[hoard-ctor ${new Date().toISOString().slice(11, 19)}] ${m}`;
+  const line = `[hoard-ctor ${clockOf(new Date(), { seconds: true })}] ${m}`;
   console.log(line);
   // Redirected detached logs buffer aggressively on Windows; flush so a kill mid-warm is visible.
   try { if (typeof process.stdout.write === 'function') process.stdout.write(''); } catch (_) {}
@@ -496,5 +496,6 @@ async function main() {
 // Prefer `import.meta.url === pathToFileURL(process.argv[1]).href`, but argv[1] is
 // unreliable under some Windows launchers, so --noRun remains the hard off switch.
 import { pathToFileURL } from 'node:url';
+import { clockOf } from './lib/clock.mjs';
 const isDirect = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isDirect && !process.argv.includes('--noRun')) main();

@@ -33,6 +33,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { stampUtc } from './lib/clock.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(__dirname, '..');
@@ -191,7 +192,18 @@ function appendLog(line) {
   } catch { /* the log is a courtesy; never fail a claim because it could not be written */ }
 }
 
-const stamp = () => new Date().toISOString().replace('T', ' ').slice(0, 19);
+/**
+ * CLOCK-01. This was `toISOString().replace('T',' ').slice(0,19)` — UTC with the `Z` **sliced off**,
+ * so it did not merely omit an offset, it removed the one the platform had already supplied. It is
+ * the emitter behind 48 of the 54 bare numbers in `MEASUREMENT-QUEUE.md`, and that file is the one
+ * every lane reads to decide who ran when. A UTC log sitting beside board prose written in `+01:00`
+ * is exactly how a consistent sequence gets read in two clocks — `12:05:22` here against `13:05`
+ * there is one instant that looks like an hour of drift.
+ *
+ * `stampUtc` keeps the log in UTC, which is right for a machine-ordered record, and restores the
+ * marker that says so.
+ */
+const stamp = () => stampUtc();
 
 function arg(name, dflt = null) {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`));

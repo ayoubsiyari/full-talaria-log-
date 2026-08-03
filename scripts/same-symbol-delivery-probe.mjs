@@ -7,11 +7,12 @@ import path from 'path';
 import { bootConf01Session } from './lib/conf01-session.mjs';
 import { loadConf05Indicators } from './lib/conf05-indicators.mjs';
 import { HEAP_CYCLE_DATASET_MODE_SAME_SYMBOL } from './lib/heap-cycle-dataset-config.mjs';
+import { clockOf } from './lib/clock.mjs';
 
 const OUT = process.argv.find((a) => a.startsWith('--out='))?.split('=').slice(1).join('=')
   || `_evidence/manager-C/same-symbol-delivery-${Date.now()}.json`;
 
-const log = (m) => console.log(`[same-symbol ${new Date().toISOString().slice(11, 19)}] ${m}`);
+const log = (m) => console.log(`[same-symbol ${clockOf(new Date(), { seconds: true })}] ${m}`);
 
 async function main() {
   const artifact = { signature: 'SAME-SYMBOL-DELIVERY-V1', startedAt: new Date().toISOString() };

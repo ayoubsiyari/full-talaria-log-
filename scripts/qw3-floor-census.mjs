@@ -61,6 +61,7 @@ import { pauseProbe } from './lib/pause-probe.mjs';
 import { computeSeal } from './lib/seal.mjs';
 import { readBuildInfo } from './lib/build-info.mjs';
 import { startServer as startHarnessServer } from '../chart v 1.4/chart/multichart-prod/harness/serve.mjs';
+import { clockOf } from './lib/clock.mjs';
 
 const arg = (k, d) => {
   const hit = process.argv.find((a) => a.startsWith(`--${k}=`));
@@ -79,7 +80,7 @@ const LOCAL_HARNESS = /^(1|true|yes|on)$/i.test(String(arg('localHarness', 'fals
 const QW3_FLAG = '__TALARIA_DISABLE_QW3_RESAMPLE_CACHE_KEEP_V1';
 const CONTROL_FLAG = '__TALARIA_DISABLE_M20_PREFIX_SLICE_V1';
 
-const log = (m) => console.log(`[qw3-census ${new Date().toISOString().slice(11, 19)}] ${m}`);
+const log = (m) => console.log(`[qw3-census ${clockOf(new Date(), { seconds: true })}] ${m}`);
 
 /** Install counting accessors for both flags in every reachable realm. */
 async function installFlagCounters(page, qw3Flag, controlFlag) {

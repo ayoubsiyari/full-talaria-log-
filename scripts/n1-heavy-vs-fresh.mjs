@@ -31,6 +31,7 @@ import { pauseProbe } from './lib/pause-probe.mjs';
 import { readStorageCensus } from './lib/storage-census.mjs';
 import { computeSeal } from './lib/seal.mjs';
 import { readBuildInfo } from './lib/build-info.mjs';
+import { clockOf } from './lib/clock.mjs';
 
 const EV = 'c:\\Users\\user\\Desktop\\talaria1\\_evidence\\manager-C';
 const ORIGIN = (process.env.TEST_VPS_URL || 'http://31.97.192.82:3000').replace(/\/$/, '');
@@ -40,7 +41,7 @@ const FROTH_MS = Number(argOf('frothMs', '60000'));
 const RECLAIM_MS = Number(argOf('reclaimMs', '600000'));
 const SPEED = Number(argOf('speed', '60'));
 
-const log = (m) => console.log(`[${new Date().toISOString().slice(11, 19)}] ${m}`);
+const log = (m) => console.log(`[${clockOf(new Date(), { seconds: true })}] ${m}`);
 const tag = (email) => crypto.createHash('sha256').update(String(email)).digest('hex').slice(0, 8);
 
 const HEAVY = { label: 'heavy', email: process.env.TEST_EMAIL, password: process.env.TEST_PASSWORD };

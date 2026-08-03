@@ -29,6 +29,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { computeSeal } from './lib/seal.mjs';
 import { readBuildInfo } from './lib/build-info.mjs';
 import { checkSpeed01Served, capabilityDigest, readSpeed01Runtime, gradeRuntimeLadder } from './lib/served-capability.mjs';
+import { clockOf } from './lib/clock.mjs';
 
 const EV = 'c:\\Users\\user\\Desktop\\talaria1\\_evidence\\manager-C';
 const ORIGIN = (process.env.TEST_VPS_URL || 'http://31.97.192.82:3000').replace(/\/$/, '');
@@ -45,7 +46,7 @@ const MECHANICAL_ONLY = process.argv.includes('--mechanicalOnly');
  * depend on the live origin is how I once wrote a test that was green only because production was broken.
  */
 const GRADE_ONLY = argOf('gradeOnly', '');
-const log = (m) => console.log(`[${new Date().toISOString().slice(11, 19)}] ${m}`);
+const log = (m) => console.log(`[${clockOf(new Date(), { seconds: true })}] ${m}`);
 
 const seal = GRADE_ONLY ? { badge: 'GRADE-ONLY', digest: '0'.repeat(32), ok: true } : await computeSeal(ORIGIN);
 const info = GRADE_ONLY ? { sourceCommitSha: '0'.repeat(40), ok: true, state: 'GRADE-ONLY' } : await readBuildInfo(ORIGIN);

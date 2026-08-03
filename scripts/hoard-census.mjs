@@ -49,6 +49,7 @@ import { loadConf05Indicators } from './lib/conf05-indicators.mjs';
 import { readFootprint } from './lib/footprint.mjs';
 import { computeSeal } from './lib/seal.mjs';
 import { readBuildInfo } from './lib/build-info.mjs';
+import { clockOf } from './lib/clock.mjs';
 
 const arg = (k, d) => {
   const hit = process.argv.find((a) => a.startsWith(`--${k}=`));
@@ -66,7 +67,7 @@ const TIME_BUDGET_MS = Number(arg('timeBudgetMs', '10000'));
 const INDICATOR_ARM = arg('indicators', 'conf05');
 const OUT = arg('out', `_evidence/manager-C/hoard-census-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
 
-const log = (m) => console.log(`[hoard-census ${new Date().toISOString().slice(11, 19)}] ${m}`);
+const log = (m) => console.log(`[hoard-census ${clockOf(new Date(), { seconds: true })}] ${m}`);
 
 /**
  * The in-page walk. Deliberately defensive: every branch is capped and every access is guarded, because

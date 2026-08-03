@@ -35,7 +35,7 @@ const WARMUP_MIN = Number(arg('warmup', '4'));
 const PLAY_MIN = Number(arg('play', '20'));
 const OUT = arg('out', `_evidence/manager-C/forced-gc-hoard-slope-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const log = (m) => console.log(`[forced-gc-slope ${new Date().toISOString().slice(11, 19)}] ${m}`);
+const log = (m) => console.log(`[forced-gc-slope ${clockOf(new Date(), { seconds: true })}] ${m}`);
 
 async function pauseAll(page) {
   return page.evaluate(() => {
@@ -279,5 +279,6 @@ async function main() {
 }
 
 import { pathToFileURL } from 'node:url';
+import { clockOf } from './lib/clock.mjs';
 const isDirect = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isDirect && !process.argv.includes('--noRun')) main();

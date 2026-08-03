@@ -34,6 +34,7 @@ import { loadConf05Indicators } from './lib/conf05-indicators.mjs';
 import { readFootprint } from './lib/footprint.mjs';
 import { computeSeal } from './lib/seal.mjs';
 import { readBuildInfo } from './lib/build-info.mjs';
+import { clockOf } from './lib/clock.mjs';
 
 const arg = (k, d) => {
   const hit = process.argv.find((a) => a.startsWith(`--${k}=`));
@@ -51,7 +52,7 @@ const PHASE = arg('phase', 'ab');           // 'ab' full run, 'b' = zero-deliver
 const WARM_MS = Number(arg('warmMs', '0')); // let the session play this long before phase B pauses it
 const OUT = arg('out', `_evidence/manager-C/exhaustion-probe-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
 
-const log = (m) => console.log(`[exhaustion ${new Date().toISOString().slice(11, 19)}] ${m}`);
+const log = (m) => console.log(`[exhaustion ${clockOf(new Date(), { seconds: true })}] ${m}`);
 
 async function readPanels(page) {
   return page.evaluate(() => {

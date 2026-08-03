@@ -13,6 +13,7 @@
  */
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import { clockOf } from './lib/clock.mjs';
 
 const EV = 'c:\\Users\\user\\Desktop\\talaria1\\_evidence\\manager-C\\';
 const SWEEP_MANIFEST = `${EV}SWEEP-QUEUE-MANIFEST-20260731.json`;
@@ -24,7 +25,7 @@ const WAIT_FOR_SWEEP = process.env.C_WAIT_FOR_SWEEP || 'S5';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (s) => {
-  const line = `[${new Date().toISOString().slice(11, 19)}] ${s}`;
+  const line = `[${clockOf(new Date(), { seconds: true })}] ${s}`;
   console.error(line);
   try { fs.appendFileSync(LOG, `${line}\n`); } catch { /* best effort */ }
 };

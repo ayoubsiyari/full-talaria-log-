@@ -26,6 +26,7 @@ import { HEAP_CYCLE_DATASET_MODE_SAME_SYMBOL } from './lib/heap-cycle-dataset-co
 import { computeSeal } from './lib/seal.mjs';
 import { readBuildInfo } from './lib/build-info.mjs';
 import { readFootprint } from './lib/footprint.mjs';
+import { clockOf } from './lib/clock.mjs';
 import {
   collectMemoryDump,
   readOsFootprints,
@@ -37,7 +38,7 @@ const arg = (k, d) => {
   return hit ? hit.split('=').slice(1).join('=') : d;
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const log = (m) => console.log(`[arena-ts ${new Date().toISOString().slice(11, 19)}] ${m}`);
+const log = (m) => console.log(`[arena-ts ${clockOf(new Date(), { seconds: true })}] ${m}`);
 
 const HOURS = Number(arg('hours', '3'));
 const INTERVAL_MIN = Number(arg('interval', '10'));
