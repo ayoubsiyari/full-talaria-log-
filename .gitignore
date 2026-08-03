@@ -149,6 +149,8 @@ docs/plan3/fixtures/*
 # another sweep.
 .ckpt/
 _evidence/
+# RUN-LOCK-01 holder files: live process state, never content
+.locks/
 .scratch-*
 .scratch-*.tar
 .scratch-*.tar.gz

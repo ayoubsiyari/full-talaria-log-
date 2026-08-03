@@ -36,6 +36,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { captureProvenance } from './lib/run-provenance.mjs';
+import { acquireRunLockOrExit, writeArtifactAtomic } from './lib/run-lock.mjs';
 
 import {
   applyDistV9LayoutViaUi,
@@ -58,6 +59,15 @@ const arg = (name, dflt) => {
 const SPEED = Number(arg('speed', '10'));
 const STEP = arg('step', null) === null ? null : Number(arg('step', null));
 const OUT = arg('out', path.resolve(__dirname, '../docs/plan3/evidence/order01b-readback-canary.json'));
+
+// RUN-LOCK-01. Two lanes lost hours today to a second copy of an instrument
+// starting on top of the first and rewriting its artifact. Refuse before the
+// browser launches, not after the reading is taken.
+const RUN_LOCK = acquireRunLockOrExit({
+  artifact: OUT,
+  script: 'order01b-readback-canary.mjs',
+  allowConcurrent: process.argv.includes('--allow-concurrent'),
+});
 
 /** Markers that must be in the SERVED engine bytes, not merely on disk. */
 const ENGINE_MARKERS = [
@@ -712,12 +722,21 @@ async function main() {
       signature: 'TALARIA_ORDER01B_READBACK_CANARY_V1',
       at: new Date().toISOString(),
       condition: { speed: SPEED, step: STEP === null ? 'TF' : `${STEP}s`, stepSeconds: STEP },
+      // SEAL-EVIDENCE-01, stated in the artifact so a reader cannot promote the
+      // cheap half. Marker presence in the served bytes is a precondition: it
+      // says the code shipped, never that it ran. SHELL-PLAY-01 was CARRIED in
+      // the bytes and inert in behaviour for a full day, on this same surface.
+      evidenceClasses: {
+        servedEngineMarkers: 'STATIC_BYTES_PRECONDITION',
+        rateReadBack: 'OBSERVED_BEHAVIOUR',
+        note: 'A pass requires the read-back. Markers present with no reading is ENGINE_PRESENT_BEHAVIOUR_UNOBSERVED, not a pass.',
+      },
+      runLock: { state: RUN_LOCK.state, pid: process.pid },
       verdict: verdict || { state: 'HARNESS_FAILED', why: 'the canary did not reach a verdict' },
       checks: results,
       observed,
     };
-    fs.mkdirSync(path.dirname(OUT), { recursive: true });
-    fs.writeFileSync(OUT, JSON.stringify(artifact, null, 2));
+    writeArtifactAtomic(OUT, JSON.stringify(artifact, null, 2));
     console.log(`\n  ${results.filter((r) => r.ok).length}/${results.length} — ${artifact.verdict.state}`);
     console.log(`  artifact ${OUT}`);
     if (artifact.verdict.state !== 'PUBLISH_CORRECT') process.exitCode = 1;

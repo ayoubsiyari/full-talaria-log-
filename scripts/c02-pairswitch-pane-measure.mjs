@@ -24,6 +24,7 @@ import { startServer } from '../chart v 1.4/chart/multichart-prod/harness/serve.
 import { bootLayout, embedFrames, sleep } from '../chart v 1.4/chart/multichart-prod/harness/harness-lib.mjs';
 import { loadPuppeteer } from './lib/heap-cycle-browser.mjs';
 import { readOsFootprints } from './process-memory-census.mjs';
+import { acquireRunLockOrExit, writeArtifactAtomic } from './lib/run-lock.mjs';
 
 const MB = 1048576;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -352,9 +353,15 @@ async function main() {
   // 120s. The boot and creation samples previously landed inside it, which is
   // part of why the release delta would not resolve. Sit out the hump first.
   const warmupMs = Number(argOf('warmup', '0')) || 0;
+  const lock = acquireRunLockOrExit({
+    artifact: out,
+    script: 'c02-pairswitch-pane-measure.mjs',
+    allowConcurrent: process.argv.includes('--allow-concurrent'),
+  });
   const report = {
     signature: 'C02-PAIRSWITCH-PANE-MEASURE-V1',
     at: new Date().toISOString(),
+    runLock: { state: lock.state, pid: process.pid },
     method: {
       surface: 'harness host.html, four panels, same-pair boot',
       event: `pair switch via chart.loadFileData(): ${hostFile} -> ${targetFile} on every panel`,
@@ -372,10 +379,9 @@ async function main() {
   };
   const save = (phase) => {
     report.partial = phase || null;
-    fs.writeFileSync(out, JSON.stringify(report, null, 2));
+    writeArtifactAtomic(out, JSON.stringify(report, null, 2));
     log(`wrote ${phase || 'done'}`);
   };
-  fs.mkdirSync(path.dirname(out), { recursive: true });
   log(`artifact=${out}`);
 
   const srv = await startServer(0);
@@ -469,7 +475,7 @@ async function main() {
   } finally {
     try { await browser?.close?.(); } catch (_) {}
     try { await srv.close?.(); } catch (_) {}
-    fs.writeFileSync(out, JSON.stringify(report, null, 2));
+    writeArtifactAtomic(out, JSON.stringify(report, null, 2));
     console.log(JSON.stringify({ artifact: out, error: report.error || null, summary: report.summary || null }, null, 2));
   }
 }

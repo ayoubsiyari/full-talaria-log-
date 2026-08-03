@@ -32,6 +32,7 @@ import { fileURLToPath } from 'node:url';
 
 import { loadPuppeteer } from './lib/heap-cycle-browser.mjs';
 import { readOsFootprints } from './process-memory-census.mjs';
+import { acquireRunLockOrExit, writeArtifactAtomic } from './lib/run-lock.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MB = 1048576;
@@ -192,9 +193,15 @@ async function main() {
     process.exit(2);
   }
 
+  const lock = acquireRunLockOrExit({
+    artifact: out,
+    script: 'competitor-arena-reference.mjs',
+    allowConcurrent: hasFlag('allow-concurrent'),
+  });
   const report = {
     signature: 'COMPETITOR-ARENA-REFERENCE-V1',
     at: new Date().toISOString(),
+    runLock: { state: lock.state, pid: process.pid },
     label,
     inputs: { url, panels, settleMs, viewport: { width, height }, dpr, manual, headful, warmupMs, probeWebgl },
     method: {
@@ -211,8 +218,7 @@ async function main() {
   };
   const save = (phase) => {
     report.partial = phase || null;
-    fs.mkdirSync(path.dirname(out), { recursive: true });
-    fs.writeFileSync(out, JSON.stringify(report, null, 2));
+    writeArtifactAtomic(out, JSON.stringify(report, null, 2));
   };
 
   let browser = null;
@@ -347,8 +353,7 @@ async function main() {
     try { await boot?.close?.(); } catch (_) {}
     try { await browser?.close?.(); } catch (_) {}
     try { await srv?.close?.(); } catch (_) {}
-    fs.mkdirSync(path.dirname(out), { recursive: true });
-    fs.writeFileSync(out, JSON.stringify(report, null, 2));
+    writeArtifactAtomic(out, JSON.stringify(report, null, 2));
     console.log(JSON.stringify({ artifact: out, error: report.error || null, summary: report.summary || null }, null, 2));
   }
 }

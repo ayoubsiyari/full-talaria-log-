@@ -24,6 +24,7 @@ import {
   reactParityUrlWithLayout,
 } from '../chart v 1.4/chart/multichart-prod/harness/react-parity-lib.mjs';
 import { captureProvenance } from './lib/run-provenance.mjs';
+import { acquireRunLockOrExit, writeArtifactAtomic } from './lib/run-lock.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -97,16 +98,19 @@ async function main() {
     path.join(__dirname, '..', 'docs/plan3/evidence', `order01b-edge-play-${Date.now()}.json`)));
   // Console output is not an artifact: the b124 retirement turned on nobody
   // being able to say afterwards which surface a run had read.
+  const lock = acquireRunLockOrExit({
+    artifact: out,
+    script: 'order01b-edge-play-probe.mjs',
+    allowConcurrent: process.argv.includes('--allow-concurrent'),
+  });
   const report = {
     signature: 'ORDER01B-EDGE-PLAY-PROBE-V1',
     at: new Date().toISOString(),
     provenance: captureProvenance(distIndex),
+    runLock: { state: lock.state, pid: process.pid },
     steps: [],
   };
-  const save = () => {
-    fs.mkdirSync(path.dirname(out), { recursive: true });
-    fs.writeFileSync(out, JSON.stringify(report, null, 2));
-  };
+  const save = () => { writeArtifactAtomic(out, JSON.stringify(report, null, 2)); };
   log(`HEAD ${report.provenance.headSha} distV9 ${report.provenance.distV9BuildIdOnDisk} `
     + `dirtyGoverned=${report.provenance.dirtyGovernedPaths.length}`);
 
