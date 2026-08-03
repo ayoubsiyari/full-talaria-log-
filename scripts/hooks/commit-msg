@@ -1,0 +1,119 @@
+#!/bin/sh
+#
+# TERRITORY-HOOK-01. Refuses any commit that cannot be attributed to a lane.
+#
+# Zero of the 250 commits before this hook existed carry a `Manager:` trailer, which
+# is why territory-preflight has never enforced anything and why the director digest
+# credited one lane's work to another. Attribution has to be produced at commit time
+# by the only party who knows the answer; nothing downstream can recover it later.
+#
+# The lane comes from TALARIA_MANAGER, set once per worktree:
+#
+#   export TALARIA_MANAGER=B          # posix
+#   $env:TALARIA_MANAGER = 'B'        # powershell
+#
+# Behaviour:
+#   - trailer absent, TALARIA_MANAGER set    -> the trailer is ADDED, commit proceeds
+#   - trailer absent, TALARIA_MANAGER unset  -> REFUSED, because guessing is the bug
+#   - trailer present and agrees             -> untouched, commit proceeds
+#   - trailer present and DISAGREES with the
+#     environment                            -> REFUSED, never silently rewritten
+#
+# Deliberately NOT sourced from git identity: every lane in this repository commits as
+# `Manager B release rehearsal <b-release@local>`, so identity distinguishes nobody.
+# Binding the trailer to a per-lane identity is TERR-F3, deferred until after the seal.
+#
+# This hook can only be fooled on purpose (`--no-verify`, or exporting another lane's
+# letter). The threat model is carelessness, not evasion.
+
+set -e
+
+MSG_FILE="$1"
+[ -n "$MSG_FILE" ] || { echo "commit-msg: no message file given" >&2; exit 1; }
+[ -f "$MSG_FILE" ] || { echo "commit-msg: message file $MSG_FILE is absent" >&2; exit 1; }
+
+VALID='^(Director|[A-E])$'
+
+# A merge commit's message is written by git, not by a lane, and refusing it would
+# strand anyone mid-merge with no way to finish. Attributing a merge to whoever ran it
+# would also be false: the work in it belongs to the branches, not the merger.
+if [ -f "$(git rev-parse --git-dir)/MERGE_HEAD" ]; then
+  exit 0
+fi
+
+# An empty or comment-only message means the commit is about to be aborted by git
+# anyway. Refusing here would replace git's clear message with a confusing one.
+if ! grep -qv '^\s*\(#.*\)\?$' "$MSG_FILE" 2>/dev/null; then
+  exit 0
+fi
+
+EXISTING=$(sed -n 's/^Manager:[[:space:]]*\(.*[^[:space:]]\)[[:space:]]*$/\1/p' "$MSG_FILE" | tail -n 1)
+
+if [ -n "$EXISTING" ]; then
+  if ! printf '%s' "$EXISTING" | grep -Eq "$VALID"; then
+    echo "" >&2
+    echo "REFUSED: Manager: $EXISTING is not a valid lane." >&2
+    echo "  Valid values are Director or a single letter A-E." >&2
+    echo "" >&2
+    exit 1
+  fi
+  if [ -n "$TALARIA_MANAGER" ] && [ "$EXISTING" != "$TALARIA_MANAGER" ]; then
+    echo "" >&2
+    echo "REFUSED: the message says Manager: $EXISTING but this worktree is" >&2
+    echo "         TALARIA_MANAGER=$TALARIA_MANAGER." >&2
+    echo "" >&2
+    echo "  Not rewritten for you. One of the two is wrong and only you know which:" >&2
+    echo "  committing another lane's letter is exactly the misattribution this hook" >&2
+    echo "  exists to stop, and silently correcting it would hide a real mistake." >&2
+    echo "" >&2
+    exit 1
+  fi
+  exit 0
+fi
+
+if [ -z "$TALARIA_MANAGER" ]; then
+  echo "" >&2
+  echo "REFUSED: this commit carries no Manager: trailer and TALARIA_MANAGER is unset," >&2
+  echo "         so there is no way to attribute it." >&2
+  echo "" >&2
+  echo "  Set it once for this worktree:" >&2
+  echo "    export TALARIA_MANAGER=B          # posix" >&2
+  echo "    \$env:TALARIA_MANAGER = 'B'        # powershell" >&2
+  echo "" >&2
+  echo "  Or write the trailer into the message yourself:" >&2
+  echo "    Manager: B" >&2
+  echo "" >&2
+  echo "  Why this is refused rather than guessed: every lane commits as the same git" >&2
+  echo "  identity here, so nothing downstream can work out who you are. 250 commits" >&2
+  echo "  were made before this hook existed and not one can be attributed today." >&2
+  echo "" >&2
+  exit 1
+fi
+
+if ! printf '%s' "$TALARIA_MANAGER" | grep -Eq "$VALID"; then
+  echo "" >&2
+  echo "REFUSED: TALARIA_MANAGER=$TALARIA_MANAGER is not a valid lane." >&2
+  echo "  Valid values are Director or a single letter A-E." >&2
+  echo "" >&2
+  exit 1
+fi
+
+# interpret-trailers places the trailer in the message's trailer block rather than
+# after a signature or inside a comment, and leaves a blank line where one is needed.
+TMP="$MSG_FILE.talaria"
+TRAILER_ARGS="--trailer Manager=$TALARIA_MANAGER"
+[ -n "$TALARIA_ROW" ]    && TRAILER_ARGS="$TRAILER_ARGS --trailer Row=$TALARIA_ROW"
+[ -n "$TALARIA_PACKET" ] && TRAILER_ARGS="$TRAILER_ARGS --trailer Packet=$TALARIA_PACKET"
+[ -n "$TALARIA_TIER" ]   && TRAILER_ARGS="$TRAILER_ARGS --trailer Tier=$TALARIA_TIER"
+
+# shellcheck disable=SC2086
+if git interpret-trailers --if-exists doNothing $TRAILER_ARGS "$MSG_FILE" > "$TMP" 2>/dev/null; then
+  mv "$TMP" "$MSG_FILE"
+else
+  rm -f "$TMP"
+  # Falling back rather than failing: a commit that lands WITH attribution beats one
+  # refused because a git subcommand was unavailable.
+  printf '\nManager: %s\n' "$TALARIA_MANAGER" >> "$MSG_FILE"
+fi
+
+exit 0
