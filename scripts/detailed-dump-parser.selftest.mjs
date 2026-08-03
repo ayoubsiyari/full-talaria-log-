@@ -108,6 +108,37 @@ describe('item 6 — DETAILED-DUMP-PARSER', () => {
     assert.equal(report.samples[0].pid, 456);
     assert.equal(report.samples[0].coverage.coveragePct, 95);
     assert.equal(report.samples[0].coverage.state, 'COV_01_MEETS_95');
+    assert.equal(report.samples[0].detailState, 'DETAILED_ALLOCATOR_CHILD_ROWS');
     assert.ok(report.samples[0].children.partition_alloc.some((r) => r.name === 'partition_alloc/partitions/buffer' && r.mb === 80));
+  });
+
+  it('parses existing COV-01 flattened arena rows as roots-only and keeps the block loud', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'detailed-dump-parser-'));
+    const file = writeJson(dir, 'canonical-floor.json', {
+      floor: {
+        arenas: {
+          arenaColumnsVersion: 'ARENA-COLUMNS-V1',
+          arenaV8MB: 47.75,
+          arenaPartitionAllocMB: 47.05,
+          arenaMallocMB: 75.72,
+          arenaBlinkGcMB: 74.82,
+          arenaNamedTotalMB: 403.85,
+          totalPrivateMB: 674.9,
+          totalBasis: 'all-chrome-process-private',
+          arenaUnattributedMB: 271.05,
+          arenaCoveragePct: 59.84,
+          arenaCoverageMeets95: false,
+          arenaDumpPid: 6920,
+        },
+      },
+    });
+
+    const report = buildDetailedDumpReport([file]);
+    assert.equal(report.sampleCount, 1);
+    assert.equal(report.samples[0].pid, 6920);
+    assert.equal(report.samples[0].detailState, 'ROOTS_ONLY_FLATTENED_ARENA_COLUMNS');
+    assert.equal(report.samples[0].coverage.coveragePct, 59.84);
+    assert.equal(report.samples[0].coverage.state, 'NOT_QUOTABLE_COVERAGE');
+    assert.equal(report.samples[0].children.partition_alloc, undefined);
   });
 });

@@ -7,7 +7,7 @@ A blocked manager reads this rather than waiting for a relay.
 
 ---
 
-## CURRENT STATE — E's lane · maintained in place · last updated 18:32+01:00
+## CURRENT STATE — E's lane · maintained in place · last updated 18:59+01:00
 
 > **This block is the one part of this file that is NOT append-only.** It is overwritten, so it
 > answers *what is true now*; everything below answers *what happened*. Every number here carries
@@ -17,7 +17,10 @@ A blocked manager reads this rather than waiting for a relay.
 
 | row | value | state |
 |---|---|---|
-| Detailed-dump capture/parser item 6 | **gate PASS 3/3 at 18:27+01:00** | `BUILT_GREEN_NOT_CAPTURED` — `live-trace-and-allocator-probe.mjs --phases=memory` now requests detailed memory-infra rows, emits per-process child allocator detail plus COV-01 state, and `detailed-dump-parser.mjs` parses that shape without duplicate samples |
+| Detailed-dump capture/parser item 6 | **gate PASS 4/4 at 18:55+01:00** | `BUILT_GREEN_NOT_CAPTURED` — capture requests detailed memory-infra rows, parser consumes detailed child rows plus current flattened COV-01 arena rows without letting roots-only rows masquerade as detail |
+| Item 6 queue position | **reserved front at 18:54+01:00** | `RESERVED_FRONT_HOST_BLOCKED` — stale E/V8 reservation cancelled; queue now starts E/detailed-dump-capture-item6 |
+| Item 6 live capture | **blocked by `fire-sealed-soak.mjs#31616` at 18:57+01:00** | `UNCLAIMED_RUN_DETECTED` — no claim on file, so E will not attach over it |
+| C canonical floor parse | **10 samples parsed at 18:56+01:00** | `ROOTS_ONLY_PARSED_NOT_QUOTABLE` — `_evidence/manager-E/detailed-dump-parser-canonical-floor-pass3-20260803.json` preserves final **59.84% coverage / 271.05 MB unattributed** and `detailState=ROOTS_ONLY_FLATTENED_ARENA_COLUMNS` |
 | V8 playback rerun | **complete** | `DIAGNOSTIC_CAPTURED_CONTAMINATED` — CONF-01 same-symbol, 4 panels, playback at 10 bars/s, zero-trade reproduction; useful retainer data, not authoritative plateau/slope read |
 | Snapshot A | **captured at 15:36:47+01:00** | `OBSERVED_ARTIFACT` — `_evidence/manager-E/v8-playback-heap-slope-20260803/2026-08-03T14-34-45-491Z/A.heapsnapshot` |
 | Snapshot B | **captured at 16:22:04+01:00** | `OBSERVED_ARTIFACT` — `_evidence/manager-E/v8-playback-heap-slope-20260803/2026-08-03T14-34-45-491Z/B.heapsnapshot` |
@@ -32,10 +35,10 @@ A blocked manager reads this rather than waiting for a relay.
 | V8 private outdir lock semantics | **terminal lock record kept** | `HARDENED_NOT_RUN` — disposable and authoritative V8 scripts now leave `.v8-*.lock` as `ACTIVE` while live and rewrite it to `PROCESS_EXITING` with wall elapsed, planned playback minutes, and active phase instead of unlinking silently |
 | V8 plan-overrun semantics | **run-level watchdog added** | `HARDENED_NOT_RUN` — after the 90-minute playback plan elapses, live V8 scripts emit repeated `RUN_OVERDUE_ACTIVE_PHASE` events naming the active phase, so long snapshot-C writes no longer look like an anonymous stall |
 
-**Blocked on someone else** — Item 6 is now the top browser-backed row: the capture/parser gate is built,
-but the fresh detailed dump still needs a queue/quiet-host window before C's 59.84% coverage floor can
-be rerun. The authoritative read is not running yet; it must run later with Cursor closed and is blocked
-on COV-01 coverage >=95% plus host-scope locking or an explicit quiet-box window.
+**Blocked on someone else** — Item 6 is reserved at the front, but live capture is blocked by an
+unclaimed running `fire-sealed-soak.mjs#31616` process observed at 18:57+01:00. The authoritative read
+is not running yet; it must run later with Cursor closed and is blocked on COV-01 coverage >=95% plus
+host-scope locking or an explicit quiet-box window.
 
 **Not quotable, and why** — C's current floor remains `NOT_QUOTABLE_COVERAGE`: **59.84% coverage /
 271 MB unattributed** until a fresh detailed-dump capture is parsed and joined. The live
@@ -50,7 +53,8 @@ positive constructor self-size and `m20Q6CapturedClear +7.270 MB`, are quotable 
 salvage, not as flattening/slope evidence. `BUFFER-PARTITION-DISCRIMINATOR-V1` did not assign the
 120 MB buffer shelf; its arm numbers are negative/weak-transient owner eliminations, not an owner claim.
 
-**Next required update** — Claim the browser queue for item 6 and run the detailed memory capture:
+**Next required update** — When `fire-sealed-soak.mjs#31616` clears or is claimed/released, claim the
+browser queue for item 6 and run the detailed memory capture:
 `node scripts/live-trace-and-allocator-probe.mjs --port=auto --phases=memory --memoryDetail=detailed --out=<artifact>`,
 then parse it with `node scripts/detailed-dump-parser.mjs <artifact> --out=<report>`. After COV-01 is
 recomputed, schedule the authoritative read only if identity lock, all phases, sidecars, COV-01 >=95%,
@@ -167,3 +171,5 @@ and the M17-DI2 restore in `1c8892c51`.
 - 16:33+01:00 · B → E · **STILL OFF YOUR BOX, AND YOUR BLOCK READS CURRENT** · Your V8 run is alive (pid 1060, started 15:34:45+01:00), snapshot B was due ~16:19:45+01:00 and I have spawned nothing across it. My census selftest's six end-to-end cells stay unrun until you release, ~17:04:45+01:00. `gate:state-block` reads B/C/D/E current, A absent.
 - 18:27+01:00 · E · BUILT + GREEN · `DETAILED-DUMP-CAPTURE-ITEM-6` · Item 6 is now E's top row. Capture path upgraded from background roots to detailed memory-infra rows: `live-trace-and-allocator-probe.mjs --phases=memory --memoryDetail=detailed` preserves per-process `allocatorDetail` children, COV-01 named/unattributed/coverage state, and optional raw trace events. Parser path recognizes those process-scoped rows without duplicate nested samples. Verification: `npm run test:detailed-dump-capture` PASS 3/3 at 18:27+01:00; `node --check` passed for the capture and parser scripts. State is `BUILT_GREEN_NOT_CAPTURED` because no fresh browser-backed detailed dump has run yet.
 - 18:31+01:00 · E · HARDENED · `V8-LOCK-AND-OVERDUE-SEMANTICS` · B's housekeeping items are now named states in both V8 scripts. The private outdir lock is no longer deleted; live runs keep `ACTIVE`, and finished/erroring runs rewrite the lock to `PROCESS_EXITING` with pid, wall elapsed minutes, planned playback minutes, and active phase. The 90-minute playback plan now has a run-level watchdog: if wall time exceeds the plan while snapshot-C or analysis is still alive, the report emits `RUN_OVERDUE_ACTIVE_PHASE` instead of looking like a silent stall. Verification: `node --check` passed for both V8 scripts; `node --test scripts/v8-monotone-heap-diff.selftest.mjs` PASS 2/2 and `npm run test:v8-authoritative-read` PASS 4/4 at 18:31+01:00.
+- 18:54+01:00 · E · RESERVED-FRONT / HOST-BLOCKED · `DETAILED-DUMP-CAPTURE-ITEM-6` · Cancelled stale E reservation `v8-playback-heap-slope-90m-rerun` and reserved E/detailed-dump-capture-item6 at queue position 1 because item 6 blocks COV-01 and the authoritative read. Preflight still refuses launch at 18:57+01:00: `UNCLAIMED_RUN_DETECTED` for `fire-sealed-soak.mjs#31616`, so E has not claimed and has not attached to the browser.
+- 18:56+01:00 · E · PARSED / STILL BLOCKED · `C-CANONICAL-FLOOR-COV01-ROOTS-ONLY` · Parsed C's current `_evidence/manager-C/canonical-floor-retake-b126-pass3.json` into `_evidence/manager-E/detailed-dump-parser-canonical-floor-pass3-20260803.json`. The parser now consumes C's existing flattened `ARENA-COLUMNS-V1` rows as `ROOTS_ONLY_FLATTENED_ARENA_COLUMNS`, not as detailed rows. Result: `sampleCount=10`; final floor remains `NOT_QUOTABLE_COVERAGE` with **59.84% coverage / 271.05 MB unattributed** on `totalPrivateMB=674.9`, and all 10 samples lack child allocator detail. Verification: `npm run test:detailed-dump-capture` PASS 4/4 at 18:55+01:00.

@@ -11,7 +11,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { diffAllocatorDetail, summariseAllocatorDetail } from './lib/blink-allocator-detail.mjs';
-import { arenaColumns } from './lib/arena-columns.mjs';
+import { ARENA_KEYS, arenaColumnName, arenaColumns } from './lib/arena-columns.mjs';
 
 const DEFAULT_ROOTS = ['v8', 'partition_alloc', 'malloc', 'blink_gc', 'blink_objects', 'canvas', 'cc', 'gpu', 'shared_memory', 'discardable', 'web_cache', 'skia'];
 const OUT = arg('out', null);
@@ -66,6 +66,30 @@ function processCoverage(detail, proc) {
   };
 }
 
+function coverageFromArenaRow(row) {
+  if (row?.arenaCoveragePct == null && row?.arenaNamedTotalMB == null) return null;
+  return {
+    namedMB: row.arenaNamedTotalMB ?? null,
+    unattributedMB: row.arenaUnattributedMB ?? null,
+    coveragePct: row.arenaCoveragePct ?? null,
+    state: row.arenaCoverageMeets95 ? 'COV_01_MEETS_95' : 'NOT_QUOTABLE_COVERAGE',
+    totalPrivateMB: row.totalPrivateMB ?? row.footprintTotalMB ?? null,
+    totalBasis: row.totalBasis ?? null,
+  };
+}
+
+function detailFromArenaColumns(row) {
+  if (row?.arenaColumnsVersion !== 'ARENA-COLUMNS-V1') return null;
+  const rootsMB = {};
+  for (const key of ARENA_KEYS) {
+    const v = row[arenaColumnName(key)];
+    if (v == null) continue;
+    rootsMB[key] = Number(v);
+  }
+  if (!Object.keys(rootsMB).length) return null;
+  return { rootsMB, childrenByRoot: {} };
+}
+
 function walk(obj, visit, trail = []) {
   if (!obj || typeof obj !== 'object') return;
   visit(obj, trail);
@@ -117,15 +141,29 @@ function extractSummaries(file, json) {
       pid: proc.pid ?? null,
       detail,
       coverage: proc.cov01 || processCoverage(detail, proc),
+      detailState: 'DETAILED_ALLOCATOR_CHILD_ROWS',
     });
   }
   walk(json, (node, trail) => {
     if (trail.includes('allocatorDump') && trail.includes('processes')) return;
+    const flatDetail = detailFromArenaColumns(node);
+    if (flatDetail) {
+      samples.push({
+        source: file,
+        label: sampleLabel(file, trail, 'flattened-arena-columns'),
+        pid: node.arenaDumpPid ?? null,
+        detail: flatDetail,
+        coverage: coverageFromArenaRow(node),
+        detailState: 'ROOTS_ONLY_FLATTENED_ARENA_COLUMNS',
+      });
+      return;
+    }
     if (hasDetailShape(node)) {
       samples.push({
         source: file,
         label: sampleLabel(file, trail),
         detail: cloneDetail(node, sampleLabel(file, trail)),
+        detailState: 'DETAILED_ALLOCATOR_CHILD_ROWS',
       });
       return;
     }
@@ -135,6 +173,7 @@ function extractSummaries(file, json) {
         source: file,
         label: sampleLabel(file, trail, 'roots-only'),
         detail: { rootsMB: { ...node.rootsMB }, childrenByRoot: {} },
+        detailState: 'ROOTS_ONLY_SUMMARY',
       });
     }
     if (Array.isArray(node?.partitionBufferTop) || Array.isArray(node?.mallocTop)) {
@@ -148,6 +187,7 @@ function extractSummaries(file, json) {
           rootsMB: { ...(node.rootsMB || {}) },
           childrenByRoot,
         },
+        detailState: 'SUMMARY_TOP_CHILDREN',
       });
     }
   });
@@ -210,6 +250,7 @@ export function buildDetailedDumpReport(files) {
       pid: s.pid ?? null,
       ts: s.ts ?? null,
       coverage: s.coverage ?? null,
+      detailState: s.detailState ?? null,
       roots: rootTable(s.detail),
       children: childTable(s.detail),
     })),

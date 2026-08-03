@@ -1,0 +1,1455 @@
+{
+  "signature": "DETAILED-DUMP-PARSER-V1",
+  "generatedAt": "2026-08-03T17:56:34.468Z",
+  "inputs": [
+    "_evidence/manager-C/canonical-floor-retake-b126-pass3.json"
+  ],
+  "sampleCount": 10,
+  "samples": [
+    {
+      "label": "canonical-floor-retake-b126-pass3.json :: bootFloor.reads.arenas :: flattened-arena-columns",
+      "source": "_evidence/manager-C/canonical-floor-retake-b126-pass3.json",
+      "pid": 6920,
+      "ts": null,
+      "coverage": {
+        "namedMB": 437.38,
+        "unattributedMB": 245.12,
+        "coveragePct": 64.08,
+        "state": "NOT_QUOTABLE_COVERAGE",
+        "totalPrivateMB": 682.5,
+        "totalBasis": "all-chrome-process-private"
+      },
+      "detailState": "ROOTS_ONLY_FLATTENED_ARENA_COLUMNS",
+      "roots": [
+        {
+          "name": "v8",
+          "mb": 48.99
+        },
+        {
+          "name": "partition_alloc",
+          "mb": 63.98
+        },
+        {
+          "name": "malloc",
+          "mb": 78.75
+        },
+        {
+          "name": "blink_gc",
+          "mb": 57.07
+        },
+        {
+          "name": "blink_objects",
+          "mb": 12.99
+        },
+        {
+          "name": "canvas",
+          "mb": 15.64
+        },
+        {
+          "name": "cc",
+          "mb": 44.25
+        },
+        {
+          "name": "gpu",
+          "mb": 37.19
+        },
+        {
+          "name": "shared_memory",
+          "mb": 42.68
+        },
+        {
+          "name": "discardable",
+          "mb": 3.23
+        },
+        {
+          "name": "web_cache",
+          "mb": 32.1
+        },
+        {
+          "name": "skia",
+          "mb": 0.27
+        }
+      ],
+      "children": {}
+    },
+    {
+      "label": "canonical-floor-retake-b126-pass3.json :: bootFloor.reads.arenas :: flattened-arena-columns",
+      "source": "_evidence/manager-C/canonical-floor-retake-b126-pass3.json",
+      "pid": 6920,
+      "ts": null,
+      "coverage": {
+        "namedMB": 395.39,
+        "unattributedMB": 238.81,
+        "coveragePct": 62.34,
+        "state": "NOT_QUOTABLE_COVERAGE",
+        "totalPrivateMB": 634.2,
+        "totalBasis": "all-chrome-process-private"
+      },
+      "detailState": "ROOTS_ONLY_FLATTENED_ARENA_COLUMNS",
+      "roots": [
+        {
+          "name": "v8",
+          "mb": 48.99
+        },
+        {
+          "name": "partition_alloc",
+          "mb": 45.33
+        },
+        {
+          "name": "malloc",
+          "mb": 68.46
+        },
+        {
+          "name": "blink_gc",
+          "mb": 56.88
+        },
+        {
+          "name": "blink_objects",
+          "mb": 12.97
+        },
+        {
+          "name": "canvas",
+          "mb": 8.34
+        },
+        {
+          "name": "cc",
+          "mb": 36.28
+        },
+        {
+          "name": "gpu",
+          "mb": 37.19
+        },
+        {
+          "name": "shared_memory",
+          "mb": 45.11
+        },
+        {
+          "name": "discardable",
+          "mb": 3.23
+        },
+        {
+          "name": "web_cache",
+          "mb": 32.1
+        },
+        {
+          "name": "skia",
+          "mb": 0.27
+        }
+      ],
+      "children": {}
+    },
+    {
+      "label": "canonical-floor-retake-b126-pass3.json :: bootFloor.reads.arenas :: flattened-arena-columns",
+      "source": "_evidence/manager-C/canonical-floor-retake-b126-pass3.json",
+      "pid": 6920,
+      "ts": null,
+      "coverage": {
+        "namedMB": 390.69,
+        "unattributedMB": 250.01,
+        "coveragePct": 60.98,
+        "state": "NOT_QUOTABLE_COVERAGE",
+        "totalPrivateMB": 640.7,
+        "totalBasis": "all-chrome-process-private"
+      },
+      "detailState": "ROOTS_ONLY_FLATTENED_ARENA_COLUMNS",
+      "roots": [
+        {
+          "name": "v8",
+          "mb": 46.73
+        },
+        {
+          "name": "partition_alloc",
+          "mb": 45
+        },
+        {
+          "name": "malloc",
+          "mb": 66.47
+        },
+        {
+          "name": "blink_gc",
+          "mb": 56.75
+        },
+        {
+          "name": "blink_objects",
+          "mb": 12.97
+        },
+        {
+          "name": "canvas",
+          "mb": 8.34
+        },
+        {
+          "name": "cc",
+          "mb": 36.28
+        },
+        {
+          "name": "gpu",
+          "mb": 37.19
+        },
+        {
+          "name": "shared_memory",
+          "mb": 45.12
+        },
+        {
+          "name": "discardable",
+          "mb": 3.23
+        },
+        {
+          "name": "web_cache",
+          "mb": 32.1
+        },
+        {
+          "name": "skia",
+          "mb": 0.27
+        }
+      ],
+      "children": {}
+    },
+    {
+      "label": "canonical-floor-retake-b126-pass3.json :: bootFloor.reads.arenas :: flattened-arena-columns",
+      "source": "_evidence/manager-C/canonical-floor-retake-b126-pass3.json",
+      "pid": 6920,
+      "ts": null,
+      "coverage": {
+        "namedMB": 390.64,
+        "unattributedMB": 250.16,
+        "coveragePct": 60.96,
+        "state": "NOT_QUOTABLE_COVERAGE",
+        "totalPrivateMB": 640.8,
+        "totalBasis": "all-chrome-process-private"
+      },
+      "detailState": "ROOTS_ONLY_FLATTENED_ARENA_COLUMNS",
+      "roots": [
+        {
+          "name": "v8",
+          "mb": 46.73
+        },
+        {
+          "name": "partition_alloc",
+          "mb": 45.03
+        },
+        {
+          "name": "malloc",
+          "mb": 72.6
+        },
+        {
+          "name": "blink_gc",
+          "mb": 57.07
+        },
+        {
+          "name": "blink_objects",
+          "mb": 12.98
+        },
+        {
+          "name": "canvas",
+          "mb": 8.34
+        },
+        {
+          "name": "cc",
+          "mb": 36.28
+        },
+        {
+          "name": "gpu",
+          "mb": 37.19
+        },
+        {
+          "name": "shared_memory",
+          "mb": 41.89
+        },
+        {
+          "name": "web_cache",
+          "mb": 32.1
+        },
+        {
+          "name": "skia",
+          "mb": 0.19
+        }
+      ],
+      "children": {}
+    },
+    {
+      "label": "canonical-floor-retake-b126-pass3.json :: bootFloor.reads.arenas :: flattened-arena-columns",
+      "source": "_evidence/manager-C/canonical-floor-retake-b126-pass3.json",
+      "pid": 6920,
+      "ts": null,
+      "coverage": {
+        "namedMB": 367.72,
+        "unattributedMB": 260.48,
+        "coveragePct": 58.54,
+        "state": "NOT_QUOTABLE_COVERAGE",
+        "totalPrivateMB": 628.2,
+        "totalBasis": "all-chrome-process-private"
+      },
+      "detailState": "ROOTS_ONLY_FLATTENED_ARENA_COLUMNS",
+      "roots": [
+        {
+          "name": "v8",
+          "mb": 40.98
+        },
+        {
+          "name": "partition_alloc",
+          "mb": 43.55
+        },
+        {
+          "name": "malloc",
+          "mb": 68.47
+        },
+        {
+          "name": "blink_gc",
+          "mb": 56.44
+        },
+        {
+          "name": "blink_objects",
+          "mb": 12.13
+        },
+        {
+          "name": "canvas",
+          "mb": 8.34
+        },
+        {
+          "name": "cc",
+          "mb": 26.64
+        },
+        {
+          "name": "gpu",
+          "mb": 37.19
+        },
+        {
+          "name": "shared_memory",
+          "mb": 41.67
+        },
+        {
+          "name": "web_cache",
+          "mb": 31.95
+        },
+        {
+          "name": "skia",
+          "mb": 0.19
+        }
+      ],
+      "children": {}
+    },
+    {
+      "label": "canonical-floor-retake-b126-pass3.json :: postPlayFloor.reads.arenas :: flattened-arena-columns",
+      "source": "_evidence/manager-C/canonical-floor-retake-b126-pass3.json",
+      "pid": 6920,
+      "ts": null,
+      "coverage": {
+        "namedMB": 434.8,
+        "unattributedMB": 348.3,
+        "coveragePct": 55.52,
+        "state": "NOT_QUOTABLE_COVERAGE",
+        "totalPrivateMB": 783.1,
+        "totalBasis": "all-chrome-process-private"
+      },
+      "detailState": "ROOTS_ONLY_FLATTENED_ARENA_COLUMNS",
+      "roots": [
+        {
+          "name": "v8",
+          "mb": 47.75
+        },
+        {
+          "name": "partition_alloc",
+          "mb": 68.4
+        },
+        {
+          "name": "malloc",
+          "mb": 84.28
+        },
+        {
+          "name": "blink_gc",
+          "mb": 74.82
+        },
+        {
+          "name": "blink_objects",
+          "mb": 12.49
+        },
+        {
+          "name": "canvas",
+          "mb": 9.38
+        },
+        {
+          "name": "cc",
+          "mb": 26.48
+        },
+        {
+          "name": "gpu",
+          "mb": 37.19
+        },
+        {
+          "name": "shared_memory",
+          "mb": 41.7
+        },
+        {
+          "name": "web_cache",
+          "mb": 31.95
+        },
+        {
+          "name": "skia",
+          "mb": 0.19
+        }
+      ],
+      "children": {}
+    },
+    {
+      "label": "canonical-floor-retake-b126-pass3.json :: postPlayFloor.reads.arenas :: flattened-arena-columns",
+      "source": "_evidence/manager-C/canonical-floor-retake-b126-pass3.json",
+      "pid": 6920,
+      "ts": null,
+      "coverage": {
+        "namedMB": 403.45,
+        "unattributedMB": 280.75,
+        "coveragePct": 58.97,
+        "state": "NOT_QUOTABLE_COVERAGE",
+        "totalPrivateMB": 684.2,
+        "totalBasis": "all-chrome-process-private"
+      },
+      "detailState": "ROOTS_ONLY_FLATTENED_ARENA_COLUMNS",
+      "roots": [
+        {
+          "name": "v8",
+          "mb": 47.75
+        },
+        {
+          "name": "partition_alloc",
+          "mb": 47.49
+        },
+        {
+          "name": "malloc",
+          "mb": 75.26
+        },
+        {
+          "name": "blink_gc",
+          "mb": 74.44
+        },
+        {
+          "name": "blink_objects",
+          "mb": 12.49
+        },
+        {
+          "name": "canvas",
+          "mb": 8.34
+        },
+        {
+          "name": "cc",
+          "mb": 26.48
+        },
+        {
+          "name": "gpu",
+          "mb": 37.19
+        },
+        {
+          "name": "shared_memory",
+          "mb": 41.7
+        },
+        {
+          "name": "web_cache",
+          "mb": 31.95
+        },
+        {
+          "name": "skia",
+          "mb": 0.19
+        }
+      ],
+      "children": {}
+    },
+    {
+      "label": "canonical-floor-retake-b126-pass3.json :: postPlayFloor.reads.arenas :: flattened-arena-columns",
+      "source": "_evidence/manager-C/canonical-floor-retake-b126-pass3.json",
+      "pid": 6920,
+      "ts": null,
+      "coverage": {
+        "namedMB": 405.09,
+        "unattributedMB": 278.91,
+        "coveragePct": 59.22,
+        "state": "NOT_QUOTABLE_COVERAGE",
+        "totalPrivateMB": 684,
+        "totalBasis": "all-chrome-process-private"
+      },
+      "detailState": "ROOTS_ONLY_FLATTENED_ARENA_COLUMNS",
+      "roots": [
+        {
+          "name": "v8",
+          "mb": 47.75
+        },
+        {
+          "name": "partition_alloc",
+          "mb": 47.2
+        },
+        {
+          "name": "malloc",
+          "mb": 77.06
+        },
+        {
+          "name": "blink_gc",
+          "mb": 74.57
+        },
+        {
+          "name": "blink_objects",
+          "mb": 12.49
+        },
+        {
+          "name": "canvas",
+          "mb": 8.34
+        },
+        {
+          "name": "cc",
+          "mb": 26.48
+        },
+        {
+          "name": "gpu",
+          "mb": 37.19
+        },
+        {
+          "name": "shared_memory",
+          "mb": 41.7
+        },
+        {
+          "name": "web_cache",
+          "mb": 31.95
+        },
+        {
+          "name": "skia",
+          "mb": 0.19
+        }
+      ],
+      "children": {}
+    },
+    {
+      "label": "canonical-floor-retake-b126-pass3.json :: postPlayFloor.reads.arenas :: flattened-arena-columns",
+      "source": "_evidence/manager-C/canonical-floor-retake-b126-pass3.json",
+      "pid": 6920,
+      "ts": null,
+      "coverage": {
+        "namedMB": 400.53,
+        "unattributedMB": 275.67,
+        "coveragePct": 59.23,
+        "state": "NOT_QUOTABLE_COVERAGE",
+        "totalPrivateMB": 676.2,
+        "totalBasis": "all-chrome-process-private"
+      },
+      "detailState": "ROOTS_ONLY_FLATTENED_ARENA_COLUMNS",
+      "roots": [
+        {
+          "name": "v8",
+          "mb": 47.75
+        },
+        {
+          "name": "partition_alloc",
+          "mb": 47.14
+        },
+        {
+          "name": "malloc",
+          "mb": 72.31
+        },
+        {
+          "name": "blink_gc",
+          "mb": 74.82
+        },
+        {
+          "name": "blink_objects",
+          "mb": 12.49
+        },
+        {
+          "name": "canvas",
+          "mb": 8.34
+        },
+        {
+          "name": "cc",
+          "mb": 26.48
+        },
+        {
+          "name": "gpu",
+          "mb": 37.19
+        },
+        {
+          "name": "shared_memory",
+          "mb": 41.7
+        },
+        {
+          "name": "web_cache",
+          "mb": 31.95
+        },
+        {
+          "name": "skia",
+          "mb": 0.19
+        }
+      ],
+      "children": {}
+    },
+    {
+      "label": "canonical-floor-retake-b126-pass3.json :: postPlayFloor.reads.arenas :: flattened-arena-columns",
+      "source": "_evidence/manager-C/canonical-floor-retake-b126-pass3.json",
+      "pid": 6920,
+      "ts": null,
+      "coverage": {
+        "namedMB": 403.85,
+        "unattributedMB": 271.05,
+        "coveragePct": 59.84,
+        "state": "NOT_QUOTABLE_COVERAGE",
+        "totalPrivateMB": 674.9,
+        "totalBasis": "all-chrome-process-private"
+      },
+      "detailState": "ROOTS_ONLY_FLATTENED_ARENA_COLUMNS",
+      "roots": [
+        {
+          "name": "v8",
+          "mb": 47.75
+        },
+        {
+          "name": "partition_alloc",
+          "mb": 47.05
+        },
+        {
+          "name": "malloc",
+          "mb": 75.72
+        },
+        {
+          "name": "blink_gc",
+          "mb": 74.82
+        },
+        {
+          "name": "blink_objects",
+          "mb": 12.49
+        },
+        {
+          "name": "canvas",
+          "mb": 8.34
+        },
+        {
+          "name": "cc",
+          "mb": 26.48
+        },
+        {
+          "name": "gpu",
+          "mb": 37.19
+        },
+        {
+          "name": "shared_memory",
+          "mb": 41.7
+        },
+        {
+          "name": "web_cache",
+          "mb": 31.95
+        },
+        {
+          "name": "skia",
+          "mb": 0.19
+        }
+      ],
+      "children": {}
+    }
+  ],
+  "diffs": [
+    {
+      "label": "canonical-floor-retake-b126-pass3.json :: bootFloor.reads.arenas :: flattened-arena-columns -> canonical-floor-retake-b126-pass3.json :: bootFloor.reads.arenas :: flattened-arena-columns",
+      "before": "canonical-floor-retake-b126-pass3.json :: bootFloor.reads.arenas :: flattened-arena-columns",
+      "after": "canonical-floor-retake-b126-pass3.json :: bootFloor.reads.arenas :: flattened-arena-columns",
+      "rootDeltas": [
+        {
+          "name": "partition_alloc",
+          "beforeMB": 63.98,
+          "afterMB": 45.33,
+          "deltaMB": -18.65
+        },
+        {
+          "name": "malloc",
+          "beforeMB": 78.75,
+          "afterMB": 68.46,
+          "deltaMB": -10.29
+        },
+        {
+          "name": "cc",
+          "beforeMB": 44.25,
+          "afterMB": 36.28,
+          "deltaMB": -7.97
+        },
+        {
+          "name": "canvas",
+          "beforeMB": 15.64,
+          "afterMB": 8.34,
+          "deltaMB": -7.3
+        },
+        {
+          "name": "shared_memory",
+          "beforeMB": 42.68,
+          "afterMB": 45.11,
+          "deltaMB": 2.43
+        },
+        {
+          "name": "blink_gc",
+          "beforeMB": 57.07,
+          "afterMB": 56.88,
+          "deltaMB": -0.19
+        },
+        {
+          "name": "blink_objects",
+          "beforeMB": 12.99,
+          "afterMB": 12.97,
+          "deltaMB": -0.02
+        },
+        {
+          "name": "v8",
+          "beforeMB": 48.99,
+          "afterMB": 48.99,
+          "deltaMB": 0
+        },
+        {
+          "name": "gpu",
+          "beforeMB": 37.19,
+          "afterMB": 37.19,
+          "deltaMB": 0
+        },
+        {
+          "name": "skia",
+          "beforeMB": 0.27,
+          "afterMB": 0.27,
+          "deltaMB": 0
+        },
+        {
+          "name": "discardable",
+          "beforeMB": 3.23,
+          "afterMB": 3.23,
+          "deltaMB": 0
+        },
+        {
+          "name": "web_cache",
+          "beforeMB": 32.1,
+          "afterMB": 32.1,
+          "deltaMB": 0
+        },
+        {
+          "name": "sqlite",
+          "beforeMB": 0.23,
+          "afterMB": 0.23,
+          "deltaMB": 0
+        },
+        {
+          "name": "site_storage",
+          "beforeMB": 0.01,
+          "afterMB": 0.01,
+          "deltaMB": 0
+        }
+      ],
+      "childDeltas": {},
+      "totalNamedBeforeMB": 437.38,
+      "totalNamedAfterMB": 395.39
+    },
+    {
+      "label": "canonical-floor-retake-b126-pass3.json :: bootFloor.reads.arenas :: flattened-arena-columns -> canonical-floor-retake-b126-pass3.json :: bootFloor.reads.arenas :: flattened-arena-columns",
+      "before": "canonical-floor-retake-b126-pass3.json :: bootFloor.reads.arenas :: flattened-arena-columns",
+      "after": "canonical-floor-retake-b126-pass3.json :: bootFloor.reads.arenas :: flattened-arena-columns",
+      "rootDeltas": [
+        {
+          "name": "v8",
+          "beforeMB": 48.99,
+          "afterMB": 46.73,
+          "deltaMB": -2.26
+        },
+        {
+          "name": "malloc",
+          "beforeMB": 68.46,
+          "afterMB": 66.47,
+          "deltaMB": -1.99
+        },
+        {
+          "name": "partition_alloc",
+          "beforeMB": 45.33,
+          "afterMB": 45,
+          "deltaMB": -0.33
+        },
+        {
+          "name": "blink_gc",
+          "beforeMB": 56.88,
+          "afterMB": 56.75,
+          "deltaMB": -0.13
+        },
+        {
+          "name": "shared_memory",
+          "beforeMB": 45.11,
+          "afterMB": 45.12,
+          "deltaMB": 0.01
+        },
+        {
+          "name": "blink_objects",
+          "beforeMB": 12.97,
+          "afterMB": 12.97,
+          "deltaMB": 0
+        },
+        {
+          "name": "cc",
+          "beforeMB": 36.28,
+          "afterMB": 36.28,
+          "deltaMB": 0
+        },
+        {
+          "name": "gpu",
+          "beforeMB": 37.19,
+          "afterMB": 37.19,
+          "deltaMB": 0
+        },
+        {
+          "name": "canvas",
+          "beforeMB": 8.34,
+          "afterMB": 8.34,
+          "deltaMB": 0
+        },
+        {
+          "name": "skia",
+          "beforeMB": 0.27,
+          "afterMB": 0.27,
+          "deltaMB": 0
+        },
+        {
+          "name": "discardable",
+          "beforeMB": 3.23,
+          "afterMB": 3.23,
+          "deltaMB": 0
+        },
+        {
+          "name": "web_cache",
+          "beforeMB": 32.1,
+          "afterMB": 32.1,
+          "deltaMB": 0
+        },
+        {
+          "name": "sqlite",
+          "beforeMB": 0.23,
+          "afterMB": 0.23,
+          "deltaMB": 0
+        },
+        {
+          "name": "site_storage",
+          "beforeMB": 0.01,
+          "afterMB": 0.01,
+          "deltaMB": 0
+        }
+      ],
+      "childDeltas": {},
+      "totalNamedBeforeMB": 395.39,
+      "totalNamedAfterMB": 390.69
+    },
+    {
+      "label": "canonical-floor-retake-b126-pass3.json :: bootFloor.reads.arenas :: flattened-arena-columns -> canonical-floor-retake-b126-pass3.json :: bootFloor.reads.arenas :: flattened-arena-columns",
+      "before": "canonical-floor-retake-b126-pass3.json :: bootFloor.reads.arenas :: flattened-arena-columns",
+      "after": "canonical-floor-retake-b126-pass3.json :: bootFloor.reads.arenas :: flattened-arena-columns",
+      "rootDeltas": [
+        {
+          "name": "malloc",
+          "beforeMB": 66.47,
+          "afterMB": 72.6,
+          "deltaMB": 6.13
+        },
+        {
+          "name": "shared_memory",
+          "beforeMB": 45.12,
+          "afterMB": 41.89,
+          "deltaMB": -3.23
+        },
+        {
+          "name": "discardable",
+          "beforeMB": 3.23,
+          "afterMB": 0,
+          "deltaMB": -3.23
+        },
+        {
+          "name": "blink_gc",
+          "beforeMB": 56.75,
+          "afterMB": 57.07,
+          "deltaMB": 0.32
+        },
+        {
+          "name": "skia",
+          "beforeMB": 0.27,
+          "afterMB": 0.19,
+          "deltaMB": -0.08
+        },
+        {
+          "name": "partition_alloc",
+          "beforeMB": 45,
+          "afterMB": 45.03,
+          "deltaMB": 0.03
+        },
+        {
+          "name": "blink_objects",
+          "beforeMB": 12.97,
+          "afterMB": 12.98,
+          "deltaMB": 0.01
+        },
+        {
+          "name": "v8",
+          "beforeMB": 46.73,
+          "afterMB": 46.73,
+          "deltaMB": 0
+        },
+        {
+          "name": "cc",
+          "beforeMB": 36.28,
+          "afterMB": 36.28,
+          "deltaMB": 0
+        },
+        {
+          "name": "gpu",
+          "beforeMB": 37.19,
+          "afterMB": 37.19,
+          "deltaMB": 0
+        },
+        {
+          "name": "canvas",
+          "beforeMB": 8.34,
+          "afterMB": 8.34,
+          "deltaMB": 0
+        },
+        {
+          "name": "web_cache",
+          "beforeMB": 32.1,
+          "afterMB": 32.1,
+          "deltaMB": 0
+        },
+        {
+          "name": "sqlite",
+          "beforeMB": 0.23,
+          "afterMB": 0.23,
+          "deltaMB": 0
+        },
+        {
+          "name": "site_storage",
+          "beforeMB": 0.01,
+          "afterMB": 0.01,
+          "deltaMB": 0
+        }
+      ],
+      "childDeltas": {},
+      "totalNamedBeforeMB": 390.69,
+      "totalNamedAfterMB": 390.64
+    },
+    {
+      "label": "canonical-floor-retake-b126-pass3.json :: bootFloor.reads.arenas :: flattened-arena-columns -> canonical-floor-retake-b126-pass3.json :: bootFloor.reads.arenas :: flattened-arena-columns",
+      "before": "canonical-floor-retake-b126-pass3.json :: bootFloor.reads.arenas :: flattened-arena-columns",
+      "after": "canonical-floor-retake-b126-pass3.json :: bootFloor.reads.arenas :: flattened-arena-columns",
+      "rootDeltas": [
+        {
+          "name": "cc",
+          "beforeMB": 36.28,
+          "afterMB": 26.64,
+          "deltaMB": -9.64
+        },
+        {
+          "name": "v8",
+          "beforeMB": 46.73,
+          "afterMB": 40.98,
+          "deltaMB": -5.75
+        },
+        {
+          "name": "malloc",
+          "beforeMB": 72.6,
+          "afterMB": 68.47,
+          "deltaMB": -4.13
+        },
+        {
+          "name": "partition_alloc",
+          "beforeMB": 45.03,
+          "afterMB": 43.55,
+          "deltaMB": -1.48
+        },
+        {
+          "name": "blink_objects",
+          "beforeMB": 12.98,
+          "afterMB": 12.13,
+          "deltaMB": -0.85
+        },
+        {
+          "name": "blink_gc",
+          "beforeMB": 57.07,
+          "afterMB": 56.44,
+          "deltaMB": -0.63
+        },
+        {
+          "name": "shared_memory",
+          "beforeMB": 41.89,
+          "afterMB": 41.67,
+          "deltaMB": -0.22
+        },
+        {
+          "name": "web_cache",
+          "beforeMB": 32.1,
+          "afterMB": 31.95,
+          "deltaMB": -0.15
+        },
+        {
+          "name": "sqlite",
+          "beforeMB": 0.23,
+          "afterMB": 0.16,
+          "deltaMB": -0.07
+        },
+        {
+          "name": "gpu",
+          "beforeMB": 37.19,
+          "afterMB": 37.19,
+          "deltaMB": 0
+        },
+        {
+          "name": "canvas",
+          "beforeMB": 8.34,
+          "afterMB": 8.34,
+          "deltaMB": 0
+        },
+        {
+          "name": "skia",
+          "beforeMB": 0.19,
+          "afterMB": 0.19,
+          "deltaMB": 0
+        },
+        {
+          "name": "site_storage",
+          "beforeMB": 0.01,
+          "afterMB": 0.01,
+          "deltaMB": 0
+        }
+      ],
+      "childDeltas": {},
+      "totalNamedBeforeMB": 390.64,
+      "totalNamedAfterMB": 367.72
+    },
+    {
+      "label": "canonical-floor-retake-b126-pass3.json :: bootFloor.reads.arenas :: flattened-arena-columns -> canonical-floor-retake-b126-pass3.json :: postPlayFloor.reads.arenas :: flattened-arena-columns",
+      "before": "canonical-floor-retake-b126-pass3.json :: bootFloor.reads.arenas :: flattened-arena-columns",
+      "after": "canonical-floor-retake-b126-pass3.json :: postPlayFloor.reads.arenas :: flattened-arena-columns",
+      "rootDeltas": [
+        {
+          "name": "partition_alloc",
+          "beforeMB": 43.55,
+          "afterMB": 68.4,
+          "deltaMB": 24.85
+        },
+        {
+          "name": "blink_gc",
+          "beforeMB": 56.44,
+          "afterMB": 74.82,
+          "deltaMB": 18.38
+        },
+        {
+          "name": "malloc",
+          "beforeMB": 68.47,
+          "afterMB": 84.28,
+          "deltaMB": 15.81
+        },
+        {
+          "name": "v8",
+          "beforeMB": 40.98,
+          "afterMB": 47.75,
+          "deltaMB": 6.77
+        },
+        {
+          "name": "canvas",
+          "beforeMB": 8.34,
+          "afterMB": 9.38,
+          "deltaMB": 1.04
+        },
+        {
+          "name": "blink_objects",
+          "beforeMB": 12.13,
+          "afterMB": 12.49,
+          "deltaMB": 0.36
+        },
+        {
+          "name": "cc",
+          "beforeMB": 26.64,
+          "afterMB": 26.48,
+          "deltaMB": -0.16
+        },
+        {
+          "name": "shared_memory",
+          "beforeMB": 41.67,
+          "afterMB": 41.7,
+          "deltaMB": 0.03
+        },
+        {
+          "name": "gpu",
+          "beforeMB": 37.19,
+          "afterMB": 37.19,
+          "deltaMB": 0
+        },
+        {
+          "name": "skia",
+          "beforeMB": 0.19,
+          "afterMB": 0.19,
+          "deltaMB": 0
+        },
+        {
+          "name": "web_cache",
+          "beforeMB": 31.95,
+          "afterMB": 31.95,
+          "deltaMB": 0
+        },
+        {
+          "name": "sqlite",
+          "beforeMB": 0.16,
+          "afterMB": 0.16,
+          "deltaMB": 0
+        },
+        {
+          "name": "site_storage",
+          "beforeMB": 0.01,
+          "afterMB": 0.01,
+          "deltaMB": 0
+        }
+      ],
+      "childDeltas": {},
+      "totalNamedBeforeMB": 367.72,
+      "totalNamedAfterMB": 434.8
+    },
+    {
+      "label": "canonical-floor-retake-b126-pass3.json :: postPlayFloor.reads.arenas :: flattened-arena-columns -> canonical-floor-retake-b126-pass3.json :: postPlayFloor.reads.arenas :: flattened-arena-columns",
+      "before": "canonical-floor-retake-b126-pass3.json :: postPlayFloor.reads.arenas :: flattened-arena-columns",
+      "after": "canonical-floor-retake-b126-pass3.json :: postPlayFloor.reads.arenas :: flattened-arena-columns",
+      "rootDeltas": [
+        {
+          "name": "partition_alloc",
+          "beforeMB": 68.4,
+          "afterMB": 47.49,
+          "deltaMB": -20.91
+        },
+        {
+          "name": "malloc",
+          "beforeMB": 84.28,
+          "afterMB": 75.26,
+          "deltaMB": -9.02
+        },
+        {
+          "name": "canvas",
+          "beforeMB": 9.38,
+          "afterMB": 8.34,
+          "deltaMB": -1.04
+        },
+        {
+          "name": "blink_gc",
+          "beforeMB": 74.82,
+          "afterMB": 74.44,
+          "deltaMB": -0.38
+        },
+        {
+          "name": "v8",
+          "beforeMB": 47.75,
+          "afterMB": 47.75,
+          "deltaMB": 0
+        },
+        {
+          "name": "blink_objects",
+          "beforeMB": 12.49,
+          "afterMB": 12.49,
+          "deltaMB": 0
+        },
+        {
+          "name": "cc",
+          "beforeMB": 26.48,
+          "afterMB": 26.48,
+          "deltaMB": 0
+        },
+        {
+          "name": "gpu",
+          "beforeMB": 37.19,
+          "afterMB": 37.19,
+          "deltaMB": 0
+        },
+        {
+          "name": "shared_memory",
+          "beforeMB": 41.7,
+          "afterMB": 41.7,
+          "deltaMB": 0
+        },
+        {
+          "name": "skia",
+          "beforeMB": 0.19,
+          "afterMB": 0.19,
+          "deltaMB": 0
+        },
+        {
+          "name": "web_cache",
+          "beforeMB": 31.95,
+          "afterMB": 31.95,
+          "deltaMB": 0
+        },
+        {
+          "name": "sqlite",
+          "beforeMB": 0.16,
+          "afterMB": 0.16,
+          "deltaMB": 0
+        },
+        {
+          "name": "site_storage",
+          "beforeMB": 0.01,
+          "afterMB": 0.01,
+          "deltaMB": 0
+        }
+      ],
+      "childDeltas": {},
+      "totalNamedBeforeMB": 434.8,
+      "totalNamedAfterMB": 403.45
+    },
+    {
+      "label": "canonical-floor-retake-b126-pass3.json :: postPlayFloor.reads.arenas :: flattened-arena-columns -> canonical-floor-retake-b126-pass3.json :: postPlayFloor.reads.arenas :: flattened-arena-columns",
+      "before": "canonical-floor-retake-b126-pass3.json :: postPlayFloor.reads.arenas :: flattened-arena-columns",
+      "after": "canonical-floor-retake-b126-pass3.json :: postPlayFloor.reads.arenas :: flattened-arena-columns",
+      "rootDeltas": [
+        {
+          "name": "malloc",
+          "beforeMB": 75.26,
+          "afterMB": 77.06,
+          "deltaMB": 1.8
+        },
+        {
+          "name": "partition_alloc",
+          "beforeMB": 47.49,
+          "afterMB": 47.2,
+          "deltaMB": -0.29
+        },
+        {
+          "name": "blink_gc",
+          "beforeMB": 74.44,
+          "afterMB": 74.57,
+          "deltaMB": 0.13
+        },
+        {
+          "name": "v8",
+          "beforeMB": 47.75,
+          "afterMB": 47.75,
+          "deltaMB": 0
+        },
+        {
+          "name": "blink_objects",
+          "beforeMB": 12.49,
+          "afterMB": 12.49,
+          "deltaMB": 0
+        },
+        {
+          "name": "cc",
+          "beforeMB": 26.48,
+          "afterMB": 26.48,
+          "deltaMB": 0
+        },
+        {
+          "name": "gpu",
+          "beforeMB": 37.19,
+          "afterMB": 37.19,
+          "deltaMB": 0
+        },
+        {
+          "name": "shared_memory",
+          "beforeMB": 41.7,
+          "afterMB": 41.7,
+          "deltaMB": 0
+        },
+        {
+          "name": "canvas",
+          "beforeMB": 8.34,
+          "afterMB": 8.34,
+          "deltaMB": 0
+        },
+        {
+          "name": "skia",
+          "beforeMB": 0.19,
+          "afterMB": 0.19,
+          "deltaMB": 0
+        },
+        {
+          "name": "web_cache",
+          "beforeMB": 31.95,
+          "afterMB": 31.95,
+          "deltaMB": 0
+        },
+        {
+          "name": "sqlite",
+          "beforeMB": 0.16,
+          "afterMB": 0.16,
+          "deltaMB": 0
+        },
+        {
+          "name": "site_storage",
+          "beforeMB": 0.01,
+          "afterMB": 0.01,
+          "deltaMB": 0
+        }
+      ],
+      "childDeltas": {},
+      "totalNamedBeforeMB": 403.45,
+      "totalNamedAfterMB": 405.09
+    },
+    {
+      "label": "canonical-floor-retake-b126-pass3.json :: postPlayFloor.reads.arenas :: flattened-arena-columns -> canonical-floor-retake-b126-pass3.json :: postPlayFloor.reads.arenas :: flattened-arena-columns",
+      "before": "canonical-floor-retake-b126-pass3.json :: postPlayFloor.reads.arenas :: flattened-arena-columns",
+      "after": "canonical-floor-retake-b126-pass3.json :: postPlayFloor.reads.arenas :: flattened-arena-columns",
+      "rootDeltas": [
+        {
+          "name": "malloc",
+          "beforeMB": 77.06,
+          "afterMB": 72.31,
+          "deltaMB": -4.75
+        },
+        {
+          "name": "blink_gc",
+          "beforeMB": 74.57,
+          "afterMB": 74.82,
+          "deltaMB": 0.25
+        },
+        {
+          "name": "partition_alloc",
+          "beforeMB": 47.2,
+          "afterMB": 47.14,
+          "deltaMB": -0.06
+        },
+        {
+          "name": "v8",
+          "beforeMB": 47.75,
+          "afterMB": 47.75,
+          "deltaMB": 0
+        },
+        {
+          "name": "blink_objects",
+          "beforeMB": 12.49,
+          "afterMB": 12.49,
+          "deltaMB": 0
+        },
+        {
+          "name": "cc",
+          "beforeMB": 26.48,
+          "afterMB": 26.48,
+          "deltaMB": 0
+        },
+        {
+          "name": "gpu",
+          "beforeMB": 37.19,
+          "afterMB": 37.19,
+          "deltaMB": 0
+        },
+        {
+          "name": "shared_memory",
+          "beforeMB": 41.7,
+          "afterMB": 41.7,
+          "deltaMB": 0
+        },
+        {
+          "name": "canvas",
+          "beforeMB": 8.34,
+          "afterMB": 8.34,
+          "deltaMB": 0
+        },
+        {
+          "name": "skia",
+          "beforeMB": 0.19,
+          "afterMB": 0.19,
+          "deltaMB": 0
+        },
+        {
+          "name": "web_cache",
+          "beforeMB": 31.95,
+          "afterMB": 31.95,
+          "deltaMB": 0
+        },
+        {
+          "name": "sqlite",
+          "beforeMB": 0.16,
+          "afterMB": 0.16,
+          "deltaMB": 0
+        },
+        {
+          "name": "site_storage",
+          "beforeMB": 0.01,
+          "afterMB": 0.01,
+          "deltaMB": 0
+        }
+      ],
+      "childDeltas": {},
+      "totalNamedBeforeMB": 405.09,
+      "totalNamedAfterMB": 400.53
+    },
+    {
+      "label": "canonical-floor-retake-b126-pass3.json :: postPlayFloor.reads.arenas :: flattened-arena-columns -> canonical-floor-retake-b126-pass3.json :: postPlayFloor.reads.arenas :: flattened-arena-columns",
+      "before": "canonical-floor-retake-b126-pass3.json :: postPlayFloor.reads.arenas :: flattened-arena-columns",
+      "after": "canonical-floor-retake-b126-pass3.json :: postPlayFloor.reads.arenas :: flattened-arena-columns",
+      "rootDeltas": [
+        {
+          "name": "malloc",
+          "beforeMB": 72.31,
+          "afterMB": 75.72,
+          "deltaMB": 3.41
+        },
+        {
+          "name": "partition_alloc",
+          "beforeMB": 47.14,
+          "afterMB": 47.05,
+          "deltaMB": -0.09
+        },
+        {
+          "name": "v8",
+          "beforeMB": 47.75,
+          "afterMB": 47.75,
+          "deltaMB": 0
+        },
+        {
+          "name": "blink_gc",
+          "beforeMB": 74.82,
+          "afterMB": 74.82,
+          "deltaMB": 0
+        },
+        {
+          "name": "blink_objects",
+          "beforeMB": 12.49,
+          "afterMB": 12.49,
+          "deltaMB": 0
+        },
+        {
+          "name": "cc",
+          "beforeMB": 26.48,
+          "afterMB": 26.48,
+          "deltaMB": 0
+        },
+        {
+          "name": "gpu",
+          "beforeMB": 37.19,
+          "afterMB": 37.19,
+          "deltaMB": 0
+        },
+        {
+          "name": "shared_memory",
+          "beforeMB": 41.7,
+          "afterMB": 41.7,
+          "deltaMB": 0
+        },
+        {
+          "name": "canvas",
+          "beforeMB": 8.34,
+          "afterMB": 8.34,
+          "deltaMB": 0
+        },
+        {
+          "name": "skia",
+          "beforeMB": 0.19,
+          "afterMB": 0.19,
+          "deltaMB": 0
+        },
+        {
+          "name": "web_cache",
+          "beforeMB": 31.95,
+          "afterMB": 31.95,
+          "deltaMB": 0
+        },
+        {
+          "name": "sqlite",
+          "beforeMB": 0.16,
+          "afterMB": 0.16,
+          "deltaMB": 0
+        },
+        {
+          "name": "site_storage",
+          "beforeMB": 0.01,
+          "afterMB": 0.01,
+          "deltaMB": 0
+        }
+      ],
+      "childDeltas": {},
+      "totalNamedBeforeMB": 400.53,
+      "totalNamedAfterMB": 403.85
+    }
+  ],
+  "note": "Root deltas and child deltas are reported together. A child row is not quotable as product growth without its root/total context."
+}
