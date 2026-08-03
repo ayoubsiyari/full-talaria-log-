@@ -18,11 +18,33 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, '../../..');
+
+/**
+ * Walk up to the repo root instead of counting directory levels.
+ *
+ * This file is mirrored to `homepage/public/chart/modules/`, which sits at a
+ * DIFFERENT depth from the canonical copy, so a fixed `../../..` resolved to
+ * `homepage/` there and the mirrored gate died on load with ENOENT. A gate that
+ * cannot load reports a red indistinguishable from a product defect — the exact
+ * failure I raised against `p3-bar-store-realm` and then shipped here myself.
+ */
+function findRoot(start) {
+  let dir = start;
+  for (let i = 0; i < 12; i += 1) {
+    if (fs.existsSync(path.join(dir, 'chart v 1.4')) && fs.existsSync(path.join(dir, 'homepage'))) return dir;
+    const up = path.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  throw new Error(`ANCHOR_BROKEN: repo root not found from ${start}`);
+}
+
+const ROOT = findRoot(__dirname);
 const MODULE_PATH = path.join(ROOT, 'chart v 1.4/talaria-design/src/panelStateStorage.js');
 
 /** Installs a fake user-scoped storage and returns a handle on the raw bytes. */

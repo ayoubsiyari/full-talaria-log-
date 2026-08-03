@@ -12,10 +12,28 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
-import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, '../../..');
+
+/**
+ * Walk up to the repo root instead of counting directory levels — the mirrored
+ * copy sits at a different depth, where a fixed `../../..` resolved to
+ * `homepage/` and killed the gate on load. See the note in the round-trip gate.
+ */
+function findRoot(start) {
+  let dir = start;
+  for (let i = 0; i < 12; i += 1) {
+    if (fs.existsSync(path.join(dir, 'chart v 1.4')) && fs.existsSync(path.join(dir, 'homepage'))) return dir;
+    const up = path.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  throw new Error(`ANCHOR_BROKEN: repo root not found from ${start}`);
+}
+
+const ROOT = findRoot(__dirname);
 const GRID = path.join(ROOT, 'chart v 1.4/talaria-design/src/MultichartGrid.jsx');
 const SHELL = path.join(ROOT, 'chart v 1.4/talaria-design/src/TalariaV8bLive.jsx');
 
@@ -450,6 +468,63 @@ test('PANELBIND: scale — bound, the restore effect sends the command', () => {
   // The ref gates BOTH restores now, so a name claiming only chart type would
   // mislead the next reader exactly as it misled me.
   assert.doesNotMatch(gridSrc, /chartTypeRestoredRef/, 'the once-per-panel ref still claims to cover only chart type');
+});
+
+/**
+ * PARSE — the hole this gate had until it was pointed out.
+ *
+ * Every other cell here reads the shell as a STRING. A stray brace in
+ * `MultichartGrid.jsx` would leave all of them green while the product failed
+ * to build, because a regex does not care whether its haystack compiles. So the
+ * source is put through the same compiler the shell is actually built with.
+ *
+ * esbuild is taken from the design tree, where it is vite's own dependency, and
+ * not from the repo root (where it is not installed) or an npx cache (which is
+ * a property of one laptop, not the repo). If it cannot be resolved the cells
+ * FAIL with a named state rather than skipping: a parse check that quietly
+ * opts out is the hole again, wearing a reassuring tick.
+ */
+function loadEsbuild() {
+  const pkg = path.join(ROOT, 'chart v 1.4/talaria-design/node_modules/esbuild/package.json');
+  if (!fs.existsSync(pkg)) {
+    assert.fail(
+      'PARSE_CHECKER_ABSENT: esbuild is not installed in the design tree '
+      + '(chart v 1.4/talaria-design/node_modules/esbuild). It arrives with vite, so if this '
+      + 'is missing the V9 shell cannot be built either. Run npm install there.',
+    );
+  }
+  return createRequire(pathToFileURL(pkg))('esbuild');
+}
+
+function parseJsx(esbuild, source, label) {
+  try {
+    esbuild.transformSync(source, { loader: 'jsx', sourcefile: label });
+    return null;
+  } catch (err) {
+    return (err && err.message) || String(err);
+  }
+}
+
+test('PANELBIND: parse — the shell sources actually compile', () => {
+  const esbuild = loadEsbuild();
+  for (const [label, src] of [['MultichartGrid.jsx', gridSrc], ['TalariaV8bLive.jsx', shellSrc]]) {
+    const err = parseJsx(esbuild, src, label);
+    assert.equal(err, null, `${label} does not compile:\n${err}`);
+  }
+});
+
+test('PANELBIND: parse — anti-vacuity, a real syntax error is caught', () => {
+  // Without this the cell above passes if transformSync silently tolerates
+  // anything, or if the loader is wrong and it is parsing nothing at all.
+  const esbuild = loadEsbuild();
+  const broken = gridSrc.replace('const cfg = {', 'const cfg = {{{');
+  assert.notEqual(broken, gridSrc, 'ANCHOR_BROKEN: no site to corrupt');
+  const err = parseJsx(esbuild, broken, 'MultichartGrid.jsx');
+  assert.notEqual(err, null, 'the parse check accepts source that does not compile — it is decoration');
+
+  // And it must be discriminating about WHERE, not just noisy.
+  const stillFine = parseJsx(esbuild, gridSrc, 'MultichartGrid.jsx');
+  assert.equal(stillFine, null, 'the checker rejects the unmodified product source');
 });
 
 test('PANELBIND: host — the only tile in layout "1" is restored too', () => {
