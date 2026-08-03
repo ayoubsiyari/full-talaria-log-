@@ -1,6 +1,6 @@
 # A-lane seal evidence audit — SEAL-EVIDENCE-01
 
-> **Update 11:38 — the eleven static-only gates below now declare themselves** (`0888d6757`). Each
+> **Update 11:38+01:00 — the eleven static-only gates below now declare themselves** (`0888d6757`). Each
 > prints `STATIC_ONLY_SOURCE_GATE <row> — reads source; served behaviour unobserved` at load, so the
 > token travels into a sweep log rather than living only in this document, and the seven that had no
 > refusal state now throw `SUBJECT_ABSENT: <path>`. The classification below is unchanged.
@@ -32,7 +32,7 @@ And two hazards cutting across all three:
 
 Both `SERVED_RUNTIME` rows are **unrun against a sealed build**. `order01b-readback-canary` last
 produced an artifact against b124, which is retired as an identity; the deployed host still serves
-**b122** (B, 08:52, `rebuild-constraint` 5/5 NOT CARRIED). So lane A currently has **zero runtime
+**b122** (B, 08:52+01:00, `rebuild-constraint` 5/5 NOT CARRIED). So lane A currently has **zero runtime
 evidence from the build being sealed**.
 
 ---

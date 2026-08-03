@@ -1,13 +1,13 @@
 /**
  * RUN-LOCK-01 — the precondition every Chrome-launching run holds before a
- * browser boots. Single implementation as of the 12:58 ruling; B's and E's local
+ * browser boots. Single implementation as of the 12:58+01:00 ruling; B's and E's local
  * locks retire into this one, and B's cells belong in the selftest beside it.
  *
  * THREE SCOPES, BECAUSE ONE KEY CANNOT DO THE JOB
  *
  * The ruling says to use the identity key rather than the artifact path. That is
  * right and it is not sufficient, and the accident it is meant to prevent is the
- * proof: between 12:04 and 12:27 C's `canonical-floor-retake` was sharing the
+ * proof: between 12:04+01:00 and 12:27+01:00 C's `canonical-floor-retake` was sharing the
  * box with two `tal-po-ui-smoke-canary` launches. Those are DIFFERENT scripts
  * writing DIFFERENT files, so an identity lock and an artifact lock both grant
  * all three of them, and the floor reading is contaminated exactly as before.
@@ -15,8 +15,8 @@
  *
  *   HOST      one Chrome-launching measurement on this machine, full stop.
  *             This is the scope that replaces "wait until the box is clear".
- *   IDENTITY  one live copy of a given instrument. Catches E at 11:03 and D at
- *             12:19, including auto-suffixing scripts where no filename collides.
+ *   IDENTITY  one live copy of a given instrument. Catches E at 11:03+01:00 and D at
+ *             12:19+01:00, including auto-suffixing scripts where no filename collides.
  *   ARTIFACT  one writer per output path. Catches two different scripts pointed
  *             at one file, which identity alone lets through.
  *
@@ -206,6 +206,61 @@ export function classifyRunStrict(cmd) {
  * measurement process" has one definition. If it cannot be loaded or the scan
  * fails, that is reported as its own state and never as "clear".
  */
+/**
+ * The node processes on this box, read synchronously.
+ *
+ * Own query rather than C's, for one reason: C's is fine but reaching it needs a
+ * dynamic import, which made the acquire path async, which made `await` load
+ * bearing. B found a consumer that had adopted the lock and omitted the await, so
+ * its unlocked-run scan raced the launch it was meant to refuse and it still
+ * logged a clean lock. A guard whose correctness depends on one keyword being
+ * remembered is the same class of defect as a queue depending on cooperation.
+ * Synchronous here, and C's broader classifier stays as an advisory cross-check
+ * in the status tool where async costs nothing.
+ */
+export function readNodeProcessesSync() {
+  try {
+    const out = execFileSync('powershell', ['-NoProfile', '-Command',
+      "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" "
+      + '| Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress'],
+    { encoding: 'utf8', timeout: 20000, windowsHide: true });
+    const raw = (out || '').trim();
+    if (!raw) return [];
+    const list = JSON.parse(raw);
+    return (Array.isArray(list) ? list : [list])
+      .map((p) => ({ pid: Number(p.ProcessId), cmd: String(p.CommandLine || '') }))
+      .filter((p) => Number.isFinite(p.pid));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Synchronous unlocked-run scan. Same states as the async form; no `await` to
+ * forget. Refuses only on an observed browser, per classifyRunStrict.
+ */
+export function foreignRunsSync({ ignorePids = [] } = {}) {
+  const procs = readNodeProcessesSync();
+  if (procs === null) {
+    return { state: 'FOREIGN_SCAN_UNAVAILABLE', why: 'process scan failed', runs: [], advisory: [] };
+  }
+  const withBrowser = browserOwningPids();
+  const lockedPids = new Set(inspectLocks().filter((l) => l.alive).map((l) => l.pid));
+  const skip = new Set([process.pid, process.ppid, ...ignorePids]);
+  const runs = [];
+  const advisory = [];
+  for (const p of procs) {
+    if (skip.has(p.pid) || lockedPids.has(p.pid)) continue;
+    const strict = classifyRunStrict(p.cmd);
+    if (!strict.measurement) continue;
+    const hasBrowser = withBrowser === null ? null : withBrowser.has(p.pid);
+    const entry = { pid: p.pid, script: strict.script, hasBrowser, cmd: p.cmd.slice(0, 160) };
+    if (hasBrowser !== false) runs.push(entry);
+    else advisory.push({ ...entry, excludedBecause: 'no browser process is running under it' });
+  }
+  return { state: runs.length ? 'UNLOCKED_FOREIGN_RUN_DETECTED' : 'NO_FOREIGN_RUNS', runs, advisory };
+}
+
 export async function foreignRuns({ ignorePids = [] } = {}) {
   let mod;
   try {
@@ -341,14 +396,14 @@ function sleepSync(ms) {
 }
 
 /**
- * The form instruments should use: `await acquireRunLockOrExit({...})`.
+ * The form instruments should use: `acquireRunLockOrExit({...})`.
  *
- * Async because the host scope also scans for runs that hold no lock. Skipping
- * that scan is what would let this rule grant permission to start on top of an
- * unadopted instrument, which is the one way the new precondition could be worse
- * than the queue it replaces.
+ * Deliberately SYNCHRONOUS, including the unlocked-run scan. It was async for one
+ * commit and that was long enough for a consumer to adopt it without `await`,
+ * whereupon the scan raced the launch it was refusing and the run reported a
+ * clean lock. `await` in front of it is harmless if you prefer it.
  */
-export async function acquireRunLockOrExit(opts) {
+export function acquireRunLockOrExit(opts) {
   const lock = acquireRunLock(opts);
   if (/_REFUSED$/.test(lock.state)) {
     const h = lock.holder || {};
@@ -370,7 +425,7 @@ export async function acquireRunLockOrExit(opts) {
   if (lock.notes && lock.notes.length) console.warn(`[run-lock] ${lock.notes.join(', ')}`);
 
   if (opts.host !== false && !opts.skipForeignScan) {
-    const scan = await foreignRuns();
+    const scan = foreignRunsSync();
     lock.foreignScan = scan.state;
     if (scan.state === 'UNLOCKED_FOREIGN_RUN_DETECTED') {
       const who = scan.runs.map((r) => `${r.script || 'unknown'} (pid ${r.pid})`).join(', ');

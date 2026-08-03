@@ -1,0 +1,23 @@
+---
+description: CLOCK-01 every wall-clock number carries its offset
+alwaysApply: true
+---
+
+# CLOCK-01
+
+Every wall-clock number you write carries its offset — board prose, commit messages, reports, verdict lines, log output, code comments citing an event. Entry headings already do this; the numbers *inside* the text are the gap.
+
+- Prose and boards: `12:47+01:00`, or `12:47:31Z`.
+- Artifacts and machine fields: ISO 8601 with `Z` or an explicit offset.
+- A time whose zone is the point (a session boundary) states the zone: `17:00 America/New_York`.
+- Emit through `scripts/lib/clock.mjs` — `stampUtc`, `stampLocal`, `clockOf`, `both` — rather than formatting by hand.
+
+Check before you post: `npm run gate:clock-01` (A-lane defaults) or `node scripts/clock-01-audit.mjs --files=<your files>`; `--commits=N` covers recent commit messages.
+
+States: `CLOCK_OK`, `BARE_WALL_CLOCK` (exit 1), `NO_TIME_TOKENS_FOUND` (nothing was verified — not a pass), `CLOCK_EXEMPT_DECLARED`, `SUBJECT_ABSENT: <path>`.
+
+If a bare number is deliberate — a test fixture, or a quotation of someone else's unstamped line — declare it with `CLOCK-01-EXEMPT` on the line or `CLOCK-01-EXEMPT-FILE: <why>` near the top. Do not let the gate guess.
+
+Why: three investigations on 2026-08-03 were opened by a missing offset rather than by any disagreement in the events — D's b122 timing "impossibility" at 22:26+01:00, and a reading that C's cut post-dated the b126 build by four minutes when it preceded it by forty-nine seconds. Each was one consistent sequence read in two clocks. A bare number looks exactly like a checked one, which is what makes it expensive.
+
+When sweeping existing text with `--fix=<offset>`, name the files explicitly and read the diff. The audit can see that a number is unstamped; it cannot see which clock produced it.

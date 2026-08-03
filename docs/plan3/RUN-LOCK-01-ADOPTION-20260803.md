@@ -1,6 +1,6 @@
 # RUN-LOCK-01 — adoption note for every Chrome-launching run
 
-**Status:** single implementation per the 12:58 ruling. B and E retire local locks and adopt this one.
+**Status:** single implementation per the 12:58+01:00 ruling. B and E retire local locks and adopt this one.
 **Module:** `scripts/lib/run-lock.mjs` · **Suite:** `npm run test:run-lock` (16 cells) · **Status CLI:** `npm run gate:run-lock-status`
 
 ## Two lines at the top of your instrument
@@ -21,14 +21,14 @@ Call it **before** you boot a browser or a harness server, at module top level o
 
 ## The correction the ruling needs: the identity key alone does not free the box
 
-The ruling asks for the identity key rather than the artifact path. That is right about the artifact path being too narrow, and it is still not enough to replace "wait until the box is clear" — **the 12:04–12:27 accident passes an identity check**. C's `canonical-floor-retake` and D's two `tal-po-ui-smoke-canary` launches are different scripts writing different files: three distinct identities, three distinct artifacts, three grants, and the same contaminated floor reading.
+The ruling asks for the identity key rather than the artifact path. That is right about the artifact path being too narrow, and it is still not enough to replace "wait until the box is clear" — **the 12:04+01:00–12:27+01:00 accident passes an identity check**. C's `canonical-floor-retake` and D's two `tal-po-ui-smoke-canary` launches are different scripts writing different files: three distinct identities, three distinct artifacts, three grants, and the same contaminated floor reading.
 
 So the module now takes **three scopes** in one call, in this fixed order, releasing in reverse:
 
 | Scope | Contends on | Catches | Refusal |
 |---|---|---|---|
-| `host` | one name for the whole machine | **any** two Chrome-launching runs overlapping — the 12:04 case | `HOST_BUSY_REFUSED` |
-| `identity` | your script name | a second live copy of one instrument, including auto-suffixing ones — E at 11:03, D at 12:19 | `DUPLICATE_LAUNCH_REFUSED` |
+| `host` | one name for the whole machine | **any** two Chrome-launching runs overlapping — the 12:04+01:00 case | `HOST_BUSY_REFUSED` |
+| `identity` | your script name | a second live copy of one instrument, including auto-suffixing ones — E at 11:03+01:00, D at 12:19+01:00 | `DUPLICATE_LAUNCH_REFUSED` |
 | `artifact` | resolved `--out` path | two different scripts aimed at one file | `ARTIFACT_WRITER_REFUSED` |
 
 `host` is **on by default**. Turn it off with `--no-host-lock` only for an instrument that launches no browser, and say so on the board when you do. It is `await`ed because the host scope does one more thing, below.
