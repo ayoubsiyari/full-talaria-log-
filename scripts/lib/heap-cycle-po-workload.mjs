@@ -321,6 +321,19 @@ export async function armHeapCyclePoWorkload(page, {
    */
   indicators = HEAP_CYCLE_PO_INDICATORS,
   placeOrder = true,
+  /**
+   * `armed` has always been satisfied by THREE of four panels playing — `>= 3`,
+   * below, on both of its branches. So a four-panel measurement whose fourth
+   * panel is parked reports `armed: true`, and the reading it produces is three
+   * panels plus a spectator with nothing in the artifact saying so. That is what
+   * `observedPlaying: 3` was in the b126 read-back canary.
+   *
+   * Opt-in rather than a changed default, deliberately: the default is what
+   * every landed gate arms under, and flipping it mid-queue would move the
+   * threshold beneath C's floor series and E's V8 re-run while they run. Whether
+   * the default should move is the PO's call, not a side effect of my row.
+   */
+  requireAllPlaying = false,
 } = {}) {
   // Fixing the default alone would leave the sharper case open: a caller that explicitly passes 60 is
   // making the same mistake more loudly, and the engine would snap it just as quietly.
@@ -383,8 +396,9 @@ export async function armHeapCyclePoWorkload(page, {
 
   const indicatorsOk = perPanel.every((row) => row.indicatorsOk);
   const replayOk = perPanel.every((row) => row.replay && row.replay.ok);
-  const playingArmed = perPanel.filter((row) => row.playing && row.playing.ok).length >= 3
-    || observedPlaying >= 3;
+  const armedCount = perPanel.filter((row) => row.playing && row.playing.ok).length;
+  const needPlaying = requireAllPlaying ? panelIds.length : 3;
+  const playingArmed = armedCount >= needPlaying || observedPlaying >= needPlaying;
   const armed = indicatorsOk && replayOk && order.ok === true && playingArmed && perPanel.length >= 4;
 
   return {
@@ -396,6 +410,13 @@ export async function armHeapCyclePoWorkload(page, {
     playing: perPanel.map((row) => ({ id: row.id, ...(row.playing || {}) })),
     observedPlaying,
     stillPlaying: observedPlaying,
+    /**
+     * The threshold this run was graded against, in the return value, so an
+     * artifact can never again record `armed: true` without disclosing that
+     * three of four was enough to earn it.
+     */
+    playingRequired: needPlaying,
+    playingArmedCount: armedCount,
     perPanel,
     playHoldMs,
     replaySpeed,

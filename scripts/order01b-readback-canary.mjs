@@ -118,6 +118,60 @@ function fail(state, why) {
   return { state, why };
 }
 
+/** Every realm's bar count and whether it still has a fetch in flight. */
+async function realmCensus(page) {
+  return page.evaluate(() => {
+    const realms = [{ w: window, name: 'top' }];
+    for (const f of [...document.querySelectorAll('iframe')].slice(0, 4)) {
+      try { realms.push({ w: f.contentWindow, name: f.id || 'panel' }); } catch (_e) { /* cross-origin */ }
+    }
+    return realms.map((r) => {
+      try {
+        const ch = r.w.chart;
+        const rs = ch && ch.replaySystem;
+        return {
+          realm: r.name,
+          hasReplay: !!rs,
+          rawBars: rs && Array.isArray(rs.fullRawData) ? rs.fullRawData.length : (Array.isArray(ch && ch.data) ? ch.data.length : null),
+          panLoading: !!(ch && ch._panLoading),
+        };
+      } catch (e) { return { realm: r.name, hasReplay: false, rawBars: null, panLoading: false, why: String(e && e.message) }; }
+    });
+  });
+}
+
+/**
+ * Wait until every realm has stopped loading, not merely started.
+ *
+ * `waitConf01PanelsReady` (conf01-session.mjs:230) tests `bars > 20`, which the
+ * b126 run's host realm satisfied at 1881 bars while still fetching toward 4000 —
+ * so presence of data is not readiness for a step-sensitive run, and that helper
+ * would have passed this case too. The condition that was missing: bar counts
+ * stable across consecutive polls with no fetch in flight anywhere. A realm armed
+ * mid-fetch sits on the last bar it happens to have, which is `fromEnd: 0` with
+ * `panLoading: true` however much data is coming.
+ */
+async function waitRealmsSettled(page, { want = 4, timeoutMs = 120_000, stableFor = 3, pollMs = 1_500 } = {}) {
+  const startedAt = Date.now();
+  let previous = null;
+  let stable = 0;
+  let census = [];
+  while (Date.now() - startedAt < timeoutMs) {
+    census = await realmCensus(page);
+    const ready = census.filter((c) => c.hasReplay && Number.isFinite(c.rawBars) && c.rawBars > 20);
+    const loading = census.filter((c) => c.panLoading).map((c) => c.realm);
+    const shape = JSON.stringify(census.map((c) => c.rawBars));
+    if (ready.length >= want && !loading.length && shape === previous) stable += 1;
+    else stable = 0;
+    previous = shape;
+    if (stable >= stableFor) {
+      return { settled: true, waitedMs: Date.now() - startedAt, census, polls: stable };
+    }
+    await sleep(pollMs);
+  }
+  return { settled: false, waitedMs: Date.now() - startedAt, census, polls: stable };
+}
+
 async function main() {
   const distIndex = path.resolve(__dirname, '../chart v 1.4/chart/dist-v9/index.html');
   if (!fs.existsSync(distIndex)) throw new Error(`candidate build missing at ${distIndex}`);
@@ -156,7 +210,12 @@ async function main() {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 180_000 });
     await waitForDistV9SingleReady(page, 180_000);
     await applyDistV9LayoutViaUi(page, 4);
-    await sleep(3_000);
+    // Was a flat sleep(3_000). Three seconds is enough for four panels to exist
+    // and not enough for four panels to finish loading, and the difference is a
+    // realm armed at `fromEnd: 0`.
+    const settle = await waitRealmsSettled(page, { want: 4, timeoutMs: 120_000 });
+    observed.settle = settle;
+    log(`realms settled=${settle.settled} after ${settle.waitedMs}ms — bars ${settle.census.map((c) => c.rawBars).join('/')}`);
     log('candidate ready');
 
     /* ---- 1. what engine is actually being served ------------------------ */
@@ -337,15 +396,26 @@ async function main() {
       replaySpeed: SPEED,
       stepSeconds: STEP,
       retainIndicators: true,
+      // The shared helper's `armed` is satisfied by three of four panels playing.
+      // A read-back taken with a quarter of the workload parked is not a
+      // four-panel reading, so this run grades itself against four.
+      requireAllPlaying: true,
     });
     observed.workload = {
       armed: workload.armed,
       observedPlaying: workload.observedPlaying,
+      playingRequired: workload.playingRequired,
+      playingArmedCount: workload.playingArmedCount,
       stepRefusals: workload.stepRefusals,
-      panels: (workload.perPanel || []).map((p) => ({ id: p.id, replay: p.replay })),
+      // `playing` per panel, not just `replay`: the b126 artifact recorded the
+      // configured rate for all four and nothing about which of them started, so
+      // "never armed" and "armed and would not start" were indistinguishable in
+      // the one file that should have settled it.
+      panels: (workload.perPanel || []).map((p) => ({ id: p.id, replay: p.replay, playing: p.playing })),
     };
-    check(!!workload.armed, 'replay is armed and playing',
-      `playing=${workload.observedPlaying}`);
+    check(!!workload.armed, 'replay is armed and playing in every panel',
+      `playing=${workload.observedPlaying} of ${workload.playingRequired} required`
+      + ` (helper default is 3; this run required ${workload.playingRequired})`);
     check(!(workload.stepRefusals || []).length, 'the engine accepted the step it was asked for',
       (workload.stepRefusals || []).map((r) => `${r.id}: ${r.reason}`).join('; ') || 'no refusals');
 
@@ -448,6 +518,15 @@ async function main() {
       console.log(`          ${String(p.realm).padEnd(10)} fromEnd ${p.before.fromEnd} -> ${p.after.fromEnd}`
         + `${p.seekedTo === null ? '' : ` (seeked to ${p.seekedTo})`}  start=${p.startedVia}  playing=${p.after.playing}`);
     }
+
+    check(!!(observed.settle && observed.settle.settled),
+      'every realm finished loading before the workload was armed',
+      observed.settle
+        ? (observed.settle.settled
+          ? `settled after ${observed.settle.waitedMs}ms — bars ${observed.settle.census.map((c) => c.rawBars).join('/')}`
+          : `REALMS_NEVER_SETTLED after ${observed.settle.waitedMs}ms — bars ${observed.settle.census.map((c) => c.rawBars).join('/')}, `
+            + `loading ${observed.settle.census.filter((c) => c.panLoading).map((c) => c.realm).join(',') || 'none'}`)
+        : 'no settle census taken');
 
     const parked = prep.filter((p) => p.state === 'PREPARED' && (p.after.fromEnd ?? 0) < RUNWAY_BARS);
     check(parked.length === 0, 'every realm had runway to step into before the window opened',
