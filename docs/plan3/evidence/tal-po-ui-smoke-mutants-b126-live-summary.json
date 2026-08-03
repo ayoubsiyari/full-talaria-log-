@@ -1,0 +1,231 @@
+{
+  "signature": "TAL-PO-UI-SMOKE-MUTANT-SUITE-LIVE-V1",
+  "at": "2026-08-03T20:58:32.058Z",
+  "origin": "http://31.97.192.82:3000",
+  "expectedCoordinates": {
+    "badge": "20260803b126",
+    "digest": "4c51e267ffc08e4b12c8bd4af481097c",
+    "sourceCommitSha": "5dceb636891f6df58bf7f746dabd37c2d3863838"
+  },
+  "surface": {
+    "origin": "http://31.97.192.82:3000",
+    "badge": "20260803b126",
+    "digest": "4c51e267ffc08e4b12c8bd4af481097c",
+    "sourceCommitSha": "5dceb636891f6df58bf7f746dabd37c2d3863838",
+    "sealOk": true,
+    "buildInfoOk": true,
+    "buildInfoState": "OK"
+  },
+  "identity": {
+    "ok": true,
+    "pairs": [
+      {
+        "name": "badge",
+        "expected": "20260803b126",
+        "observed": "20260803b126",
+        "equal": true
+      },
+      {
+        "name": "digest",
+        "expected": "4c51e267ffc08e4b12c8bd4af481097c",
+        "observed": "4c51e267ffc08e4b12c8bd4af481097c",
+        "equal": true
+      },
+      {
+        "name": "sourceCommitSha",
+        "expected": "5dceb636891f6df58bf7f746dabd37c2d3863838",
+        "observed": "5dceb636891f6df58bf7f746dabd37c2d3863838",
+        "equal": true
+      }
+    ]
+  },
+  "baselineOk": true,
+  "rows": [
+    {
+      "id": "fixed-box-size",
+      "target": "TAL-01696 fixed box size",
+      "ok": true,
+      "failedRows": [
+        "TAL-01696 fixed box size"
+      ],
+      "targetState": "OBSERVED_WRONG",
+      "targetDetail": {
+        "stopDims": {
+          "width": 260,
+          "height": 24
+        },
+        "limitDims": {
+          "width": 277,
+          "height": 24
+        },
+        "mutant": "fixed-box-size"
+      },
+      "artifact": "docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary-batch1.json"
+    },
+    {
+      "id": "value-box-moves",
+      "target": "TAL-01696 values update mid-drag without moving the box",
+      "ok": true,
+      "failedRows": [
+        "TAL-01696 values update mid-drag without moving the box"
+      ],
+      "targetState": "OBSERVED_WRONG",
+      "targetDetail": {
+        "shellReused": true,
+        "shellCount": 1,
+        "bgX": "5",
+        "bgY": "0",
+        "detailX": "139",
+        "mutant": "value-box-moves"
+      },
+      "artifact": "docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary-batch1.json"
+    },
+    {
+      "id": "hover-blinks",
+      "target": "TAL-01696 hover buttons vanish rather than blink during drag",
+      "ok": true,
+      "failedRows": [
+        "TAL-01696 hover buttons vanish rather than blink during drag"
+      ],
+      "targetState": "OBSERVED_WRONG",
+      "targetDetail": {
+        "opacity": "1",
+        "pointerEvents": "all",
+        "hoverClass": true,
+        "mutant": "hover-blinks"
+      },
+      "artifact": "docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary-batch1.json"
+    },
+    {
+      "id": "drag-scale-mismatch",
+      "target": "TAL-01696 SL and entry drag scale follows cursor",
+      "ok": true,
+      "failedRows": [
+        "TAL-01696 SL and entry drag scale follows cursor"
+      ],
+      "targetState": "OBSERVED_WRONG",
+      "targetDetail": {
+        "y0": 0,
+        "y1": 5,
+        "delta": 5,
+        "mutant": "drag-scale-mismatch"
+      },
+      "artifact": "docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary-batch1.json"
+    },
+    {
+      "id": "missing-size-unit",
+      "target": "TAL-01696 size unit and bracket text",
+      "ok": true,
+      "failedRows": [
+        "TAL-01696 size unit and bracket text"
+      ],
+      "targetState": "OBSERVED_WRONG",
+      "targetDetail": {
+        "entryText": "STOP BUY 1",
+        "tpSlInfo": "+$12.34 (1)",
+        "mutant": "missing-size-unit"
+      },
+      "artifact": "docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary-missing-unit.json"
+    },
+    {
+      "id": "market-size-drift",
+      "target": "TAL-01696 identical box size across stop/market/limit",
+      "ok": true,
+      "failedRows": [
+        "TAL-01696 identical box size across stop/market/limit"
+      ],
+      "targetState": "OBSERVED_WRONG",
+      "targetDetail": {
+        "stopDims": {
+          "width": 260,
+          "height": 24
+        },
+        "marketDims": {
+          "width": 260,
+          "height": 28
+        },
+        "mutant": "market-size-drift"
+      },
+      "artifact": "docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary-batch2a.json"
+    },
+    {
+      "id": "control-button-moves",
+      "target": "TAL-01696 control buttons stay put while dragging",
+      "ok": true,
+      "failedRows": [
+        "TAL-01696 control buttons stay put while dragging"
+      ],
+      "targetState": "OBSERVED_WRONG",
+      "targetDetail": {
+        "transform": "translate(716, 88)",
+        "x": "716",
+        "y": "88",
+        "opacity": "1",
+        "mutant": "control-button-moves"
+      },
+      "artifact": "docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary-batch2a.json"
+    },
+    {
+      "id": "font-baseline-drift",
+      "target": "TAL-01696 one font/size with vertical alignment",
+      "ok": true,
+      "failedRows": [
+        "TAL-01696 one font/size with vertical alignment"
+      ],
+      "targetState": "OBSERVED_WRONG",
+      "targetDetail": {
+        "tagFont": "'Exo 2', Roboto, sans-serif",
+        "detailFont": "'Exo 2', Roboto, sans-serif",
+        "tagSize": "10px",
+        "detailSize": "11px",
+        "tagY": "12",
+        "detailY": "14",
+        "mutant": "font-baseline-drift"
+      },
+      "artifact": "docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary-batch2a.json"
+    },
+    {
+      "id": "duplicate-activation-box",
+      "target": "TAL-01696 one box instead of two on activation",
+      "ok": true,
+      "failedRows": [
+        "TAL-01696 one box instead of two on activation"
+      ],
+      "targetState": "OBSERVED_WRONG",
+      "targetDetail": {
+        "shellCount": 3,
+        "mutant": "duplicate-activation-box"
+      },
+      "artifact": "docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary-batch2a.json"
+    },
+    {
+      "id": "release-only-average",
+      "target": "TAL-01698 multi-TP average updates during drag before release",
+      "ok": true,
+      "failedRows": [
+        "TAL-01698 multi-TP average updates during drag before release"
+      ],
+      "targetState": "OBSERVED_WRONG",
+      "targetDetail": {
+        "avgTP": 115,
+        "y1": "115",
+        "y2": "115",
+        "mutant": "release-only-average"
+      },
+      "artifact": "docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary-release-only.json"
+    },
+    {
+      "id": "analysis-only-allows-order",
+      "target": "Rayan #8 analysis-only symbol refuses placement",
+      "ok": true,
+      "failedRows": [
+        "Rayan #8 analysis-only symbol refuses placement"
+      ],
+      "targetState": "ORDER_PLACE_THROW",
+      "targetDetail": "Cannot read properties of undefined (reading 'undefined')",
+      "artifact": "docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary-analysis-only.json"
+    }
+  ],
+  "ok": true,
+  "verdict": "PASSED - TAL/Rayan row mutants killed one-for-one"
+}

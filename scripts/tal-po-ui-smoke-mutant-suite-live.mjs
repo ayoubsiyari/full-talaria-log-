@@ -106,6 +106,7 @@ for (const batch of BATCHES) {
     '--progress',
     '--out', out,
   ];
+  if (process.argv.includes('--allow-concurrent')) args.push('--allow-concurrent');
   console.error(`[tal-po-ui-mutants-live] running ${batch.name}: ${batch.mutants}`);
   const child = spawnSync(process.execPath, args, {
     cwd: repoRoot,

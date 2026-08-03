@@ -52,6 +52,7 @@ const OUT_JSON = path.resolve(repoRoot, argOf('out', 'docs/plan3/evidence/tal-po
 const FAILED_JSON = OUT_JSON.replace(/\.json$/i, '.failed.json');
 const SIGNATURE = 'TAL-PO-UI-SMOKE-CANARY-V1';
 const RUN_TIMEOUT_MS = Math.max(30_000, Number(argOf('timeout-ms', '150000')) || 150_000);
+const TICKET_SYMBOLS = Object.freeze(['EURUSD', 'GBPUSD', 'AUDUSD', 'USDJPY']);
 const EXPECTED_BEHAVIOR_ROWS = Object.freeze([
   'TAL-01696 fixed box size',
   'TAL-01696 values update mid-drag without moving the box',
@@ -155,12 +156,15 @@ async function ensureLoggedIn(page, origin) {
   const seed = localHarness
     ? {
       type: 'static-local-harness',
+      seedSet: 'fallback-local-harness',
+      preferredSymbols: TICKET_SYMBOLS,
       tradable: { ticker: 'ES', fileId: 21 },
       supporting: { ticker: 'NQ', fileId: 22 },
       startDate: null,
       endDate: null,
     }
-    : await page.evaluate(async () => {
+    : await page.evaluate(async (preferredSymbols) => {
+      const preferredRank = new Map(preferredSymbols.map((symbol, index) => [symbol, index]));
       const response = await fetch('/api/files', { credentials: 'include', cache: 'no-store' });
       if (!response.ok) {
         throw new Error(`TAL_PO_UI_SEED_FILES_HTTP_${response.status}: /api/files did not return the account file list`);
@@ -197,6 +201,9 @@ async function ensureLoggedIn(page, origin) {
             originalName,
             hasDateRange: !!range,
             range,
+            preferredIndex: preferredRank.has(normalizeTicker(file, fileId))
+              ? preferredRank.get(normalizeTicker(file, fileId))
+              : null,
             index,
           };
         })
@@ -204,7 +211,14 @@ async function ensureLoggedIn(page, origin) {
       if (candidates.length < 2) {
         throw new Error(`TAL_PO_UI_SEED_NO_PROVISIONED_DATA: /api/files returned ${candidates.length} usable file(s); need at least 2 for tradable/supporting smoke seed`);
       }
-      candidates.sort((a, b) => Number(b.hasDateRange) - Number(a.hasDateRange) || b.fileId - a.fileId || a.index - b.index);
+      candidates.sort((a, b) => {
+        const ap = Number.isInteger(a.preferredIndex) ? a.preferredIndex : 999;
+        const bp = Number.isInteger(b.preferredIndex) ? b.preferredIndex : 999;
+        return ap - bp
+          || Number(b.hasDateRange) - Number(a.hasDateRange)
+          || b.fileId - a.fileId
+          || a.index - b.index;
+      });
       const tradable = candidates[0];
       const supporting = candidates.find((file) => file.fileId !== tradable.fileId);
       if (!supporting) {
@@ -212,16 +226,23 @@ async function ensureLoggedIn(page, origin) {
       }
       if (supporting.ticker === tradable.ticker) supporting.ticker = `${supporting.ticker}_SUPPORT`;
       const range = tradable.range || supporting.range || {};
+      const selectedPreferred = [tradable, supporting].filter((file) => Number.isInteger(file.preferredIndex)).length;
       return {
         type: 'authenticated-api-files',
+        seedSet: selectedPreferred === 2
+          ? 'ticket-symbols'
+          : selectedPreferred === 1
+            ? 'partial-ticket-symbols'
+            : 'fallback-available-symbols',
+        preferredSymbols,
         fileCount: candidates.length,
         tradable,
         supporting,
         startDate: range.startDate || null,
         endDate: range.endDate || null,
       };
-    });
-  progress('seed-selected', `${seed.type} tradable=${seed.tradable.ticker}#${seed.tradable.fileId} supporting=${seed.supporting.ticker}#${seed.supporting.fileId}`);
+    }, TICKET_SYMBOLS);
+  progress('seed-selected', `${seed.seedSet} tradable=${seed.tradable.ticker}#${seed.tradable.fileId} supporting=${seed.supporting.ticker}#${seed.supporting.fileId}`);
   await page.evaluate((seedInfo) => {
     try {
       const session = {
@@ -250,16 +271,18 @@ async function ensureLoggedIn(page, origin) {
       localStorage.setItem('__talPoUiSmokeSeed', JSON.stringify(seedInfo));
     } catch (_) { /* ignore */ }
   }, seed);
+  return seed;
 }
 
 async function preflightSeedBars(page, timeoutMs = 1000) {
   progress('seed-bars-preflight', `${timeoutMs}ms`);
+  const outerTimeoutMs = Math.max(timeoutMs + 250, timeoutMs * 3);
   const timeoutResult = new Promise((resolve) => {
     setTimeout(() => resolve({
       ok: false,
       state: 'TAL_PO_UI_SEED_PREFLIGHT_TIMEOUT',
-      detail: `seed bars preflight exceeded ${timeoutMs}ms`,
-    }), timeoutMs);
+      detail: `seed bars preflight exceeded ${outerTimeoutMs}ms outer guard; each seeded ID still has a ${timeoutMs}ms fetch budget`,
+    }), outerTimeoutMs);
   });
   const evalResult = page.evaluate(async (budgetMs) => {
     const raw = localStorage.getItem('u1_backtestingSession');
@@ -709,9 +732,10 @@ function talPoUiSmokeArm(activeMutant = '') {
       const infoText = mutant === 'missing-size-unit'
         ? String(info || '').replace(/\((\d+(?:\.\d+)?)\sLots\)/, '$1 Lots')
         : info;
+      const entryHasUnit = /\b(?:LIMIT|STOP|MARKET)\s+BUY\s+1\s+Lots\b/.test(String(entryText || ''));
       row(
         'TAL-01696 size unit and bracket text',
-        entryText === 'LIMIT BUY 1 Lots' && infoText === '+$12.34 (1 Lots)',
+        entryHasUnit && infoText === '+$12.34 (1 Lots)',
         { entryText: entryText || null, tpSlInfo: infoText || null, mutant },
       );
     } catch (e) {
@@ -920,18 +944,18 @@ async function runCanary() {
     page.setDefaultTimeout(180000);
     await page.setCacheEnabled(false);
     progress('ensure-login');
-    await ensureLoggedIn(page, ORIGIN);
+    let seed = await ensureLoggedIn(page, ORIGIN);
     const url = reactParityUrlWithLayout(`${ORIGIN}/chart/dist-v9/index.html?mode=backtest&tal=po-ui-smoke`, '1');
     progress('goto', url);
     await boundedGoto(page, url, 'goto');
     progress('after-goto', page.url());
     if (/\/login\/?/i.test(new URL(page.url()).pathname)) {
       if (!localHarness) await dismissCookieOptional(page, 'dismiss-cookie-login');
-      await ensureLoggedIn(page, ORIGIN);
+      seed = await ensureLoggedIn(page, ORIGIN);
       await boundedGoto(page, url, 'goto-login');
     }
     if (!localHarness) await dismissCookieOptional(page, 'dismiss-cookie');
-    if (!localHarness) await preflightSeedBars(page, 1000);
+    const seedPreflight = !localHarness ? await preflightSeedBars(page, 1000) : null;
     progress('wait-single-ready');
     if (!localHarness) await waitForDistV9SingleReady(page, 30000).catch(() => {});
     progress('find-order-frame');
@@ -950,6 +974,8 @@ async function runCanary() {
       surface,
       identity,
       url,
+      seed,
+      seedPreflight,
       result,
       redControl,
       mutantSuite,
