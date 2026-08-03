@@ -39,7 +39,10 @@ const cell = (name, fn) => {
 const sh = (cwd, cmd) => execFileSync('bash', ['-c', cmd], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 
 /** Build a scratch repo + bare remote, optionally tagged. Returns paths. */
-function scaffold({ annotated = true, pushTag = true, detached = true, tagName = `roster-${BUILD_ID}-source` } = {}) {
+function scaffold({
+  annotated = true, pushTag = true, detached = true, tag = true,
+  extraTag = null, tagName = `roster-${BUILD_ID}-source`,
+} = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ckptship-'));
   const work = path.join(root, 'work');
   const state = path.join(root, 'state');
@@ -66,10 +69,16 @@ function scaffold({ annotated = true, pushTag = true, detached = true, tagName =
   sh(work, 'git add -A && git commit -q -m init');
   sh(work, 'git remote add origin ../remote.git && git push -q origin main');
 
-  if (annotated) sh(work, `git tag -a "${tagName}" -m "src"`);
-  else sh(work, `git tag "${tagName}"`);
-  if (pushTag) sh(work, `git push -q origin "${tagName}"`);
-  if (detached) sh(work, `git checkout -q --detach "${tagName}"`);
+  if (tag) {
+    if (annotated) sh(work, `git tag -a "${tagName}" -m "src"`);
+    else sh(work, `git tag "${tagName}"`);
+    if (pushTag) sh(work, `git push -q origin "${tagName}"`);
+    if (detached) sh(work, `git checkout -q --detach "${tagName}"`);
+  }
+  if (extraTag) {
+    sh(work, `git tag -a "${extraTag}" -m "src2"`);
+    sh(work, `git push -q origin "${extraTag}"`);
+  }
   return { root, work, state: stateAbs, tagName };
 }
 
@@ -107,7 +116,8 @@ cell('RED: an unpushed tag is refused — the builder cannot fetch what is local
   const r = runShip(work, state);
   assert.notEqual(r.code, 0, 'must refuse');
   assert.doesNotMatch(r.out, /REACHED_BUILDER/, 'must not reach the builder');
-  assert.match(r.out, /one pushed annotated|not a pushed annotated/i);
+  assert.match(r.out, /one pushed annotated|not a pushed annotated|exists locally but is not pushed/i,
+    `wrong refusal:\n${r.out}`);
 });
 
 cell('RED: --source-tag cannot smuggle in an unpushed tag', () => {
@@ -140,6 +150,86 @@ cell('on a branch with a missing upstream, it repairs rather than refuses', () =
   const r = runShip(work, state);
   assert.match(r.out, /REACHED_BUILDER/, `a missing upstream must not block the ship:\n${r.out}`);
   assert.match(r.out, /set missing upstream|has no upstream/);
+});
+
+// ---------------------------------------------------------------------------
+// The second fail-closed path. Removing the upstream precondition fixed the
+// refusal that fired on 2026-08-03, but the no-tag case still died printing
+// `git tag -a` for a human to run -- and telling someone to do the safe thing
+// manually, at the moment they are under pressure, is what produced b126.
+// ---------------------------------------------------------------------------
+
+cell('THE INVERSION: with no tag at all, --tag-prefix creates it, pushes it, and builds', () => {
+  const { work, state } = scaffold({ tag: false });
+  const r = runShip(work, state, '--tag-prefix=roster');
+  assert.match(r.out, /TAG FIRST: creating annotated tag roster-/, `no creation notice:\n${r.out}`);
+  assert.match(r.out, /REACHED_BUILDER/, `did not reach the builder:\n${r.out}`);
+  assert.equal(r.code, 0);
+});
+
+cell('the tag it creates is ANNOTATED, is on the remote, and peels to the built commit', () => {
+  const { root, work, state } = scaffold({ tag: false });
+  const head = sh(work, 'git rev-parse HEAD').trim();
+  runShip(work, state, '--tag-prefix=roster');
+  const name = `roster-${BUILD_ID}-source`;
+  // Read the REMOTE, because a tag that exists only locally cannot be fetched.
+  const peeled = sh(root, `git -C remote.git rev-parse "${name}^{commit}"`).trim();
+  const type = sh(root, `git -C remote.git cat-file -t "${name}"`).trim();
+  assert.equal(type, 'tag', 'must be an annotated tag object, not a lightweight ref');
+  assert.equal(peeled, head, 'the tag must name the commit that was built');
+});
+
+cell('RED: no tag and no --tag-prefix refuses, and the message forbids the hand-build', () => {
+  const { work, state } = scaffold({ tag: false });
+  const r = runShip(work, state);
+  assert.notEqual(r.code, 0, 'must refuse rather than build something untagged');
+  assert.match(r.out, /no --tag-prefix was given/);
+  // The refusal has to say the hand-build is prohibited, or it invites the exact
+  // workaround it exists to prevent.
+  assert.match(r.out, /DO NOT build from the tip by hand/);
+  assert.doesNotMatch(r.out, /REACHED_BUILDER/);
+});
+
+cell('RED: --tag-prefix and --source-tag together are refused, not silently ranked', () => {
+  const { work, state, tagName } = scaffold();
+  const r = runShip(work, state, `--tag-prefix=roster --source-tag=${tagName}`);
+  assert.notEqual(r.code, 0);
+  assert.match(r.out, /mutually exclusive/);
+});
+
+cell('RED: a malformed --tag-prefix is refused before anything is created or pushed', () => {
+  const { root, work, state } = scaffold({ tag: false });
+  // Quoted deliberately: an unquoted space would split into two argv entries and
+  // the cell would pass on "unknown argument" without ever reaching the validator.
+  const r = runShip(work, state, "'--tag-prefix=bad/prefix'");
+  assert.notEqual(r.code, 0);
+  assert.match(r.out, /--tag-prefix must be alphanumeric/, `wrong refusal:\n${r.out}`);
+  const tags = sh(root, 'git -C remote.git tag -l').trim();
+  assert.equal(tags, '', `nothing may be pushed on a rejected prefix, found: ${tags}`);
+});
+
+cell('RED: two tags for one build id refuses and names both rather than picking', () => {
+  const { work, state } = scaffold({ detached: false, extraTag: `other-${BUILD_ID}-source` });
+  const r = runShip(work, state);
+  assert.notEqual(r.code, 0);
+  assert.match(r.out, /found 2:/);
+  assert.match(r.out, /other-/);
+});
+
+cell('ANTI-VACUITY: removing the creation branch makes the inversion cell fail', () => {
+  const { work, state } = scaffold({ tag: false });
+  const ship = path.join(work, 'scripts/ckpt-ship.sh');
+  const src = fs.readFileSync(ship, 'utf8');
+  // Put back the old behaviour: refuse instead of creating the tag.
+  const mutant = src.replace(
+    /\[\[ -n "\$TAG_PREFIX" \]\] \|\| die \\/,
+    '[[ -z "$TAG_PREFIX" ]] || die \\',
+  );
+  assert.notEqual(mutant, src, 'the mutation must actually apply, or this cell proves nothing');
+  fs.writeFileSync(ship, mutant);
+  const r = runShip(work, state, '--tag-prefix=roster');
+  assert.notEqual(r.code, 0, 'with creation disabled the ship must refuse');
+  assert.doesNotMatch(r.out, /TAG FIRST: creating annotated tag/);
 });
 
 cell('ANTI-VACUITY: restoring the old precondition makes the detached cell fail', () => {

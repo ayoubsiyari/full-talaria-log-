@@ -13,6 +13,7 @@ CHECKPOINT=""
 BUILD_ID=""
 ROLLBACK_BUILD_ID=""
 SOURCE_TAG=""
+TAG_PREFIX=""
 NO_BUILD=0
 PLAN=0
 
@@ -25,6 +26,8 @@ Options:
   --no-build              Reuse already-published, digest-resolved images
   --plan                  Verify and print the complete plan without changing anything
   --source-tag=TAG        Override automatic unique *-<build-id>-source tag discovery
+  --tag-prefix=NAME       If no source tag exists yet, create NAME-<build-id>-source at HEAD,
+                          push it, and build from it. Tag first, by construction.
   --state-root=DIR        Durable state outside the repository
 EOF
 }
@@ -35,6 +38,7 @@ for arg in "$@"; do
     --build-id=*) BUILD_ID="${arg#*=}" ;;
     --rollback-build-id=*) ROLLBACK_BUILD_ID="${arg#*=}" ;;
     --source-tag=*) SOURCE_TAG="${arg#*=}" ;;
+    --tag-prefix=*) TAG_PREFIX="${arg#*=}" ;;
     --state-root=*) STATE_ROOT="${arg#*=}" ;;
     --no-build) NO_BUILD=1 ;;
     --plan) PLAN=1 ;;
@@ -47,6 +51,12 @@ done
 [[ "$CHECKPOINT" =~ ^CKPT-[0-9]+$ ]] || die "invalid or missing --checkpoint"
 [[ "$BUILD_ID" =~ ^[0-9]{8}b[0-9]+$ ]] || die "invalid or missing --build-id"
 [[ "$STATE_ROOT" == /* ]] || die "--state-root must be absolute"
+# A prefix becomes part of a permanent annotated tag name, so it is validated before
+# it can be written rather than after something has been pushed under it.
+[[ -z "$TAG_PREFIX" || "$TAG_PREFIX" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] \
+  || die "--tag-prefix must be alphanumeric with . _ - (got '$TAG_PREFIX')"
+[[ -z "$TAG_PREFIX" || -z "$SOURCE_TAG" ]] \
+  || die "--tag-prefix and --source-tag are mutually exclusive: one creates a tag, the other adopts one"
 case "$STATE_ROOT/" in "$ROOT/"*) die "--state-root must be outside the repository" ;; esac
 
 # Local shells are allowed. Remote operation must survive a dropped SSH session.
@@ -81,15 +91,67 @@ if [[ -z "$SOURCE_TAG" ]]; then
     git ls-remote --tags "$REMOTE" "refs/tags/*-$BUILD_ID-source^{}" |
       awk -F'/' '{sub(/\^\{\}$/, "", $NF); print $NF}'
   )
-  [[ "${#SOURCE_TAGS[@]}" -eq 1 ]] || die \
-"expected exactly one pushed annotated *-$BUILD_ID-source tag; found ${#SOURCE_TAGS[@]}.
-       Tag first, then ship:
-         git tag -a <name>-$BUILD_ID-source -m 'Source tag for build $BUILD_ID'
-         git push $REMOTE <name>-$BUILD_ID-source
+  case "${#SOURCE_TAGS[@]}" in
+    1) SOURCE_TAG="${SOURCE_TAGS[0]}" ;;
+    0)
+      # THE INVERSION. Refusing here and printing `git tag -a` for a human to run
+      # is what failed on 2026-08-03: the operator, mid-deploy, built from the tip
+      # instead and the tag was cut afterwards. Telling someone to do the safe
+      # thing manually, at the moment they are under pressure, is not a guard.
+      #
+      # So when this script has everything it needs to produce the tag, it
+      # produces it. The tree is already proven clean above, HEAD is a real commit,
+      # and `git push <remote> <tag>` carries the objects the tag needs, so the tag
+      # cannot name a commit the builder is unable to fetch. Tag first stops being
+      # a rule the operator has to remember and becomes the only thing that happens.
+      #
+      # The prefix is NOT guessed. Existing source tags use roster-, d034-,
+      # mc-restore-, rev17- and others: the prefix names the work, so inventing one
+      # would put a wrong name on the permanent record of a build.
+      # "No tag on the remote" and "a tag exists but was never pushed" are
+      # different mistakes with different fixes, and collapsing them into one
+      # message sends the operator to create a second tag for a build that already
+      # has one. Name the local-only tag instead.
+      mapfile -t LOCAL_TAGS < <(git tag -l "*-$BUILD_ID-source")
+      [[ "${#LOCAL_TAGS[@]}" -eq 0 ]] || die \
+"tag '${LOCAL_TAGS[0]}' exists locally but is not pushed to $REMOTE, so the builder
+       cannot fetch it. Push the tag you already have rather than making another:
+         git push $REMOTE ${LOCAL_TAGS[0]}
+       DO NOT build from the tip by hand instead."
+      [[ -n "$TAG_PREFIX" ]] || die \
+"no pushed annotated *-$BUILD_ID-source tag exists, and no --tag-prefix was given
+       to create one, so this script cannot produce the tag for you.
+         Re-run with:  --tag-prefix=<name>     (it will tag HEAD and push, then build)
+         Or pre-create: git tag -a <name>-$BUILD_ID-source -m 'Source tag for build $BUILD_ID'
+                        git push $REMOTE <name>-$BUILD_ID-source
+       The prefix names the work stream and is not guessable from the build id.
        DO NOT build from the tip by hand instead. That is precisely how b126 came
        to be described by its tag rather than produced by it, and the seal build
        may not repeat it."
-  SOURCE_TAG="${SOURCE_TAGS[0]}"
+      SOURCE_TAG="$TAG_PREFIX-$BUILD_ID-source"
+      git rev-parse -q --verify "refs/tags/$SOURCE_TAG" >/dev/null 2>&1 && die \
+"local tag '$SOURCE_TAG' already exists but is not pushed to $REMOTE.
+       Push it or delete it; this script will not silently adopt or move it."
+      printf 'TAG FIRST: creating annotated tag %s at %s and pushing to %s\n' \
+        "$SOURCE_TAG" "${HEAD_SHA:0:9}" "$REMOTE"
+      git tag -a "$SOURCE_TAG" -m "Source tag for build $BUILD_ID" "$HEAD_SHA" \
+        || die "could not create annotated tag $SOURCE_TAG"
+      # If the push fails the tag exists only locally, which the check below would
+      # catch anyway -- but delete it here so a retry is not blocked by the debris
+      # of the attempt that failed.
+      git push "$REMOTE" "refs/tags/$SOURCE_TAG" >/dev/null 2>&1 || {
+        git tag -d "$SOURCE_TAG" >/dev/null 2>&1 || true
+        die "could not push tag $SOURCE_TAG to $REMOTE; nothing was built and the local tag was removed"
+      }
+      ;;
+    *)
+      die \
+"expected exactly one pushed annotated *-$BUILD_ID-source tag; found ${#SOURCE_TAGS[@]}:
+         ${SOURCE_TAGS[*]}
+       Two tags for one build id is ambiguous and this script will not choose for
+       you. Delete the wrong one, or name the right one with --source-tag=<tag>."
+      ;;
+  esac
 fi
 
 # An explicitly supplied --source-tag used to be taken on trust and handed
