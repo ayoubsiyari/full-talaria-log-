@@ -85,7 +85,10 @@ export const C_LANE_GATES = [
   },
   {
     id: 'COV-01-BASIS',
-    symbol: 'coverageAcrossProcesses',
+    // The instruments call `captureDetailedDump`; `coverageAcrossProcesses` is its internal and was
+    // the symbol this gate first named, which made it read SELF_TEST_ONLY while genuinely bound.
+    // Presence is not binding, and neither is binding to the wrong name.
+    symbol: 'captureDetailedDump',
     module: 'scripts/lib/detailed-dump-capture.mjs',
     refuses: 'one renderer\'s arenas being divided by every Chrome process\'s private memory and the '
       + 'shortfall read as unnamed memory — and, separately, overlapping roots summing past the total '
