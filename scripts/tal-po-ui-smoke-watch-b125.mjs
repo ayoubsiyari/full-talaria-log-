@@ -1,10 +1,6 @@
 #!/usr/bin/env node
 /**
- * Watch for b125, then fire the sealed A3 daily-boundary canary.
- *
- * This intentionally captures the live surface coordinates (badge/digest/SHA)
- * at the moment b125 appears, then passes them to the real canary runner. That
- * keeps the run sealed without needing the digest before the cut exists.
+ * Watch for b125, then fire the sealed TAL/Rayan PO UI smoke canary.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -25,14 +21,14 @@ function argOf(name, fallback = '') {
 }
 
 const ORIGIN = String(argOf('origin', process.env.TEST_VPS_URL || 'http://31.97.192.82:3000')).replace(/\/$/, '');
-const EXPECT_BADGE = String(argOf('expect-badge', process.env.A3_DAILY_EXPECT_BADGE || '20260803b125'));
+const EXPECT_BADGE = String(argOf('expect-badge', process.env.TAL_PO_UI_EXPECT_BADGE || '20260803b125'));
 const EVERY_MS = Math.max(5000, Number(argOf('everyMs', '30000')) || 30000);
-const OUT_JSONL = path.resolve(repoRoot, argOf('watch-out', 'docs/plan3/evidence/a3-daily-canary-watch-b125.jsonl'));
-const CANARY_OUT = path.resolve(repoRoot, argOf('canary-out', 'docs/plan3/evidence/a3-daily-money-path-boundary-canary-b125.json'));
-const CANARY_SCRIPT = path.join(__dirname, 'a3-daily-money-path-boundary-canary.mjs');
+const OUT_JSONL = path.resolve(repoRoot, argOf('watch-out', 'docs/plan3/evidence/tal-po-ui-smoke-watch-b125.jsonl'));
+const CANARY_OUT = path.resolve(repoRoot, argOf('canary-out', 'docs/plan3/evidence/tal-po-ui-smoke-b125.json'));
+const CANARY_SCRIPT = path.join(__dirname, 'tal-po-ui-smoke-canary.mjs');
 const QUEUE_SCRIPT = path.join(__dirname, 'measurement-queue.mjs');
 const QUEUE_OWNER = String(argOf('queue-owner', 'D'));
-const QUEUE_RUN = String(argOf('queue-run', 'A3-DAILY-BOUNDARY-CANARY'));
+const QUEUE_RUN = String(argOf('queue-run', 'TAL-PO-UI-SMOKE'));
 const QUEUE_ETA = String(argOf('queue-eta', '5m'));
 const FORCE_PREFLIGHT_EXIT = argOf('force-preflight-exit', '');
 const STOP_AFTER_BLOCKS = Math.max(0, Number(argOf('stop-after-blocks', '0')) || 0);
@@ -77,7 +73,7 @@ function claimQueueOrBlock(surface) {
   const preflight = queueCommand(['preflight', `--owner=${QUEUE_OWNER}`]);
   if (!preflight.ok) {
     append({ event: 'QUEUE_BLOCKED_PREFLIGHT', surface, preflight });
-    console.error(`A3_DAILY_CANARY_BLOCKED_QUEUE preflight code=${preflight.code} ${String(preflight.stdout || preflight.stderr).replace(/\s+/g, ' ').slice(0, 240)}`);
+    console.error(`TAL_PO_UI_SMOKE_BLOCKED_QUEUE preflight code=${preflight.code} ${String(preflight.stdout || preflight.stderr).replace(/\s+/g, ' ').slice(0, 240)}`);
     return { ok: false, stage: 'preflight', detail: preflight };
   }
   const claim = queueCommand([
@@ -89,11 +85,11 @@ function claimQueueOrBlock(surface) {
   ]);
   if (!claim.ok) {
     append({ event: 'QUEUE_BLOCKED_CLAIM', surface, claim });
-    console.error(`A3_DAILY_CANARY_BLOCKED_QUEUE claim code=${claim.code} ${String(claim.stdout || claim.stderr).replace(/\s+/g, ' ').slice(0, 240)}`);
+    console.error(`TAL_PO_UI_SMOKE_BLOCKED_QUEUE claim code=${claim.code} ${String(claim.stdout || claim.stderr).replace(/\s+/g, ' ').slice(0, 240)}`);
     return { ok: false, stage: 'claim', detail: claim };
   }
   append({ event: 'QUEUE_CLAIMED', surface, claim: claim.stdout, owner: QUEUE_OWNER, run: QUEUE_RUN, pid: process.pid });
-  console.error(`A3_DAILY_CANARY_QUEUE_CLAIMED owner=${QUEUE_OWNER} run=${QUEUE_RUN} pid=${process.pid}`);
+  console.error(`TAL_PO_UI_SMOKE_QUEUE_CLAIMED owner=${QUEUE_OWNER} run=${QUEUE_RUN} pid=${process.pid}`);
   return { ok: true, claim };
 }
 
@@ -101,8 +97,8 @@ function releaseQueue() {
   const release = queueCommand(['release', `--owner=${QUEUE_OWNER}`]);
   append({ event: release.ok ? 'QUEUE_RELEASED' : 'QUEUE_RELEASE_FAILED', release });
   console.error(release.ok
-    ? `A3_DAILY_CANARY_QUEUE_RELEASED owner=${QUEUE_OWNER}`
-    : `A3_DAILY_CANARY_QUEUE_RELEASE_FAILED code=${release.code}`);
+    ? `TAL_PO_UI_SMOKE_QUEUE_RELEASED owner=${QUEUE_OWNER}`
+    : `TAL_PO_UI_SMOKE_QUEUE_RELEASE_FAILED code=${release.code}`);
   return release;
 }
 
@@ -122,7 +118,7 @@ function runCanary(surface) {
       '--out', CANARY_OUT,
     ];
     append({ event: 'RUN_START', args: args.slice(1), surface });
-    console.error(`A3_DAILY_CANARY_FIRED badge=${surface.badge} digest=${surface.digest} sha=${surface.sourceCommitSha}`);
+    console.error(`TAL_PO_UI_SMOKE_FIRED badge=${surface.badge} digest=${surface.digest} sha=${surface.sourceCommitSha}`);
     const child = spawn(process.execPath, args, {
       cwd: repoRoot,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -151,14 +147,14 @@ function runCanary(surface) {
         stdoutTail: stdout.slice(-2000),
         stderrTail: stderr.slice(-2000),
       });
-      console.error(ok ? 'A3_DAILY_CANARY_PASSED' : `A3_DAILY_CANARY_FAILED code=${code} signal=${signal || ''}`);
+      console.error(ok ? 'TAL_PO_UI_SMOKE_PASSED' : `TAL_PO_UI_SMOKE_FAILED code=${code} signal=${signal || ''}`);
       resolve({ ok, code, signal });
     });
   });
 }
 
 append({ event: 'WATCH_START', origin: ORIGIN, expectBadge: EXPECT_BADGE, everyMs: EVERY_MS, canaryOut: CANARY_OUT });
-console.error(`A3_DAILY_CANARY_WATCH_START badge=${EXPECT_BADGE} origin=${ORIGIN} everyMs=${EVERY_MS}`);
+console.error(`TAL_PO_UI_SMOKE_WATCH_START badge=${EXPECT_BADGE} origin=${ORIGIN} everyMs=${EVERY_MS}`);
 
 let fired = false;
 let blockedCount = 0;
@@ -168,7 +164,7 @@ while (!fired) {
     surface = await readCandidateCoordinates(ORIGIN);
   } catch (e) {
     append({ event: 'POLL_ERROR', error: String(e && e.message || e) });
-    console.error(`A3_DAILY_CANARY_WAIT error=${String(e && e.message || e).slice(0, 160)}`);
+    console.error(`TAL_PO_UI_SMOKE_WAIT error=${String(e && e.message || e).slice(0, 160)}`);
     await sleep(EVERY_MS);
     continue;
   }
@@ -181,7 +177,7 @@ while (!fired) {
       blockedCount += 1;
       append({ event: 'BLOCKED_RETRY', blockedCount, stopAfterBlocks: STOP_AFTER_BLOCKS });
       if (STOP_AFTER_BLOCKS > 0 && blockedCount >= STOP_AFTER_BLOCKS) {
-        console.error(`A3_DAILY_CANARY_RETRY_PROOF blockedCount=${blockedCount}`);
+        console.error(`TAL_PO_UI_SMOKE_RETRY_PROOF blockedCount=${blockedCount}`);
         process.exitCode = 0;
         break;
       }
@@ -192,6 +188,6 @@ while (!fired) {
     process.exitCode = result.ok ? 0 : 2;
     break;
   }
-  console.error(`A3_DAILY_CANARY_WAIT observed=${surface.badge || '-'} sealed=${sealed ? 'yes' : 'no'}`);
+  console.error(`TAL_PO_UI_SMOKE_WAIT observed=${surface.badge || '-'} sealed=${sealed ? 'yes' : 'no'}`);
   await sleep(EVERY_MS);
 }

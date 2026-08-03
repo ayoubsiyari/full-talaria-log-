@@ -48,7 +48,7 @@ function hasFlag(name) {
 const SELFTEST = hasFlag('selftest');
 const ORIGIN = String(argOf('origin', process.env.TEST_VPS_URL || 'http://31.97.192.82:3000')).replace(/\/$/, '');
 const EXPECT = {
-  badge: String(argOf('expect-badge', process.env.A3_DAILY_EXPECT_BADGE || '20260802b125')),
+  badge: String(argOf('expect-badge', process.env.A3_DAILY_EXPECT_BADGE || '20260803b125')),
   digest: String(argOf('expect-digest', process.env.A3_DAILY_EXPECT_DIGEST || '')),
   sourceCommitSha: String(argOf('expect-sha', process.env.A3_DAILY_EXPECT_SHA || '')),
 };
