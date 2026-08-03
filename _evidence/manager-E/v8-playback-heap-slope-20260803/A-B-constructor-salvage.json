@@ -1,0 +1,479 @@
+{
+  "signature": "V8-PLAYBACK-A-B-CONSTRUCTOR-SALVAGE-V1",
+  "generatedAt": "2026-08-03T11:04:44.376Z",
+  "scope": "two-point salvage only; not a three-point branch decision and cannot answer flattening vs sustained slope",
+  "workload": "CONF-01 same-symbol four panels playing at 10 bars/s, zero pair switches; A and B forced-GC heap snapshots survived",
+  "snapshots": {
+    "A": {
+      "file": "_evidence\\manager-E\\v8-playback-heap-slope-20260803\\A.heapsnapshot",
+      "fileMB": 152.454,
+      "nodeCount": 3153700,
+      "edgeCount": 6394521
+    },
+    "B": {
+      "file": "_evidence\\manager-E\\v8-playback-heap-slope-20260803\\B.heapsnapshot",
+      "fileMB": 324.947,
+      "nodeCount": 5101426,
+      "edgeCount": 15350975
+    }
+  },
+  "totals": {
+    "positiveSelfDeltaMB": 58.404,
+    "netSelfDeltaMB": 51.73,
+    "topN": 30
+  },
+  "topGrowers": [
+    {
+      "constructor": "Object",
+      "countBefore": 123014,
+      "countAfter": 507682,
+      "countDelta": 384668,
+      "selfBeforeMB": 3.933,
+      "selfAfterMB": 19.026,
+      "selfDeltaMB": 15.093
+    },
+    {
+      "constructor": "system / Context",
+      "countBefore": 20307,
+      "countAfter": 707564,
+      "countDelta": 687257,
+      "selfBeforeMB": 0.533,
+      "selfAfterMB": 14.424,
+      "selfDeltaMB": 13.891
+    },
+    {
+      "constructor": "heap number",
+      "countBefore": 415533,
+      "countAfter": 1307502,
+      "countDelta": 891969,
+      "selfBeforeMB": 4.755,
+      "selfAfterMB": 14.963,
+      "selfDeltaMB": 10.208
+    },
+    {
+      "constructor": "m20Q6CapturedClear",
+      "countBefore": 4901,
+      "countAfter": 243139,
+      "countDelta": 238238,
+      "selfBeforeMB": 0.15,
+      "selfAfterMB": 7.42,
+      "selfDeltaMB": 7.27
+    },
+    {
+      "constructor": "(object elements)",
+      "countBefore": 11700,
+      "countAfter": 5244,
+      "countDelta": -6456,
+      "selfBeforeMB": 1.058,
+      "selfAfterMB": 3.031,
+      "selfDeltaMB": 1.974
+    },
+    {
+      "constructor": "timeout:",
+      "countBefore": 0,
+      "countAfter": 94924,
+      "countDelta": 94924,
+      "selfBeforeMB": 0,
+      "selfAfterMB": 1.811,
+      "selfDeltaMB": 1.811
+    },
+    {
+      "constructor": "(concatenated string)",
+      "countBefore": 39847,
+      "countAfter": 104112,
+      "countDelta": 64265,
+      "selfBeforeMB": 0.76,
+      "selfAfterMB": 1.986,
+      "selfDeltaMB": 1.226
+    },
+    {
+      "constructor": "system / TrustedByteArray",
+      "countBefore": 10286,
+      "countAfter": 8412,
+      "countDelta": -1874,
+      "selfBeforeMB": 1.998,
+      "selfAfterMB": 2.502,
+      "selfDeltaMB": 0.504
+    },
+    {
+      "constructor": "system / InstructionStream",
+      "countBefore": 4193,
+      "countAfter": 3540,
+      "countDelta": -653,
+      "selfBeforeMB": 8.525,
+      "selfAfterMB": 8.947,
+      "selfDeltaMB": 0.422
+    },
+    {
+      "constructor": "system / ProtectedFixedArray",
+      "countBefore": 3351,
+      "countAfter": 3791,
+      "countDelta": 440,
+      "selfBeforeMB": 0.61,
+      "selfAfterMB": 0.872,
+      "selfDeltaMB": 0.262
+    },
+    {
+      "constructor": "system / WeakArrayList",
+      "countBefore": 4528,
+      "countAfter": 4947,
+      "countDelta": 419,
+      "selfBeforeMB": 0.293,
+      "selfAfterMB": 0.493,
+      "selfDeltaMB": 0.2
+    },
+    {
+      "constructor": "TaskAttributionTiming",
+      "countBefore": 207,
+      "countAfter": 801,
+      "countDelta": 594,
+      "selfBeforeMB": 0.024,
+      "selfAfterMB": 0.092,
+      "selfDeltaMB": 0.068
+    },
+    {
+      "constructor": "PerformanceLongTaskTiming",
+      "countBefore": 207,
+      "countAfter": 801,
+      "countDelta": 594,
+      "selfBeforeMB": 0.02,
+      "selfAfterMB": 0.079,
+      "selfDeltaMB": 0.059
+    },
+    {
+      "constructor": "PerformanceScriptTiming",
+      "countBefore": 590,
+      "countAfter": 985,
+      "countDelta": 395,
+      "selfBeforeMB": 0.063,
+      "selfAfterMB": 0.105,
+      "selfDeltaMB": 0.042
+    },
+    {
+      "constructor": "2026-5-29",
+      "countBefore": 0,
+      "countAfter": 1495,
+      "countDelta": 1495,
+      "selfBeforeMB": 0,
+      "selfAfterMB": 0.034,
+      "selfDeltaMB": 0.034
+    },
+    {
+      "constructor": "2026-5-30",
+      "countBefore": 0,
+      "countAfter": 1495,
+      "countDelta": 1495,
+      "selfBeforeMB": 0,
+      "selfAfterMB": 0.034,
+      "selfDeltaMB": 0.034
+    },
+    {
+      "constructor": "2026-5-26",
+      "countBefore": 0,
+      "countAfter": 1393,
+      "countDelta": 1393,
+      "selfBeforeMB": 0,
+      "selfAfterMB": 0.032,
+      "selfDeltaMB": 0.032
+    },
+    {
+      "constructor": "2026-6-2",
+      "countBefore": 0,
+      "countAfter": 1633,
+      "countDelta": 1633,
+      "selfBeforeMB": 0,
+      "selfAfterMB": 0.031,
+      "selfDeltaMB": 0.031
+    },
+    {
+      "constructor": "2026-6-1",
+      "countBefore": 0,
+      "countAfter": 1477,
+      "countDelta": 1477,
+      "selfBeforeMB": 0,
+      "selfAfterMB": 0.028,
+      "selfDeltaMB": 0.028
+    },
+    {
+      "constructor": "2026-6-3",
+      "countBefore": 0,
+      "countAfter": 1386,
+      "countDelta": 1386,
+      "selfBeforeMB": 0,
+      "selfAfterMB": 0.026,
+      "selfDeltaMB": 0.026
+    },
+    {
+      "constructor": "system / TrustedWeakFixedArray",
+      "countBefore": 1676,
+      "countAfter": 1896,
+      "countDelta": 220,
+      "selfBeforeMB": 0.059,
+      "selfAfterMB": 0.082,
+      "selfDeltaMB": 0.022
+    },
+    {
+      "constructor": "2026-6-6",
+      "countBefore": 0,
+      "countAfter": 888,
+      "countDelta": 888,
+      "selfBeforeMB": 0,
+      "selfAfterMB": 0.017,
+      "selfDeltaMB": 0.017
+    },
+    {
+      "constructor": "PerformanceResourceTiming",
+      "countBefore": 412,
+      "countAfter": 512,
+      "countDelta": 100,
+      "selfBeforeMB": 0.053,
+      "selfAfterMB": 0.066,
+      "selfDeltaMB": 0.013
+    },
+    {
+      "constructor": "PerformanceLongAnimationFrameTiming",
+      "countBefore": 131,
+      "countAfter": 201,
+      "countDelta": 70,
+      "selfBeforeMB": 0.019,
+      "selfAfterMB": 0.029,
+      "selfDeltaMB": 0.01
+    },
+    {
+      "constructor": "DOMRectReadOnly",
+      "countBefore": 361,
+      "countAfter": 497,
+      "countDelta": 136,
+      "selfBeforeMB": 0.019,
+      "selfAfterMB": 0.026,
+      "selfDeltaMB": 0.007
+    },
+    {
+      "constructor": "CSSAnimation",
+      "countBefore": 25,
+      "countAfter": 38,
+      "countDelta": 13,
+      "selfBeforeMB": 0.012,
+      "selfAfterMB": 0.018,
+      "selfDeltaMB": 0.006
+    },
+    {
+      "constructor": "2026-5-25",
+      "countBefore": 0,
+      "countAfter": 263,
+      "countDelta": 263,
+      "selfBeforeMB": 0,
+      "selfAfterMB": 0.006,
+      "selfDeltaMB": 0.006
+    },
+    {
+      "constructor": "KeyframeEffect",
+      "countBefore": 25,
+      "countAfter": 38,
+      "countDelta": 13,
+      "selfBeforeMB": 0.01,
+      "selfAfterMB": 0.015,
+      "selfDeltaMB": 0.005
+    },
+    {
+      "constructor": "(script line ends)",
+      "countBefore": 29,
+      "countAfter": 29,
+      "countDelta": 0,
+      "selfBeforeMB": 0.649,
+      "selfAfterMB": 0.652,
+      "selfDeltaMB": 0.003
+    },
+    {
+      "constructor": "LayoutShiftAttribution",
+      "countBefore": 174,
+      "countAfter": 244,
+      "countDelta": 70,
+      "selfBeforeMB": 0.007,
+      "selfAfterMB": 0.009,
+      "selfDeltaMB": 0.003
+    }
+  ],
+  "topShrinkers": [
+    {
+      "constructor": "system / ExternalStringData",
+      "countBefore": 2598,
+      "countAfter": 1782,
+      "countDelta": -816,
+      "selfBeforeMB": 27.255,
+      "selfAfterMB": 25.759,
+      "selfDeltaMB": -1.496
+    },
+    {
+      "constructor": "system / BytecodeArray",
+      "countBefore": 5926,
+      "countAfter": 1647,
+      "countDelta": -4279,
+      "selfBeforeMB": 1.828,
+      "selfAfterMB": 0.813,
+      "selfDeltaMB": -1.015
+    },
+    {
+      "constructor": "system / DescriptorArray",
+      "countBefore": 9150,
+      "countAfter": 6070,
+      "countDelta": -3080,
+      "selfBeforeMB": 1.149,
+      "selfAfterMB": 0.833,
+      "selfDeltaMB": -0.316
+    },
+    {
+      "constructor": "(object properties)",
+      "countBefore": 947,
+      "countAfter": 574,
+      "countDelta": -373,
+      "selfBeforeMB": 0.871,
+      "selfAfterMB": 0.557,
+      "selfDeltaMB": -0.314
+    },
+    {
+      "constructor": "system / Map",
+      "countBefore": 31551,
+      "countAfter": 23612,
+      "countDelta": -7939,
+      "selfBeforeMB": 1.197,
+      "selfAfterMB": 0.894,
+      "selfDeltaMB": -0.303
+    },
+    {
+      "constructor": "system / ObjectBoilerplateDescription",
+      "countBefore": 9812,
+      "countAfter": 3141,
+      "countDelta": -6671,
+      "selfBeforeMB": 0.428,
+      "selfAfterMB": 0.145,
+      "selfDeltaMB": -0.284
+    },
+    {
+      "constructor": "(constant pool)",
+      "countBefore": 5544,
+      "countAfter": 1583,
+      "countDelta": -3961,
+      "selfBeforeMB": 0.356,
+      "selfAfterMB": 0.124,
+      "selfDeltaMB": -0.233
+    },
+    {
+      "constructor": "system / ScopeInfo",
+      "countBefore": 7589,
+      "countAfter": 4297,
+      "countDelta": -3292,
+      "selfBeforeMB": 0.372,
+      "selfAfterMB": 0.213,
+      "selfDeltaMB": -0.159
+    },
+    {
+      "constructor": "system / FeedbackMetadata",
+      "countBefore": 5658,
+      "countAfter": 1631,
+      "countDelta": -4027,
+      "selfBeforeMB": 0.247,
+      "selfAfterMB": 0.091,
+      "selfDeltaMB": -0.155
+    },
+    {
+      "constructor": "system / FeedbackCell",
+      "countBefore": 45741,
+      "countAfter": 38161,
+      "countDelta": -7580,
+      "selfBeforeMB": 0.698,
+      "selfAfterMB": 0.582,
+      "selfDeltaMB": -0.116
+    },
+    {
+      "constructor": "system / PropertyCell",
+      "countBefore": 17299,
+      "countAfter": 11389,
+      "countDelta": -5910,
+      "selfBeforeMB": 0.33,
+      "selfAfterMB": 0.217,
+      "selfDeltaMB": -0.113
+    },
+    {
+      "constructor": "Array",
+      "countBefore": 14074,
+      "countAfter": 6741,
+      "countDelta": -7333,
+      "selfBeforeMB": 0.215,
+      "selfAfterMB": 0.103,
+      "selfDeltaMB": -0.112
+    },
+    {
+      "constructor": "system / SharedFunctionInfo",
+      "countBefore": 4454,
+      "countAfter": 2332,
+      "countDelta": -2122,
+      "selfBeforeMB": 0.202,
+      "selfAfterMB": 0.105,
+      "selfDeltaMB": -0.097
+    },
+    {
+      "constructor": "system / AccessorPair",
+      "countBefore": 14318,
+      "countAfter": 8280,
+      "countDelta": -6038,
+      "selfBeforeMB": 0.164,
+      "selfAfterMB": 0.095,
+      "selfDeltaMB": -0.069
+    },
+    {
+      "constructor": "system / FeedbackVector",
+      "countBefore": 5163,
+      "countAfter": 4356,
+      "countDelta": -807,
+      "selfBeforeMB": 1.104,
+      "selfAfterMB": 1.048,
+      "selfDeltaMB": -0.056
+    },
+    {
+      "constructor": "system / PropertyArray",
+      "countBefore": 27649,
+      "countAfter": 25640,
+      "countDelta": -2009,
+      "selfBeforeMB": 0.622,
+      "selfAfterMB": 0.569,
+      "selfDeltaMB": -0.053
+    },
+    {
+      "constructor": "system / UncompiledDataWithoutPreparseData",
+      "countBefore": 12064,
+      "countAfter": 9355,
+      "countDelta": -2709,
+      "selfBeforeMB": 0.23,
+      "selfAfterMB": 0.178,
+      "selfDeltaMB": -0.052
+    },
+    {
+      "constructor": "(context local names)",
+      "countBefore": 10,
+      "countAfter": 7,
+      "countDelta": -3,
+      "selfBeforeMB": 0.118,
+      "selfAfterMB": 0.075,
+      "selfDeltaMB": -0.043
+    },
+    {
+      "constructor": "system / Code",
+      "countBefore": 4193,
+      "countAfter": 3540,
+      "countDelta": -653,
+      "selfBeforeMB": 0.256,
+      "selfAfterMB": 0.216,
+      "selfDeltaMB": -0.04
+    },
+    {
+      "constructor": "(constant elements)",
+      "countBefore": 3079,
+      "countAfter": 971,
+      "countDelta": -2108,
+      "selfBeforeMB": 0.065,
+      "selfAfterMB": 0.025,
+      "selfDeltaMB": -0.039
+    }
+  ]
+}

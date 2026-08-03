@@ -1,24 +1,37 @@
 /**
- * V8-MONOTONE-HEAP-DIFF-30M
+ * V8-PLAYBACK-HEAP-SLOPE-90M
  *
- * Same page/renderer, two forced-GC heap snapshots separated by a steady-state
- * wait. Diff by constructor, then summarize retainer paths for the growers.
+ * CONF-01 playback attribution for renderer-scoped V8 growth:
+ * - four panels, same-symbol CONF-01, real playback at 10 bars/s
+ * - minimum three forced-GC heap snapshots across the run
+ * - constructor diffs for each segment plus end-to-end
+ * - retainer paths for sustained growers
  */
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { startServer } from '../chart v 1.4/chart/multichart-prod/harness/serve.mjs';
-import { embedFrames, sleep } from '../chart v 1.4/chart/multichart-prod/harness/harness-lib.mjs';
-import { loadPuppeteer } from './lib/heap-cycle-browser.mjs';
+import { sleep } from '../chart v 1.4/chart/multichart-prod/harness/harness-lib.mjs';
 import { aggregateHeapSnapshotByConstructor, compareConstructorAggregates } from './lib/heap-snapshot-aggregates.mjs';
 import { aggregateRetainerPaths } from './lib/heap-retainer-paths.mjs';
 import { takeEndOfArmSnapshot } from './lib/end-of-arm-snapshot.mjs';
+import {
+  bootConf01Session,
+  keepConf01Playing,
+  readConf01State,
+} from './lib/conf01-session.mjs';
+import { HEAP_CYCLE_DATASET_MODE_SAME_SYMBOL } from './lib/heap-cycle-dataset-config.mjs';
+import { loadConf05Indicators } from './lib/conf05-indicators.mjs';
 
 const MB = 1024 * 1024;
-const OUT_DIR = arg('outDir', '_evidence/manager-E/v8-monotone-heap-diff-20260802');
-const WAIT_MIN = Number(arg('waitMin', '30'));
+const OUT_DIR = arg('outDir', '_evidence/manager-E/v8-playback-heap-slope-20260803');
+const TOTAL_MIN = Number(arg('totalMin', '90'));
+const SNAPSHOTS = Math.max(3, Number(arg('snapshots', '3')));
 const SNAP_CAP_MB = Number(arg('snapCapMB', '3072'));
 const TOP_N = Number(arg('topN', '25'));
+const SPEED = Number(arg('speed', '10'));
+const SNAPSHOT_INTERVAL_MS = Math.round((TOTAL_MIN * 60_000) / (SNAPSHOTS - 1));
+const FORCE_OUT = process.argv.includes('--forceOut') || arg('forceOut', '0') === '1';
+const LOCK_FILE = path.join(OUT_DIR, '.v8-playback-heap-slope.lock');
 
 function arg(name, fallback = null) {
   const prefix = `--${name}=`;
@@ -27,7 +40,7 @@ function arg(name, fallback = null) {
 }
 
 function log(...args) {
-  console.error(`[v8-heap-diff ${new Date().toISOString()}]`, ...args);
+  console.error(`[v8-playback-heap ${new Date().toISOString()}]`, ...args);
 }
 
 function mb(bytes) {
@@ -37,6 +50,45 @@ function mb(bytes) {
 function save(report) {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   fs.writeFileSync(path.join(OUT_DIR, 'report.json'), JSON.stringify(report, null, 2));
+}
+
+function existingEvidenceNames() {
+  if (!fs.existsSync(OUT_DIR)) return [];
+  return fs.readdirSync(OUT_DIR)
+    .filter((name) => name === 'report.json' || /\.heapsnapshot$/i.test(name));
+}
+
+function acquireOutDirLock() {
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+  if (!FORCE_OUT) {
+    const existing = existingEvidenceNames();
+    if (existing.length) {
+      throw new Error(
+        `OUTDIR_HAS_EXISTING_EVIDENCE: ${OUT_DIR} already contains ${existing.join(', ')}; `
+        + 'archive it or pass --forceOut=1 intentionally',
+      );
+    }
+  }
+  try {
+    const fd = fs.openSync(LOCK_FILE, 'wx');
+    fs.writeFileSync(fd, JSON.stringify({
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      argv: process.argv.slice(2),
+    }, null, 2));
+    fs.closeSync(fd);
+    return true;
+  } catch (e) {
+    if (e?.code === 'EEXIST') {
+      throw new Error(`OUTDIR_LOCKED: ${LOCK_FILE} already exists; another run may be active or died without cleanup`);
+    }
+    throw e;
+  }
+}
+
+function releaseOutDirLock(acquired) {
+  if (!acquired) return;
+  try { fs.unlinkSync(LOCK_FILE); } catch (_) {}
 }
 
 async function forceCollect(page) {
@@ -87,70 +139,14 @@ async function metrics(page, label) {
   }
 }
 
-async function boot(page, url) {
-  await page.goto(`${url}/harness/host.html?pair=same&panels=4&tf=1m&hostFile=25`, {
-    waitUntil: 'domcontentloaded',
-    timeout: 60000,
-  });
-  const deadline = Date.now() + 45000;
-  let state = null;
-  while (Date.now() < deadline) {
-    state = {
-      hostChart: await page.evaluate(() => !!window.chart).catch(() => false),
-      iframeCharts: 0,
-      iframeCount: embedFrames(page).length,
-      urls: [page.mainFrame(), ...embedFrames(page)].map((f) => f.url()).slice(0, 8),
-    };
-    for (const f of embedFrames(page)) {
-      if (await f.evaluate(() => !!window.chart).catch(() => false)) state.iframeCharts += 1;
-    }
-    if (state.hostChart && state.iframeCharts >= 3) return state;
-    await sleep(250);
-  }
-  return state;
+async function playbackState(page, label, { advanceWindowMs = 6_000 } = {}) {
+  const state = await readConf01State(page, { advanceWindowMs }).catch((e) => ({
+    error: String(e?.message || e),
+  }));
+  return { label, at: new Date().toISOString(), state };
 }
 
-async function startSteadyReplay(page) {
-  return page.evaluate(() => {
-    const rows = [];
-    const visit = (w, realm) => {
-      try {
-        const chart = w.chart || null;
-        const rs = chart?.replaySystem || w.replaySystem || null;
-        if (!rs) {
-          rows.push({ realm, ok: false, reason: 'missing replaySystem' });
-          return;
-        }
-        if (typeof rs.setSpeed === 'function') {
-          try { rs.setSpeed(10); } catch (_) {}
-        }
-        if (typeof rs.play === 'function') {
-          if (!rs.isPlaying) rs.play();
-        } else if (typeof rs.togglePlayPause === 'function' && !rs.isPlaying) {
-          rs.togglePlayPause();
-        }
-        rows.push({
-          realm,
-          ok: true,
-          isPlaying: !!rs.isPlaying,
-          currentIndex: Number.isFinite(rs.currentIndex) ? rs.currentIndex : null,
-          replayTimestamp: Number.isFinite(rs.replayTimestamp) ? rs.replayTimestamp : null,
-        });
-      } catch (e) {
-        rows.push({ realm, ok: false, reason: String(e?.message || e) });
-      }
-    };
-    visit(window, 'host');
-    for (let i = 0; i < window.frames.length; i += 1) {
-      try { visit(window.frames[i], `frame-${i}`); } catch (e) {
-        rows.push({ realm: `frame-${i}`, ok: false, reason: String(e?.message || e) });
-      }
-    }
-    return rows;
-  }).catch((e) => [{ ok: false, reason: String(e?.message || e) }]);
-}
-
-async function readPlayhead(page) {
+async function readPlayheadSnapshot(page) {
   return page.evaluate(() => {
     const rows = [];
     const visit = (w, realm) => {
@@ -159,6 +155,7 @@ async function readPlayhead(page) {
         rows.push({
           realm,
           isPlaying: !!rs?.isPlaying,
+          isActive: !!rs?.isActive,
           currentIndex: Number.isFinite(rs?.currentIndex) ? rs.currentIndex : null,
           replayTimestamp: Number.isFinite(rs?.replayTimestamp) ? rs.replayTimestamp : null,
           dataLength: Array.isArray(w.chart?.data) ? w.chart.data.length : null,
@@ -176,29 +173,42 @@ async function readPlayhead(page) {
   }).catch((e) => [{ error: String(e?.message || e) }]);
 }
 
-async function waitWithHeartbeats(ms, report) {
+async function waitWithHeartbeats(ms, report, page, segmentLabel) {
   const start = Date.now();
   let next = start + 5 * 60_000;
   while (Date.now() - start < ms) {
     const remaining = ms - (Date.now() - start);
     await sleep(Math.min(30_000, Math.max(0, remaining)));
     if (Date.now() >= next || Date.now() - start >= ms) {
-      report.heartbeats.push({
+      const keep = await keepConf01Playing(page, SPEED).catch((e) => ({
+        error: String(e?.message || e),
+      }));
+      const playhead = await readPlayheadSnapshot(page);
+      const beat = {
         at: new Date().toISOString(),
+        segment: segmentLabel,
         elapsedMin: +((Date.now() - start) / 60_000).toFixed(2),
-      });
+        keepPlaying: keep,
+        playhead,
+      };
+      report.heartbeats.push(beat);
       save(report);
-      log(`heartbeat elapsed=${report.heartbeats.at(-1).elapsedMin}min`);
+      log(`heartbeat ${segmentLabel} elapsed=${beat.elapsedMin}min playing=${keep?.playing ?? 'n/a'}`);
       next += 5 * 60_000;
     }
   }
 }
 
 async function takeMoment(label, page, report) {
+  log(`${label}: keep playback alive before GC`);
+  const keepBefore = await keepConf01Playing(page, SPEED).catch((e) => ({
+    error: String(e?.message || e),
+  }));
   log(`${label}: force collecting`);
   await forceCollect(page);
-  const beforeMetrics = await metrics(page, `${label}-post-gc`);
-  const playhead = await readPlayhead(page);
+  const postGcMetrics = await metrics(page, `${label}-post-gc`);
+  const playhead = await readPlayheadSnapshot(page);
+  const advancing = await playbackState(page, `${label}-advance-check`);
   const snapFile = path.join(OUT_DIR, `${label}.heapsnapshot`);
   log(`${label}: snapshot -> ${snapFile}`);
   const snapMeta = await takeEndOfArmSnapshot(page, {
@@ -207,7 +217,14 @@ async function takeMoment(label, page, report) {
     requireFreeMB: SNAP_CAP_MB + 4096,
     timeoutMs: 900_000,
   });
-  report.moments[label] = { at: new Date().toISOString(), metrics: beforeMetrics, playhead, snapMeta };
+  report.moments[label] = {
+    at: new Date().toISOString(),
+    keepBefore,
+    metrics: postGcMetrics,
+    playhead,
+    advancing,
+    snapMeta,
+  };
   save(report);
   return report.moments[label];
 }
@@ -228,93 +245,129 @@ function formatGrowers(rows) {
   }));
 }
 
+function growth(label, beforeAgg, afterAgg) {
+  const rows = compareConstructorAggregates(beforeAgg, afterAgg)
+    .filter((r) => r.sizeDelta !== 0 || r.countDelta !== 0)
+    .sort((x, y) => y.sizeDelta - x.sizeDelta || y.countDelta - x.countDelta);
+  return {
+    label,
+    totalPositiveSizeDeltaMB: mb(rows.filter((r) => r.sizeDelta > 0).reduce((s, r) => s + r.sizeDelta, 0)),
+    totalNetSizeDeltaMB: mb(rows.reduce((s, r) => s + r.sizeDelta, 0)),
+    topGrowers: formatGrowers(rows.filter((r) => r.sizeDelta > 0)),
+    topShrinking: formatGrowers(rows.slice().sort((x, y) => x.sizeDelta - y.sizeDelta).filter((r) => r.sizeDelta < 0)),
+  };
+}
+
+function sustainedGrowerConstructors(segmentGrowth, endToEnd) {
+  const segments = segmentGrowth || [];
+  const positiveEverySegment = new Set();
+  for (const row of segments[0]?.topGrowers || []) {
+    if (segments.every((seg) => (seg.topGrowers || []).some((g) => g.constructor === row.constructor && g.sizeDeltaMB > 0))) {
+      positiveEverySegment.add(row.constructor);
+    }
+  }
+  const endTop = (endToEnd?.topGrowers || []).map((r) => r.constructor);
+  return [...new Set([...positiveEverySegment, ...endTop.slice(0, 8)])].slice(0, 12);
+}
+
 async function main() {
-  fs.mkdirSync(OUT_DIR, { recursive: true });
+  let outDirLockAcquired = false;
   const report = {
-    signature: 'V8-MONOTONE-HEAP-DIFF-30M',
+    signature: 'V8-PLAYBACK-HEAP-SLOPE-90M',
     startedAt: new Date().toISOString(),
     condition: {
-      surface: 'thin-host four-panel harness',
-      hostFile: 25,
-      pairSwitches: 0,
-      waitMin: WAIT_MIN,
+      surface: 'CONF-01 same-symbol four-panel dist-v9/backtest',
+      datasetMode: HEAP_CYCLE_DATASET_MODE_SAME_SYMBOL,
+      requestedSpeed: SPEED,
+      totalMin: TOTAL_MIN,
+      snapshots: SNAPSHOTS,
+      snapshotIntervalMin: +(SNAPSHOT_INTERVAL_MS / 60_000).toFixed(2),
       snapshotCapMB: SNAP_CAP_MB,
       topN: TOP_N,
-      note: 'Two snapshots are captured from one persistent page target after forced collection. This is a V8 attribution run, not a soak verdict.',
+      pairSwitches: 0,
+      nullThreshold: 'No named sustained multi-MB constructor/retainer across adjacent segments and end-to-end means warm-up plateau/floor-story; a named sustained grower means V8 slope owner.',
     },
     moments: {},
     heartbeats: [],
   };
-  save(report);
 
-  let srv;
-  let browser;
+  let session = null;
   try {
-    srv = await startServer(0);
-    const puppeteer = await loadPuppeteer();
-    browser = await puppeteer.launch({
-      headless: true,
-      protocolTimeout: 1_200_000,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--enable-precise-memory-info',
-        '--js-flags=--expose-gc',
-      ],
-      defaultViewport: { width: 1440, height: 960 },
+    outDirLockAcquired = acquireOutDirLock();
+    save(report);
+
+    const indicators = loadConf05Indicators().pairs;
+    log(`booting CONF-01 same-symbol playback speed=${SPEED}`);
+    session = await bootConf01Session({
+      indicators,
+      replaySpeed: SPEED,
+      placeOrder: false,
+      datasetMode: HEAP_CYCLE_DATASET_MODE_SAME_SYMBOL,
+      requireDeliveringPanels: 4,
+      label: 'v8-playback-heap-slope',
     });
-    const page = await browser.newPage();
-    report.boot = await boot(page, srv.url);
-    report.replayStart = await startSteadyReplay(page);
-    report.preAPlayhead = await readPlayhead(page);
+    const { page, browser } = session;
+    report.conf01 = session.conf01;
+    report.bootPlaybackState = await playbackState(page, 'boot');
+    report.bootMetrics = await metrics(page, 'boot');
     save(report);
 
-    const a = await takeMoment('A', page, report);
-    if (!a.snapMeta?.ok) throw new Error(`A snapshot failed: ${a.snapMeta?.failedWhy || a.snapMeta?.skippedWhy || 'unknown'}`);
-
-    report.replayResumeAfterA = await startSteadyReplay(page);
-    save(report);
-    log(`waiting ${WAIT_MIN} minutes before B`);
-    await waitWithHeartbeats(WAIT_MIN * 60_000, report);
-
-    const b = await takeMoment('B', page, report);
-    if (!b.snapMeta?.ok) throw new Error(`B snapshot failed: ${b.snapMeta?.failedWhy || b.snapMeta?.skippedWhy || 'unknown'}`);
+    const labels = Array.from({ length: SNAPSHOTS }, (_, i) => String.fromCharCode('A'.charCodeAt(0) + i));
+    for (let i = 0; i < labels.length; i += 1) {
+      const label = labels[i];
+      await takeMoment(label, page, report);
+      if (i < labels.length - 1) {
+        const segmentLabel = `${label}-${labels[i + 1]}`;
+        log(`waiting ${+(SNAPSHOT_INTERVAL_MS / 60_000).toFixed(2)} minutes for ${segmentLabel}`);
+        await keepConf01Playing(page, SPEED).catch(() => null);
+        await waitWithHeartbeats(SNAPSHOT_INTERVAL_MS, report, page, segmentLabel);
+      }
+    }
 
     log('parsing snapshots and diffing constructors');
-    const snapA = loadSnapshot(a.snapMeta.file);
-    const aggA = aggregateHeapSnapshotByConstructor(snapA);
-    const snapB = loadSnapshot(b.snapMeta.file);
-    const aggB = aggregateHeapSnapshotByConstructor(snapB);
-    const rows = compareConstructorAggregates(aggA, aggB)
-      .filter((r) => r.sizeDelta !== 0 || r.countDelta !== 0)
-      .sort((x, y) => y.sizeDelta - x.sizeDelta || y.countDelta - x.countDelta);
-    report.constructorGrowth = {
-      totalPositiveSizeDeltaMB: mb(rows.filter((r) => r.sizeDelta > 0).reduce((s, r) => s + r.sizeDelta, 0)),
-      totalNetSizeDeltaMB: mb(rows.reduce((s, r) => s + r.sizeDelta, 0)),
-      topGrowers: formatGrowers(rows.filter((r) => r.sizeDelta > 0)),
-      topShrinking: formatGrowers(rows.slice().sort((x, y) => x.sizeDelta - y.sizeDelta).filter((r) => r.sizeDelta < 0)),
-    };
-    const targets = report.constructorGrowth.topGrowers.slice(0, Math.min(8, TOP_N)).map((r) => r.constructor);
-    log(`retainers for ${targets.join(', ')}`);
-    report.retainerPaths = aggregateRetainerPaths(snapB, {
-      constructors: targets,
-      topPaths: 12,
-      maxDepth: 16,
-      samplePerCtor: 3000,
-    });
+    const snapshots = {};
+    const aggregates = {};
+    for (const label of labels) {
+      const meta = report.moments[label]?.snapMeta;
+      if (!meta?.ok || !meta.file) throw new Error(`${label} snapshot failed: ${meta?.failedWhy || meta?.skippedWhy || 'unknown'}`);
+      snapshots[label] = loadSnapshot(meta.file);
+      aggregates[label] = aggregateHeapSnapshotByConstructor(snapshots[label]);
+    }
+
+    const segmentGrowth = [];
+    for (let i = 0; i < labels.length - 1; i += 1) {
+      segmentGrowth.push(growth(`${labels[i]}-${labels[i + 1]}`, aggregates[labels[i]], aggregates[labels[i + 1]]));
+    }
+    const endToEnd = growth(`${labels[0]}-${labels.at(-1)}`, aggregates[labels[0]], aggregates[labels.at(-1)]);
+    report.constructorGrowth = { segments: segmentGrowth, endToEnd };
+
+    const targets = sustainedGrowerConstructors(segmentGrowth, endToEnd);
+    log(`retainers for ${targets.join(', ') || '(none)'}`);
+    report.retainerTargets = targets;
+    report.retainerPaths = targets.length
+      ? aggregateRetainerPaths(snapshots[labels.at(-1)], {
+        constructors: targets,
+        topPaths: 12,
+        maxDepth: 16,
+        samplePerCtor: 3000,
+      })
+      : null;
+    report.finalPlaybackState = await playbackState(page, 'final');
+    report.finalMetrics = await metrics(page, 'final');
     report.verdict = 'CAPTURED';
     save(report);
     log(`artifact -> ${path.join(OUT_DIR, 'report.json')}`);
+
+    try { await browser.close(); } catch (_) {}
   } catch (e) {
     report.verdict = 'ERROR';
     report.error = String(e?.stack || e).slice(0, 3000);
-    save(report);
+    if (outDirLockAcquired) save(report);
     log(`ERROR ${String(e?.message || e)}`);
     process.exitCode = 1;
   } finally {
-    try { await browser?.close(); } catch (_) {}
-    try { await srv?.close?.(); } catch (_) {}
+    try { await session?.browser?.close(); } catch (_) {}
+    releaseOutDirLock(outDirLockAcquired);
   }
 }
 
