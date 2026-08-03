@@ -7,13 +7,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  judgeGate, auditGates, isTestFile, isCliModule, npmScriptsInvoking, C_LANE_GATES,
+  judgeGate, auditGates, isTestFile, isCliModule, npmScriptsInvoking, callersOf,
+  C_LANE_GATES, SELF_MODULE,
 } from './gate-binding-audit.mjs';
 
 /** Build injectable deps from a plain map of file -> contents. */
-const deps = (files, hits) => ({
+const deps = (files, hits, worktreeHits) => ({
   readFile: (p) => (Object.prototype.hasOwnProperty.call(files, p) ? files[p] : null),
   grep: () => (hits || []).map((f) => `HEAD:${f}`).join('\n'),
+  // Injected too, or these tests would reach the real git tree — an audit tested against the thing
+  // it is auditing. Defaults to empty so an unspecified worktree means "nothing extra".
+  worktreeCallers: () => (worktreeHits || []),
 });
 
 test('a test file is recognised however it is spelled', () => {
@@ -35,6 +39,54 @@ test('SELF_TEST_ONLY: the ABBA shape — written, tested, never called', () => {
   assert.equal(r.ok, false);
   assert.deepEqual(r.callers, []);
   assert.match(r.why, /only in its own tests/);
+});
+
+/**
+ * The third state. On 2026-08-03 this audit called SETTLE-CRITERION-V2 SELF_TEST_ONLY while the
+ * binding was written and sitting uncommitted, and I went looking for a caller that already existed.
+ * A binding that needs a commit is a different fact from a binding that needs writing.
+ */
+test('BOUND_BUT_UNCOMMITTED: written in the working tree, absent from HEAD', () => {
+  const gate = { id: 'SETTLE-CRITERION-V2', symbol: 'assessSettled', module: 'lib/settle-criterion.mjs', refuses: 'an unsettled reading' };
+  const r = judgeGate(gate, deps(
+    { 'lib/settle-criterion.mjs': 'export function assessSettled() {}' },
+    ['lib/settle-criterion.mjs', 'scripts/foo.selftest.mjs'],
+    ['scripts/canonical-floor-retake.mjs'],
+  ));
+  assert.equal(r.state, 'BOUND_BUT_UNCOMMITTED');
+  assert.equal(r.ok, false, 'not yet a pass: it does not exist in the tree that gets built');
+  assert.deepEqual(r.worktreeCallers, ['scripts/canonical-floor-retake.mjs']);
+  assert.match(r.why, /written and not committed/);
+  assert.match(r.why, /Commit it/);
+});
+
+test('the two states are distinguished by the worktree, not by luck', () => {
+  const gate = { id: 'G', symbol: 'g', module: 'lib/g.mjs', refuses: 'x' };
+  const files = { 'lib/g.mjs': 'export function g() {}' };
+  const head = ['lib/g.mjs', 'scripts/g.selftest.mjs'];
+  assert.equal(judgeGate(gate, deps(files, head, [])).state, 'SELF_TEST_ONLY');
+  assert.equal(judgeGate(gate, deps(files, head, ['scripts/real.mjs'])).state, 'BOUND_BUT_UNCOMMITTED');
+});
+
+test('a worktree caller that is only a test does not manufacture BOUND_BUT_UNCOMMITTED', () => {
+  const gate = { id: 'G', symbol: 'g', module: 'lib/g.mjs', refuses: 'x' };
+  const r = judgeGate(gate, deps(
+    { 'lib/g.mjs': 'export function g() {}' },
+    ['lib/g.mjs'],
+    ['scripts/g.selftest.mjs', 'scripts/tests/h.mjs'],
+  ));
+  assert.equal(r.state, 'SELF_TEST_ONLY');
+});
+
+test('a committed binding never reaches the worktree question', () => {
+  const gate = { id: 'G', symbol: 'g', module: 'lib/g.mjs', refuses: 'x' };
+  const r = judgeGate(gate, deps(
+    { 'lib/g.mjs': 'export function g() {}', 'scripts/real.mjs': 'g()' },
+    ['lib/g.mjs', 'scripts/real.mjs'],
+    ['scripts/other.mjs'],
+  ));
+  assert.equal(r.state, 'BOUND');
+  assert.equal(r.ok, true);
 });
 
 test('BOUND: a real caller outside the tests', () => {

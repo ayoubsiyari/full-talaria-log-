@@ -13,10 +13,35 @@ artifact rather than quietly inheriting this one's authority.
 | governor | **30 closed round-trips/hour** | **0 — no governor at all** |
 | trade interval | one every **120 s** | n/a |
 | orders across the arm | **300** | **0** |
-| duration | **10 h** | **3.5 h** — see the matched window below |
+| **play** duration | **10 h** | **3.5 h** — see the matched window below |
+| **paused settle curves** | 2 × 33 min (hour 0, hour 10) | 2 × 33 min (hour 0, hour 3.5) |
+| **wall-clock duration** | **11.1 h** | **4.6 h** |
 | speed | 10 bars/s requested | 10 bars/s requested |
 | panels | 4, same-symbol, E indicators | 4, same-symbol, E indicators |
 | dataset | CONF01 common window, runway declared | CONF01 common window, runway declared |
+
+### AMENDMENT — PAUSED SETTLE WINDOWS, 2026-08-03 22:40+01:00
+
+The hoard floor binds at each end of the arm, and it is the soak's second gate behind RATE-HOLD. As of
+`SETTLE-CRITERION-V2` a reading is not settled unless the page is **verifiably paused**, the collection
+did not land in re-allocation, and there is a **curve** of at least 3 reads at 600 s rungs. One reading
+after a sleep cannot certify a floor however long the sleep.
+
+**Designed into the arm, not bolted on:**
+
+- Each arm opens with a **paused settle curve at hour 0** and closes with one at its end. **These ARE
+  the hoard-floor readings** — not additional measurements taken near them. One curve, one number,
+  both gates reading the same row.
+- **The curves sit outside the play clock.** Play time stays at 10 h and 3.5 h, because the governor
+  and every prediction in §2 are stated in *played* hours: 300 orders at 30/hour needs 10 h of play,
+  not 10 h of wall clock minus an hour of pausing. Wall clock grows to 11.1 h and 4.6 h instead.
+- **Both arms take the same two curves**, so `ARM-EQUALITY-01` is unaffected: the curve count, rung
+  ladder and pause discipline are identical and only the trade knob differs.
+- The pause is `quiesce()` from `settle-protocol.mjs` and its per-realm verification is recorded on the
+  reading. A curve whose pause did not verify is `NOT_QUIESCENT` and does not produce a floor.
+
+**Cost of the amendment: 2.2 h of exclusive box across both arms.** That is the price of the hoard
+floor being a floor rather than a sample.
 
 ### MATCHED COMPARISON WINDOW — ruled 2026-08-03 19:10+01:00
 

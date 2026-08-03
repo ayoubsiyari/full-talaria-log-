@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assessSurvival, sweep, residualMB, MEASURED_AMPLITUDES_MB, SURVIVAL_SIGMA } from './phase-survival.mjs';
+import { assessSurvival, sweepPublishedSet, residualMB, MEASURED_AMPLITUDES_MB, SURVIVAL_SIGMA } from './phase-survival.mjs';
 
 const matched = { sameSession: true, samePhaseRegime: true, sameCurveOrdered: true };
 
@@ -67,7 +67,7 @@ test('the residual is sqrt(2) scaled and half-credited, and the bar is two of th
 });
 
 test('the sweep tallies the published set without needing a human to arbitrate', () => {
-  const s = sweep([
+  const s = sweepPublishedSet([
     { claim: 'a', kind: 'absolute', valueMB: 1, quiescent: true },
     { claim: 'b', kind: 'absolute', valueMB: 1, quiescent: false, quantity: 'total' },
     { claim: 'c', kind: 'difference', valueMB: 1, quiescent: false, quantity: 'gpu', ...matched },

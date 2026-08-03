@@ -84,6 +84,23 @@ export const C_LANE_GATES = [
       + 'separately, a pair with no contrast at all, whose delta is zero by construction',
   },
   {
+    id: 'QUIESCE-01',
+    symbol: 'quiesce',
+    module: 'scripts/lib/settle-protocol.mjs',
+    refuses: 'a forced collection on a live, allocating page — the omission 26 instruments inherited '
+      + 'from this module, now the default here rather than a habit in each caller',
+  },
+  {
+    id: 'PHASE-SURVIVAL-01',
+    // The entry point the sweep actually calls. Naming the inner `assessSurvival` here reported
+    // SELF_TEST_ONLY while a real caller existed — binding to the wrong name is indistinguishable
+    // from not binding, which is the third time today this audit has been right and I have not.
+    symbol: 'sweepPublishedSet',
+    module: 'scripts/lib/phase-survival.mjs',
+    refuses: 'a phase-corrupt published reading being kept or killed by judgement call rather than '
+      + 'by a stated criterion, and an unmeasured amplitude being borrowed from another quantity',
+  },
+  {
     id: 'SETTLE-CRITERION-V2',
     symbol: 'assessSettled',
     module: 'scripts/lib/settle-criterion.mjs',
@@ -227,6 +244,24 @@ export function callersOf(symbol, module, { grep = null, selfModule = SELF_MODUL
     .filter((f) => norm(f) !== norm(selfModule));
 }
 
+/**
+ * Callers in the WORKING TREE rather than HEAD. Only consulted when HEAD has none, to tell an
+ * uncommitted binding apart from an absent one.
+ */
+export function defaultWorktreeCallers(symbol, module) {
+  const norm = (f) => String(f).replace(/\\/g, '/');
+  let out = '';
+  // --untracked matters: a caller in a brand-new file is the commonest form of "written but not
+  // committed", and plain `git grep` does not see it at all.
+  try { out = git(['grep', '-l', '--untracked', '--', symbol, '--', 'scripts']); } catch { return []; }
+  return String(out)
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .filter((f) => norm(f) !== norm(module))
+    .filter((f) => norm(f) !== norm(SELF_MODULE));
+}
+
 /** Does this module run as a command? Both spellings of the main-module guard, plus a shebang. */
 export function isCliModule(source) {
   const s = String(source || '');
@@ -252,7 +287,7 @@ export function npmScriptsInvoking(modulePath, read) {
  * Decide one gate. `grep` and `readFile` are injectable so the audit is testable without a repo —
  * an audit whose own tests need a live git tree is the thing it is auditing.
  */
-export function judgeGate(gate, { grep = null, readFile = null } = {}) {
+export function judgeGate(gate, { grep = null, readFile = null, worktreeCallers = defaultWorktreeCallers } = {}) {
   const read = readFile || ((p) => {
     try { return fs.readFileSync(path.join(ROOT, p), 'utf8'); } catch { return null; }
   });
@@ -295,14 +330,38 @@ export function judgeGate(gate, { grep = null, readFile = null } = {}) {
           + 'than a gate. Wire it into a pipeline; it does not need a caller.',
       };
     }
+    /**
+     * BOUND_BUT_UNCOMMITTED. The caller scan reads HEAD on purpose: a gate is bound when the
+     * committed tree calls it, because that is the tree that gets built and shipped. But a binding
+     * that exists in the working tree and not in HEAD is a DIFFERENT FACT from no binding at all —
+     * one needs a commit, the other needs the work doing — and reporting them identically sent me
+     * looking for a missing caller that was already written. Presence is not binding, binding is not
+     * correctness, and committed is not the same as written.
+     */
+    const inWorktree = worktreeCallers
+      ? worktreeCallers(gate.symbol, gate.module).filter((f) => !isTestFile(f))
+      : [];
+    if (inWorktree.length > 0) {
+      return {
+        ...gate,
+        state: 'BOUND_BUT_UNCOMMITTED',
+        ok: false,
+        callers: [],
+        worktreeCallers: inWorktree,
+        testCallers: tests,
+        why: `${gate.symbol} is called by ${inWorktree.join(', ')} in the WORKING TREE but by nothing `
+          + 'in HEAD. The binding is written and not committed, so it does not exist in the tree that '
+          + `gets built. It refuses ${gate.refuses} on this machine only. Commit it.`,
+      };
+    }
     return {
       ...gate,
       state: 'SELF_TEST_ONLY',
       ok: false,
       callers: production,
       testCallers: tests,
-      why: `${gate.symbol} is called by ${tests.length} test file(s) and nothing that runs. `
-        + `It refuses ${gate.refuses} — but only in its own tests.`,
+      why: `${gate.symbol} is called by ${tests.length} test file(s) and nothing that runs, in HEAD `
+        + `or in the working tree. It refuses ${gate.refuses} — but only in its own tests.`,
     };
   }
 

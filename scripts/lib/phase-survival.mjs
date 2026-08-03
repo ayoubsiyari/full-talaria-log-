@@ -140,7 +140,7 @@ export function assessSurvival({
 }
 
 /** Sweep a published set and return the roster plus a tally. */
-export function sweep(claims = []) {
+export function sweepPublishedSet(claims = []) {
   const rows = claims.map((c) => ({ ...assessSurvival(c), kind: c.kind }));
   const tally = rows.reduce((m, r) => { m[r.verdict] = (m[r.verdict] || 0) + 1; return m; }, {});
   return { rows, tally, survivors: rows.filter((r) => r.survives).length, dead: rows.filter((r) => !r.survives).length };
