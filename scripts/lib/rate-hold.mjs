@@ -69,6 +69,82 @@ export function deliveredRate(prev, next, { baseTimeframeSec = 60 } = {}) {
 }
 
 /**
+ * RATE-FLOOR-01 — is the arm delivering at all, measured in its FIRST MINUTE.
+ *
+ * RATE-HOLD asks whether delivery at hour 10 matches hour 0. It is a ratio, so an arm that runs at 1%
+ * of the requested rate for ten hours passes it perfectly — held, and useless. W1 spent its window
+ * proving that: 0.08 against 8.0, discovered at the end. This is the missing absolute check, and it
+ * runs early enough that the answer costs a minute instead of a night.
+ *
+ * THE DENOMINATOR IS THE WHOLE PROBLEM, so it is not assumed.
+ *
+ * Requested speed is bars per second **of the step**, not of the host panel's timeframe. On an hourly
+ * chart stepping 1m those differ by 60x, and grading bars/s against `SPEED` using the host timeframe
+ * would manufacture a 60x error out of a healthy arm — or hide one. So the comparison is made in
+ * market-seconds per wall-second, where `expected = requestedSpeed × stepSec`, and if the step cannot
+ * be read this **refuses to grade** rather than grading against a guess. An unreadable step is its own
+ * state (`STEP_UNREADABLE`), because "we could not tell" and "it is too slow" are different facts and
+ * only one of them is the harness's own fault.
+ *
+ * @param {object} o
+ * @param {object} o.measured        a `deliveredRate()` result
+ * @param {number} o.requestedSpeed  bars/s of the step, as requested
+ * @param {number|null} o.stepSec    the engine's step in seconds
+ * @param {number} [o.floorFraction] fraction of expected below which the arm is refused
+ */
+export function assessRateFloor({
+  measured = null, requestedSpeed = null, stepSec = null, floorFraction = 0.5,
+  hostTfSec = null, windowSec = null, label = 'first-minute rate floor',
+} = {}) {
+  const base = { check: 'RATE-FLOOR-01', label, floorFraction, windowSec, hostTfSec, stepSec, requestedSpeed };
+
+  if (!measured || measured.ok !== true) {
+    return { ...base, state: 'RATE_UNREADABLE', pass: false, abort: true,
+      why: `delivered rate could not be measured (${measured?.why ?? 'no result'}). An arm whose `
+        + 'delivery cannot be read cannot be certified as delivering, and ten hours of it would produce '
+        + 'a series with no denominator.' };
+  }
+  if (!(Number(requestedSpeed) > 0)) {
+    return { ...base, state: 'SPEED_UNKNOWN', pass: false, abort: true,
+      why: 'no requested speed to compare against' };
+  }
+  if (!(Number(stepSec) > 0)) {
+    return { ...base, state: 'STEP_UNREADABLE', pass: false, abort: true,
+      why: 'the engine\'s step is unreadable, so the expected market-seconds per wall-second cannot be '
+        + 'computed. This is the exact condition that produces a wrong rate — a step the reference '
+        + 'timeframe rejected — and it must not be graded against an assumed denominator.' };
+  }
+
+  const expected = Number(requestedSpeed) * Number(stepSec);
+  const actual = measured.marketSecPerWallSec;
+  if (actual == null) {
+    return { ...base, state: 'NO_SIMULATED_TIME', pass: false, abort: true, expectedMarketSecPerWallSec: expected,
+      why: 'the replay clock did not answer, so delivery was measured by bar index at best; a bar index '
+        + 'cannot tell a slow panel from a stalled one' };
+  }
+
+  const ratio = expected > 0 ? +(actual / expected).toFixed(4) : null;
+  const pass = ratio != null && ratio >= floorFraction;
+  return {
+    ...base,
+    state: pass ? 'RATE_FLOOR_MET' : 'RATE_FLOOR_BREACHED',
+    pass,
+    abort: !pass,
+    expectedMarketSecPerWallSec: +expected.toFixed(2),
+    actualMarketSecPerWallSec: actual,
+    ratio,
+    // Derived display only, and it carries its denominator so it can never be read without one.
+    expectedBarsPerSecOfStep: +Number(requestedSpeed).toFixed(4),
+    actualBarsPerSecOfStep: +(actual / Number(stepSec)).toFixed(4),
+    why: pass ? null
+      : `delivering ${actual} market-s/wall-s against an expected ${expected.toFixed(2)} `
+        + `(${(ratio * 100).toFixed(1)}% of requested, floor is ${(floorFraction * 100).toFixed(0)}%). `
+        + `In bars/s of the ${stepSec}s step that is ${(actual / Number(stepSec)).toFixed(3)} against `
+        + `${requestedSpeed}. Refusing the arm now rather than holding this rate for its full duration.`,
+  };
+}
+
+/**
  * Where the workload demonstrably started. Returns the boundary AND how it was decided, because a
  * baseline that silently relocates is worse than one anchored at t=0 — at least the fixed window was
  * predictable. Every field here exists to be read back off the artifact afterwards.

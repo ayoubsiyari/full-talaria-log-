@@ -44,7 +44,7 @@ import { perBarFields, evaluateGauges } from './lib/soak-gauges.mjs';
 import { readBuildInfo, shaChanged } from './lib/build-info.mjs';
 import { computeSeal } from './lib/seal.mjs';
 import { checkSpeed01Served, capabilityDigest, readSpeed01Runtime } from './lib/served-capability.mjs';
-import { deliveredRate, evaluateRateHold, readEffectiveRateReadback } from './lib/rate-hold.mjs';
+import { deliveredRate, evaluateRateHold, readEffectiveRateReadback, assessRateFloor } from './lib/rate-hold.mjs';
 import { forcedGcPauseProbe } from './lib/forced-gc-pause-probe.mjs';
 import { arenaColumns, rankRowGrowth } from './lib/arena-columns.mjs';
 import { collectMemoryDump } from './process-memory-census.mjs';
@@ -63,6 +63,16 @@ const argOf = (n, d) => { const h = process.argv.find((a) => a.startsWith(`--${n
 const ARM = argOf('arm', 'trades');                 // trades | zerotrade
 const HOURS = Number(argOf('hours', '10'));
 const SAMPLE_MS = Number(argOf('sampleMs', '180000'));
+/**
+ * RATE-FLOOR-01. Sixty seconds because that is the PO's own unit — 600 bars per minute, counted by
+ * hand — so the window and the reference measurement are the same shape. The floor is half the
+ * requested rate: loose enough that ordinary warm-up jitter does not abort a good arm, tight enough
+ * that W1's 1% could never have survived it.
+ */
+const RATE_FLOOR_WINDOW_MS = Number(argOf('rateFloorWindowMs', '60000'));
+const RATE_FLOOR_FRACTION = Number(argOf('rateFloorFraction', '0.5'));
+/** POST-REFRESH-01. Long enough that a healthy chart moves the playhead well clear of read jitter. */
+const POST_REFRESH_PLAY_WINDOW_MS = Number(argOf('postRefreshPlayWindowMs', '20000'));
 /**
  * SPEED-01 ENVELOPE. The ladder is the integers 1 through 10 as BARS PER SECOND — nothing above 10 and
  * nothing between. The default was 60 for the whole of this harness's life and 60 is no longer a speed
@@ -533,6 +543,7 @@ let detailedStartTaken = false;
  */
 let bootEndpointTaken = false;
 let bootEndpointReading = null;
+let rateFloorChecked = false;
 
 async function captureArmMoment(when) {
   const fp = await readFootprint(session.browser).catch(() => ({}));
@@ -705,6 +716,88 @@ try {
         throw new Error('speed gate failed: engine speed unreadable');
       }
       log(`segment ${segment} up: ${panels.length} panels, effective speed ${eff}`);
+
+      /**
+       * RATE-FLOOR-01 — is this arm delivering at all? Answered in the first minute, not the tenth hour.
+       *
+       * W1 ran its window at 0.08 against a requested 8.0 and we learned it at the end. RATE-HOLD could
+       * never have caught that: it is a **ratio**, so an arm pinned at 1% of the requested rate for ten
+       * hours passes it perfectly. This is the absolute check that was missing, and it **aborts** — the
+       * whole point is to spend a minute instead of a night.
+       *
+       * It runs BEFORE the boot endpoint because the boot endpoint pauses the page for twenty-one
+       * minutes, and delivery can only be measured on a page that is playing.
+       *
+       * The step is read from the engine rather than assumed. Requested speed is bars/s **of the step**,
+       * and on an hourly panel stepping 1m the host timeframe differs from the step by 60x — grading
+       * against the wrong denominator would either abort a healthy arm or pass a dead one.
+       */
+      if (!rateFloorChecked && segment === 1) {
+        rateFloorChecked = true;
+        const stepRead = (await bootPhases.run('boot.readStepSeconds', SOAK_PHASE_BUDGETS_MS['boot.readStepSeconds'],
+          () => session.page.evaluate(() => {
+            const rs = window.chart && window.chart.replaySystem;
+            if (!rs) return { value: null, route: null, why: 'no replaySystem' };
+            const routes = [
+              ['getStepSeconds()', () => (typeof rs.getStepSeconds === 'function' ? rs.getStepSeconds() : undefined)],
+              ['stepSeconds', () => rs.stepSeconds],
+              ['secondsPerStep', () => rs.secondsPerStep],
+            ];
+            const seen = [];
+            for (const [name, get] of routes) {
+              let v;
+              try { v = get(); } catch (e) { seen.push({ route: name, error: String(e).slice(0, 60) }); continue; }
+              if (v === undefined) { seen.push({ route: name, present: false }); continue; }
+              seen.push({ route: name, present: true, value: Number.isFinite(Number(v)) ? Number(v) : String(v) });
+            }
+            const answered = seen.find((s) => s.present && typeof s.value === 'number' && s.value > 0);
+            return { value: answered ? answered.value : null, route: answered ? answered.route : null, routes: seen };
+          }), { fallback: { value: null, route: null, why: 'step read did not settle within budget' } })).value;
+
+        const floorWindow = (await bootPhases.run('boot.rateFloorWindow', SOAK_PHASE_BUDGETS_MS['boot.rateFloorWindow'],
+          async () => {
+            const a = await readPanels(session.page);
+            const ah = a.find((r) => r.isHost) || a[0] || {};
+            const sampleA = { atMs: Date.now(), replayTimestamp: ah.playheadMs, replayIndex: ah.replayIndex };
+            await sleep(RATE_FLOOR_WINDOW_MS);
+            const b = await readPanels(session.page);
+            const bh = b.find((r) => r.isHost) || b[0] || {};
+            const sampleB = { atMs: Date.now(), replayTimestamp: bh.playheadMs, replayIndex: bh.replayIndex };
+            return { sampleA, sampleB, hostTf: bh.tf ?? ah.tf ?? null, playing: bh.playing ?? null };
+          }, { fallback: null })).value;
+
+        const hostTfSec = floorWindow ? tfSeconds(floorWindow.hostTf) : null;
+        const measured = floorWindow
+          ? deliveredRate(floorWindow.sampleA, floorWindow.sampleB, { baseTimeframeSec: hostTfSec || 60 })
+          : { ok: false, why: 'the rate-floor window did not complete within its budget' };
+        const rateFloor = assessRateFloor({
+          measured,
+          requestedSpeed: SPEED,
+          stepSec: stepRead.value,
+          hostTfSec,
+          windowSec: RATE_FLOOR_WINDOW_MS / 1000,
+          floorFraction: RATE_FLOOR_FRACTION,
+          label: `${ARM} first-minute delivered-rate floor`,
+        });
+        run.note({
+          __rateFloor: true,
+          segment,
+          ...rateFloor,
+          stepRoute: stepRead.route,
+          stepRoutes: stepRead.routes ?? null,
+          // D is chasing exactly this: a step the reference timeframe rejected. If the session recorded
+          // refusals, they belong on the same row as the rate they would explain.
+          stepRefusals: session.conf01?.stepRefusals ?? null,
+          effectiveStepSeconds: session.conf01?.effectiveStepSeconds ?? null,
+          hostPlaying: floorWindow?.playing ?? null,
+        });
+        log(`rate floor: ${rateFloor.state} — ${rateFloor.actualMarketSecPerWallSec ?? 'n/a'} of ${rateFloor.expectedMarketSecPerWallSec ?? 'n/a'} market-s/wall-s`);
+        if (rateFloor.abort) {
+          run.note({ __void: true, segment, why: `RATE-FLOOR-01 ${rateFloor.state}: ${rateFloor.why}` });
+          log(`REFUSING: ${rateFloor.why}`);
+          throw new Error(`rate floor failed: ${rateFloor.state}`);
+        }
+      }
 
       /**
        * BOOT-ENDPOINT-READING-01 — the canonical settled floor, taken here instead of in W2.
@@ -1288,6 +1381,75 @@ try {
         method: 'canvas pixel sampling for non-uniformity; a blank canvas is one colour. Bars present in an array is NOT paint.',
       });
       log(`post-refresh paint: ${painted.length}/${withChart.length} panels painted`);
+
+      /**
+       * POST-REFRESH-01, second half: PLAY RESUMES.
+       *
+       * The paint census above proves the panels came back. It does not prove the chart still works,
+       * and those are different claims — a page can repaint perfectly and never advance again. The soak
+       * refreshes, so a user who refreshes mid-session and finds a frozen chart is a defect this run
+       * would otherwise have watched happen and recorded as four green paint rows.
+       *
+       * PROVEN BY ADVANCE, NEVER BY `isPlaying`. `conf01-session.mjs` already carries this warning for
+       * the boot path and the reason is the same one that cost W1 its window: a flag that reports the
+       * intent to play reads true while nothing is delivered. So the playhead is read twice across a
+       * wall-clock gap and the verdict is the movement between them.
+       *
+       * The resume is attempted through whichever route answers, and the route is recorded. Fixing the
+       * play path is D's lane; this only has to tell the truth about whether it worked.
+       */
+      const playBack = (await endPhases.run('end.readPostRefreshPlay', SOAK_PHASE_BUDGETS_MS['end.readPostRefreshPlay'],
+        async () => {
+          const before = await readPanels(session.page);
+          const bh = before.find((r) => r.isHost) || before[0] || {};
+          const resume = await session.page.evaluate(() => {
+            const rs = window.chart && window.chart.replaySystem;
+            if (!rs) return { route: null, why: 'no replaySystem after refresh' };
+            if (rs.isPlaying) return { route: 'already-playing', why: null };
+            for (const [name, fn] of [
+              ['play()', () => rs.play && rs.play()],
+              ['togglePlayPause()', () => rs.togglePlayPause && rs.togglePlayPause()],
+            ]) {
+              try { const r = fn(); if (r !== undefined || rs.isPlaying) return { route: name, why: null }; } catch (e) { /* try the next route */ }
+            }
+            return { route: null, why: 'no play route answered' };
+          }).catch((e) => ({ route: null, why: String(e?.message || e).slice(0, 120) }));
+          await sleep(POST_REFRESH_PLAY_WINDOW_MS);
+          const after2 = await readPanels(session.page);
+          const ah2 = after2.find((r) => r.isHost) || after2[0] || {};
+          return {
+            resume,
+            beforeMs: bh.playheadMs ?? null,
+            afterMs: ah2.playheadMs ?? null,
+            beforeIndex: bh.replayIndex ?? null,
+            afterIndex: ah2.replayIndex ?? null,
+            playingFlag: ah2.playing ?? null,
+            hostTf: ah2.tf ?? bh.tf ?? null,
+          };
+        }, { fallback: null })).value;
+
+      const advancedMs = playBack && playBack.beforeMs != null && playBack.afterMs != null
+        ? playBack.afterMs - playBack.beforeMs : null;
+      const advancedIdx = playBack && playBack.beforeIndex != null && playBack.afterIndex != null
+        ? playBack.afterIndex - playBack.beforeIndex : null;
+      const resumed = advancedMs != null ? advancedMs > 0 : (advancedIdx != null ? advancedIdx > 0 : null);
+      run.note({
+        __postRefreshPlay: true,
+        ...playBack,
+        advancedMarketMs: advancedMs,
+        advancedIndex: advancedIdx,
+        windowSec: POST_REFRESH_PLAY_WINDOW_MS / 1000,
+        resumed,
+        // The disagreement is the finding, so it is named rather than reconciled: a true flag over a
+        // stationary playhead is the same shape of lie as a controller reporting its own setpoint.
+        flagDisagreesWithAdvance: playBack ? (playBack.playingFlag === true && resumed === false) : null,
+        verdict: resumed === true ? 'PLAY RESUMES AFTER REFRESH'
+          : resumed === false ? 'PLAY DOES NOT RESUME AFTER REFRESH — playhead did not advance'
+            : 'PLAY RESUME UNMEASURED — the playhead could not be read after refresh',
+        method: 'playhead advance across a wall-clock window. An isPlaying flag is recorded but is never the judge.',
+      });
+      log(`post-refresh play: ${resumed === true ? 'RESUMES' : resumed === false ? 'DOES NOT RESUME' : 'UNMEASURED'}`
+        + ` (advance ${advancedMs ?? 'n/a'} market-ms via ${playBack?.resume?.route ?? 'no route'})`);
 
       // The other half of DRAW-SMOKE-01: the same refresh, read back.
       if (DRAWINGS_SMOKE) {

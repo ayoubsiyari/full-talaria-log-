@@ -222,6 +222,11 @@ export const SOAK_PHASE_BUDGETS_MS = {
   'boot.readStorageCensus': 60_000,
   'boot.readSpeed01Runtime': 30_000,
   'boot.readEffectiveRate': 30_000,
+  'boot.readStepSeconds': 30_000,
+  // RATE-FLOOR-01 walks a wall-clock window and then reads twice; the budget covers the window plus
+  // both reads, so a read that parks inside it still surfaces as a timeout rather than as slow delivery.
+  'boot.rateFloorWindow': 150_000,
+  'end.readPostRefreshPlay': 60_000,
   'end.readStorageCensus': 60_000,
   'end.readStorageCensusAfterRefresh': 60_000,
   'end.readDrawings': 60_000,
