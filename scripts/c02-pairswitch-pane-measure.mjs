@@ -24,7 +24,7 @@ import { startServer } from '../chart v 1.4/chart/multichart-prod/harness/serve.
 import { bootLayout, embedFrames, sleep } from '../chart v 1.4/chart/multichart-prod/harness/harness-lib.mjs';
 import { loadPuppeteer } from './lib/heap-cycle-browser.mjs';
 import { readOsFootprints } from './process-memory-census.mjs';
-import { acquireRunLockOrExit, writeArtifactAtomic } from './lib/run-lock.mjs';
+import { acquireRunLockOrExit, lockFlagsFromArgv, writeArtifactAtomic } from './lib/run-lock.mjs';
 
 const MB = 1048576;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -353,11 +353,11 @@ async function main() {
   // 120s. The boot and creation samples previously landed inside it, which is
   // part of why the release delta would not resolve. Sit out the hump first.
   const warmupMs = Number(argOf('warmup', '0')) || 0;
-  const lock = acquireRunLockOrExit({
-    artifact: out,
-    script: 'c02-pairswitch-pane-measure.mjs',
-    allowConcurrent: process.argv.includes('--allow-concurrent'),
-  });
+  const lock = await acquireRunLockOrExit({
+  artifact: out,
+  script: 'c02-pairswitch-pane-measure.mjs',
+  ...lockFlagsFromArgv(),
+});
   const report = {
     signature: 'C02-PAIRSWITCH-PANE-MEASURE-V1',
     at: new Date().toISOString(),

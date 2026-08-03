@@ -27,7 +27,7 @@ import { startServer } from '../chart v 1.4/chart/multichart-prod/harness/serve.
 import { bootLayout, embedFrames, sleep } from '../chart v 1.4/chart/multichart-prod/harness/harness-lib.mjs';
 import { loadPuppeteer } from './lib/heap-cycle-browser.mjs';
 import { readOsFootprints } from './process-memory-census.mjs';
-import { acquireRunLockOrExit, writeArtifactAtomic } from './lib/run-lock.mjs';
+import { acquireRunLockOrExit, lockFlagsFromArgv, writeArtifactAtomic } from './lib/run-lock.mjs';
 
 const MB = 1048576;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -259,11 +259,11 @@ async function main() {
   const order = argOf('order', 'AB') === 'BA' ? 'BA' : 'AB';
   const productPath = argOf('path','probe') === 'product';
   const singleArm = ['A', 'B'].includes(argOf('arm', '')) ? argOf('arm', '') : null;
-  const lock = acquireRunLockOrExit({
-    artifact: out,
-    script: 'c09-c12-scratch-zero-measure.mjs',
-    allowConcurrent: process.argv.includes('--allow-concurrent'),
-  });
+  const lock = await acquireRunLockOrExit({
+  artifact: out,
+  script: 'c09-c12-scratch-zero-measure.mjs',
+  ...lockFlagsFromArgv(),
+});
   const report = {
     signature: 'C09-C12-SCRATCH-ZERO-MEASURE-V1',
     at: new Date().toISOString(),

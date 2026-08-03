@@ -32,7 +32,7 @@ import { fileURLToPath } from 'node:url';
 
 import { loadPuppeteer } from './lib/heap-cycle-browser.mjs';
 import { readOsFootprints } from './process-memory-census.mjs';
-import { acquireRunLockOrExit, writeArtifactAtomic } from './lib/run-lock.mjs';
+import { acquireRunLockOrExit, lockFlagsFromArgv, writeArtifactAtomic } from './lib/run-lock.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MB = 1048576;
@@ -193,11 +193,11 @@ async function main() {
     process.exit(2);
   }
 
-  const lock = acquireRunLockOrExit({
-    artifact: out,
-    script: 'competitor-arena-reference.mjs',
-    allowConcurrent: hasFlag('allow-concurrent'),
-  });
+  const lock = await acquireRunLockOrExit({
+  artifact: out,
+  script: 'competitor-arena-reference.mjs',
+  ...lockFlagsFromArgv(),
+});
   const report = {
     signature: 'COMPETITOR-ARENA-REFERENCE-V1',
     at: new Date().toISOString(),

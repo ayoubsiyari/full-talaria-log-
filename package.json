@@ -31,6 +31,7 @@
     "gate:mirror-parity": "node scripts/mirror-parity-check.mjs",
     "test:mirror-parity": "node --test scripts/mirror-parity-check.selftest.mjs",
     "test:run-lock": "node --test scripts/lib/run-lock.selftest.mjs",
+    "gate:run-lock-status": "node scripts/run-lock-status.mjs",
     "test:checkpoint-provenance": "node --test scripts/tests/checkpoint-provenance.test.mjs",
     "preflight:order-overlay-browser": "node scripts/order-overlay-browser-runner.mjs",
     "test:order-overlay-browser": "node --test scripts/tests/order-overlay-browser-runner.test.mjs",

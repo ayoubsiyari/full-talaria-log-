@@ -36,7 +36,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { captureProvenance } from './lib/run-provenance.mjs';
-import { acquireRunLockOrExit, writeArtifactAtomic } from './lib/run-lock.mjs';
+import { acquireRunLockOrExit, lockFlagsFromArgv, writeArtifactAtomic } from './lib/run-lock.mjs';
 
 import {
   applyDistV9LayoutViaUi,
@@ -63,10 +63,10 @@ const OUT = arg('out', path.resolve(__dirname, '../docs/plan3/evidence/order01b-
 // RUN-LOCK-01. Two lanes lost hours today to a second copy of an instrument
 // starting on top of the first and rewriting its artifact. Refuse before the
 // browser launches, not after the reading is taken.
-const RUN_LOCK = acquireRunLockOrExit({
+const RUN_LOCK = await acquireRunLockOrExit({
   artifact: OUT,
   script: 'order01b-readback-canary.mjs',
-  allowConcurrent: process.argv.includes('--allow-concurrent'),
+  ...lockFlagsFromArgv(),
 });
 
 /** Markers that must be in the SERVED engine bytes, not merely on disk. */
