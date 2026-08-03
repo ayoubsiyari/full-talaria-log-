@@ -202,3 +202,44 @@ head gets `NOT_YOUR_TURN`, exit 2. `release` pops your reservation and promotes 
 - 2026-08-03T14:34:45Z · CLAIM · E · v8-playback-heap-slope-90m-rerun · eta 100m · pid 28948
 - 2026-08-03T14:42:03Z · RESERVE · A · order01b-readback-canary-rerun-4up · position 1
 - 2026-08-03T14:42:54Z · CANCEL · A · idle-transient-clean-retake · was position 3
+- 2026-08-03T16:22:25Z · RELEASE · E · v8-playback-heap-slope-90m-rerun
+- 2026-08-03T16:24:20Z · TURN_DONE · A · order01b-readback-canary-rerun-4up · next: E/v8-playback-heap-slope-90m-rerun
+- 2026-08-03T16:24:20Z · RELEASE · A · order01b-readback-canary-rerun-4up
+- 2026-08-03T17:39:53Z · RESERVE · A · order01b-readback-canary-seeded · position 1
+- 2026-08-03T17:42:39Z · TURN_KEPT · A ran "order01b-readback-canary-rerun-4up" but the reservation at the head is "order01b-readback-canary-seeded" — not consumed. Cancel it if it is stale.
+- 2026-08-03T17:42:39Z · RELEASE · A · order01b-readback-canary-rerun-4up
+- 2026-08-03T17:53:35Z · CANCEL · E · v8-playback-heap-slope-90m-rerun · was position 2 · completed-diagnostic-at-17:22+01:00-item6-now-top-row
+- 2026-08-03T17:53:36Z · RESERVE · E · detailed-dump-capture-item6 · position 1 (front)
+- 2026-08-03T18:06:45Z · RESERVE · A · order01b-readback-canary-rerun2-seeded · position 1
+- 2026-08-03T18:07:06Z · CANCEL · A · order01b-readback-canary-seeded · was position 3
+- 2026-08-03T18:10:03Z · TURN_DONE · A · order01b-readback-canary-rerun2-seeded · next: E/detailed-dump-capture-item6
+- 2026-08-03T18:10:03Z · RELEASE · A · order01b-readback-canary-rerun2-seeded
+- 2026-08-03T18:14:30Z · CLAIM · E · detailed-dump-capture-item6 · eta 5m · pid 12444
+- 2026-08-03T18:14:33Z · TURN_DONE · E · detailed-dump-capture-item6 · next: C/canonical-floor-retake-clean
+- 2026-08-03T18:14:33Z · RELEASE · E · detailed-dump-capture-item6
+- 2026-08-03T18:15:42Z · RESERVE · E · detailed-dump-capture-item6 · position 1 (front)
+- 2026-08-03T18:23:18Z · CANCEL · E · detailed-dump-capture-item6 · was position 1 · trigger-moved-into-C-sampler-no-attach-loop
+- 2026-08-03T18:23:52Z · ADOPT · B · draw-smoke-rehearsal-soak · pid 32192 · run was already live and unclaimed
+
+## `adopt` — recording a run that is already live (ADOPT-01)
+
+`claim` refuses while an unclaimed run is on the box. That is right for a launch and wrong for a
+record: once a run starts unclaimed there is no way to make the queue match the machine short of
+killing the run. Discovered 2026-08-03 19:45+01:00, when "claim it now so the queue reflects the
+machine" turned out to be impossible to obey.
+
+```
+node scripts/measurement-queue.mjs adopt --owner=B --run=draw-smoke-rehearsal-soak --pid=32192
+```
+
+**An adopted claim is not a claim.** A claim means someone checked the box was free before starting.
+An adoption means someone noticed afterwards. The record carries `adopted: true` and the log says
+`ADOPT`, so a run that jumped the queue never reads like one that waited its turn.
+
+It refuses to adopt a pid that is not alive — a retroactive claim on a finished run is fiction, and
+belongs in the board narrative instead. It also refuses to adopt over a live claim, which would
+silently transfer the box.
+
+**Evidence class: CLI_PROVEN, no self-test cell.** The logic lives in the command dispatcher rather
+than in an exported function, so it is proven by live invocation (adopted 32192; refused 25748, which
+had ended) and not by a test cell. That is a real limitation and it is stated rather than implied.

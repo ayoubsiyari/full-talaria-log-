@@ -370,6 +370,42 @@ if (isMain) {
     console.log(`[queue] CLAIMED by ${owner} for ${run} (pid ${claim.pid}). Release when you stop.`);
     process.exit(0);
   }
+  /**
+   * ADOPT-01 — record a claim for a run that is ALREADY RUNNING.
+   *
+   * `claim` refuses while an unclaimed run is on the box, which is correct for a launch and a deadlock
+   * for a record: once a run starts unclaimed, there is no way to make the queue match the machine
+   * short of killing the run. That is not hypothetical — it is why unclaimed runs stay unclaimed, and
+   * it made the Director's 19:35+01:00 instruction "claim it now" literally impossible to obey.
+   *
+   * An adopted claim is NOT a claim. A claim made before a launch means someone checked the box was
+   * free; an adopted one means someone noticed afterwards. Recording them identically would let a run
+   * that jumped the queue read, a week later, exactly like one that waited its turn — so `adopted` and
+   * `adoptedAt` are carried on the record and the log line says ADOPT rather than CLAIM.
+   *
+   * It refuses to adopt a pid that is not alive: a retroactive claim on a dead process is fiction.
+   */
+  if (cmd === 'adopt') {
+    const run = arg('run');
+    const pid = Number(arg('pid'));
+    if (!owner || !run || !pid) { console.error('[queue] adopt needs --owner=, --run= and --pid='); process.exit(1); }
+    if (!procs || !procs.some((p) => p.pid === pid)) {
+      console.error(`[queue] REFUSED — pid ${pid} is not a live node process. Adopting a dead run records a fiction;`);
+      console.error('  if it has already finished, it belongs in the board narrative, not in the live queue.');
+      process.exit(2);
+    }
+    if (state.claim && pidAlive(state.claim.pid, procs)) {
+      console.error(`[queue] REFUSED — ${state.claim.owner}/${state.claim.run} already holds a live claim (pid ${state.claim.pid}).`);
+      console.error('  Adopting over a live claim would silently transfer the box. Release it first, or say so on the board.');
+      process.exit(2);
+    }
+    state.claim = { owner, run, pid, eta: arg('eta'), at: stamp(), adopted: true, adoptedAt: stamp() };
+    writeState(state);
+    appendLog(`- ${stamp()} · ADOPT · ${owner} · ${run} · pid ${pid} · run was already live and unclaimed`);
+    console.log(`[queue] ADOPTED ${owner}/${run} (pid ${pid}) — recorded as a retroactive claim, not as a claim.`);
+    console.log('[queue] The queue now matches the machine. It does NOT mean the box was checked before this run started.');
+    process.exit(0);
+  }
   if (cmd === 'reserve') {
     const run = arg('run');
     if (!owner || !run) { console.error('[queue] reserve needs --owner= and --run='); process.exit(1); }
