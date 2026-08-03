@@ -1,0 +1,109 @@
+{
+  "signature": "SHELLPLAY-GUARD-ATTRIBUTION-V1",
+  "at": "2026-08-03T10:25:34.481Z",
+  "provenance": {
+    "headSha": "2e13f7752",
+    "headSubject": "Board b122 local-byte recovery refusal",
+    "dirtyGovernedPaths": [],
+    "governedBy": "clean-build-tree-guard",
+    "buildIdOnDisk": "20260803b126",
+    "distV9BuildIdOnDisk": "20260803b126",
+    "swVersionOnDisk": "talaria-chart-20260803b126",
+    "distV9Mtime": "2026-08-03T09:52:50.176Z"
+  },
+  "steps": [
+    {
+      "step": 1,
+      "state": "GUARD_UNATTRIBUTED",
+      "accepted": true,
+      "before": {
+        "isActive": true,
+        "windowBlocked": false,
+        "isPlaying": false,
+        "idx": 3999,
+        "rawLen": 4000,
+        "subBar": true,
+        "noOpSampledEarly": false
+      },
+      "after": {
+        "isActiveAfter": true,
+        "windowBlockedAfter": false,
+        "isPlayStarting": false,
+        "rafScheduled": false,
+        "isPlaying": false,
+        "idx": 3999,
+        "rawLen": 4000
+      },
+      "identity": {
+        "sameInstance": true,
+        "liveIsPlayStarting": false,
+        "liveIsPlaying": false
+      },
+      "settled": {
+        "heldIsPlaying": false,
+        "heldRawLen": 1881,
+        "liveIsPlaying": false,
+        "sameInstance": true
+      },
+      "calls": [],
+      "toasts": [],
+      "playIsOwn": true,
+      "playSrc": "function(...pe){const Te=cM()?ir.apply(this,pe):ir.call(ve);try{const ft=!!(this.isPlaying||this.isPlayStarting);this.__shellPlayOverrideInert=!ft;const We=Numb",
+      "receivers": [],
+      "protoWrapped": true
+    },
+    {
+      "step": 60,
+      "state": "GUARD_NONE",
+      "accepted": true,
+      "before": {
+        "isActive": true,
+        "windowBlocked": false,
+        "isPlaying": false,
+        "idx": 1880,
+        "rawLen": 1881,
+        "subBar": false,
+        "noOpSampledEarly": false
+      },
+      "after": {
+        "isActiveAfter": true,
+        "windowBlockedAfter": false,
+        "isPlayStarting": true,
+        "rafScheduled": true,
+        "isPlaying": false,
+        "idx": 1880,
+        "rawLen": 1881
+      },
+      "identity": {
+        "sameInstance": true,
+        "liveIsPlayStarting": true,
+        "liveIsPlaying": false
+      },
+      "settled": {
+        "heldIsPlaying": true,
+        "heldRawLen": 1881,
+        "liveIsPlaying": true,
+        "sameInstance": true
+      },
+      "calls": [
+        {
+          "guard": "_playWouldBeNoOpAtSessionEnd",
+          "returned": false
+        },
+        {
+          "guard": "_isReplayPageHidden",
+          "returned": false
+        },
+        {
+          "guard": "_isReplayPageHidden",
+          "returned": false
+        }
+      ],
+      "toasts": [],
+      "playIsOwn": true,
+      "playSrc": "function(...pe){const Te=cM()?ir.apply(this,pe):ir.call(ve);try{const ft=!!(this.isPlaying||this.isPlayStarting);this.__shellPlayOverrideInert=!ft;const We=Numb",
+      "receivers": [],
+      "protoWrapped": true
+    }
+  ]
+}
