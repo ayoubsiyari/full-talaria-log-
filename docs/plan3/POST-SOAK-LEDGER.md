@@ -243,3 +243,27 @@ disappear with the status line that used to carry them. This is the mechanism wo
 - **seal-corrupting?** **no.** The manifest governs who may edit what; it does not enter the bundle.
   It does mean the territory gate has produced no real verdict for the whole pre-seal period, so
   "territory was clean" is not a claim anyone can make about this seal.
+
+---
+
+## Row added by C, 23:5x+01:00
+
+### PSL-10 · The three first-paint boots for the allowance
+
+- **owner:** C
+- **finding:** The first-paint allowance has a **ratified method and no measurement**. R2 approved the
+  number in advance conditional on two falsifiers, so the arithmetic is settled and only the three boots
+  are outstanding. The allowance is `settled bar + Σ(attributed, structurally unavoidable construction
+  transients)`; **unattributed transients are excluded by construction**, which is the whole point — an
+  allowance that absorbs whatever it cannot explain is a budget for ignorance.
+- **state:** `ARMED_AWAITING_INPUT` — method, derivation and both falsifiers are written and self-tested;
+  the input is box time, nothing else. **Nothing waits on these boots**: R2 ratified in advance, so if a
+  falsifier trips the allowance is the settled bar plus attributed transients and the gap is reported.
+- **evidence:** `scripts/lib/first-paint-allowance.mjs` and its self-test (tracked);
+  `docs/plan3/C-FIRST-PAINT-ALLOWANCE-PROPOSAL-20260803.md` for the method and the falsifiers.
+- **post-soak action:** three boots on a clean box, Cursor closed, each producing a
+  `SETTLE-CRITERION-V2`-compliant curve, then run the derivation. ~60 min including settle curves.
+  They were scheduled to ride the W2 floor re-take; **W2 is cancelled** — the floor moved into the soak's
+  hour-0 endpoint (`BOOT-ENDPOINT-READING-01`) and the boots have no remaining dependency on it.
+- **seal-corrupting?** **no.** The allowance grades a boot transient against a bar. It is not in the
+  bundle and the soak does not measure it.

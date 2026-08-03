@@ -108,6 +108,25 @@ export const C_LANE_GATES = [
       + 'by a stated criterion, and an unmeasured amplitude being borrowed from another quantity',
   },
   {
+    id: 'READING-VALIDITY-01',
+    symbol: 'assessReading',
+    module: 'scripts/lib/reading-validity.mjs',
+    refuses: 'a memory number quoted without its five validity rows, and a failing row surviving as a '
+      + 'prose caveat instead of a sidecar file that has to be deleted on purpose',
+  },
+  {
+    id: 'BOOT-ENDPOINT-READING-01',
+    symbol: 'takeBootEndpointReading',
+    module: 'scripts/lib/boot-endpoint-reading.mjs',
+    refuses: 'the soak hour-0 dump being called the canonical settled floor while it is still one read '
+      + 'on a playing page — the defect that retired the five historical readings',
+  },
+  // CAPABILITY-PROBE-01 is deliberately NOT a row here. It is a step inside `takeBootEndpointReading`,
+  // reached only through it, so the audit reads it as SELF_TEST_ONLY forever — and a row that is
+  // permanently amber teaches people to skim past the state that is supposed to stop them.
+  // BOOT-ENDPOINT-READING-01's binding is what carries it; its own behaviour is pinned by three cells
+  // in `boot-endpoint-reading.selftest.mjs`.
+  {
     id: 'SETTLE-CRITERION-V2',
     symbol: 'assessSettled',
     module: 'scripts/lib/settle-criterion.mjs',

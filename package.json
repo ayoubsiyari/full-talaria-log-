@@ -43,6 +43,8 @@
     "test:settle-criterion": "node --test scripts/lib/settle-criterion.selftest.mjs",
     "test:basis-guard": "node --test scripts/lib/basis-guard.selftest.mjs",
     "test:phase-survival": "node --test scripts/lib/phase-survival.selftest.mjs",
+    "test:reading-validity": "node --test scripts/lib/reading-validity.selftest.mjs",
+    "test:boot-endpoint": "node --test scripts/lib/boot-endpoint-reading.selftest.mjs",
     "gate:settle-roster": "node scripts/settle-compliance-roster.mjs",
     "test:first-paint-allowance": "node --test scripts/lib/first-paint-allowance.selftest.mjs",
     "test:arm-equality": "node --test scripts/lib/arm-equality.selftest.mjs",

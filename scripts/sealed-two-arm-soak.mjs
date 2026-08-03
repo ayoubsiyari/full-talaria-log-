@@ -57,6 +57,7 @@ import { evaluateR3, readOldestOpenPositionAge } from './lib/r3-falsifier.mjs';
 import { takeEndOfArmSnapshot } from './lib/end-of-arm-snapshot.mjs';
 import { assertHeapCap } from './lib/heap-cap.mjs';
 import { gradeDrawingsPersistence, plantDrawings, readDrawings } from './lib/drawings-smoke.mjs';
+import { takeBootEndpointReading } from './lib/boot-endpoint-reading.mjs';
 
 const argOf = (n, d) => { const h = process.argv.find((a) => a.startsWith(`--${n}=`)); return h ? h.split('=').slice(1).join('=') : d; };
 const ARM = argOf('arm', 'trades');                 // trades | zerotrade
@@ -524,6 +525,14 @@ let sealStalls = 0;
  */
 const DETAILED_DUMP_DIR = path.join(path.dirname(OUT), 'detailed-dumps');
 let detailedStartTaken = false;
+/**
+ * The hour-0 canonical settled floor. Separate from `detailedStartTaken` on purpose: the `<arm>:start`
+ * capture is a running-page dump kept for comparability with `<arm>:end`, and it is NOT a settled
+ * reading — one read, playback live. Promoting it to canonical would have re-published the exact defect
+ * that retired the five historical readings, so the settled floor is its own reading with its own curve.
+ */
+let bootEndpointTaken = false;
+let bootEndpointReading = null;
 
 async function captureArmMoment(when) {
   const fp = await readFootprint(session.browser).catch(() => ({}));
@@ -696,6 +705,55 @@ try {
         throw new Error('speed gate failed: engine speed unreadable');
       }
       log(`segment ${segment} up: ${panels.length} panels, effective speed ${eff}`);
+
+      /**
+       * BOOT-ENDPOINT-READING-01 — the canonical settled floor, taken here instead of in W2.
+       *
+       * W2 was an exclusive two-hour host window for a standalone floor re-take. It is cancelled: the
+       * PO's completeness clause pre-declares this endpoint as the fallback, so the floor is taken on
+       * the arm's own browser at hour 0. That is a better reading than the separate window would have
+       * been — the floor and the arm it grades now share a build, a box and a minute, so nothing has to
+       * be argued across runs.
+       *
+       * First segment only. A resumed segment's "hour 0" is a warm origin and calling that a boot floor
+       * would understate it by everything the previous segment already allocated.
+       *
+       * ~21 minutes, once per arm, priced into the frozen recipe. The arm is paused for it and resumed
+       * after; a resume that does not take is a named failure on the reading, not a silent stopped arm.
+       */
+      if (!bootEndpointTaken && segment === 1) {
+        bootEndpointTaken = true;
+        log('boot endpoint: taking the canonical settled floor (~21 min, arm paused)');
+        bootEndpointReading = await takeBootEndpointReading({
+          page: session.page,
+          readFootprint: () => readFootprint(session.browser),
+          captureDump: () => captureDetailedDump(session.browser, {
+            totalPrivateMB: null,
+            moment: `${ARM}:hour0-settled-floor`,
+            outDir: DETAILED_DUMP_DIR,
+          }),
+          readHeapMB: () => session.page.evaluate(() => (performance?.memory?.usedJSHeapSize ?? null))
+            .then((v) => (v == null ? null : +(v / (1024 * 1024)).toFixed(2))).catch(() => null),
+          identity: {
+            commit: pinnedSha,
+            buildStamp: buildInfo.ok ? buildInfo.buildId : null,
+            expectedSha: EXPECT_SHA ? EXPECT_SHA.toLowerCase() : null,
+            servedSha: pinnedSha,
+            sealDigest: seal?.digest ?? null,
+          },
+          phaseSummary: () => bootPhases.summary(),
+          outDir: path.dirname(OUT),
+          label: `${ARM} hour-0 canonical settled floor`,
+          log,
+        }).catch((e) => ({
+          check: 'BOOT-ENDPOINT-READING-01',
+          quotable: false,
+          error: String(e?.message || e).slice(0, 300),
+          notQuotableBecause: 'the boot-endpoint reading threw before producing a curve',
+        }));
+        run.note({ __bootEndpointReading: true, segment, ...bootEndpointReading });
+        log(`boot endpoint: ${bootEndpointReading.packetRow ?? bootEndpointReading.notQuotableBecause}`);
+      }
     }
 
     await sleep(SAMPLE_MS);

@@ -72,6 +72,45 @@ export async function quiesce(page) {
   };
 }
 
+/**
+ * The counterpart to `quiesce`. Lives here for the same reason `quiesce` does: an instrument that
+ * pauses mid-run to take a settled reading has to put the page back, and a locally-written resume is
+ * how you get a ten-hour arm that spent nine of them stopped. Reports per-realm so a resume that did
+ * not take is visible at the moment it fails rather than at the end of the arm.
+ */
+export async function resumePlay(page) {
+  const realms = await page.evaluate(() => {
+    const out = [];
+    const visit = (w, label) => {
+      try {
+        const rs = w.replaySystem || w.chart?.replaySystem;
+        if (!rs) return;
+        const before = !!rs.isPlaying;
+        if (typeof rs.play === 'function') rs.play();
+        else if (typeof rs.togglePlayPause === 'function' && !before) rs.togglePlayPause();
+        out.push({ realm: label, before, after: !!rs.isPlaying });
+      } catch (e) { out.push({ realm: label, error: String(e).slice(0, 80) }); }
+    };
+    visit(window, 'host');
+    for (let i = 0; i < window.frames.length; i += 1) {
+      try { visit(window.frames[i], `frame${i}`); } catch (_) { /* cross-origin */ }
+    }
+    return out;
+  }).catch((e) => [{ realm: 'host', error: String(e?.message || e).slice(0, 120) }]);
+
+  const found = Array.isArray(realms) ? realms.filter((r) => !r.error) : [];
+  const resumed = found.length > 0 && found.some((r) => r.after === true);
+  return {
+    resumed,
+    realms,
+    realmsFound: found.length,
+    why: resumed ? null
+      : (found.length === 0
+        ? 'no replay system found in any realm, so playback could not be restarted'
+        : 'no realm reports playing after the resume; the arm would continue on a stopped page'),
+  };
+}
+
 /** Read total JS heap across the page's isolates, for the across-collection check in condition C. */
 async function readHeapMB(page) {
   try {

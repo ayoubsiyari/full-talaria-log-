@@ -275,6 +275,9 @@ export async function captureDetailedDump(browser, {
             singlePidCoverageNote: 'the basis that produced the published 59.84%; kept for comparison, not for quoting',
           }, null, 2)}\n`);
         result.artifactDir = outDir;
+        // The exact file, not just its directory: READING-VALIDITY-01's sidecar row checks that the
+        // artifact a reading names is on disk, and a directory cannot answer that.
+        result.artifactPath = path.join(outDir, `${String(moment).replace(/[^\w.@-]+/g, '_')}.detailed-dump.json`);
       } catch (e) {
         // A dump we took but could not file is still a valid reading; losing the file must not lose it.
         result.artifactWriteError = String(e?.message || e).slice(0, 160);
