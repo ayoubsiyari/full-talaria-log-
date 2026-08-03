@@ -9,6 +9,7 @@
  *
  *   node scripts/order01b-edge-play-probe.mjs
  */
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -22,6 +23,7 @@ import {
   installBuiltProductBoot,
   reactParityUrlWithLayout,
 } from '../chart v 1.4/chart/multichart-prod/harness/react-parity-lib.mjs';
+import { captureProvenance } from './lib/run-provenance.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -69,7 +71,14 @@ async function trace(page, { step }) {
     const frames = [snap('parked')];
     if (typeof rs.play === 'function') rs.play();
     else if (typeof rs.togglePlayback === 'function') rs.togglePlayback();
-    frames.push(snap('after play()'));
+    // Read synchronously on return from play(). isPlayStarting is true for about
+    // two frames, so the 200 ms trace below cannot see it: by the first tick it
+    // has already resolved either way. This one reading is what separates a
+    // start that was scheduled and then starved from an exit at a guard.
+    const onReturn = snap('after play()');
+    onReturn.isPlayStartingOnReturn = !!rs.isPlayStarting;
+    onReturn.playStartRafScheduled = rs._playStartRaf1 != null;
+    frames.push(onReturn);
     for (let i = 0; i < 30; i++) {
       await sleepIn(200);
       frames.push(snap(`t+${(i + 1) * 200}ms`));
@@ -79,6 +88,28 @@ async function trace(page, { step }) {
 }
 
 async function main() {
+  const distIndex = path.resolve(__dirname, '../chart v 1.4/chart/dist-v9/index.html');
+  const argOf = (name, dflt = null) => {
+    const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
+    return hit ? hit.slice(name.length + 3) : dflt;
+  };
+  const out = path.resolve(argOf('out',
+    path.join(__dirname, '..', 'docs/plan3/evidence', `order01b-edge-play-${Date.now()}.json`)));
+  // Console output is not an artifact: the b124 retirement turned on nobody
+  // being able to say afterwards which surface a run had read.
+  const report = {
+    signature: 'ORDER01B-EDGE-PLAY-PROBE-V1',
+    at: new Date().toISOString(),
+    provenance: captureProvenance(distIndex),
+    steps: [],
+  };
+  const save = () => {
+    fs.mkdirSync(path.dirname(out), { recursive: true });
+    fs.writeFileSync(out, JSON.stringify(report, null, 2));
+  };
+  log(`HEAD ${report.provenance.headSha} distV9 ${report.provenance.distV9BuildIdOnDisk} `
+    + `dirtyGoverned=${report.provenance.dirtyGovernedPaths.length}`);
+
   const puppeteer = await loadPuppeteer();
   const harness = await startHarnessServer(0);
   const browser = await puppeteer.launch({
@@ -102,6 +133,8 @@ async function main() {
     for (const step of [1, 60]) {
       log(`host parked on its last bar, step=${step}s`);
       const r = await trace(page, { step });
+      report.steps.push({ step, ...r });
+      save();
       if (!r.ok) { console.log(`  FAILED: ${r.why}`); continue; }
       console.log(`  setStepSeconds(${step}) => ${r.accepted}`);
       console.log('  tag           playing idx/raw       edgeWait waits probe timer more pan noOp subBar');
@@ -118,10 +151,14 @@ async function main() {
           + ` ${String(f.noOpAtEnd).padEnd(4)} ${f.subBar}`,
         );
       }
+      const onReturn = r.frames[1] || {};
       const lastFrame = r.frames[r.frames.length - 1];
+      console.log(`  on return: isPlayStarting=${onReturn.isPlayStartingOnReturn} rafScheduled=${onReturn.playStartRafScheduled}`);
       console.log(`  ended: playing=${lastFrame.playing} idx=${lastFrame.idx}/${lastFrame.raw}\n`);
     }
   } finally {
+    save();
+    console.log(`artifact: ${out}`);
     await browser.close().catch(() => {});
     await harness.close?.().catch?.(() => {});
   }

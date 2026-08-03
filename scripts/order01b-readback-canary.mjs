@@ -33,10 +33,9 @@
  */
 import path from 'node:path';
 import fs from 'node:fs';
-import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { offendingEntries, parsePorcelainZ, readStatus } from './clean-build-tree-guard.mjs';
+import { captureProvenance } from './lib/run-provenance.mjs';
 
 import {
   applyDistV9LayoutViaUi,
@@ -85,51 +84,6 @@ function fail(state, why) {
   console.log(`\n  READ-BACK RED — ${state}`);
   console.log(`  ${why}`);
   return { state, why };
-}
-
-/**
- * What surface was actually measured. The b124 artifact was retired because the
- * served engine came from one commit and the dist-v9 bundle from another, and
- * nothing in the artifact could show that — engine markers were present in both.
- * Markers prove the code is the right shape; they do not prove the two halves
- * came from the same tree. This records the identity so a future reader can tell.
- */
-function captureProvenance(distIndex) {
-  const git = (args, fallback = null) => {
-    try {
-      return execFileSync('git', args, { cwd: path.resolve(__dirname, '..'), encoding: 'utf8' }).trim();
-    } catch { return fallback; }
-  };
-  // Reuse CLEAN-TREE-01's own definition of a build input rather than inventing
-  // a second one. A broader hand-rolled glob flags test files and harness edits
-  // that cannot change the emitted bytes, which would make this refuse runs the
-  // guard considers reproducible — two definitions of "governed" is the defect,
-  // not a safety margin.
-  let dirtyGoverned = [];
-  let governedBy = 'clean-build-tree-guard';
-  try {
-    dirtyGoverned = offendingEntries(parsePorcelainZ(readStatus())).map((e) => `${e.xy} ${e.path}`);
-  } catch (error) {
-    governedBy = `UNAVAILABLE: ${String(error && error.message || error).slice(0, 120)}`;
-  }
-  const readStamp = (file, re) => {
-    try { const m = re.exec(fs.readFileSync(file, 'utf8')); return m ? m[1] : null; } catch { return null; }
-  };
-  const root = path.resolve(__dirname, '..');
-  return {
-    headSha: git(['rev-parse', '--short', 'HEAD']),
-    headSubject: git(['log', '-1', '--format=%s']),
-    // Empty means every byte the build can compile is committed, so the artifact
-    // is reproducible from headSha. Non-empty is the b124 failure mode.
-    dirtyGovernedPaths: dirtyGoverned,
-    governedBy,
-    buildIdOnDisk: readStamp(path.join(root, 'chart v 1.4/chart/index.html'),
-      /__TALARIA_CHART_BUILD_ID='([^']+)'/),
-    distV9BuildIdOnDisk: readStamp(distIndex, /__TALARIA_CHART_BUILD_ID='([^']+)'/),
-    swVersionOnDisk: readStamp(path.join(root, 'chart v 1.4/chart/sw.js'),
-      /SW_VERSION\s*=\s*"([^"]+)"/),
-    distV9Mtime: (() => { try { return fs.statSync(distIndex).mtime.toISOString(); } catch { return null; } })(),
-  };
 }
 
 async function main() {

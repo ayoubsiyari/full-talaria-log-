@@ -93,11 +93,11 @@ async function readProcesses(browser) {
  * backing across every same-origin frame, plus dpr and viewport, so a
  * competitor's panel count and pixel budget can be checked rather than assumed.
  */
-async function censusSurface(page) {
+async function censusSurface(page, probeWebgl = false) {
   const frames = page.frames();
   const perFrame = [];
   for (const frame of frames) {
-    const row = await frame.evaluate(() => {
+    const row = await frame.evaluate((probeWebgl) => {
       const canvases = [...document.querySelectorAll('canvas')];
       const dpr = window.devicePixelRatio || 1;
       return {
@@ -113,14 +113,21 @@ async function censusSurface(page) {
         dpr,
         innerW: window.innerWidth,
         innerH: window.innerHeight,
-        webglContexts: canvases.filter((c) => {
+        // Off by default, and it must stay that way. There is no read-only way
+        // to ask a canvas what context it holds: getContext('webgl') on a
+        // canvas that has no context yet CREATES one, allocating GPU memory
+        // inside the measurement it is supposed to observe — at every sample,
+        // on every canvas. It returns null harmlessly only when a 2d context
+        // already exists, which is luck rather than design. null means "not
+        // asked", which is honest; 0 would claim an observation never made.
+        webglContexts: probeWebgl ? canvases.filter((c) => {
           try {
             return !!(c.getContext('webgl2', { failIfMajorPerformanceCaveat: false })
               || c.getContext('webgl'));
           } catch (_) { return false; }
-        }).length,
+        }).length : null,
       };
-    }).catch((error) => ({ error: String(error?.message || error) }));
+    }, probeWebgl).catch((error) => ({ error: String(error?.message || error) }));
     perFrame.push(row);
   }
   const sum = (k) => +perFrame.reduce((s, f) => s + (Number(f[k]) || 0), 0).toFixed(3);
@@ -128,14 +135,14 @@ async function censusSurface(page) {
     frameCount: perFrame.length,
     canvasCount: sum('canvasCount'),
     canvasBackingMB: sum('canvasBackingMB'),
-    webglContexts: sum('webglContexts'),
+    webglContexts: probeWebgl ? sum('webglContexts') : null,
     dpr: perFrame[0]?.dpr ?? null,
     viewport: perFrame[0] ? { w: perFrame[0].innerW, h: perFrame[0].innerH } : null,
     perFrame,
   };
 }
 
-async function sample(label, { page, cdp, browser, settleMs }) {
+async function sample(label, { page, cdp, browser, settleMs, probeWebgl }) {
   await collectGarbage(page, cdp);
   if (settleMs > 0) {
     // Native allocators decommit lazily. Without this wait the reading counts
@@ -143,7 +150,10 @@ async function sample(label, { page, cdp, browser, settleMs }) {
     await sleep(settleMs);
     await collectGarbage(page, cdp);
   }
-  const [proc, surface] = await Promise.all([readProcesses(browser), censusSurface(page)]);
+  const [proc, surface] = await Promise.all([
+    readProcesses(browser),
+    censusSurface(page, probeWebgl),
+  ]);
   const row = {
     label,
     at: new Date().toISOString(),
@@ -173,6 +183,7 @@ async function main() {
   const warmupMs = Number(argOf('warmup', '15000'));
   const idleSamples = Math.max(1, Number(argOf('idle-samples', '1')) || 1);
   const idleIntervalMs = Number(argOf('idle-interval', '30000')) || 30000;
+  const probeWebgl = hasFlag('probe-webgl');
   const out = path.resolve(argOf('out', path.join(__dirname, '..', '_evidence', 'manager-A', `competitor-arena-${label}-${Date.now()}.json`)));
 
   const self = hasFlag('self');
@@ -185,14 +196,14 @@ async function main() {
     signature: 'COMPETITOR-ARENA-REFERENCE-V1',
     at: new Date().toISOString(),
     label,
-    inputs: { url, panels, settleMs, viewport: { width, height }, dpr, manual, headful, warmupMs },
+    inputs: { url, panels, settleMs, viewport: { width, height }, dpr, manual, headful, warmupMs, probeWebgl },
     method: {
       memory: 'forced CDP collection, then settle, then collect again, then OS private memory per process',
       why: 'a ~1s post-GC reading overstates our own four-panel floor by ~111 MB total / ~82 MB GPU; the settle is what makes any cross-product number comparable',
       comparability: 'the SELF arm must be run from this same script at the same viewport, dpr, panel count and settle',
       caveats: [
         'browser process accounting includes the browser and network processes; compare renderer+GPU as well as total',
-        'a competitor rendering with WebGL is not the same workload as our 2D canvas stack — webglContexts is recorded so that difference is visible rather than silent',
+        'webglContexts is null unless --probe-webgl: detecting a context requires requesting one, which allocates on any canvas that had none, inside the measurement itself',
         'panel count must be verified from the surface census, not assumed from the layout that was requested',
       ],
     },
@@ -261,7 +272,7 @@ async function main() {
       await sleep(warmupMs);
     }
 
-    report.samples.push(await sample('loaded', { page, cdp, browser, settleMs }));
+    report.samples.push(await sample('loaded', { page, cdp, browser, settleMs, probeWebgl }));
     save('loaded');
 
     // Readings across an idle window separate three outcomes that a single
@@ -272,7 +283,7 @@ async function main() {
     for (let i = 0; i < idleSamples; i++) {
       await sleep(idleIntervalMs);
       elapsedIdleS += Math.round(idleIntervalMs / 1000);
-      report.samples.push(await sample(`idle+${elapsedIdleS}s`, { page, cdp, browser, settleMs }));
+      report.samples.push(await sample(`idle+${elapsedIdleS}s`, { page, cdp, browser, settleMs, probeWebgl }));
       save(`idle+${elapsedIdleS}s`);
     }
 
