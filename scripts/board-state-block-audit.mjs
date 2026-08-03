@@ -78,6 +78,13 @@ export function auditText(text) {
 
 /** Rewrites the marker and the `last updated` stamp together, never one alone. */
 export function fixText(text, now = new Date()) {
+  /**
+   * Split on \r?\n and join on '\n' silently converted an entire CRLF board to LF:
+   * one two-line edit arrived as 185 changed lines, which on a shared board is
+   * indistinguishable from someone having rewritten it. A fixer that touches lines
+   * it was not asked about cannot be run on a file two people are editing.
+   */
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
   const lines = text.split(/\r?\n/);
   const headingIdx = lines.findIndex((l) => STATE_HEADING.test(l));
   if (headingIdx < 0) return { changed: false, text };
@@ -91,15 +98,37 @@ export function fixText(text, now = new Date()) {
     : block.replace(/^(##\s+CURRENT STATE.*)$/m, `$1\n\n<!-- STATE-BLOCK-FRESHNESS entriesBelow=${entriesBelow} -->`);
   block = block.replace(/last updated\s+\d{1,2}:\d{2}(?::\d{2})?[+-]\d{2}:\d{2}/, `last updated ${stamp}`);
 
-  const next = [...lines.slice(0, headingIdx), ...block.split('\n'), ...lines.slice(end)].join('\n');
+  const next = [...lines.slice(0, headingIdx), ...block.split('\n'), ...lines.slice(end)].join(eol);
   return { changed: next !== text, text: next, entriesBelow, stamp };
 }
 
 function main() {
   const fix = process.argv.includes('--fix');
   const only = process.argv.find((a) => a.startsWith('--files='));
-  const files = only
-    ? only.slice('--files='.length).split(',').map((f) => path.resolve(f.trim()))
+  /**
+   * Positional paths count. They did not, and the omission cost three lanes their
+   * freshness stamps: `--fix docs/plan3/board/BOARD-A.md` silently ignored the
+   * path, fell through to every board in the directory, and restamped B, C and D
+   * as "last updated" at a time when I, not they, had touched the file. A tool for
+   * one lane's board defaulting to all of them is the one-writer rule broken by
+   * its own auditor.
+   */
+  const positional = process.argv.slice(2).filter((a) => !a.startsWith('-'));
+  const explicit = [
+    ...(only ? only.slice('--files='.length).split(',') : []),
+    ...positional,
+  ].map((f) => path.resolve(f.trim())).filter(Boolean);
+
+  if (fix && explicit.length === 0) {
+    console.error('[board-state] FIX_REFUSED_NO_EXPLICIT_TARGET — --fix rewrites a board, and a board has one writer.\n'
+      + '              Name the file: --fix docs/plan3/board/BOARD-A.md, or --files=a,b --fix.\n'
+      + '              Auditing every board is read-only and needs no argument; rewriting every board is never what was meant.');
+    process.exitCode = 2;
+    return;
+  }
+
+  const files = explicit.length
+    ? explicit
     : fs.readdirSync(BOARD_DIR).filter((f) => /^BOARD-[A-Z]\.md$/.test(f)).map((f) => path.join(BOARD_DIR, f));
 
   let bad = 0;

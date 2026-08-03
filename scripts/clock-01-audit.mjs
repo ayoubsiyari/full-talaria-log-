@@ -253,7 +253,13 @@ function main() {
     return hit ? hit.slice(name.length + 3) : null;
   };
   const json = process.argv.includes('--json');
-  const files = (argOf('files') || '').split(',').map((s) => s.trim()).filter(Boolean);
+  // Positional paths count here too. `clock-01-audit BOARD-A.md` silently ignored
+  // the argument and audited the default A-lane set, so it answered a question
+  // about C's board while I read it as an answer about mine.
+  const files = [
+    ...(argOf('files') || '').split(','),
+    ...process.argv.slice(2).filter((a) => !a.startsWith('-')),
+  ].map((s) => s.trim()).filter(Boolean);
   const commits = Number(argOf('commits') || 0);
   const fix = argOf('fix');
 

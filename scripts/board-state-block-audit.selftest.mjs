@@ -130,6 +130,37 @@ test('--fix on a board with no block changes nothing rather than inventing one',
   assert.equal(out.text, before);
 });
 
+test('--fix changes only the block, and never a file\'s line endings', () => {
+  // This cost four lanes their board bytes: split on \r?\n, join on '\n', and a
+  // two-line edit to a CRLF board arrives as 185 changed lines — on a shared file
+  // that is indistinguishable from someone having rewritten it.
+  const crlf = [
+    '# BOARD-X',
+    '',
+    '## CURRENT STATE — X\'s lane · maintained in place · last updated 10:00+01:00',
+    '',
+    '<!-- STATE-BLOCK-FRESHNESS entriesBelow=1 -->',
+    '',
+    '- state prose here',
+    '',
+    '## LOG',
+    '',
+    '- 11:00+01:00 first entry',
+    '- 12:00+01:00 second entry',
+    '',
+  ].join('\r\n');
+  const out = fixText(crlf, new Date('2026-08-03T12:30:00Z'));
+  assert.equal(out.changed, true);
+  assert.ok(out.text.includes('\r\n'), 'CRLF must survive a fix');
+  assert.equal((out.text.match(/[^\r]\n/g) || []).length, 0, 'no line may be silently converted to LF');
+  // And exactly the two intended lines differ.
+  const before = crlf.split('\r\n');
+  const after = out.text.split('\r\n');
+  assert.equal(before.length, after.length);
+  const changed = before.map((l, i) => (l === after[i] ? null : i)).filter((i) => i !== null);
+  assert.deepEqual(changed, [2, 4], 'only the stamp and the marker may move');
+});
+
 for (const [state, name, why] of results) {
   console.log(`  ${state}  ${name}${why ? `\n        ${why}` : ''}`);
 }
