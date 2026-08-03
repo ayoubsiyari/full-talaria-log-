@@ -1,6 +1,6 @@
 # Suspect Ledger — seal publication draft
 
-**Owner: Manager B (integration). Updated: 2026-08-02 23:39+01:00.**
+**Owner: Manager B (integration). Updated: 2026-08-03 09:32+01:00.**
 **Rule: nothing OPEN rides into the soak without the PO's signature on that row.**
 **Vocabulary: `KILLED` = fix Present/Bound/Mirrored/Discriminating (PROC-3 GREEN). `CLEARED` = withdrawn / not guilty / cannot-apply with reason. `OPEN` = still needs work or PO eyes. `DEFERRED` = real, understood, and deliberately NOT fixed before this seal — requires a PO signature and a written revisit condition, and is never a synonym for CLEARED.**
 
@@ -69,19 +69,19 @@ These are **not product OPEN rows**. They prove the sweep discriminates. Leaving
 
 ---
 
-## 4 · Ticket / canary order rows still OPEN — need PO signature or closeout before seal
+## 4 · Ticket / canary order rows needing PO signature or closeout before seal
 
 Pulled from `docs/plan3/TICKET-STATUS-LEDGER-20260729.md` and `docs/plan3/CANARY-LEDGER-20260730.md`. Anything still `po-eyes` / `open` / `owner-blocked` / `blocked-on-build` is **OPEN** here until closed or PO-signed into the soak.
 
 | ID | Status | Note |
 | --- | --- | --- |
-| TAL-01696 | **OPEN** | po-eyes — order-line leftover cluster |
-| TAL-01698 | **OPEN** | po-eyes — order-line leftover |
-| TAL-01617 | **OPEN** | po-eyes — order-line leftover |
+| TAL-01696 | **OPEN** | PO signature packet: `docs/plan3/LEDGER-CLOSEOUT-PACK-20260803.md` |
+| TAL-01698 | **OPEN** | PO signature packet: `docs/plan3/LEDGER-CLOSEOUT-PACK-20260803.md` |
+| TAL-01617 | **CLEARED** | `PO-SIGNED: PO 2026-08-03` — cleared on PO's word |
 | TAL-01865 | **OPEN** | owner-blocked on A (symbol persist) |
 | M17-DI2 / TAL-01918 | **OPEN** | blocked-on-build in ticket ledger; product guard restored on train tip — needs stamp confirmation |
-| Rayan #8 | **OPEN** | NEEDS-INFO — no reproducible steps |
-| TAL-01941 | **OPEN** | NEEDS-INFO — instrumentation/repro only |
+| Rayan #8 | **OPEN** | PO signature packet: `docs/plan3/LEDGER-CLOSEOUT-PACK-20260803.md` |
+| TAL-01941 | **CLEARED** | `PO-SIGNED: PO 2026-08-03` — cleared on PO's word |
 
 > Deployed-build Script rows that are "open until Script N on stamp" are **not** listed as product defects once the fix is KILLED above; they are **verification debt** against the final tip. They still need a green Script run or an explicit PO waiver before soak fire.
 

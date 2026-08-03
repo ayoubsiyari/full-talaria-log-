@@ -34,12 +34,12 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01696 | po-eyes | — | Evidence gap: no dedicated D-tip gate | Order-line leftover — PO confirmation cluster with 01698/01617 |
 | TAL-01699 | fixed | `28d808cb4` | GREEN: `order-multi-tp-coincident-stack.test.mjs` canonical + homepage; full `order-*.test.mjs` sweeps | TOP review ACCEPT recorded in `journal-D.md` |
 | TAL-01698 | po-eyes | — | Prior rejected packet backed out | Order-line leftover — PO confirmation |
-| TAL-01617 | po-eyes | — | No D-tip gate | Order-line leftover — PO confirmation |
+| TAL-01617 | cleared | `PO-SIGNED: PO 2026-08-03` | PO word | Cleared on PO's word 2026-08-03 |
 | TAL-01895 | fixed | `6ad9f48ec` | GREEN: `pins-user-preferences.test.mjs` canonical + homepage | Non-money-path; preferences writes handed to B |
 | TAL-01792 | fixed | `6ad9f48ec` | GREEN: `pins-user-preferences.test.mjs` canonical + homepage | Non-money-path; preferences writes handed to B |
 | TAL-01865 | owner-blocked | — | `docs/plan3/PATCH-REQUEST-A-SYMBOL-PERSIST-20260729.md` | Requires `chart.js` owner A |
 | TAL-01747 | owner-blocked | — | `docs/plan3/PATCH-REQUEST-A-SYMBOL-PERSIST-20260729.md` | Requires `chart.js` owner A |
-| TAL-01941 | fixed | `order-sl-tp-trigger-soak.test.mjs` | GREEN 120-case soak; RED: `TALARIA_TEST_DISABLE_ORDER_SL_TP_TRIGGER_SOAK=1` | Randomised SL/TP trigger soak; no single-repro wait |
+| TAL-01941 | cleared | `PO-SIGNED: PO 2026-08-03` | GREEN: `order-sl-tp-trigger-soak.test.mjs`; RED: `TALARIA_TEST_DISABLE_ORDER_SL_TP_TRIGGER_SOAK=1` | Cleared on PO's word 2026-08-03; randomized SL/TP trigger soak remains the gate |
 | TAL-01896 | fixed | duration GATE-01 | GREEN: `orderManagerTradeRows.test.mjs`; RED: `orderManagerTradeRows.red.test.mjs` (kill → wall-clock bleed) | Closed-row duration norm; dist rebuild still for PO eyes |
 | M20-A timezone sha pin | owner-blocked | — | `PATCH-REQUEST-M20-A-TIMEZONE-PIN-REPIN-20260729.md` | Owner re-pin/re-review; not a PO click script |
 | M23 / TAL-01937 | fixed | m23 GATE-01 | GREEN: `m23-rollback-trade-state.red.test.mjs`; RED: kill preload exits ≠0 | Rollback cancel user path; GATE-01 |

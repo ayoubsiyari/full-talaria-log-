@@ -1,0 +1,7 @@
+# Ledger Closeout Pack — 2026-08-03
+
+| ID | PO complaint | Fix commit | Gate | PO signature |
+| --- | --- | --- | --- | --- |
+| TAL-01696 | "fixed box size, values updating mid-drag without the box moving, hover buttons vanishing rather than blinking during drag, SL and entry drag lag, the missing size unit and inconsistent brackets, identical box size across stop/market/limit, control buttons staying put while dragging, one font and size across all lines with vertical alignment, and one box instead of two on activation" | `a1a270692` (order info box presentation); `c0a0d7620` (drag regressions) | `order-stable-label-hover-dom.test.mjs` canonical + homepage; `preview-label-drag-freeze.test.mjs` canonical + homepage; `order-type-live-label-refresh.test.mjs` canonical + homepage; `order-line-drag-scale-and-multitp-live.test.mjs` canonical + homepage | `PO-SIGNED: ____________________ 2026-08-03` |
+| TAL-01698 | "The multi-TP average line only updates when you release the TP you are dragging. It must update live during the drag." | `231df7bb5` | `order-line-drag-scale-and-multitp-live.test.mjs` canonical + homepage; `multi-tp-preview-drag-sync.test.mjs` canonical + homepage | `PO-SIGNED: ____________________ 2026-08-03` |
+| Rayan #8 | "supporting symbols must refuse orders outright, with a message on the order panel saying supporting symbols are for analysis and not for trading" | `f2e9d4fdb` | `analysis-only-symbol-order-gate.test.mjs` canonical + homepage | `PO-SIGNED: ____________________ 2026-08-03` |
