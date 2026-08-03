@@ -7,7 +7,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { evaluate, classifyProcess, scriptNameOf, sameRun } from './measurement-queue.mjs';
+import { evaluate, classifyProcess, scriptNameOf, sameRun, groupRuns } from './measurement-queue.mjs';
 
 const proc = (pid, cmd) => ({ pid, cmd });
 const MEASURE = (pid, name) => proc(pid, `"C:\\Program Files\\nodejs\\node.exe" scripts/${name} --panels=4`);
@@ -123,4 +123,125 @@ test('an unreadable process list refuses rather than reporting clear', () => {
 test('the queue tool does not count itself as contention', () => {
   const procs = [proc(1, 'node scripts/measurement-queue.mjs preflight --owner=D')];
   assert.equal(evaluate({ state: { claim: null }, procs, owner: 'D', self: 99 }).state, 'QUEUE_CLEAR');
+});
+
+
+/**
+ * RUN-GROUP-01 cells. A run is a process tree; counting processes raised four false alarms in one
+ * day and was teaching everyone to scroll past the line.
+ */
+
+/** A's real shape at 14:46+01:00: an orchestrator that spawnSyncs one arm at a time. */
+const A_IDLE_RETAKE = [
+  { pid: 10572, ppid: 16920, cmd: 'node scripts/idle-transient-clean-retake.mjs' },
+  { pid: 33548, ppid: 10572, cmd: 'node scripts/competitor-arena-reference.mjs --self --dpr=2 --out=idle-transient-clean-dpr2b.json' },
+];
+
+test('an orchestrator and the arm it spawned are ONE run, not two', () => {
+  const groups = groupRuns(A_IDLE_RETAKE, { self: 999 });
+  assert.equal(groups.length, 1, 'this is the false alarm: two processes, one experiment');
+  assert.equal(groups[0].rootPid, 10572);
+  assert.equal(groups[0].members.length, 2);
+});
+
+test('the unclaimed alarm counts runs and names the arms beneath the root', () => {
+  const r = evaluate({ state: { claim: null }, procs: A_IDLE_RETAKE, owner: 'C', self: 999 });
+  assert.equal(r.state, 'UNCLAIMED_RUN_DETECTED', 'still unclaimed — nobody claimed it, and that is true');
+  assert.equal(r.foreignGroups.length, 1, 'but it is ONE run');
+  assert.match(r.reason, /1 unclaimed run/);
+  assert.match(r.reason, /idle-transient-clean-retake\.mjs#10572/);
+  assert.match(r.reason, /\+1 arm/, 'the arm is named under its root, not promoted beside it');
+});
+
+test('two genuinely separate owners are still two runs — the alarm must survive', () => {
+  const twoOwners = [
+    { pid: 100, ppid: 1, cmd: 'node scripts/idle-transient-clean-retake.mjs' },
+    { pid: 200, ppid: 2, cmd: 'node scripts/canonical-floor-retake.mjs' },
+  ];
+  const groups = groupRuns(twoOwners, { self: 999 });
+  assert.equal(groups.length, 2, 'grouping must not collapse unrelated runs into one');
+  const r = evaluate({ state: { claim: null }, procs: twoOwners, owner: 'C', self: 999 });
+  assert.match(r.reason, /2 unclaimed runs/);
+});
+
+test("a claim held by a watcher covers the suite it fired — D's shape", () => {
+  const dWatcher = [
+    { pid: 25308, ppid: 1, cmd: 'node scripts/tal-po-ui-smoke-watch-b126.mjs --queue-owner=D' },
+    { pid: 24508, ppid: 25308, cmd: 'node scripts/tal-po-ui-smoke-mutant-suite-live.mjs' },
+  ];
+  const r = evaluate({
+    state: { claim: { owner: 'D', run: 'TAL-PO-UI-SMOKE-MUTANTS-LIVE', pid: 25308 } },
+    procs: dWatcher, owner: 'D', self: 999,
+  });
+  assert.equal(r.state, 'HELD_BY_YOU', 'the child must not read as a second, unclaimed run');
+});
+
+test('an orchestrator that is not itself a measurement cannot launder its arms', () => {
+  // The root here classifies as tooling; the arm underneath is a real measurement. Taking the
+  // root's class would wave the whole tree through.
+  const laundered = [
+    { pid: 10, ppid: 1, cmd: 'node C:\\tmp\\wrapper.js' },
+    { pid: 11, ppid: 10, cmd: 'node scripts/competitor-arena-reference.mjs --self' },
+  ];
+  const groups = groupRuns(laundered, { self: 999 });
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].kind, 'measurement', 'the group takes the most serious kind it contains');
+});
+
+test('without parent data every process is its own run, so nothing is silently merged', () => {
+  const noPpid = [
+    { pid: 1, cmd: 'node scripts/a-probe.mjs' },
+    { pid: 2, cmd: 'node scripts/b-probe.mjs' },
+  ];
+  assert.equal(groupRuns(noPpid, { self: 999 }).length, 2,
+    'a platform that cannot report parents must fall back to the strict reading, not the lenient one');
+});
+
+test('a cycle in the parent chain cannot hang the grouper', () => {
+  const cyclic = [
+    { pid: 1, ppid: 2, cmd: 'node scripts/a.mjs' },
+    { pid: 2, ppid: 1, cmd: 'node scripts/b.mjs' },
+  ];
+  assert.ok(groupRuns(cyclic, { self: 999 }).length >= 1);
+});
+
+
+/** CLAIM-GRACE-01 cells. E lost a 100-minute slot 28 seconds after claiming it. */
+
+test('a claim seconds old is settling, not stale — E at 14:22:36Z', () => {
+  const state = { claim: { owner: 'E', run: 'v8-playback-heap-slope-90m-rerun', pid: 18972, at: new Date(Date.now() - 28_000).toISOString() } };
+  const v = evaluate({ state, procs: [], owner: 'D', self: 1 });
+  assert.equal(v.state, 'CLAIM_SETTLING');
+  assert.equal(v.mayRun, false, "D must not take the box out from under a claim made 28 seconds ago");
+});
+
+test('the claimant itself may proceed while its own claim is settling', () => {
+  const state = { claim: { owner: 'E', run: 'v8-rerun', pid: 18972, at: new Date(Date.now() - 5_000).toISOString() } };
+  assert.equal(evaluate({ state, procs: [], owner: 'E', self: 1 }).mayRun, true);
+});
+
+test('grace expires — an old claim with a dead pid is still stale', () => {
+  const state = { claim: { owner: 'E', run: 'v8-rerun', pid: 18972, at: new Date(Date.now() - 10 * 60_000).toISOString() } };
+  assert.equal(evaluate({ state, procs: [], owner: 'D', self: 1 }).state, 'STALE_CLAIM',
+    'grace must not become a permanent block — that was the defect STALE_CLAIM existed to fix');
+});
+
+test('a claim with no parseable time gets no grace', () => {
+  const state = { claim: { owner: 'E', run: 'v8-rerun', pid: 18972, at: 'x' } };
+  assert.equal(evaluate({ state, procs: [], owner: 'D', self: 1 }).state, 'STALE_CLAIM');
+});
+
+
+test('a self-test forking the script it tests is not an unclaimed run', () => {
+  // Observed live at 15:36+01:00: D's census self-test forked the census twice, and the freshly
+  // landed grouping reported two unclaimed runs on an otherwise idle box.
+  const underTest = [
+    { pid: 10220, ppid: 1, cmd: 'node --test scripts/copy-absence-census.selftest.mjs' },
+    { pid: 19300, ppid: 10220, cmd: 'node scripts/copy-absence-census.mjs --fixture' },
+  ];
+  const groups = groupRuns(underTest, { self: 999 });
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].kind, 'tooling', 'a test harness is not contention');
+  assert.equal(evaluate({ state: { claim: null }, procs: underTest, owner: 'C', self: 999 }).state,
+    'QUEUE_CLEAR');
 });

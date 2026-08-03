@@ -32,6 +32,37 @@ node scripts/measurement-queue.mjs cancel --owner=D --run=daily-boundary-canary 
 node scripts/measurement-queue.mjs reserve --owner=D --run=mutant-suite --position=2
 ```
 
+**A run is a process TREE, not a process (`RUN-GROUP-01`).** A correctly designed measurement is
+often several processes and exactly one experiment. A's `idle-transient-clean-retake` is an
+orchestrator that `spawnSync`s `competitor-arena-reference.mjs` once per arm — dpr=1, then dpr=2,
+then a repeat — so two node processes are visible at any instant and the arms are strictly
+sequential because the spawn is synchronous. **A paired ABBA arm has that shape by construction**,
+as does a watcher plus the suite it fires. The queue used to count processes, so every one of these
+reported as two unclaimed runs; it raised four alarms at A on 2026-08-03 and the last one was mine.
+
+The alarm is now counted in runs, with arms named beneath their root:
+
+```
+[queue] UNCLAIMED_RUN_DETECTED — no claim on file, but 1 unclaimed run (2 processes):
+        idle-transient-clean-retake.mjs#10572 (+1 arm: competitor-arena-reference.mjs#33548)
+```
+
+Grouping is by process ancestry, not by script name, because ancestry is a fact about the machine
+whereas a name list is wrong until somebody remembers to update it. Two unrelated roots are still
+two runs — `npm run test:queue` holds that cell, because **a grouping rule that could merge two real
+owners into one would be worse than the false alarm it replaces.** Where the platform cannot report
+parents, every process is its own run: the fallback is the strict reading, never the lenient one.
+
+**A claim made seconds ago is settling, not stale (`CLAIM-GRACE-01`).** E claimed the box at
+14:22:36Z for a 100-minute run and lost it 28 seconds later: the recorded pid was already gone, the
+claim read `STALE_CLAIM`, and D reclaimed it correctly by the rules as written — while E had been
+waiting since roughly 12:00Z. Nothing about E's measurement failed; the bookkeeping did. A claim's
+pid is recorded *before* the run exists and defaults to `process.ppid`, so claiming from one shell
+and launching from another is fatal. A claim younger than 120 s now reads `CLAIM_SETTLING` and holds
+the box. That costs two minutes when a run genuinely dies and saves a hundred-minute slot when it
+did not, and the asymmetry is not close. **Pass `--pid=` of the process that will actually be alive
+for the run**, and the grace window is something you never need.
+
 ```
 node scripts/measurement-queue.mjs status
 node scripts/measurement-queue.mjs claim --owner=E --run=buffer-partition --eta=20m
@@ -132,3 +163,16 @@ head gets `NOT_YOUR_TURN`, exit 2. `release` pops your reservation and promotes 
 - 2026-08-03T13:19:35Z · RELEASE · D · TAL-PO-UI-SMOKE-MUTANTS-LIVE
 - 2026-08-03T13:34:25Z · CANCEL · A · shell-play-discriminator · was position 1
 - 2026-08-03T13:34:35Z · CLAIM · D · TAL-PO-UI-SMOKE-MUTANTS-LIVE · eta 15m · pid 25308
+- 2026-08-03T13:37:34Z · RESERVE · A · idle-transient-clean-retake · position 1 (front)
+- 2026-08-03T13:37:38Z · RELEASE · D · TAL-PO-UI-SMOKE-MUTANTS-LIVE
+- 2026-08-03T13:41:57Z · CANCEL · D · TAL-PO-UI-SMOKE-MUTANTS-LIVE · was position 2
+- 2026-08-03T13:42:25Z · CANCEL · A · idle-transient-clean-retake · was position 1
+- 2026-08-03T13:42:26Z · CANCEL · C · canonical-floor-retake-clean · was position 1
+- 2026-08-03T13:42:26Z · RESERVE · C · canonical-floor-retake-clean · position 2
+- 2026-08-03T14:11:40Z · RESERVE · D · TAL-PO-UI-SMOKE-MUTANTS-LIVE · position 5
+- 2026-08-03T14:11:47Z - RESERVE - E - v8-playback-heap-slope-90m-rerun - position 1 (front)
+- 2026-08-03T14:22:36Z · CLAIM · E · v8-playback-heap-slope-90m-rerun · eta 100m · pid 18972
+- 2026-08-03T14:23:04Z · RECLAIMED_STALE · E/v8-playback-heap-slope-90m-rerun pid 18972 was gone
+- 2026-08-03T14:23:04Z · CLAIM · D · TAL-PO-UI-SMOKE-MUTANTS-LIVE · eta 15m · pid 2828
+- 2026-08-03T14:26:07Z · RELEASE · D · TAL-PO-UI-SMOKE-MUTANTS-LIVE
+- 2026-08-03T14:34:45Z · CLAIM · E · v8-playback-heap-slope-90m-rerun · eta 100m · pid 28948

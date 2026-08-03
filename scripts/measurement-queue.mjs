@@ -38,6 +38,8 @@ import { stampUtc } from './lib/clock.mjs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(__dirname, '..');
 export const STATE_FILE = path.join(REPO_ROOT, '_evidence', 'queue', 'measurement-queue.json');
+/** How long a just-made claim is protected while its pid catches up. See CLAIM-GRACE-01. */
+export const CLAIM_GRACE_MS = 120_000;
 export const LOG_FILE = path.join(REPO_ROOT, 'docs', 'plan3', 'board', 'MEASUREMENT-QUEUE.md');
 
 /** This tool, and anything that only reads artifacts, must not count as a running measurement. */
@@ -78,16 +80,16 @@ export function readNodeProcesses() {
   try {
     if (process.platform === 'win32') {
       const raw = execFileSync('powershell', ['-NoProfile', '-Command',
-        "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress",
+        "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json -Compress",
       ], { encoding: 'utf8', maxBuffer: 1 << 24 });
       const parsed = JSON.parse(raw || 'null');
       const list = parsed == null ? [] : (Array.isArray(parsed) ? parsed : [parsed]);
-      return list.map((p) => ({ pid: Number(p.ProcessId), cmd: String(p.CommandLine || '') }));
+      return list.map((p) => ({ pid: Number(p.ProcessId), ppid: Number(p.ParentProcessId) || null, cmd: String(p.CommandLine || '') }));
     }
-    const raw = execFileSync('ps', ['-eo', 'pid=,args='], { encoding: 'utf8', maxBuffer: 1 << 24 });
+    const raw = execFileSync('ps', ['-eo', 'pid=,ppid=,args='], { encoding: 'utf8', maxBuffer: 1 << 24 });
     return raw.split('\n').filter(Boolean).map((line) => {
-      const m = /^\s*(\d+)\s+(.*)$/.exec(line);
-      return m ? { pid: Number(m[1]), cmd: m[2] } : null;
+      const m = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line);
+      return m ? { pid: Number(m[1]), ppid: Number(m[2]) || null, cmd: m[3] } : null;
     }).filter((p) => p && /node/.test(p.cmd));
   } catch {
     // A queue that cannot see the machine must not answer "clear".
@@ -117,6 +119,79 @@ export function sameRun(a, b) {
   return x === y || x.includes(y) || y.includes(x);
 }
 
+/**
+ * RUN-GROUP-01 — a run is a process TREE, not a process.
+ *
+ * A correctly designed measurement is often several processes. A's idle-transient re-take is an
+ * orchestrator that `spawnSync`s `competitor-arena-reference.mjs` once per arm — dpr=1, then dpr=2,
+ * then a repeat — so at any instant there are two node processes and exactly one measurement, and
+ * the arms are strictly sequential because the spawn is synchronous. A paired ABBA arm has the same
+ * shape by construction: two processes, one experiment. D's watcher plus the suite it fires is the
+ * same again.
+ *
+ * Counting processes reported that as two unclaimed runs and raised an alarm at A four times today,
+ * once by me. Worse than the false alarm is what it trains: a check that goes red on every correctly
+ * built drift-control run is a check people learn to scroll past, and then it is not there on the
+ * day two owners really are on the box. That is the always-red-gate failure this file already warns
+ * about for infrastructure, arriving by a second door.
+ *
+ * The rule: a process whose ancestry reaches another tracked node process belongs to that
+ * ancestor's run. The group's root is the topmost tracked ancestor. Ancestry is used rather than
+ * script names because it is a fact about the machine — a name-based rule would need updating every
+ * time someone writes a new orchestrator, and would be wrong until they did.
+ *
+ * @param {Array<{pid:number, ppid?:number|null, cmd:string}>} procs
+ * @returns {Array<{rootPid:number, rootScript:string|null, kind:string, members:Array}>}
+ */
+export function groupRuns(procs, { self = process.pid } = {}) {
+  const list = (procs || []).filter((p) => p && p.pid !== self);
+  const byPid = new Map(list.map((p) => [p.pid, p]));
+
+  const rootOf = (proc) => {
+    let cur = proc;
+    const seen = new Set([cur.pid]);
+    // Climb while the parent is itself a tracked node process. A parent outside the set (a shell,
+    // the editor, PID 1) ends the climb: that is where this run began.
+    while (cur.ppid && byPid.has(cur.ppid) && !seen.has(cur.ppid)) {
+      seen.add(cur.ppid);
+      cur = byPid.get(cur.ppid);
+    }
+    return cur;
+  };
+
+  const groups = new Map();
+  for (const p of list) {
+    const root = rootOf(p);
+    if (!groups.has(root.pid)) {
+      groups.set(root.pid, {
+        rootPid: root.pid,
+        rootScript: scriptNameOf(root.cmd),
+        rootKind: classifyProcess(root.cmd),
+        members: [],
+      });
+    }
+    groups.get(root.pid).members.push({ pid: p.pid, script: scriptNameOf(p.cmd), kind: classifyProcess(p.cmd) });
+  }
+
+  return [...groups.values()].map((g) => ({
+    ...g,
+    // The group's kind is the most serious thing in it. An orchestrator classed as `other` that
+    // spawns a measurement is still a measurement run, and must not be waved through because its
+    // root looked harmless.
+    //
+    // The one exception is a `tooling` root — a `.selftest.mjs` or a `--test` runner. A test
+    // spawning the script it tests is what tests DO: D's `copy-absence-census.selftest.mjs` forks
+    // `copy-absence-census.mjs`, and reading that as an unclaimed run put two false alarms on the
+    // board within a minute of this grouping going in. That name is already trusted for the process
+    // itself by NOT_A_MEASUREMENT, so trusting it for the tree moves no boundary.
+    kind: g.rootKind === 'tooling' ? 'tooling'
+      : g.members.some((m) => m.kind === 'measurement') ? 'measurement'
+        : g.members.some((m) => m.kind === 'heavy') ? 'heavy'
+          : g.members.some((m) => m.kind === 'infrastructure') ? 'infrastructure'
+            : g.rootKind,
+  }));
+}
+
 export function readState(file = STATE_FILE) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return { claim: null, history: [] }; }
 }
@@ -134,15 +209,49 @@ export function evaluate({ state, procs, owner = null, self = process.pid }) {
   if (procs === null) {
     return { state: 'MACHINE_UNREADABLE', mayRun: false, foreign: [], reason: 'could not read the process list; refusing to call the machine clear' };
   }
-  const foreign = procs
-    .filter((p) => p.pid !== self && ['measurement', 'heavy'].includes(classifyProcess(p.cmd)))
-    .map((p) => ({ pid: p.pid, script: scriptNameOf(p.cmd), kind: classifyProcess(p.cmd) }));
-
   const claim = state?.claim || null;
+
+  /**
+   * RUN-GROUP-01. Processes are grouped by ancestry first, so an orchestrator and the arms it
+   * spawns count as ONE run. `foreign` keeps its old per-process shape for callers that read it,
+   * but the DECISION below is taken on groups.
+   */
+  const allGroups = groupRuns(procs, { self });
+  const claimPids = claim?.pid ? new Set([Number(claim.pid)]) : new Set();
+  const foreignGroups = allGroups
+    .filter((g) => ['measurement', 'heavy'].includes(g.kind))
+    // A group containing the claim's own pid is the claimant's run, however many processes it has.
+    .filter((g) => !g.members.some((m) => claimPids.has(m.pid)));
+  const foreign = foreignGroups.flatMap((g) => g.members
+    .filter((m) => ['measurement', 'heavy'].includes(m.kind))
+    .map((m) => ({ pid: m.pid, script: m.script, kind: m.kind, rootPid: g.rootPid })));
   const claimLive = claim ? pidAlive(claim.pid, procs) : false;
   const reservations = Array.isArray(state?.reservations) ? state.reservations : [];
   const head = reservations[0] || null;
 
+  /**
+   * CLAIM-GRACE-01. E claimed at 14:22:36Z for a 100-minute run and lost the box 28 seconds later:
+   * pid 18972 was already gone, the claim read STALE, and D reclaimed it correctly by the rules as
+   * written. E had been waiting since ~12:00Z at that point.
+   *
+   * The cause is that a claim's liveness is keyed to a pid recorded BEFORE the run exists. The
+   * default is `process.ppid` — the shell — so a claimant who claims from one shell and launches
+   * from another, or whose launcher exits after handing off, is dead on arrival. Nothing about the
+   * measurement failed; the bookkeeping did.
+   *
+   * A young claim is therefore treated as settling rather than stale. It costs the queue two
+   * minutes in the genuine crash case and saves a hundred-minute slot in the handoff case, and the
+   * asymmetry is not close. A claim with no parseable timestamp gets no grace.
+   */
+  const claimAgeMs = claim?.at ? (Date.now() - Date.parse(String(claim.at).replace(' ', 'T'))) : NaN;
+  if (claim && !claimLive && Number.isFinite(claimAgeMs) && claimAgeMs >= 0 && claimAgeMs < CLAIM_GRACE_MS) {
+    return {
+      state: 'CLAIM_SETTLING', mayRun: claim.owner === owner, foreign, claim,
+      reason: `claim by ${claim.owner} for ${claim.run} is ${Math.round(claimAgeMs / 1000)}s old and its pid ${claim.pid} is not visible yet — `
+        + `within the ${Math.round(CLAIM_GRACE_MS / 1000)}s grace window, so it is settling, not stale. `
+        + `If the run really died, ${claim.owner} should release it or wait out the window.`,
+    };
+  }
   if (claim && !claimLive) {
     return {
       state: 'STALE_CLAIM', mayRun: foreign.length === 0, foreign, staleClaim: claim,
@@ -155,10 +264,21 @@ export function evaluate({ state, procs, owner = null, self = process.pid }) {
   if (claim && claimLive && claim.owner === owner) {
     return { state: 'HELD_BY_YOU', mayRun: true, foreign, claim, reason: `you already hold the queue for ${claim.run}` };
   }
-  if (foreign.length > 0) {
+  if (foreignGroups.length > 0) {
+    // Counted in RUNS. Saying "2 processes" where there is one experiment is what taught people to
+    // scroll past this line, and the arms are named beneath the root rather than promoted beside it.
+    const describe = (g) => {
+      const arms = g.members.filter((m) => m.pid !== g.rootPid);
+      const armText = arms.length ? ` (+${arms.length} arm${arms.length > 1 ? 's' : ''}: ${arms.map((a) => `${a.script}#${a.pid}`).join(', ')})` : '';
+      return `${g.rootScript}#${g.rootPid}${armText}`;
+    };
     return {
-      state: 'UNCLAIMED_RUN_DETECTED', mayRun: false, foreign,
-      reason: `no claim on file, but ${foreign.length} measurement process(es) are running: ${foreign.map((f) => `${f.script}#${f.pid}`).join(', ')}`,
+      state: 'UNCLAIMED_RUN_DETECTED',
+      mayRun: false,
+      foreign,
+      foreignGroups,
+      reason: `no claim on file, but ${foreignGroups.length} unclaimed run${foreignGroups.length > 1 ? 's' : ''} `
+        + `(${foreign.length} process${foreign.length > 1 ? 'es' : ''}): ${foreignGroups.map(describe).join(' | ')}`,
     };
   }
   /**

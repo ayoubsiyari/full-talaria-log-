@@ -33,6 +33,7 @@
     "gate:mirror-parity": "node scripts/mirror-parity-check.mjs",
     "test:mirror-parity": "node --test scripts/mirror-parity-check.selftest.mjs",
     "test:run-lock": "node --test scripts/lib/run-lock.selftest.mjs",
+    "test:queue": "node --test scripts/measurement-queue.selftest.mjs",
     "gate:run-lock-status": "node scripts/run-lock-status.mjs",
     "gate:clock-01": "node scripts/clock-01-audit.mjs",
     "test:clock-01": "node --test scripts/clock-01-audit.selftest.mjs",
