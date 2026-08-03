@@ -125,9 +125,30 @@ These are **not** CLEARED and **not** unfinished work. Each is a defect or hazar
 | `20260802b122` | Shakedown only | Never the seal. Passport above. |
 | `20260802b123` | Superseded | Local stamp; never deployed. |
 | `20260802b124` | **RETIRED — never citable** | Its bundle was compiled from a tree containing uncommitted source, so it cannot be reproduced from the SHA it is stamped with. No measurement taken against b124 can be cited, including A's `order01b-readback-canary-step1s-b124.json`, whose served engine of 545,015 bytes matches no committed state. Retired by the PO 2026-08-02, on the provenance evidence. |
-| `20260803b125` | **CUT, TAGGED, AWAITING DEPLOY** | Clean tree, explicit `BUILD_ID`, under `CLEAN-TREE-01`. Cut 2026-08-03; source tag `roster-20260803b125-source` pushed (tag object `fb9c2171d5e1b9d`, peels to `dd2ae121e73668c`), annotated and peeled as `deploy-test-checkpoint.sh` requires. 18 files carry the stamp; **zero served surfaces carry b122, b123 or b124**. Canary still answers `20260802b122` until the checkpoint is deployed on the VPS. Note the date: cut on the 3rd, so the id is `20260803b125`, not `20260802b125` as this table previously said. |
+| `20260803b125` | **RETIRED — UNSHIPPED** | Cut cleanly and correctly, and then could not be built in the checkpoint context. Source tag `roster-20260803b125-source` (tag object `fb9c2171d5e1b9d`, peels to `dd2ae121e73668c`) **stays pointing where it points and ships nothing.** The tag was deliberately NOT re-pointed at the fix: re-pointing a tag under a certified build is what retired b124, and doing it to rescue an id would have repeated the defect to save a name. See the retirement note below — this is a *different* retirement from b124's and the difference matters. |
+| `20260803b126` | **CUT, TAGGED, AWAITING DEPLOY** | Cut 2026-08-03 10:5x from `1cf60b607`, source tag `roster-20260803b126-source`, both pushed. First id to carry B's `BUILD-CONTEXT-01` fix (`bf0de225c`), which closes the `module-contract-preflight` failure that had made **every cut since `c0c013b9c` unbuildable** — b123, b124 and b125 all sat under it. Stamps uniform across **16 governed files at b126, zero stragglers**: no b122, b123, b124 or b125 remains on any served surface. Gates green at the tagged commit: module-contracts `"ok": true`, B's `test:build-context-coverage` 7/7, pre-cut mirror gate passed (598 files, 0 parse failures, 0 truncated), `clean-build-tree` reproducible from HEAD. Canary answers `20260802b122` until B deploys. |
 
-> b124 is retired as an *identity*, not as work: the source rows compiled into it are committed and will recompile into b125. Nothing in `scripts/` or `package.json` pins b124, so retiring it costs no tooling changes — checked, not assumed.
+> **b124 and b125 are both retired, and they are not retired for the same reason. Read the two words.**
+>
+> **b124 was retired as CONTAMINATED.** Its bundle was compiled from a tree containing uncommitted
+> source, so it cannot be reproduced from the SHA it is stamped with. It was deployed and it was
+> measured against, and **those measurements are uncitable** — A's `order01b-readback-canary-step1s-b124.json`
+> among them. The cost of b124 was evidence: real runs, on a real surface, that cannot be used.
+>
+> **b125 was retired UNSHIPPED.** Nothing was ever deployed against it and nothing was ever measured
+> against it. Its bytes were never wrong — the cut was clean, the tree was clean, the stamps were
+> uniform, and its provenance was verified green at 00:45. It died because the checkpoint image could
+> not be built from any commit of that era, a defect in the Dockerfile copy allowlist that belonged to
+> neither the cut nor the tagger. **The cost of b125 was time only.** No artifact needs withdrawing,
+> no row needs re-taking, no number anywhere in this file rests on it.
+>
+> The practical consequence for a reader in a month: if you find a measurement citing b124, discard
+> it. If you find one citing b125, **you have found a bug in the ledger, not a tainted measurement** —
+> no such measurement can exist, because that build never served a byte to anything.
+>
+> Neither is retired as *work*: every source row compiled into b124 and b125 is committed and
+> recompiles into b126. Nothing in `scripts/` or `package.json` pins any retired id — checked, not
+> assumed, at each retirement.
 
 ## 7 · Mixed-provenance commits inside the b125 stamp chain
 
@@ -170,6 +191,13 @@ removal of a file the module contract requires to be absent, so it removes no by
 **Ruled: the commit stands, unsplit.** Splitting it would rewrite `f16c94b70`, the final stamp whose
 provenance was verified green at 00:45. Rewriting history under a certified build is precisely what
 retired b124, and it is not worth doing to correct an authorship line. PO ruling 2026-08-03.
+
+**This section did not expire when b125 was retired.** `d4015a2be` and the whole b125 stamp chain are
+ancestors of `b126`, so the mixed-provenance commit is inside the shipping build's history and the
+ruling above still governs it. The governed-root proof carries across unchanged — the intersection
+with the build roots is still empty, so b126's bytes are clean for the same verified reason b125's
+were. Kept under its original heading rather than renamed, because the b125 chain is what it is
+called in every board entry that discusses it.
 
 **Two standing warnings:**
 
