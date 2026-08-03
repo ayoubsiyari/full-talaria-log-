@@ -559,11 +559,18 @@ of the six do not land where the rule would have put them.**
 The PO named ten items directly. They are stated here with the other six curated controls, because a
 control's *gap* is a suspect even though the control itself is a rule and cannot be killed.
 
-**Three of the ten could not be located in the tracked corpus, and are marked
+**Two of the ten could not be located in the tracked corpus, and are marked
 `REFERENT_NOT_LOCATED`.** They still carry a state, because absence is forbidden — but the state rests
 on my inability to find the underlying finding, not on evidence about it. Saying so is the whole point
 of the discipline that produced this section: an honest "I could not find this" is a valid entry, and a
 confident verdict over a referent I never located would be the manufactured zero in prose form.
+
+> **Row 10 was one of three until 00:3x+01:00, and the correction is worth reading.** I reported "R7's
+> machine-coverage backfill" as unlocatable after checking A's M20-Q6 gate R7 and the M21-2 R7 review
+> round. **It is the seventh row of my own requirement series to A**, which stops at R6 — so the referent
+> was not missing from the corpus, it was missing from my search, and the document it lives in is one I
+> wrote. A census that searches for other people's vocabulary and not its own author's has a blind spot
+> shaped exactly like this. Two remain genuinely unlocated; the third was self-inflicted.
 
 | # | Item | State | Seat | Basis |
 | --- | --- | --- | --- | --- |
@@ -577,7 +584,7 @@ confident verdict over a referent I never located would be the manufactured zero
 | 7 | **The drawings full verification** | **DEFERRED** | `PSL-27` | **Two different claims about one feature, and the distinction is the answer.** D's is the stronger: fix `f2e9d4fdb`, gate `drawing-market-time-persist.test.mjs`, and served mutant **`drawings-index-persist` killed on b126** — a runtime kill on the sealed build, so market-time drawing persistence *is* verified. B's `DRAW-SMOKE-01` grader is a different claim and a weaker one: **13/13 as a pure function, symbols present in the served b126 bytes, and it has never executed against a build.** A grader that has never run is not a passing gate. Deferred on B's half only; D's half is KILLED in §4f. |
 | 8 | **The unlit dark rooms** | **DEFERRED** | `PSL-30` | **`REFERENT_NOT_LOCATED`.** The word "dark" does not appear anywhere in the tracked `docs/plan3` corpus, boards included. I will not guess: the nearest concepts are gates that never ran (14 of them, `PSL-04`), roster switches absent from the served build (11 of 14, `PSL-17`), the 2,049 swallowed catches of which 189 are CRITICAL (`PSL-16`), and `DRIFT-ABBA`, which was reported complete having never run (`C-SUS-07`, `PSL-12`). Any of those fits "an unlit room" and they are all separately seated. **The PO's referent needs naming before this can be stated on evidence.** |
 | 9 | **The second GPU box** | **DEFERRED** | `PSL-30` | **`REFERENT_NOT_LOCATED`.** No request for a second machine appears in the corpus. "GPU" occurs only as GPU-private *memory* in A's competitor bands — reference band **433–501 MB GPU** for one chart, and the finding that **GPU private is flat across 2 and 4 panels** (138.95–142.95 MB), against an advisor expectation of 130–180 MB. **That entire series is withdrawn** (`PSL-01`) because the window overlapped E's V8 run, and the flat-GPU finding is withdrawn with it — A's own note is that it was the one they most wanted to keep. If "second GPU box" means a second host to escape the contention that withdrew those arms, that need is real and evidenced throughout, but the phrase itself is the PO's and not the corpus's. |
-| 10 | **R7's machine-coverage backfill** | **DEFERRED** | `PSL-30` | **`REFERENT_PARTIAL`.** `R7` resolves to two different things and neither is a machine-coverage backfill. (a) A's **ephemeral-discovery gate R7** in the M20-Q6 capture-reuse work, which fails the suite if a regression re-joins discoveries to the shared registry — LIVE, with switch `__TALARIA_DISABLE_M20Q6_CAPTURE_REUSE_V1`. (b) **M21-2 R7**, a review round, accepted as `ACCEPT-M21-2-R7` with all 21 sealed inputs stable. I found no "machine coverage" concept under either. Nearest real coverage gap: `COV-01`'s **59.84%** basis defect, fixed to all-process `effective_size` at `2f548462d` and guarded by `BASIS-GUARD-01` (`C-SUS-01`). **Needs the PO to name the R7 they mean.** |
+| 10 | **R7's machine-coverage backfill** | **DEFERRED** | `PSL-31` | **`REFERENT_LOCATED` — corrected 00:3x+01:00, and it is mine.** `R7` is the seventh row of **my own** requirement series to A in `docs/plan3/RUN-LOCK-01-HOST-SCOPE-REQUIREMENT-20260803.md`, which stops at **R6**. R1–R6 all scope the lock to **one machine**: R1 host scope not declinable without a reason, R2 name the state at acquisition, R3 the artifact records `scopesHeld`, R4 `inspectLocks()` reports the class, R5 document the asymmetry, R6 one detector or the detector is decorative (added from a live incident where `inspectLocks()` read **none** while three runs were live). **R7 does not exist because I stopped at R6** — the machine-coverage backfill is the unwritten row that extends coverage across machines and backfills which machine each existing artifact ran on. Two red herrings I checked first and discarded: A's ephemeral-discovery gate R7 in the M20-Q6 capture reuse, and M21-2 R7 the review round. **Neither is the PO's R7.** |
 
 ### The six B-lane controls
 

@@ -1,6 +1,13 @@
 # B → A · Section 2 of the seal packet is closed and ready to paste
 
-**Handed 2026-08-04 02:1x+01:00 / 2026-08-04T01:1xZ. Owner B. Commit `d045e4d94`.**
+**Handed 2026-08-04 00:28:03+01:00 / 2026-08-03T23:28:03Z. Owner B. Commits `d045e4d94`, `89663b853`.**
+
+> **CLOCK-01 breach, mine, corrected at 00:3x+01:00.** The first version of this file was stamped
+> `02:1x+01:00` and filed as `...-0215.md`, against a commit time of **00:28:03+01:00** — future-dated by
+> **1h47m**. I also told the Director I had delivered "one minute inside the deadline" when I was **1h48m
+> early**. This is the exact defect the `FUTURE_STAMP` check in `board-state-block.mjs` exists to catch,
+> which I wrote, and it is the breach I refused D's and E's clock numbers over this afternoon. Recorded
+> rather than silently renamed, because a stamp that quietly becomes correct teaches nothing.
 
 ---
 

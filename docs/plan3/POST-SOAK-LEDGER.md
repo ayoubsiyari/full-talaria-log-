@@ -594,10 +594,9 @@ with its own reason, which is why `PSL-21` through `PSL-23` are individual.
     GPU-*private memory* in A's competitor bands, and **that whole series is withdrawn** (`PSL-01`). If
     it means a second host to escape the contention that withdrew those arms, the *need* is evidenced
     everywhere; the phrase is not.
-  - **"R7's machine-coverage backfill"** — `R7` resolves to two unrelated things: A's ephemeral-discovery
-    gate in M20-Q6 capture reuse, and M21-2 R7, a review round accepted as `ACCEPT-M21-2-R7`. Neither
-    is a machine-coverage backfill. Nearest real coverage gap is `COV-01`'s 59.84% basis defect, fixed
-    at `2f548462d`.
+- **withdrawn from this seat at 00:3x+01:00:** *"R7's machine-coverage backfill"* was here as a third
+  unlocatable item. **It is located and it is mine** — see `PSL-31`. I had searched for other lanes'
+  vocabulary and not my own; the referent is the seventh row of a requirement document I wrote.
 - **state:** `RULING_PENDING` — specifically, pending a name, not a decision
 - **evidence:** `SUSPECT-LEDGER-SEAL.md` §4i rows 8, 9, 10, each recording the search performed.
 - **post-soak action:** ask the PO which finding each phrase points at, then state it on evidence. **This
@@ -608,3 +607,32 @@ with its own reason, which is why `PSL-21` through `PSL-23` are individual.
   finding I have not located. If any of the three is a product defect in the sealed bytes it belongs
   with the PO tonight rather than here. **That risk is why this row is flagged in the handoff rather
   than filed quietly.**
+
+### PSL-31 · R7 — the machine-coverage backfill I never wrote
+
+- **owner:** B to write R7; A to implement, as with R1-R6
+- **finding:** `docs/plan3/RUN-LOCK-01-HOST-SCOPE-REQUIREMENT-20260803.md` carries requirements **R1
+  through R6** and stops. Every one of them scopes the lock to **a single machine**: R1 host scope is not
+  declinable without a stated reason, R2 a host-less acquisition must not return `LOCK_ACQUIRED`, R3 the
+  artifact records `scopesHeld`, R4 `inspectLocks()` reports the class so the gap has a detector, R5
+  document the asymmetry where the flags are defined, R6 one detector or the detector is decorative --
+  that last added from a live incident in which `inspectLocks()` read **none** while three runs were
+  live on the box, one of them mine. **R7, the machine-coverage row, does not exist because I stopped at
+  R6.**
+- **state:** `PROPOSED_NOT_APPLIED` -- and weaker than that: not written, let alone applied
+- **evidence:** `docs/plan3/RUN-LOCK-01-HOST-SCOPE-REQUIREMENT-20260803.md:77-117` for R1-R6, handed to
+  A at `fb88cf1d1` 15:11+01:00 with R6 added in `cefd3d8da`. `docs/plan3/board/BOARD-B.md:156`
+  records the handoff as **"host scope R1-R6"**, which is the record showing where the series ends.
+- **post-soak action:** write R7. Two halves, and the second is the one with a cost: **(a)** the lock and
+  its detector must cover every machine that can run an instrument, not just the one the run started on;
+  **(b) backfill which machine each existing artifact ran on.** Half (b) is the awkward one, because an
+  artifact that does not record its machine cannot be retro-attributed to one, so the honest backfill
+  marks those `MACHINE_UNRECORDED` rather than guessing -- the same shape as the 250-SHA trailer
+  baseline, where the answer was to grandfather rather than to invent.
+- **why this row exists at all:** I reported this item to the Director as having no locatable referent
+  after checking two unrelated things called R7. **The referent was a document I wrote myself.** A census
+  that searches the corpus for other lanes' vocabulary and never for its own author's has a blind spot
+  shaped precisely like this one, and it is worth more as a recorded blind spot than as a quiet fix.
+- **seal-corrupting?** **no.** A requirement about measurement hygiene, not product bytes. It does mean
+  every measurement taken this week records at most which *process* held a lock and not which *machine*,
+  so cross-machine contention is undetectable in the existing evidence rather than absent from it.
