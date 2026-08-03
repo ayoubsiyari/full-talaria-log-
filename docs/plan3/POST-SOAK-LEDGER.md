@@ -267,3 +267,111 @@ disappear with the status line that used to carry them. This is the mechanism wo
   hour-0 endpoint (`BOOT-ENDPOINT-READING-01`) and the boots have no remaining dependency on it.
 - **seal-corrupting?** **no.** The allowance grades a boot transient against a bar. It is not in the
   bundle and the soak does not measure it.
+
+---
+
+## Seats for C's DEFERRED suspect rows, 00:2x+01:00
+
+Opened so that every `DEFERRED` seat cited in `SUSPECT-LEDGER-SEAL.md` §4e resolves to a real numbered
+row. A seat number pointing at nothing is absence wearing a better word.
+
+### PSL-11 · The canonical floor and its COV-01 block
+
+- **owner:** C
+- **finding:** The **674.9 MB** post-play floor is `FLOOR_FOUND` and **not quotable** — 59.84% coverage,
+  **271.05 MB unattributed** — and on the corrected criterion its curve would not have graded settled
+  either, because the instrument's default ladder had a 300 s last gap. Both defects are fixed; the
+  number has not been re-taken.
+- **state:** `WITHDRAWN_NEEDS_RETAKE`
+- **evidence:** `docs/plan3/board/BOARD-C.md` current-state table; suspect rows `C-SUS-01`, `C-SUS-06`,
+  `C-SUS-17`. Corrected basis at `2f548462d`, corrected ladder at `99198d15d`.
+- **post-soak action:** none, if the soak's hour-0 endpoint produces a reading that passes
+  `READING-VALIDITY-01` — that is now the canonical floor and it fires inside the arm. **This seat
+  exists for the failure branch:** if the hour-0 reading ships a failure sidecar, re-take on a clean box
+  with Cursor closed, `node scripts/canonical-floor-retake.mjs`, ~63 min.
+- **seal-corrupting?** **no.** A blocked number is not a wrong number in the bundle; nothing shipped
+  depends on it.
+
+### PSL-12 · `DRIFT-ABBA` has never run
+
+- **owner:** C
+- **finding:** `SELF_TEST_ONLY`. `abbaSequence` is called by exactly one file — its own self-test — and
+  I had reported the item completed. Withdrawn from the completed list rather than quietly re-scoped.
+- **state:** `MEASURED_NOT_FIXED`
+- **evidence:** `scripts/lib/abba-drift.mjs` (tracked), `docs/plan3/board/BOARD-C.md:1040`.
+- **post-soak action:** arm it with a genuine paired ABBA arm on the host. **Explicitly not** to be
+  bound somewhere convenient to turn the audit green — that would make the gate say BOUND while proving
+  nothing, which is the failure mode the audit exists to expose.
+- **seal-corrupting?** **no.** A drift instrument, not product code and not a seal gate.
+
+### PSL-13 · The 2026-08-02 arena series
+
+- **owner:** C
+- **finding:** Every figure keyed to `totalPrivateMB` in that series is unusable. Host contention
+  covered the **whole run, not a tail**, so there is no clean interior window to salvage.
+- **state:** `WITHDRAWN_NEEDS_RETAKE`
+- **evidence:** `docs/plan3/board/BOARD-C.md:778` (the correction against my own earlier posts).
+- **post-soak action:** re-run under host scope with the exclusivity witness recording `scopesHeld`.
+  C's arena re-run is deliberately last in the measurement queue and waits on E's retainer verdict.
+- **seal-corrupting?** **no.** Withdrawing readings removes claims rather than adding risk.
+
+### PSL-14 · Hoard floor curve at the drained end
+
+- **owner:** C
+- **finding:** The hoard floor binds at both ends of the arm, and under `SETTLE-CRITERION-V2` each end
+  needs a paused curve rather than a single read. The Director ruled the curve post-soak, so the
+  end-of-arm curve was **removed from both arms** and the recipe amended; the hour-0 curve covers only
+  the boot end.
+- **state:** `PROPOSED_NOT_APPLIED`
+- **evidence:** `docs/plan3/RECIPE-SEALED-SOAK-FROZEN-20260803.md` Amendment 2, commit `f0531a352`.
+- **post-soak action:** one paused curve at the drained end on the same ladder — three reads at 600 s
+  rungs, quiesce verified, forced collection at each. ~22 min of box time.
+- **seal-corrupting?** **no.** It is the soak's second gate, not a property of the sealed bytes.
+
+### PSL-15 · `chart.js:4916` / `:4919` — silent catches under RATE-HOLD's own quantity
+
+- **owner:** A, raised by C
+- **finding:** `try { replay.syncCurrentIndexFromReplayTimestamp(replay.replayTimestamp); } catch (_si) { }`
+  and `try { replay.updateChartData(false); } catch (_uc) { }`. `replayTimestamp` is exactly the quantity
+  RATE-HOLD reads as delivered bars/s. If either throws during a ten-hour arm the playhead stops
+  advancing, delivery reads zero, and **nothing anywhere reports an error** — the artifact records a
+  number instead of a fault.
+- **state:** `MEASURED_NOT_FIXED`
+- **evidence:** `docs/plan3/board/BOARD-C.md:142`; census `4ec7aeb99`.
+- **post-soak action:** make both catches record state. **Product file under freeze — no edit was made
+  or proposed tonight.** If the soak produces a flat-delivery segment with no error, this is the first
+  place to look, alongside `PSL-03`.
+- **seal-corrupting?** **unsure — this is the honest answer.** It does not make the sealed bytes wrong,
+  but it can make the *soak measuring them* report a number where it should report a fault. It is
+  recorded rather than resolved because resolving it means editing a frozen product file.
+
+### PSL-16 · N6 swallowed-catch census
+
+- **owner:** C for the census, product owners for the sites
+- **finding:** **2,049 silent catches across 192 files** — CRITICAL 189, HIGH 81, MEDIUM 78, LOW 105,
+  UNCLASSIFIED 1,596 — ranked by blast radius and brace-matched to each catch's own `try` block. This is
+  **triage, not a defect list**; some silent catches are correct and no site should be changed without
+  being read.
+- **state:** `MEASURED_NOT_FIXED`
+- **evidence:** commit `4ec7aeb99`. Recorded against myself: the first pass reported **531** CRITICAL by
+  classifying on a 700-character window that matches almost anything in dense code — its top "critical"
+  site was `getCandleSpacing()`. Re-classified on the matching `try` block only: 531 → 189. An alarming
+  number that means nothing is worse than no number.
+- **post-soak action:** work the 189 CRITICAL sites by blast radius, starting with `PSL-15`.
+- **seal-corrupting?** **no.** A census of existing behaviour. It changes nothing in the bundle and
+  describes the code as shipped.
+
+### PSL-17 · Eleven of fourteen roster switches are absent from the served build
+
+- **owner:** B for the build, C for the A/B
+- **finding:** Present: `BFCACHE_DEFEAT_V1`, `CHART_DESTROY_V1`, `OVERLAY_RESYNC_DIRTY_V1`. Absent: the
+  other eleven, including `EVICT_BEHIND_PLAYHEAD_V1`, `SERIES_LRU_V1`, `MARKER_INDEX_CACHE_V1`,
+  `INDICATOR_FP_MEMO_V1`. A switch-off A/B run against this build would flip three flags, **silently
+  no-op eleven**, and report the difference as the roster's contribution.
+- **state:** `ARMED_AWAITING_INPUT` — the A/B design is landed at `f6ef20a8b`; the input is a build that
+  carries the switches.
+- **evidence:** `docs/plan3/board/BOARD-C.md:139`.
+- **post-soak action:** run the switch-off A/B only against a build that actually carries the roster.
+  Until then the roster's contribution is **unmeasured**, which is not the same as zero.
+- **seal-corrupting?** **no.** It means one planned measurement cannot be taken against this build, not
+  that the build is wrong.
