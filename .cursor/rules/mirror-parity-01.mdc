@@ -1,0 +1,25 @@
+---
+description: MIRROR-PARITY-01 byte-parity check timing for mirrored trees
+alwaysApply: true
+---
+
+# MIRROR-PARITY-01
+
+`chart v 1.4/chart/` and `homepage/public/chart/` are mirrors. Every edit to one must be applied to the other, and the two copies must be byte-identical.
+
+Run the check **immediately after each edit or codemod pass that touches a mirrored file**, in the same step — not at the end of the session, and not once per batch of passes:
+
+```
+npm run gate:mirror-parity          # files changed vs HEAD
+node scripts/mirror-parity-check.mjs <paths>
+```
+
+Codemods that write mirrored files must call `assertParity(writtenPaths, context)` from `scripts/mirror-parity-check.mjs` before exiting, so the check cannot be forgotten.
+
+Treat these as distinct outcomes, and never report the last one as a pass:
+
+- `PARITY_DIVERGED` — the copies differ. Fix before proceeding; a later pass overwrites the evidence of which side was wrong.
+- `MIRROR_MISSING` — one side is absent. A one-tree fix is a vacuous green: gates and product may load either copy.
+- `NO_MIRRORED_EDITS` — nothing mirrored was compared, so parity is unverified rather than confirmed.
+
+Why the timing is part of the rule: on 2026-08-03 eleven mirror edits reverted to their committed state between two passes. Every file was independently valid and every gate still passed, because a gate reading the canonical copy cannot see a stale mirror. Only a byte comparison of the pair detects this, and only while it is still the most recent write.

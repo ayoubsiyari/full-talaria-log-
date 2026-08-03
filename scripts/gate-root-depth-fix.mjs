@@ -18,6 +18,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { assertParity } from './mirror-parity-check.mjs';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const log = (m) => console.log(`[root-depth-fix] ${m}`);
@@ -187,18 +189,24 @@ function main() {
 
   let changed = 0;
   const skipped = [];
+  const written = [];
   for (const rel of [...targets].sort()) {
     const full = path.join(ROOT, rel);
     if (!fs.existsSync(full)) { skipped.push(`${rel} — no such file (unmirrored)`); continue; }
     const r = rewrite(full, rel);
     if (r.skipped) { skipped.push(`${rel} — ${r.skipped}`); continue; }
-    if (!dry) fs.writeFileSync(full, r.out);
+    if (!dry) { fs.writeFileSync(full, r.out); written.push(rel); }
     changed += 1;
     log(`${dry ? 'would rewrite' : 'rewrote'} ${rel} (${r.names.join(', ')})`);
   }
   log('');
   for (const s of skipped) log(`skip: ${s}`);
   log(`${changed} file(s) ${dry ? 'would be ' : ''}rewritten, ${skipped.length} skipped`);
+
+  // MIRROR-PARITY-01: immediately, in the same process that did the writing.
+  // Deferring this to the end of a session is how eleven reverted mirror edits
+  // went unnoticed through two further passes.
+  if (!dry && written.length) assertParity(written, 'gate-root-depth-fix');
 }
 
 main();

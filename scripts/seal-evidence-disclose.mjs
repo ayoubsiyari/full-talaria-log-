@@ -23,6 +23,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { assertParity } from './mirror-parity-check.mjs';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const log = (m) => console.log(`[seal-disclose] ${m}`);
@@ -108,18 +110,24 @@ function rewrite(full, label) {
 function main() {
   const dry = process.argv.includes('--dry');
   let changed = 0;
+  const written = [];
   for (const [rel, label] of GATES) {
     for (const target of [rel, twin(rel)]) {
       const full = path.join(ROOT, target);
       if (!fs.existsSync(full)) { log(`skip: ${target} — absent`); continue; }
       const r = rewrite(full, label);
       if (r.skipped) { log(`skip: ${target} — ${r.skipped}`); continue; }
-      if (!dry) fs.writeFileSync(full, r.out);
+      if (!dry) { fs.writeFileSync(full, r.out); written.push(target); }
       changed += 1;
       log(`${dry ? 'would edit' : 'edited'} ${target} (${r.actions.join(' + ')})`);
     }
   }
   log(`${changed} file(s) ${dry ? 'would be ' : ''}edited`);
+
+  // MIRROR-PARITY-01: a skip on one side of a pair is a divergence, and this
+  // codemod skips per file. Checking here catches the half-applied case that
+  // the per-file log reads past.
+  if (!dry && written.length) assertParity(written, 'seal-evidence-disclose');
 }
 
 main();
