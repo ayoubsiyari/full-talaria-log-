@@ -31308,6 +31308,9 @@ class Chart {
         this._indLayerCtx = null;
         this._indLayerCacheKey = null;
 
+        this._clearSmartPrefetchCache('destroy');
+        this._removeSmartPrefetchCacheReleaseHooks();
+
         try {
             if (this.canvas) {
                 this.canvas.width = 0;
