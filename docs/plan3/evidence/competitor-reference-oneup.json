@@ -1,6 +1,6 @@
 {
-  "signature": "COMPETITOR-REFERENCE-REPORT-V1",
-  "at": "2026-08-03T19:55:52Z",
+  "signature": "COMPETITOR-REFERENCE-REPORT-V2",
+  "at": "2026-08-03T20:30:43Z",
   "coverage": {
     "competitorArms": "TradingView free, one chart per layout, one-up only",
     "competitorPanelCountsMeasured": [
@@ -11,159 +11,168 @@
       "paid tiers not purchased, so competitor multi-chart layouts were never reachable",
       "TradeZella and FX Replay dropped by the PO — absent, not a null result"
     ],
-    "readingRule": "this is a ONE-CHART reference. It does not license any statement about competitor multi-chart cost."
+    "readingRule": "this is a ONE-CHART reference. It does not license any statement about competitor multi-chart cost.",
+    "normalIsABand": "every figure is an interval with an n; no point value is published, and a gap is quoted from nearest edges"
   },
-  "arms": {
+  "bands": {
     "ours1up": {
-      "state": "ARM_READ",
+      "state": "SINGLE_OBSERVATION_NOT_A_BAND",
       "label": "ours-1up",
+      "n": 1,
       "panels": 1,
       "dpr": 2,
       "width": 1440,
       "height": 960,
       "settleMs": 20000,
       "canvasCount": 1,
-      "totalPrivateMB": 564.3,
-      "rendererPrivateMB": 128.52,
-      "gpuPrivateMB": 356.77,
-      "idleSlope": {
-        "spanMinutes": 0.9,
-        "totalPrivateMB": 203.04,
-        "rendererPrivateMB": -6.24,
-        "gpuPrivateMB": 212.15,
-        "totalMBPerMinute": 224.45,
-        "gpuMBPerMinute": 234.52,
-        "monotonicRise": true,
-        "series": [
-          {
-            "label": "loaded",
-            "total": 361.26,
-            "gpu": 144.62,
-            "renderer": 134.76
-          },
-          {
-            "label": "idle+30s",
-            "total": 564.3,
-            "gpu": 356.77,
-            "renderer": 128.52
-          }
-        ]
-      }
+      "metrics": {
+        "totalPrivateMB": {
+          "min": 356.59,
+          "max": 356.59,
+          "median": 356.59,
+          "n": 1,
+          "spreadMB": 0,
+          "spreadPctOfMin": 0
+        },
+        "gpuPrivateMB": {
+          "min": 142.62,
+          "max": 142.62,
+          "median": 142.62,
+          "n": 1,
+          "spreadMB": 0,
+          "spreadPctOfMin": 0
+        },
+        "rendererPrivateMB": {
+          "min": 131.51,
+          "max": 131.51,
+          "median": 131.51,
+          "n": 1,
+          "spreadMB": 0,
+          "spreadPctOfMin": 0
+        }
+      },
+      "rejected": [],
+      "why": "one run is a reading, not a range; it is reported so it is not lost, and it may not be quoted as a band"
     },
     "tv1up": {
-      "state": "ARM_READ",
+      "state": "BAND_READ",
       "label": "tradingview-1up",
+      "n": 3,
       "panels": 1,
       "dpr": 2,
       "width": 1440,
       "height": 960,
       "settleMs": 20000,
       "canvasCount": 20,
-      "totalPrivateMB": 779.99,
-      "rendererPrivateMB": 241.69,
-      "gpuPrivateMB": 446.58,
-      "idleSlope": {
-        "spanMinutes": 0.91,
-        "totalPrivateMB": -41.39,
-        "rendererPrivateMB": -5.79,
-        "gpuPrivateMB": -31,
-        "totalMBPerMinute": -45.31,
-        "gpuMBPerMinute": -33.94,
-        "monotonicRise": false,
-        "series": [
-          {
-            "label": "loaded",
-            "total": 821.38,
-            "gpu": 477.58,
-            "renderer": 247.48
-          },
-          {
-            "label": "idle+30s",
-            "total": 779.99,
-            "gpu": 446.58,
-            "renderer": 241.69
-          }
-        ]
-      }
+      "metrics": {
+        "totalPrivateMB": {
+          "min": 760.24,
+          "max": 825.26,
+          "median": 790.48,
+          "n": 3,
+          "spreadMB": 65.02,
+          "spreadPctOfMin": 8.6
+        },
+        "gpuPrivateMB": {
+          "min": 432.95,
+          "max": 501.03,
+          "median": 458.95,
+          "n": 3,
+          "spreadMB": 68.08,
+          "spreadPctOfMin": 15.7
+        },
+        "rendererPrivateMB": {
+          "min": 232.02,
+          "max": 240.8,
+          "median": 237.84,
+          "n": 3,
+          "spreadMB": 8.78,
+          "spreadPctOfMin": 3.8
+        }
+      },
+      "rejected": []
+    },
+    "ours2up": {
+      "state": "BAND_READ",
+      "label": "ours-2up",
+      "n": 3,
+      "panels": 2,
+      "dpr": 2,
+      "width": 1440,
+      "height": 960,
+      "settleMs": 20000,
+      "canvasCount": 2,
+      "metrics": {
+        "totalPrivateMB": {
+          "min": 379.33,
+          "max": 383.93,
+          "median": 379.33,
+          "n": 3,
+          "spreadMB": 4.6,
+          "spreadPctOfMin": 1.2
+        },
+        "gpuPrivateMB": {
+          "min": 138.97,
+          "max": 141.5,
+          "median": 140.29,
+          "n": 3,
+          "spreadMB": 2.53,
+          "spreadPctOfMin": 1.8
+        },
+        "rendererPrivateMB": {
+          "min": 156.26,
+          "max": 163.15,
+          "median": 156.53,
+          "n": 3,
+          "spreadMB": 6.89,
+          "spreadPctOfMin": 4.4
+        }
+      },
+      "rejected": []
     },
     "ours4up": {
-      "state": "ARM_READ",
+      "state": "BAND_UNDERPOWERED",
       "label": "ours-4up",
+      "n": 2,
       "panels": 4,
       "dpr": 2,
       "width": 1440,
       "height": 960,
       "settleMs": 20000,
       "canvasCount": 4,
-      "totalPrivateMB": 448.87,
-      "rendererPrivateMB": 220.23,
-      "gpuPrivateMB": 142.63,
-      "idleSlope": {
-        "spanMinutes": 0.91,
-        "totalPrivateMB": -9.5,
-        "rendererPrivateMB": -4.69,
-        "gpuPrivateMB": 0.66,
-        "totalMBPerMinute": -10.46,
-        "gpuMBPerMinute": 0.73,
-        "monotonicRise": false,
-        "series": [
-          {
-            "label": "loaded",
-            "total": 458.37,
-            "gpu": 141.97,
-            "renderer": 224.92
-          },
-          {
-            "label": "idle+30s",
-            "total": 448.87,
-            "gpu": 142.63,
-            "renderer": 220.23
-          }
-        ]
-      }
+      "metrics": {
+        "totalPrivateMB": {
+          "min": 447.22,
+          "max": 452.35,
+          "median": 449.79,
+          "n": 2,
+          "spreadMB": 5.13,
+          "spreadPctOfMin": 1.1
+        },
+        "gpuPrivateMB": {
+          "min": 138.95,
+          "max": 142.95,
+          "median": 140.95,
+          "n": 2,
+          "spreadMB": 4,
+          "spreadPctOfMin": 2.9
+        },
+        "rendererPrivateMB": {
+          "min": 221.29,
+          "max": 222.4,
+          "median": 221.84,
+          "n": 2,
+          "spreadMB": 1.11,
+          "spreadPctOfMin": 0.5
+        }
+      },
+      "rejected": [],
+      "why": "2 runs is fewer than the 3 this project requires before pricing anything"
     }
   },
   "headline": {
-    "state": "HEADLINE_READ",
-    "basis": "one chart each, dpr 2, 1440x960, 20000ms settle, same instrument",
-    "ours": {
-      "totalPrivateMB": 564.3,
-      "gpuPrivateMB": 356.77,
-      "rendererPrivateMB": 128.52,
-      "canvases": 1
-    },
-    "tradingview": {
-      "totalPrivateMB": 779.99,
-      "gpuPrivateMB": 446.58,
-      "rendererPrivateMB": 241.69,
-      "canvases": 20
-    },
-    "deltaMB": {
-      "total": -215.69,
-      "gpu": -89.81,
-      "renderer": -113.17
-    },
-    "ratio": {
-      "total": 0.72,
-      "gpu": 0.8,
-      "renderer": 0.53
-    }
-  },
-  "ourScalingCurve": {
-    "label": "OURS_ONLY_NOT_A_COMPARISON",
-    "why": "there is no competitor arm at this panel count, so this figure has nothing to be compared against",
-    "oneUp": {
-      "panels": 1,
-      "totalPrivateMB": 564.3,
-      "gpuPrivateMB": 356.77
-    },
-    "fourUp": {
-      "panels": 4,
-      "totalPrivateMB": 448.87,
-      "gpuPrivateMB": 142.63
-    },
-    "marginalMBPerAddedPanel": -38.48,
-    "marginalGpuMBPerAddedPanel": -71.38,
-    "fixedShareOfFourUpPct": 125.7
+    "state": "HEADLINE_PAIR_INCOMPLETE",
+    "why": "the like-for-like pair needs a band on both one-up arms; ours=SINGLE_OBSERVATION_NOT_A_BAND (n=1), tradingview=BAND_READ (n=3)",
+    "refusedSubstitution": "our 4-up total divided by four is not our 1-up cost: browser, GPU and network process overhead is fixed and does not scale with panel count"
   }
 }

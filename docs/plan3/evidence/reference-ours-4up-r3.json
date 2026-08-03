@@ -1,0 +1,256 @@
+{
+  "signature": "COMPETITOR-ARENA-REFERENCE-V1",
+  "at": "2026-08-03T20:28:46.850Z",
+  "runLock": {
+    "state": "LOCK_ACQUIRED",
+    "pid": 30348
+  },
+  "label": "ours-4up",
+  "inputs": {
+    "url": null,
+    "panels": 4,
+    "settleMs": 20000,
+    "viewport": {
+      "width": 1440,
+      "height": 960
+    },
+    "dpr": 2,
+    "manual": false,
+    "headful": false,
+    "warmupMs": 20000,
+    "probeWebgl": false,
+    "selfHarness": {
+      "url": "http://127.0.0.1:51449",
+      "panels": 4,
+      "hostFile": 25,
+      "tf": "1m"
+    }
+  },
+  "method": {
+    "memory": "forced CDP collection, then settle, then collect again, then OS private memory per process",
+    "why": "a ~1s post-GC reading overstates our own four-panel floor by ~111 MB total / ~82 MB GPU; the settle is what makes any cross-product number comparable",
+    "comparability": "the SELF arm must be run from this same script at the same viewport, dpr, panel count and settle",
+    "caveats": [
+      "browser process accounting includes the browser and network processes; compare renderer+GPU as well as total",
+      "webglContexts is null unless --probe-webgl: detecting a context requires requesting one, which allocates on any canvas that had none, inside the measurement itself",
+      "panel count must be verified from the surface census, not assumed from the layout that was requested"
+    ]
+  },
+  "coverage": {
+    "panelsThisArm": 4,
+    "competitorArms": "TradingView free only, one chart per layout",
+    "notMeasured": [
+      "no multi-chart competitor data at any panel count",
+      "paid tiers not purchased, so competitor multi-chart layouts were never reachable",
+      "TradeZella and FX Replay dropped by the PO — no data, not a null result"
+    ],
+    "headlineComparison": "one-up ours versus one-up TradingView; any other pairing is not like-for-like",
+    "ourFourUp": "OUR_OWN_SCALING_CURVE_NOT_A_COMPARISON"
+  },
+  "samples": [
+    {
+      "label": "loaded",
+      "at": "2026-08-03T20:29:32.908Z",
+      "process": {
+        "totalPrivateMB": 466.21,
+        "rendererPrivateMB": 231.05,
+        "gpuPrivateMB": 142.54,
+        "processCount": 8
+      },
+      "surface": {
+        "frameCount": 4,
+        "canvasCount": 4,
+        "canvasBackingMB": 21.022,
+        "webglContexts": null,
+        "dpr": 2,
+        "viewport": {
+          "w": 1440,
+          "h": 960
+        },
+        "perFrame": [
+          {
+            "url": "http://127.0.0.1:51449/harness/host.html?pair=same&panels=4&tf=1m&hostFile=25",
+            "canvasCount": 1,
+            "canvasBackingMB": 8.865,
+            "largestCanvas": {
+              "px": 2323808,
+              "w": 1438,
+              "h": 1616
+            },
+            "dpr": 2,
+            "innerW": 1440,
+            "innerH": 960,
+            "webglContexts": null
+          },
+          {
+            "url": "http://127.0.0.1:51449/chart/multichart-prod/chart-embed.html?id=B&tf=1m&fileId=25&multichart=1&panelId=B",
+            "canvasCount": 1,
+            "canvasBackingMB": 8.865,
+            "largestCanvas": {
+              "px": 2323808,
+              "w": 1438,
+              "h": 1616
+            },
+            "dpr": 2,
+            "innerW": 719,
+            "innerH": 808,
+            "webglContexts": null
+          },
+          {
+            "url": "http://127.0.0.1:51449/chart/multichart-prod/chart-embed.html?id=C&tf=1m&fileId=25&multichart=1&panelId=C",
+            "canvasCount": 1,
+            "canvasBackingMB": 1.646,
+            "largestCanvas": {
+              "px": 431400,
+              "w": 1438,
+              "h": 300
+            },
+            "dpr": 2,
+            "innerW": 719,
+            "innerH": 150,
+            "webglContexts": null
+          },
+          {
+            "url": "http://127.0.0.1:51449/chart/multichart-prod/chart-embed.html?id=D&tf=1m&fileId=25&multichart=1&panelId=D",
+            "canvasCount": 1,
+            "canvasBackingMB": 1.646,
+            "largestCanvas": {
+              "px": 431400,
+              "w": 1438,
+              "h": 300
+            },
+            "dpr": 2,
+            "innerW": 719,
+            "innerH": 150,
+            "webglContexts": null
+          }
+        ]
+      }
+    },
+    {
+      "label": "idle+30s",
+      "at": "2026-08-03T20:30:27.344Z",
+      "process": {
+        "totalPrivateMB": 452.35,
+        "rendererPrivateMB": 222.4,
+        "gpuPrivateMB": 142.95,
+        "processCount": 8
+      },
+      "surface": {
+        "frameCount": 4,
+        "canvasCount": 4,
+        "canvasBackingMB": 21.022,
+        "webglContexts": null,
+        "dpr": 2,
+        "viewport": {
+          "w": 1440,
+          "h": 960
+        },
+        "perFrame": [
+          {
+            "url": "http://127.0.0.1:51449/harness/host.html?pair=same&panels=4&tf=1m&hostFile=25",
+            "canvasCount": 1,
+            "canvasBackingMB": 8.865,
+            "largestCanvas": {
+              "px": 2323808,
+              "w": 1438,
+              "h": 1616
+            },
+            "dpr": 2,
+            "innerW": 1440,
+            "innerH": 960,
+            "webglContexts": null
+          },
+          {
+            "url": "http://127.0.0.1:51449/chart/multichart-prod/chart-embed.html?id=B&tf=1m&fileId=25&multichart=1&panelId=B",
+            "canvasCount": 1,
+            "canvasBackingMB": 8.865,
+            "largestCanvas": {
+              "px": 2323808,
+              "w": 1438,
+              "h": 1616
+            },
+            "dpr": 2,
+            "innerW": 719,
+            "innerH": 808,
+            "webglContexts": null
+          },
+          {
+            "url": "http://127.0.0.1:51449/chart/multichart-prod/chart-embed.html?id=C&tf=1m&fileId=25&multichart=1&panelId=C",
+            "canvasCount": 1,
+            "canvasBackingMB": 1.646,
+            "largestCanvas": {
+              "px": 431400,
+              "w": 1438,
+              "h": 300
+            },
+            "dpr": 2,
+            "innerW": 719,
+            "innerH": 150,
+            "webglContexts": null
+          },
+          {
+            "url": "http://127.0.0.1:51449/chart/multichart-prod/chart-embed.html?id=D&tf=1m&fileId=25&multichart=1&panelId=D",
+            "canvasCount": 1,
+            "canvasBackingMB": 1.646,
+            "largestCanvas": {
+              "px": 431400,
+              "w": 1438,
+              "h": 300
+            },
+            "dpr": 2,
+            "innerW": 719,
+            "innerH": 150,
+            "webglContexts": null
+          }
+        ]
+      }
+    }
+  ],
+  "browser": {
+    "version": "Chrome/148.0.7778.97"
+  },
+  "partial": null,
+  "summary": {
+    "label": "ours-4up",
+    "panelsRequested": 4,
+    "canvasCount": 4,
+    "canvasBackingMB": 21.022,
+    "webglContexts": null,
+    "dpr": 2,
+    "totalPrivateMB": 452.35,
+    "rendererPrivateMB": 222.4,
+    "gpuPrivateMB": 142.95,
+    "perPanelByDivision": {
+      "derivation": "ARITHMETIC_NOT_A_MEASUREMENT",
+      "divisor": 4,
+      "totalPrivateMB": 113.09,
+      "rendererPrivateMB": 55.6,
+      "gpuPrivateMB": 35.74
+    },
+    "driftBetweenSamplesMB": -13.86,
+    "idleSlope": {
+      "spanMinutes": 0.91,
+      "totalPrivateMB": -13.86,
+      "rendererPrivateMB": -8.65,
+      "gpuPrivateMB": 0.41,
+      "totalMBPerMinute": -15.28,
+      "gpuMBPerMinute": 0.45,
+      "monotonicRise": false,
+      "series": [
+        {
+          "label": "loaded",
+          "total": 466.21,
+          "gpu": 142.54,
+          "renderer": 231.05
+        },
+        {
+          "label": "idle+30s",
+          "total": 452.35,
+          "gpu": 142.95,
+          "renderer": 222.4
+        }
+      ]
+    }
+  }
+}
