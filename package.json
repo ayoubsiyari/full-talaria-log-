@@ -74,6 +74,7 @@
     "preflight:support-passport-degraded": "node scripts/support-passport-degraded-gate.mjs",
     "test:support-passport-degraded": "node --test scripts/tests/support-passport-degraded.test.mjs",
     "test:build-id-refusal": "node --test scripts/tests/build-id-refusal.test.mjs",
+    "test:launch-lock": "node scripts/tests/single-launch-lock.test.mjs",
     "test:build-context-coverage": "node --test scripts/tests/build-context-coverage.test.mjs",
     "preflight:cache-stamp-coherence": "node scripts/cache-stamp-coherence-gate.mjs",
     "test:cache-stamp-coherence": "node --test scripts/tests/cache-stamp-coherence.test.mjs",
