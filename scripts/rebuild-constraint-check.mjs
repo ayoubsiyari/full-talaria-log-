@@ -33,6 +33,19 @@
  * Exit 0 pass. Exit 2 a required row is missing or unexplained: the surface must
  * not be cited. Exit 1 the check itself could not run — a harness or door
  * failure, which is not a verdict on the build.
+ *
+ * SEAL-EVIDENCE-01 — WHAT `CARRIED` DOES AND DOES NOT MEAN. Read this before quoting the verdict.
+ *
+ * Every row here is decided by a regex against BYTES: either a source file or a file fetched from
+ * the surface. That is evidence of PRESENCE, never of BEHAVIOUR. `CARRIED` means the marker for a
+ * row is in the bytes the door serves. It does NOT mean the code path executes, that the fix is
+ * reachable, or that a kill switch above it is off — a row can be CARRIED and inert, which is
+ * exactly the shape of FRAME-01 (green while replay was exempt).
+ *
+ * So this gate is a NECESSARY precondition and never a seal verdict on its own. A row verified at
+ * the seal needs runtime evidence from the sealed build; this check exists to stop anyone spending
+ * a real run against a surface that does not even contain the code. The verdict line says so in
+ * its own output rather than leaving the distinction to whoever reads it.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -282,6 +295,11 @@ async function checkSurface() {
     return 2;
   }
   console.log('\nEvery required row is carried. This surface can be cited.');
+  // SEAL-EVIDENCE-01: the verdict must state its own evidence class rather than presenting as a pass.
+  console.log('  EVIDENCE CLASS: STATIC_BYTES — every row above was decided by a regex against served or');
+  console.log('  source bytes. This proves the marker is PRESENT, not that the code path RUNS. A row');
+  console.log('  verified at the seal still needs runtime evidence from the sealed build; CARRIED here is a');
+  console.log('  precondition for spending that run, never a substitute for it. A row can be CARRIED and inert.');
   return 0;
 }
 

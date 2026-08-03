@@ -76,6 +76,27 @@ gate('runtime: no governor at all is REFUSED', !gradeRuntimeLadder({ hasReplaySy
 gate('runtime: private ladder accepted when snap fn AND getter are live', gradeRuntimeLadder({ hasReplaySystem: true, ladder: null, hasNearestRung: true, hasTargetGetter: true }).ok, null);
 gate('runtime: no replaySystem is REFUSED', !gradeRuntimeLadder({ hasReplaySystem: false }).ok, null);
 
+// SEAL-EVIDENCE-01: a pass must declare which kind of evidence it is. The two passing routes above
+// are NOT the same strength, and reporting both as a bare `ok` is how presence gets quoted as
+// behaviour. These assert the distinction is machine-readable rather than living in a comment.
+{
+  const observed = gradeRuntimeLadder({ hasReplaySystem: true, ladder: [1,2,3,4,5,6,7,8,9,10] });
+  gate('evidence: an observed ladder is marked behavioural',
+    observed.evidenceClass === 'LADDER_OBSERVED' && observed.behaviouralEvidence === true, observed.evidenceClass);
+
+  const presence = gradeRuntimeLadder({ hasReplaySystem: true, ladder: null, hasNearestRung: true, hasTargetGetter: true });
+  gate('evidence: the private-ladder pass is marked PRESENCE, not behaviour',
+    presence.ok === true && presence.evidenceClass === 'CAPABILITY_PRESENT' && presence.behaviouralEvidence === false,
+    presence.evidenceClass);
+
+  gate('evidence: the two passing routes are distinguishable from each other',
+    observed.evidenceClass !== presence.evidenceClass, `${observed.evidenceClass} vs ${presence.evidenceClass}`);
+
+  const absent = gradeRuntimeLadder({ hasReplaySystem: false });
+  gate('evidence: an unreadable page is its own class, not a capability verdict',
+    absent.evidenceClass === 'UNREADABLE', absent.evidenceClass);
+}
+
 // Awaited, and the exit code is SET rather than forced. process.exit() while the fixture server was
 // still closing tripped a libuv assertion, so a 13/13 run exited -1073740791 - a fully passing self-test
 // returning a failure code, which any caller gating on exit status would read as red.

@@ -44,7 +44,7 @@ import { computeSeal } from './lib/seal.mjs';
 import { checkSpeed01Served, capabilityDigest, readSpeed01Runtime } from './lib/served-capability.mjs';
 import { deliveredRate, evaluateRateHold, readEffectiveRateReadback } from './lib/rate-hold.mjs';
 import { forcedGcPauseProbe } from './lib/forced-gc-pause-probe.mjs';
-import { arenaColumns } from './lib/arena-columns.mjs';
+import { arenaColumns, rankRowGrowth } from './lib/arena-columns.mjs';
 import { collectMemoryDump } from './process-memory-census.mjs';
 import { readStorageCensus, diffStorage } from './lib/storage-census.mjs';
 import { offlineToggle } from './lib/offline-toggle.mjs';
@@ -417,6 +417,18 @@ const t0 = Date.now();
 let session = null;
 const gaugeMisses = { footprint: 0, blocking: 0 };
 let prevSample = null;
+/**
+ * TOTAL-01 binding. The enforcement in arena-columns refuses to format a single-arena delta without
+ * its total row at both endpoints — but it only binds on a path that actually calls it, and until now
+ * the soak recorded arena columns and never quoted a delta through them. The quoting happened later,
+ * by hand, on a board, which is the one route the enforcement could not reach.
+ *
+ * Holding the arm's first and last arena rows lets the end-of-arm summary go through
+ * `rankRowGrowth`, so the soak's own arena growth is TOTAL-01 checked by construction rather than by
+ * my remembering to do it.
+ */
+let firstArenaRow = null;
+let lastArenaRow = null;
 // RATE-HOLD state. Same reasoning as R3 below: a delivery ratio spanning a browser restart would compare
 // a warmed session against a cold one, so the series is in-process and a resume starts it fresh.
 let prevRateSample = null;
@@ -680,6 +692,10 @@ try {
     // samples taken before the panels were up.
     if (rateEntry) rateEntry.livePanels = livePanels;
 
+    if (arenas && arenas.arenaNamedTotalMB != null) {
+      if (!firstArenaRow) firstArenaRow = arenas;
+      lastArenaRow = arenas;
+    }
     run.append({
       segment,
       hours: +((Date.now() - t0) / 3600000).toFixed(4),
@@ -849,6 +865,36 @@ try {
       log,
     }).catch((e) => ({ verdict: 'VOID', why: `probe threw: ${String(e).slice(0, 160)}` }));
     run.note({ __pauseProbe: true, when: 'end-of-arm', at: new Date().toISOString(), ...endProbe });
+
+    /**
+     * TOTAL-01 ENFORCED ARENA GROWTH for the arm. Every delta below has been through
+     * `quoteArenaDelta`, so a row that reached here without its total is REFUSED and appears in
+     * `refused` rather than as a number. That is the point: the enforcement now sits on the path the
+     * figures actually leave by.
+     */
+    if (firstArenaRow && lastArenaRow && firstArenaRow !== lastArenaRow) {
+      const growth = rankRowGrowth(firstArenaRow, lastArenaRow);
+      run.note({
+        __arenaGrowth: true,
+        when: 'end-of-arm',
+        at: new Date().toISOString(),
+        ...growth,
+        quotableSentences: growth.growers.map((g) => g.quotableSentence),
+        basisCaveat: 'KNOWN DEFECT, C: the arena roots come from the single heaviest renderer while '
+          + 'totalPrivateMB is all-Chrome-process private, so arenaCoveragePct understates coverage and '
+          + 'the share-of-total percentages are against a larger total than the arenas were read from. '
+          + 'Directions and per-arena deltas stand; coverage and share do not, pending COV-01.',
+      });
+      log(`end-of-arm arena growth: ${growth.growers.length} grower(s), ${growth.refused.length} refused by TOTAL-01`);
+    } else {
+      run.note({
+        __arenaGrowth: true,
+        when: 'end-of-arm',
+        state: 'NOT_ENOUGH_ARENA_ROWS',
+        why: 'fewer than two samples carried a readable arena row with a total, so no TOTAL-01 delta can be quoted. '
+          + 'This is an absence of evidence about arenas, NOT a finding that arenas were flat.',
+      });
+    }
     log(`end-of-arm pause-probe: ${endProbe.verdict} — hoard floor ${endProbe.hoardFloorMB ?? '?'} MB`);
 
     // N4, readings two and three. The post-refresh read is the one that matters: it separates what the

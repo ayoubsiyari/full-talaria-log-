@@ -72,6 +72,11 @@ export async function checkSpeed01Served(origin, { markers = SPEED01_MARKERS } =
   return {
     ok: missing.length === 0,
     state: missing.length === 0 ? 'PRESENT' : 'MISSING_MARKERS',
+    // SEAL-EVIDENCE-01: PRESENT means the markers are in the served bytes. It does not mean the
+    // governor runs. readSpeed01Runtime + gradeRuntimeLadder are the runtime half, and the soak's
+    // effective-speed readback is the behavioural one.
+    evidenceClass: 'STATIC_SERVED_BYTES',
+    behaviouralEvidence: false,
     url, bytes, localBytes,
     servedPctOfLocal: localBytes ? +(100 * bytes / localBytes).toFixed(1) : null,
     present, missing,
@@ -138,20 +143,52 @@ export async function readSpeed01Runtime(frame) {
   });
 }
 
-/** The ladder is the integers 1..10; anything else means the governor is absent or different. */
+/**
+ * The ladder is the integers 1..10; anything else means the governor is absent or different.
+ *
+ * SEAL-EVIDENCE-01: this grade carries its own `evidenceClass`, because two of its three passing
+ * routes are not the same strength of evidence and were previously both reported as a bare `ok`.
+ *
+ *   LADDER_OBSERVED   the ladder array was read off the live object and matches. Behaviour.
+ *   CAPABILITY_PRESENT the array is module-private, so the grade falls back to two functions
+ *                     EXISTING. That is configured intent, not observed behaviour — `typeof` says
+ *                     nothing about what the governor does when asked for a speed. Still passes,
+ *                     because refusing would false-red a working build (it did once), but it must
+ *                     not be quoted as behavioural proof. The behavioural companion is the soak's
+ *                     effective-speed readback, which calls getTargetBarsPerSecond() and refuses
+ *                     on a mismatch or a null.
+ */
 export function gradeRuntimeLadder(runtime, expected = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
-  if (!runtime || !runtime.hasReplaySystem) return { ok: false, why: 'no replaySystem on the page' };
-  // The ladder array may be private; the snap function and the target getter are the load-bearing pair,
-  // so their presence is accepted as evidence when the array itself is not reachable from outside.
+  if (!runtime || !runtime.hasReplaySystem) {
+    return { ok: false, evidenceClass: 'UNREADABLE', why: 'no replaySystem on the page' };
+  }
   if (!Array.isArray(runtime.ladder)) {
     const ok = runtime.hasNearestRung === true && runtime.hasTargetGetter === true;
-    if (ok) return { ok: true, why: 'ladder array not exposed, but the snap function and target getter are both live' };
+    if (ok) {
+      return {
+        ok: true,
+        evidenceClass: 'CAPABILITY_PRESENT',
+        behaviouralEvidence: false,
+        why: 'ladder array not exposed; the snap function and target getter both EXIST. Presence only — '
+          + 'pair this with the effective-speed readback before treating the governor as verified.',
+      };
+    }
     const missing = [
       runtime.hasNearestRung === true ? null : 'nearest-rung/ladder accessor',
       runtime.hasTargetGetter === true ? null : 'getTargetBarsPerSecond',
     ].filter(Boolean).join(' + ');
-    return { ok: false, why: `ladder array not reachable; missing ${missing || 'governor accessors'}` };
+    return {
+      ok: false,
+      evidenceClass: 'CAPABILITY_ABSENT',
+      behaviouralEvidence: false,
+      why: `ladder array not reachable; missing ${missing || 'governor accessors'}`,
+    };
   }
   const same = runtime.ladder.length === expected.length && runtime.ladder.every((v, i) => Number(v) === expected[i]);
-  return { ok: same, why: same ? null : `ladder is [${runtime.ladder.join(',')}], expected [${expected.join(',')}]` };
+  return {
+    ok: same,
+    evidenceClass: 'LADDER_OBSERVED',
+    behaviouralEvidence: true,
+    why: same ? null : `ladder is [${runtime.ladder.join(',')}], expected [${expected.join(',')}]`,
+  };
 }
