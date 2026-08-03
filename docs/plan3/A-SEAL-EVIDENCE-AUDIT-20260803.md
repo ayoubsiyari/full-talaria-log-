@@ -1,5 +1,11 @@
 # A-lane seal evidence audit — SEAL-EVIDENCE-01
 
+> **Update 11:38 — the eleven static-only gates below now declare themselves** (`0888d6757`). Each
+> prints `STATIC_ONLY_SOURCE_GATE <row> — reads source; served behaviour unobserved` at load, so the
+> token travels into a sweep log rather than living only in this document, and the seven that had no
+> refusal state now throw `SUBJECT_ABSENT: <path>`. The classification below is unchanged.
+
+
 **Standing rule.** Source evidence cannot bless served bytes. A seal row is `PASSED` only when the
 sealed build itself produced runtime evidence. A check that can only be performed statically must
 say so in its own verdict line rather than presenting as a pass.
