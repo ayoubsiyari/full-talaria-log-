@@ -49,6 +49,7 @@ const MUTANT_SUITE = hasFlag('mutant-suite');
 const PROGRESS = hasFlag('progress');
 const MUTANT_FILTER = String(argOf('mutants', '') || '').split(',').map((s) => s.trim()).filter(Boolean);
 const OUT_JSON = path.resolve(repoRoot, argOf('out', 'docs/plan3/evidence/tal-po-ui-smoke-b126.json'));
+const FAILED_JSON = OUT_JSON.replace(/\.json$/i, '.failed.json');
 const SIGNATURE = 'TAL-PO-UI-SMOKE-CANARY-V1';
 const RUN_TIMEOUT_MS = Math.max(30_000, Number(argOf('timeout-ms', '150000')) || 150_000);
 const EXPECTED_BEHAVIOR_ROWS = Object.freeze([
@@ -78,9 +79,44 @@ const MUTANT_CASES = Object.freeze([
   { id: 'analysis-only-allows-order', target: 'Rayan #8 analysis-only symbol refuses placement' },
 ]);
 
+const PHASE_TRACE = [];
+
+function writeFailedSnapshot(reason, extra = {}) {
+  try {
+    fs.mkdirSync(path.dirname(FAILED_JSON), { recursive: true });
+    fs.writeFileSync(FAILED_JSON, `${JSON.stringify({
+      signature: `${SIGNATURE}-FAILED-SNAPSHOT-V1`,
+      at: new Date().toISOString(),
+      reason,
+      origin: ORIGIN,
+      expectedCoordinates: EXPECT,
+      out: path.relative(repoRoot, OUT_JSON).replace(/\\/g, '/'),
+      phaseTrace: PHASE_TRACE,
+      lastPhase: PHASE_TRACE[PHASE_TRACE.length - 1] || null,
+      ...extra,
+    }, null, 2)}\n`);
+  } catch (e) {
+    console.error(`[tal-po-ui-smoke] FAILED_SNAPSHOT_WRITE_FAILED ${String(e?.message || e)}`);
+  }
+}
+
 function progress(stage, detail = '') {
+  PHASE_TRACE.push({ at: new Date().toISOString(), stage, detail: detail || null });
+  writeFailedSnapshot('PHASE_TRACE');
   if (!PROGRESS) return;
   console.error(`[tal-po-ui-smoke] ${new Date().toISOString()} ${stage}${detail ? ` ${detail}` : ''}`);
+}
+
+function browserPhase(row) {
+  PHASE_TRACE.push({
+    at: new Date().toISOString(),
+    stage: `browser:${row?.stage || 'unknown'}`,
+    mutant: row?.mutant || null,
+    detail: row?.detail || null,
+  });
+  writeFailedSnapshot('BROWSER_PHASE');
+  if (!PROGRESS) return;
+  console.error(`[tal-po-ui-smoke] ${new Date().toISOString()} browser:${row?.stage || 'unknown'} mutant=${row?.mutant || '<baseline>'}${row?.detail ? ` ${row.detail}` : ''}`);
 }
 
 async function boundedGoto(page, url, label, timeoutMs = 15000) {
@@ -137,6 +173,13 @@ function talPoUiSmokeArm(activeMutant = '') {
   const rows = [];
   const failures = [];
   const mutant = String(activeMutant || '');
+  const phases = [];
+  const phase = (stage, detail = null) => {
+    const rowPhase = { stage, mutant: mutant || null, detail };
+    phases.push(rowPhase);
+    try { window.__talPoUiSmokePhase?.(rowPhase); } catch (_e) { /* ignore */ }
+  };
+  phase('arm-start');
   const row = (name, pass, detail, failState = 'OBSERVED_WRONG') => {
     const ok = !!pass;
     rows.push({
@@ -156,6 +199,7 @@ function talPoUiSmokeArm(activeMutant = '') {
   if (!liveOm) fail('runtime surface', 'ORDER_MANAGER_MISSING', 'orderManager missing');
   if (!d3) fail('runtime surface', 'D3_MISSING', 'window.d3 missing');
   if (!chart || !liveOm || !d3) return { ok: false, failures, rows };
+  phase('page-boot-bound');
 
   const required = [
     '_buildOrderLevelToastLabelInGroup',
@@ -169,6 +213,7 @@ function talPoUiSmokeArm(activeMutant = '') {
     if (typeof liveOm[name] !== 'function') fail(name, 'RESOLVER_ABSENT_FROM_SERVED_BUILD', `${name} missing`);
   }
   if (failures.length) return { ok: false, failures, rows };
+  phase('resolvers-bound');
 
   // Product-path mutants: wrap live methods so only the targeted symptom goes wrong.
   const restoreFns = [];
@@ -238,6 +283,7 @@ function talPoUiSmokeArm(activeMutant = '') {
       return Number.isFinite(directY) ? directY : fallbackY;
     });
   }
+  phase('mutant-patch-applied');
 
   const svgNs = 'http://www.w3.org/2000/svg';
   const makeSvgGroup = () => {
@@ -254,6 +300,7 @@ function talPoUiSmokeArm(activeMutant = '') {
   const attr = (node, name) => node && node.getAttribute(name);
 
   try {
+    phase('assertion-start', 'label-boxes');
     const label = makeSvgGroup();
     try {
       const stopDims = liveOm._buildOrderLevelToastLabelInGroup(label.sel, {
@@ -351,6 +398,7 @@ function talPoUiSmokeArm(activeMutant = '') {
       label.cleanup();
     }
 
+    phase('drag-start', 'hover-controls');
     const hover = makeSvgGroup();
     try {
       const badge = document.createElementNS(svgNs, 'g');
@@ -404,6 +452,7 @@ function talPoUiSmokeArm(activeMutant = '') {
     }
 
     try {
+      phase('drag-start', 'scale-conversion');
       const fakeScaledSvg = {
         createSVGPoint() {
           return {
@@ -491,6 +540,7 @@ function talPoUiSmokeArm(activeMutant = '') {
     }
 
     try {
+      phase('order-placed', 'activation-box');
       const activation = makeSvgGroup();
       try {
         liveOm._buildOrderLevelToastLabelInGroup(activation.sel, {
@@ -516,6 +566,7 @@ function talPoUiSmokeArm(activeMutant = '') {
       fail('TAL-01696 one box instead of two on activation', 'ONE_BOX_SMOKE_FAILED', String(e?.message || e));
     }
 
+    phase('drag-start', 'multi-tp-average');
     const avgSvg = makeSvgGroup();
     try {
       const line = d3.select(document.createElementNS(svgNs, 'line'));
@@ -611,6 +662,7 @@ function talPoUiSmokeArm(activeMutant = '') {
       });
       let result;
       try {
+        phase('order-placed', 'analysis-only');
         result = gateOm.placeAdvancedOrder({ keepPanelOpen: true });
       } catch (e) {
         fail('Rayan #8 analysis-only symbol refuses placement', e?.message === 'ORDER_ALLOCATION_REACHED' ? 'ORDER_ALLOCATION_REACHED' : 'ORDER_PLACE_THROW', String(e?.message || e));
@@ -639,7 +691,7 @@ function talPoUiSmokeArm(activeMutant = '') {
     }
   }
 
-  return { ok: failures.length === 0, failures, rows, mutant: mutant || null };
+  return { ok: failures.length === 0, failures, rows, mutant: mutant || null, phases };
 }
 
 async function runCanary() {
@@ -685,6 +737,7 @@ async function runCanary() {
   });
   try {
     const page = await browser.newPage();
+    await page.exposeFunction('__talPoUiSmokePhase', browserPhase);
     page.setDefaultTimeout(180000);
     await page.setCacheEnabled(false);
     progress('ensure-login');
@@ -810,6 +863,7 @@ function buildRedControlVerdict(result) {
 }
 
 globalThis.__talPoUiSmokeWatchdog = setTimeout(() => {
+  writeFailedSnapshot('WATCHDOG_TIMEOUT', { timeoutMs: RUN_TIMEOUT_MS });
   console.error(`[tal-po-ui-smoke] WATCHDOG_TIMEOUT after ${RUN_TIMEOUT_MS}ms`);
   process.exit(124);
 }, RUN_TIMEOUT_MS);
@@ -818,6 +872,7 @@ const report = await runCanary();
 clearTimeout(globalThis.__talPoUiSmokeWatchdog);
 fs.mkdirSync(path.dirname(OUT_JSON), { recursive: true });
 fs.writeFileSync(OUT_JSON, `${JSON.stringify(report, null, 2)}\n`);
+try { fs.unlinkSync(FAILED_JSON); } catch (_e) { /* no failed snapshot */ }
 console.log(JSON.stringify(report, null, 2));
 console.error(`wrote ${OUT_JSON}`);
 

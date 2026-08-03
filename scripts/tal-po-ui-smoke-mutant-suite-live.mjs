@@ -69,6 +69,10 @@ function batchOutPath(name) {
   return path.join(dir, `${stem}-${name}.json`);
 }
 
+function failedOutPath(file) {
+  return file.replace(/\.json$/i, '.failed.json');
+}
+
 const surface = await readCandidateCoordinates(ORIGIN);
 const identity = matchCoordinatePairs(surface, EXPECT);
 if (!identity.ok) {
@@ -99,6 +103,7 @@ for (const batch of BATCHES) {
     '--mutant-suite',
     `--mutants=${batch.mutants}`,
     `--timeout-ms=${RUN_TIMEOUT_MS}`,
+    '--progress',
     '--out', out,
   ];
   console.error(`[tal-po-ui-mutants-live] running ${batch.name}: ${batch.mutants}`);
@@ -111,6 +116,11 @@ for (const batch of BATCHES) {
   if (child.stdout) process.stdout.write(child.stdout);
   if (child.stderr) process.stderr.write(child.stderr);
   if (child.status !== 0) {
+    const failedSnapshot = failedOutPath(out);
+    let failedSnapshotJson = null;
+    try {
+      failedSnapshotJson = JSON.parse(fs.readFileSync(failedSnapshot, 'utf8'));
+    } catch (_e) { /* absent or partial */ }
     const report = {
       signature: 'TAL-PO-UI-SMOKE-MUTANT-SUITE-LIVE-V1',
       at: new Date().toISOString(),
@@ -122,6 +132,8 @@ for (const batch of BATCHES) {
       failedBatch: batch,
       status: child.status,
       signal: child.signal,
+      failedSnapshot: path.relative(repoRoot, failedSnapshot).replace(/\\/g, '/'),
+      failedSnapshotJson,
       stdoutTail: String(child.stdout || '').slice(-4000),
       stderrTail: String(child.stderr || '').slice(-4000),
     };
