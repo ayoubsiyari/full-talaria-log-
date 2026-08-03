@@ -44,8 +44,22 @@ const EXPECT = {
   sourceCommitSha: String(argOf('expect-sha', process.env.TAL_PO_UI_EXPECT_SHA || '')),
 };
 const ALLOW_UNSEALED = hasFlag('allow-unsealed');
+const EXPECT_RED_CONTROL = hasFlag('expect-red-control');
 const OUT_JSON = path.resolve(repoRoot, argOf('out', 'docs/plan3/evidence/tal-po-ui-smoke-b125.json'));
 const SIGNATURE = 'TAL-PO-UI-SMOKE-CANARY-V1';
+const EXPECTED_BEHAVIOR_ROWS = Object.freeze([
+  'TAL-01696 fixed box size',
+  'TAL-01696 values update mid-drag without moving the box',
+  'TAL-01696 hover buttons vanish rather than blink during drag',
+  'TAL-01696 SL and entry drag scale follows cursor',
+  'TAL-01696 size unit and bracket text',
+  'TAL-01696 identical box size across stop/market/limit',
+  'TAL-01696 control buttons stay put while dragging',
+  'TAL-01696 one font/size with vertical alignment',
+  'TAL-01696 one box instead of two on activation',
+  'TAL-01698 multi-TP average updates during drag before release',
+  'Rayan #8 analysis-only symbol refuses placement',
+]);
 
 async function ensureLoggedIn(page, origin) {
   const email = String(process.env.TEST_EMAIL || '').trim();
@@ -150,13 +164,13 @@ function talPoUiSmokeArm() {
     const tag = getOne(label.group, '.order-level-toast-tag');
     const detail = getOne(label.group, '.order-level-toast-detail');
     row(
-      'TAL-01696 fixed box size stop/market/limit',
+      'TAL-01696 fixed box size',
       stopDims.width === limitDims.width && stopDims.width === marketDims.width
         && stopDims.height === limitDims.height && stopDims.height === marketDims.height,
       { stopDims, limitDims, marketDims },
     );
     row(
-      'TAL-01696 value updates without box duplication or movement',
+      'TAL-01696 values update mid-drag without moving the box',
       shell1 === shell2
         && all(label.group, '.order-level-toast-label').length === 1
         && attr(bg, 'x') === '0'
@@ -171,7 +185,13 @@ function talPoUiSmokeArm() {
       },
     );
     row(
-      'TAL-01696 font size and vertical alignment',
+      'TAL-01696 identical box size across stop/market/limit',
+      stopDims.width === limitDims.width && stopDims.width === marketDims.width
+        && stopDims.height === limitDims.height && stopDims.height === marketDims.height,
+      { stopDims, limitDims, marketDims },
+    );
+    row(
+      'TAL-01696 one font/size with vertical alignment',
       attr(tag, 'font-size') === attr(detail, 'font-size')
         && attr(tag, 'font-size') === '11px'
         && attr(tag, 'font-family') === attr(detail, 'font-family')
@@ -193,7 +213,7 @@ function talPoUiSmokeArm() {
       liveOm._appendOrderLevelBadgeGlyph(badgeHost.sel, 'check', 9, 9, 8);
       const glyph = getOne(badgeHost.group, '.order-level-badge-glyph');
       row(
-        'TAL-01696 control glyph font and vertical alignment',
+        'TAL-01696 control glyph font/vertical alignment witness',
         attr(glyph, 'font-size') === '12px'
           && attr(glyph, 'dominant-baseline') === 'central'
           && attr(glyph, 'alignment-baseline') === 'middle',
@@ -245,7 +265,7 @@ function talPoUiSmokeArm() {
       && controlHoverDetail.x === '710'
       && controlHoverDetail.y === '88'
       && controlHoverDetail.opacity === '1';
-    row('TAL-01696 control buttons stay put while hover refreshes', controlStayedPut, controlHoverDetail);
+    row('TAL-01696 control buttons stay put while dragging', controlStayedPut, controlHoverDetail);
     liveOm.isDraggingPreviewLine = true;
     liveOm._applyImmediateLevelCtrlHoverForGroup(hover.group, ch);
     const dragHiddenDetail = {
@@ -256,7 +276,7 @@ function talPoUiSmokeArm() {
     const dragHidden = dragHiddenDetail.opacity === '0'
       && dragHiddenDetail.pointerEvents === 'none'
       && !dragHiddenDetail.hoverClass;
-    row('TAL-01696 hover buttons vanish during drag', dragHidden, dragHiddenDetail);
+    row('TAL-01696 hover buttons vanish rather than blink during drag', dragHidden, dragHiddenDetail);
     liveOm.isDraggingPreviewLine = wasDragging;
   } finally {
     hover.cleanup();
@@ -295,9 +315,9 @@ function talPoUiSmokeArm() {
     const fakeChart = { svg: { node: () => fakeScaledSvg } };
     const y0 = liveOm._svgPointerY(fakeChart, { clientX: 0, clientY: 10 }, NaN);
     const y1 = liveOm._svgPointerY(fakeChart, { clientX: 0, clientY: 15 }, NaN);
-    row('TAL-01696 SL and entry drag scale follows SVG CTM', y0 === 0 && y1 === 25 && y1 - y0 === 25, { y0, y1, delta: y1 - y0 });
+    row('TAL-01696 SL and entry drag scale follows cursor', y0 === 0 && y1 === 25 && y1 - y0 === 25, { y0, y1, delta: y1 - y0 });
   } catch (e) {
-    fail('TAL-01696 SL and entry drag scale follows SVG CTM', 'POINTER_SCALE_SMOKE_FAILED', String(e?.message || e));
+    fail('TAL-01696 SL and entry drag scale follows cursor', 'POINTER_SCALE_SMOKE_FAILED', String(e?.message || e));
   }
 
   const ensureInput = (id, value) => {
@@ -312,6 +332,53 @@ function talPoUiSmokeArm() {
   };
   ensureInput('orderQuantity', '1');
   ensureInput('orderEntryPrice', '100');
+
+  try {
+    const textOm = Object.create(Object.getPrototypeOf(liveOm));
+    Object.assign(textOm, {
+      orderType: 'limit',
+      orderSide: 'BUY',
+      chart,
+      getMarketConfig: () => ({ positionLabel: 'Lots' }),
+      _getReferenceEntryForOrderMath: () => 100,
+      estimatePnLForPriceLevel: () => 12.34,
+    });
+    const entrySegs = textOm.composePreviewLabelSegments?.('Entry', 100, '#2962ff', 'BUY') || [];
+    const info = textOm._formatTpSlInfoText?.('TP', 101);
+    row(
+      'TAL-01696 size unit and bracket text',
+      entrySegs[0]?.text === 'LIMIT BUY 1 Lots' && info === '+$12.34 (1 Lots)',
+      { entryText: entrySegs[0]?.text || null, tpSlInfo: info || null },
+    );
+  } catch (e) {
+    fail('TAL-01696 size unit and bracket text', 'SIZE_BRACKET_SMOKE_FAILED', String(e?.message || e));
+  }
+
+  try {
+    const activation = makeSvgGroup();
+    try {
+      liveOm._buildOrderLevelToastLabelInGroup(activation.sel, {
+        tagText: 'LIMIT BUY 1 Lots',
+        detailText: '+$1.00 (1 Lots)',
+        detailColor: '#22c55e',
+        accent: '#22c55e',
+        isPreview: false,
+      });
+      liveOm._buildOrderLevelToastLabelInGroup(activation.sel, {
+        tagText: 'LIMIT BUY 1 Lots',
+        detailText: '+$2.00 (1 Lots)',
+        detailColor: '#22c55e',
+        accent: '#22c55e',
+        isPreview: false,
+      });
+      const count = all(activation.group, '.order-level-toast-label').length;
+      row('TAL-01696 one box instead of two on activation', count === 1, { shellCount: count });
+    } finally {
+      activation.cleanup();
+    }
+  } catch (e) {
+    fail('TAL-01696 one box instead of two on activation', 'ONE_BOX_SMOKE_FAILED', String(e?.message || e));
+  }
 
   const avgSvg = makeSvgGroup();
   try {
@@ -477,6 +544,7 @@ async function runCanary() {
     await waitForDistV9SingleReady(page, 30000).catch(() => {});
     await page.waitForFunction(() => !!(window.chart && (window.chart.orderManager || window.orderManager)), { timeout: 60000 });
     const result = await page.evaluate(talPoUiSmokeArm);
+    const redControl = EXPECT_RED_CONTROL ? buildRedControlVerdict(result) : null;
     return {
       signature: SIGNATURE,
       at: new Date().toISOString(),
@@ -486,11 +554,35 @@ async function runCanary() {
       identity,
       url,
       result,
-      verdict: result.ok ? 'PASSED' : 'FAILED — TAL/Rayan UI smoke blocker',
+      redControl,
+      verdict: EXPECT_RED_CONTROL
+        ? (redControl.ok ? 'PASSED — RED control all expected rows failed' : 'FAILED — RED control survived')
+        : (result.ok ? 'PASSED' : 'FAILED — TAL/Rayan UI smoke blocker'),
     };
   } finally {
     await browser.close().catch(() => {});
   }
+}
+
+function buildRedControlVerdict(result) {
+  const rows = Array.isArray(result?.rows) ? result.rows : [];
+  const byName = new Map(rows.map((r) => [r.name, r]));
+  const missingRows = EXPECTED_BEHAVIOR_ROWS.filter((name) => !byName.has(name));
+  const unexpectedGreen = EXPECTED_BEHAVIOR_ROWS
+    .map((name) => byName.get(name))
+    .filter((r) => r && r.ok)
+    .map((r) => ({ name: r.name, state: r.state, detail: r.detail || null }));
+  const expectedRed = EXPECTED_BEHAVIOR_ROWS
+    .map((name) => byName.get(name))
+    .filter((r) => r && !r.ok)
+    .map((r) => ({ name: r.name, state: r.state, detail: r.detail || null }));
+  return {
+    ok: missingRows.length === 0 && unexpectedGreen.length === 0,
+    expectedRows: EXPECTED_BEHAVIOR_ROWS,
+    missingRows,
+    expectedRed,
+    unexpectedGreen,
+  };
 }
 
 const report = await runCanary();
