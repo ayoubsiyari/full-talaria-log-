@@ -125,17 +125,44 @@ if (fs.existsSync(mcpSrc)) {
   console.warn("[sync-v9-to-homepage] multichart-prod not found, skip:", mcpSrc);
 }
 
-// Required for D-034 layout/I8 checks during CHECKPOINT_BUILD image builds.
-// Homepage Dockerfile also copies this file explicitly; sync must populate the
-// in-build /homepage/public/chart mirror the same way.
+// LEGACY SHELL: copied ONLY during CHECKPOINT_BUILD image builds.
+//
+// Two requirements point opposite ways and both are real:
+//   - Inside the image build this copy is load-bearing. `deploy-test-checkpoint.sh:327` exports
+//     CHECKPOINT_BUILD=1, and the D-034 layout / I8 assert reads the in-image mirror at
+//     /homepage/public/chart/legacy-index.html.
+//   - Outside it the file must NOT exist. A14.3 removed the public legacy shell and
+//     `scripts/module-contracts.json` declares `legacy-public-shell` status=removed with an
+//     assertion that the path is absent, so an unconditional copy makes every build write a file
+//     that blocks the NEXT build's `preflight:module-contracts`. That is not hypothetical: it
+//     stranded b125 on 2026-08-03 and it put a 1.4 MB untracked stray into the served tree before
+//     that (B, BOARD-B 15:32, preserved as blob 62c649802d5).
+//
+// So the copy is conditional, and the non-checkpoint branch actively REMOVES a stale mirror
+// rather than merely skipping. Skipping would leave any copy from an earlier build in place, and
+// the whole failure mode here is a file that outlives the build that wrote it.
+//
+// The previous comment claimed "Homepage Dockerfile also copies this file explicitly". It does
+// not — there is no legacy-index reference in homepage/Dockerfile — so that justification was
+// stale and is corrected rather than carried forward.
+const isCheckpointBuild = !!process.env.CHECKPOINT_BUILD
+  && process.env.CHECKPOINT_BUILD !== "0"
+  && process.env.CHECKPOINT_BUILD !== "false";
 const legacyIndexSrc = path.resolve(__dirname, "../../chart/legacy-index.html");
 const legacyIndexDest = path.resolve(__dirname, "../../../homepage/public/chart/legacy-index.html");
-if (fs.existsSync(legacyIndexSrc)) {
-  fs.mkdirSync(path.dirname(legacyIndexDest), { recursive: true });
-  fs.copyFileSync(legacyIndexSrc, legacyIndexDest);
-  console.log("[sync-v9-to-homepage] Copied legacy-index", legacyIndexSrc, "→", legacyIndexDest);
+if (isCheckpointBuild) {
+  if (fs.existsSync(legacyIndexSrc)) {
+    fs.mkdirSync(path.dirname(legacyIndexDest), { recursive: true });
+    fs.copyFileSync(legacyIndexSrc, legacyIndexDest);
+    console.log("[sync-v9-to-homepage] Copied legacy-index (CHECKPOINT_BUILD)", legacyIndexSrc, "→", legacyIndexDest);
+  } else {
+    console.warn("[sync-v9-to-homepage] legacy-index.html not found, skip:", legacyIndexSrc);
+  }
+} else if (fs.existsSync(legacyIndexDest)) {
+  fs.rmSync(legacyIndexDest, { force: true });
+  console.log("[sync-v9-to-homepage] Removed stale legacy-index mirror (not a CHECKPOINT_BUILD):", legacyIndexDest);
 } else {
-  console.warn("[sync-v9-to-homepage] legacy-index.html not found, skip:", legacyIndexSrc);
+  console.log("[sync-v9-to-homepage] legacy-index mirror correctly absent (not a CHECKPOINT_BUILD)");
 }
 
 // PWA install assets: served at /chart/* (index.html is dist-v9 content but URL is /chart/index.html).
