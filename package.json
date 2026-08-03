@@ -43,6 +43,8 @@
     "test:copy-absence": "node scripts/copy-absence-census.selftest.mjs",
     "test:clock-01": "node --test scripts/clock-01-audit.selftest.mjs",
     "clock-01:stamp-lines": "node scripts/clock-01-stamp-lines.mjs",
+    "test:canary-probes": "node scripts/lib/canary-realm-probes.selftest.mjs",
+    "mutants:canary-probes": "node scripts/lib/canary-realm-probes.mutants.mjs",
     "test:checkpoint-provenance": "node --test scripts/tests/checkpoint-provenance.test.mjs",
     "preflight:order-overlay-browser": "node scripts/order-overlay-browser-runner.mjs",
     "test:order-overlay-browser": "node --test scripts/tests/order-overlay-browser-runner.test.mjs",

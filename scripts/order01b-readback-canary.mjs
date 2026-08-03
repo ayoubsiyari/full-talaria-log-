@@ -49,6 +49,15 @@ import {
   reactParityUrlWithLayout,
 } from '../chart v 1.4/chart/multichart-prod/harness/react-parity-lib.mjs';
 import { armHeapCyclePoWorkload } from './lib/heap-cycle-po-workload.mjs';
+// Page-side probes live in their own module so they can be driven without a
+// browser; see canary-realm-probes.selftest.mjs. Passed by reference to
+// page.evaluate, which ships them by toString().
+import {
+  prepareRealmsForWindow,
+  probeArmedPositions,
+  probeRealmCensus,
+  sampleRealmsOverWindow,
+} from './lib/canary-realm-probes.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -118,28 +127,6 @@ function fail(state, why) {
   return { state, why };
 }
 
-/** Every realm's bar count and whether it still has a fetch in flight. */
-async function realmCensus(page) {
-  return page.evaluate(() => {
-    const realms = [{ w: window, name: 'top' }];
-    for (const f of [...document.querySelectorAll('iframe')].slice(0, 4)) {
-      try { realms.push({ w: f.contentWindow, name: f.id || 'panel' }); } catch (_e) { /* cross-origin */ }
-    }
-    return realms.map((r) => {
-      try {
-        const ch = r.w.chart;
-        const rs = ch && ch.replaySystem;
-        return {
-          realm: r.name,
-          hasReplay: !!rs,
-          rawBars: rs && Array.isArray(rs.fullRawData) ? rs.fullRawData.length : (Array.isArray(ch && ch.data) ? ch.data.length : null),
-          panLoading: !!(ch && ch._panLoading),
-        };
-      } catch (e) { return { realm: r.name, hasReplay: false, rawBars: null, panLoading: false, why: String(e && e.message) }; }
-    });
-  });
-}
-
 /**
  * Wait until every realm has stopped loading, not merely started.
  *
@@ -157,7 +144,7 @@ async function waitRealmsSettled(page, { want = 4, timeoutMs = 120_000, stableFo
   let stable = 0;
   let census = [];
   while (Date.now() - startedAt < timeoutMs) {
-    census = await realmCensus(page);
+    census = await page.evaluate(probeRealmCensus);
     const ready = census.filter((c) => c.hasReplay && Number.isFinite(c.rawBars) && c.rawBars > 20);
     const loading = census.filter((c) => c.panLoading).map((c) => c.realm);
     const shape = JSON.stringify(census.map((c) => c.rawBars));
@@ -421,26 +408,7 @@ async function main() {
 
     // Where each realm was left standing. A realm parked on the last loaded bar
     // has nowhere to step to, and its zero says nothing about the meter.
-    const armedAt = await page.evaluate(() => {
-      const realms = [{ w: window, name: 'top' }];
-      for (const f of [...document.querySelectorAll('iframe')].slice(0, 4)) {
-        try { realms.push({ w: f.contentWindow, name: f.id || 'panel' }); } catch (_e) { /* cross-origin */ }
-      }
-      return realms.map((r) => {
-        try {
-          const rs = r.w.chart && r.w.chart.replaySystem;
-          if (!rs) return { realm: r.name, reason: 'no replaySystem' };
-          const raw = Array.isArray(rs.fullRawData) ? rs.fullRawData.length : null;
-          return {
-            realm: r.name,
-            currentIndex: rs.currentIndex ?? null,
-            rawBars: raw,
-            fromEnd: raw !== null && rs.currentIndex != null ? raw - 1 - rs.currentIndex : null,
-            playing: !!rs.isPlaying,
-          };
-        } catch (e) { return { realm: r.name, reason: String(e && e.message) }; }
-      });
-    });
+    const armedAt = await page.evaluate(probeArmedPositions);
     observed.armedAt = armedAt;
     console.log('        position after arming:');
     for (const a of armedAt) {
@@ -448,68 +416,7 @@ async function main() {
     }
 
     /* ---- give every realm runway, then start the ones that are not playing --- */
-    const prep = await page.evaluate(async ({ runway, speed, step }) => {
-      const sleepIn = (ms) => new Promise((r) => setTimeout(r, ms));
-      const realms = [{ w: window, name: 'top' }];
-      for (const f of [...document.querySelectorAll('iframe')].slice(0, 4)) {
-        try { realms.push({ w: f.contentWindow, name: f.id || 'panel' }); } catch (_e) { /* cross-origin */ }
-      }
-      const out = [];
-      for (const r of realms) {
-        const rs = r.w.chart && r.w.chart.replaySystem;
-        if (!rs) { out.push({ realm: r.name, state: 'NO_REPLAY_SYSTEM' }); continue; }
-        const len = Array.isArray(rs.fullRawData) ? rs.fullRawData.length : null;
-        const idx = rs.currentIndex ?? null;
-        const before = { rawBars: len, currentIndex: idx, fromEnd: len != null && idx != null ? len - 1 - idx : null, playing: !!rs.isPlaying };
-        let seekedTo = null;
-        if (before.fromEnd != null && before.fromEnd < runway && typeof rs.seekTo === 'function') {
-          // The product's own seek, not a hand-written index assignment: a realm
-          // rewound by poking currentIndex would carry stale animation state.
-          seekedTo = Math.max(0, len - 1 - runway);
-          try { rs.seekTo(seekedTo); } catch (e) { out.push({ realm: r.name, state: 'SEEK_THREW', why: String(e && e.message) }); }
-          await sleepIn(400);
-        }
-        /**
-         * Product path first, always. If `play()` as installed does not start it,
-         * that IS the shell-override finding, so it is recorded per realm rather
-         * than worked around silently — and only then does the prototype start the
-         * realm, so the reading is of four playing panels and the defect is still
-         * on the record.
-         */
-        let startedVia = before.playing ? 'already-playing' : null;
-        if (!rs.isPlaying) {
-          try { rs.play(); } catch (_e) { /* the silent refusal is the subject */ }
-          await sleepIn(800);
-          if (rs.isPlaying) startedVia = 'instance-play';
-          else {
-            const proto = Object.getPrototypeOf(rs);
-            if (proto && typeof proto.play === 'function') {
-              try { proto.play.call(rs); } catch (_e) { /* ignore */ }
-              await sleepIn(800);
-              startedVia = rs.isPlaying ? 'prototype-fallback' : 'would-not-start';
-            } else startedVia = 'would-not-start';
-          }
-        }
-        const lenAfter = Array.isArray(rs.fullRawData) ? rs.fullRawData.length : null;
-        const idxAfter = rs.currentIndex ?? null;
-        out.push({
-          realm: r.name,
-          state: 'PREPARED',
-          before,
-          seekedTo,
-          startedVia,
-          after: {
-            rawBars: lenAfter,
-            currentIndex: idxAfter,
-            fromEnd: lenAfter != null && idxAfter != null ? lenAfter - 1 - idxAfter : null,
-            playing: !!rs.isPlaying,
-            stepSeconds: typeof rs.getStepSeconds === 'function' ? rs.getStepSeconds() : null,
-          },
-          asked: { speed, step },
-        });
-      }
-      return out;
-    }, { runway: RUNWAY_BARS, speed: SPEED, step: STEP });
+    const prep = await page.evaluate(prepareRealmsForWindow, { runway: RUNWAY_BARS, speed: SPEED, step: STEP });
     observed.prep = prep;
 
     console.log(`        runway gate (${RUNWAY_BARS} bars) and start path:`);
@@ -553,114 +460,7 @@ async function main() {
     // test, so it cannot also be the evidence that replay was moving: a zero
     // from a stopped replay and a zero from a broken meter are different
     // findings and only the playhead separates them.
-    const truth = await page.evaluate(async ({ sampleMs, sliceMs }) => {
-      const sleepIn = (ms) => new Promise((r) => setTimeout(r, ms));
-      const realms = [{ w: window, name: 'top' }];
-      for (const f of [...document.querySelectorAll('iframe')].slice(0, 4)) {
-        try { realms.push({ w: f.contentWindow, name: f.id || 'panel' }); } catch (_e) { /* cross-origin */ }
-      }
-      const head = (w) => {
-        try {
-          const rs = w.chart && w.chart.replaySystem;
-          if (!rs) return null;
-          const t = rs.currentTime != null ? rs.currentTime : rs.replayTimestamp;
-          return { t: Number(t), playing: !!rs.isPlaying, active: !!rs.isActive };
-        } catch (_e) { return null; }
-      };
-      /** Why a realm is not playing, asked of the engine rather than guessed. */
-      const why = (w) => {
-        try {
-          const rs = w.chart && w.chart.replaySystem;
-          if (!rs) return { reason: 'no replaySystem' };
-          const raw = Array.isArray(rs.fullRawData) ? rs.fullRawData.length : null;
-          return {
-            active: !!rs.isActive,
-            mode: typeof rs.getPlaybackMode === 'function' ? rs.getPlaybackMode() : null,
-            currentIndex: rs.currentIndex ?? null,
-            rawBars: raw,
-            atLastBar: typeof rs._isAtLastLoadedBar === 'function' ? rs._isAtLastLoadedBar() : null,
-            noOpAtEnd: typeof rs._playWouldBeNoOpAtSessionEnd === 'function'
-              ? rs._playWouldBeNoOpAtSessionEnd() : null,
-            subBarMode: typeof rs._isSubBarStepMode === 'function' ? rs._isSubBarStepMode() : null,
-            edgeWait: rs._replayForwardEdgeWait ?? null,
-            hasMoreRight: !!(w.chart && w.chart._serverCursors && w.chart._serverCursors.hasMoreRight),
-            // The remaining ways play() returns without starting anything. A
-            // realm that is silently blocked looks exactly like one that
-            // refused on end-of-data, and only one of those is about ORDER-01B.
-            windowBlocked: !!w.__talariaChartWindowBlocked,
-            playStarting: !!rs.isPlayStarting,
-            hidden: typeof rs._isReplayPageHidden === 'function' ? rs._isReplayPageHidden() : null,
-            timer: !!rs._nextCandleTimer,
-            interval: !!rs.playInterval,
-            // Which guard in the edge wait declined, rather than that it did.
-            edgeWaits: rs._loadedEdgeWaits ?? null,
-            probeRetries: rs.edgeProbeRetryCount ?? null,
-            panLoading: !!(w.chart && w.chart._panLoading),
-            fileId: (w.chart && w.chart.currentFileId) ?? null,
-            sessionEnd: typeof rs._getBacktestSessionEndMs === 'function'
-              ? rs._getBacktestSessionEndMs() : null,
-            playheadAtSessionEnd: (() => {
-              try {
-                const e = rs._getBacktestSessionEndMs();
-                return e == null ? null : !!rs._playheadReachedSessionEnd(e);
-              } catch (_e) { return null; }
-            })(),
-          };
-        } catch (e) { return { reason: String(e && e.message) }; }
-      };
-      const first = realms.map((r) => ({ name: r.name, h: head(r.w) }));
-      const t0 = performance.now();
-      /**
-       * Slices, so a realm that runs for ten seconds and then parks at its edge is
-       * distinguishable from one that ran the whole window at half rate. Averaged
-       * over one delta those two are the same number.
-       */
-      const slices = [];
-      const sliceCount = Math.max(1, Math.round(sampleMs / sliceMs));
-      let prevHeads = realms.map((r) => head(r.w));
-      let prevAt = performance.now();
-      for (let s = 0; s < sliceCount; s += 1) {
-        await sleepIn(sliceMs);
-        const now = performance.now();
-        const wall = (now - prevAt) / 1000;
-        const heads = realms.map((r) => head(r.w));
-        slices.push({
-          sliceSeconds: +wall.toFixed(2),
-          perRealm: realms.map((r, i) => {
-            const a = prevHeads[i];
-            const b = heads[i];
-            const adv = a && b && Number.isFinite(a.t) && Number.isFinite(b.t) ? (b.t - a.t) / 1000 : null;
-            return {
-              realm: r.name,
-              playing: b ? b.playing : null,
-              marketSecAdvanced: adv,
-              marketPerWall: adv === null ? null : +(adv / wall).toFixed(2),
-            };
-          }),
-        });
-        prevHeads = heads;
-        prevAt = now;
-      }
-      const wallSec = (performance.now() - t0) / 1000;
-      const rows = realms.map((r, i) => {
-        const a = first[i].h;
-        const b = head(r.w);
-        const advanced = a && b && Number.isFinite(a.t) && Number.isFinite(b.t)
-          ? (b.t - a.t) / 1000 : null;
-        const moved = advanced !== null && advanced > 0;
-        return {
-          realm: r.name,
-          playingBefore: a ? a.playing : null,
-          playingAfter: b ? b.playing : null,
-          marketSecAdvanced: advanced,
-          marketPerWall: advanced === null ? null : +(advanced / wallSec).toFixed(2),
-          // Also for realms that moved and then stopped: the interesting case
-          // is a realm that ran to the loaded edge and gave up there.
-          diagnosis: (moved && b && b.playing) ? null : why(r.w),
-        };
-      });
-      return { windowSeconds: +wallSec.toFixed(2), sliceSeconds: +(sliceMs / 1000).toFixed(2), rows, slices };
-    }, { sampleMs: SAMPLE_MS, sliceMs: SLICE_MS });
+    const truth = await page.evaluate(sampleRealmsOverWindow, { sampleMs: SAMPLE_MS, sliceMs: SLICE_MS });
     observed.playhead = truth.rows;
     observed.window = { seconds: truth.windowSeconds, sliceSeconds: truth.sliceSeconds, slices: truth.slices };
 
