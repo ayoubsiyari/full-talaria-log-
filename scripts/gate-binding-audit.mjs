@@ -84,6 +84,13 @@ export const C_LANE_GATES = [
       + 'separately, a pair with no contrast at all, whose delta is zero by construction',
   },
   {
+    id: 'KNOWN-WEAKNESS-01',
+    symbol: 'assessHeadline',
+    module: 'scripts/lib/known-weakness.mjs',
+    refuses: 'a headline being published from a rung whose own artifact records a knownWeakness that '
+      + 'nobody dispositioned — and, separately, a one-word sign-off standing in for a decision',
+  },
+  {
     id: 'COV-01-BASIS',
     // The instruments call `captureDetailedDump`; `coverageAcrossProcesses` is its internal and was
     // the symbol this gate first named, which made it read SELF_TEST_ONLY while genuinely bound.

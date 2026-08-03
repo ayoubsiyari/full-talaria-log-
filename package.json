@@ -38,6 +38,7 @@
     "gate:orphan-servers": "node scripts/orphan-server-census.mjs",
     "test:memory-validity": "node --test scripts/lib/memory-validity.selftest.mjs",
     "test:cov01-capture": "node --test scripts/lib/detailed-dump-capture.selftest.mjs",
+    "test:known-weakness": "node --test scripts/lib/known-weakness.selftest.mjs",
     "test:arm-equality": "node --test scripts/lib/arm-equality.selftest.mjs",
     "test:soak-hanging-stub": "node --test scripts/tests/soak-hanging-stub.test.mjs scripts/tests/bounded-phase.test.mjs",
     "test:orphan-servers": "node --test scripts/orphan-server-census.selftest.mjs",

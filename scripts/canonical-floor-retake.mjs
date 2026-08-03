@@ -52,6 +52,7 @@ import { gradeSettleCurve, reconcileFloors } from './lib/floor-curve.mjs';
 import { acquireRunLockOrExit, lockFlagsFromArgv, writeArtifactAtomic } from './lib/run-lock.mjs';
 import { assessQuotability } from './lib/memory-validity.mjs';
 import { captureDetailedDump } from './lib/detailed-dump-capture.mjs';
+import { assessHeadline } from './lib/known-weakness.mjs';
 import { clockOf, both } from './lib/clock.mjs';
 
 const arg = (k, d) => {
@@ -523,6 +524,36 @@ async function main() {
       delete artifact.canonicalFloors;
       artifact.verdict = artifact.verdict === 'MEASURED' ? 'MEASURED_NOT_QUOTABLE' : artifact.verdict;
     }
+
+    /**
+     * KNOWN-WEAKNESS-01. A rung that carries a `knownWeakness` cannot publish a headline until that
+     * weakness has been dispositioned in writing. Twice today a number I had already measured went
+     * unread — coverage, sitting on every arena row since ARENA-COLUMNS-V1, and a renderer at 99.9%
+     * attribution sitting in a field named `knownWeakness`. Both were written by the person who then
+     * failed to act on them, which is the whole argument for the gate: writing a caveat is not
+     * evidence that the caveat was read.
+     *
+     * The dispositions are declared HERE, in the instrument, rather than passed at the call site, so
+     * that adding a weakness to a rung cannot be silently waived by a flag on the command line.
+     */
+    const weakness = assessHeadline({
+      headline: 'the canonical floor',
+      rung: artifact,
+      dispositions: [{
+        weakness: 'summed `size` rather than `effective_size`',
+        disposition: 'addressed',
+        by: 'C 2026-08-03',
+        text: 'DETAILED-DUMP-CAPTURE-V1 sums effective_size and flags any process falling back to size; '
+          + 'a named total exceeding the private total is OVERLAP_SUSPECTED rather than a passing grade.',
+      }],
+    });
+    artifact.knownWeaknessGate = weakness;
+    if (!weakness.publishable) {
+      artifact.verdict = 'MEASURED_NOT_PUBLISHABLE';
+      log(`KNOWN-WEAKNESS-01 ${weakness.state} — ${weakness.reason}`);
+      for (const u of weakness.unaddressed) log(`  UNADDRESSED  ${u.at}: ${u.text.slice(0, 120)}`);
+    }
+
     log(`VERDICT ${artifact.verdict}`);
     log(`COV-01 post-play: ${artifact.validity.postPlayFloor.state} (${artifact.validity.postPlayFloor.coveragePct ?? 'n/a'}%)`);
     if (covBlocked) {
