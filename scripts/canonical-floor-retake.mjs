@@ -51,6 +51,7 @@ import { collectMemoryDump } from './process-memory-census.mjs';
 import { gradeSettleCurve, reconcileFloors } from './lib/floor-curve.mjs';
 import { acquireRunLockOrExit, lockFlagsFromArgv, writeArtifactAtomic } from './lib/run-lock.mjs';
 import { assessQuotability } from './lib/memory-validity.mjs';
+import { captureDetailedDump } from './lib/detailed-dump-capture.mjs';
 import { clockOf, both } from './lib/clock.mjs';
 
 const arg = (k, d) => {
@@ -144,6 +145,19 @@ async function resumeAll(page) {
   });
 }
 
+/**
+ * COV-01 capture at one of the four scheduled moments: the first and last rung of each of the two
+ * settle curves. E's detailed dump is called INLINE here because the queue hands the box over by
+ * emptying it — E's standalone attempt found no browser to attach to, and never could.
+ *
+ * This runs ALONGSIDE the roots-only row rather than replacing it. The old row is what produced the
+ * published 59.84%, and keeping both in the artifact is what lets the new figure be checked against
+ * the old one instead of silently superseding it.
+ */
+async function readDetailedCoverage(browser, totalPrivateMB, moment) {
+  return captureDetailedDump(browser, { totalPrivateMB, moment });
+}
+
 /** Arena columns for the heaviest renderer, carrying the TOTAL-01 total. */
 async function readArenaColumns(browser, totalPrivateMB) {
   try {
@@ -202,8 +216,13 @@ async function settleCurve(session, { label, onProgress }) {
         const arenas = wantDump
           ? await readArenaColumns(session.browser, fp.footprintTotalMB)
           : { arenaDumpSkipped: 'not an endpoint; skipped so the dump does not perturb the settle' };
+        // The four scheduled moments: first and last rung of the boot curve and of the post-play curve.
+        const detailed = wantDump
+          ? await readDetailedCoverage(session.browser, fp.footprintTotalMB,
+            `${label}@${targetSec}s${targetSec === RUNGS_SEC[0] ? ' (first)' : ' (last)'}`)
+          : null;
         const ph = await readPlayhead(session.page);
-        return { ...fp, ...arenas, ...ph };
+        return { ...fp, ...arenas, ...ph, ...(detailed ? { detailedCoverage: detailed } : {}) };
       },
     });
     cumulativeSec = targetSec;
@@ -437,21 +456,46 @@ async function main() {
     // The COV-01 columns live on the rung's `arenas` sub-object, not on the rung itself. Reading
     // them from the wrong level returns undefined, which assessQuotability would report as
     // COVERAGE_UNKNOWN — a broken-instrument state — so the level matters more than it looks.
+    /**
+     * COV-01 is graded on the ALL-PROCESS capture when one is present, and on the single-pid row only
+     * as a fallback. The published 59.84% was never 271 MB of nameless memory: it was one renderer's
+     * arenas divided by every Chrome process's private footprint. My own W90 census had already shown
+     * a renderer's roots covering 310.9 of its 311.21 MB, so the gap was arithmetic, not attribution.
+     *
+     * `OVERLAP_SUSPECTED` and `DUMP_UNAVAILABLE` are deliberately NOT translated into a percentage
+     * here. They travel as a null so `assessQuotability` returns COVERAGE_UNKNOWN — a broken
+     * instrument — rather than a low reading, which would send someone looking for missing memory
+     * that does not exist.
+     */
     const coverageOf = (curve) => {
       const reads = curve?.reads || [];
+      const detailed = [...reads].reverse().find((r) => r?.detailedCoverage?.covState === 'MEASURED');
+      if (detailed) {
+        const d = detailed.detailedCoverage;
+        return { pct: d.arenaCoveragePct, unattributedMB: d.arenaUnattributedMB,
+          hasTotalRow: d.totalPrivateMB != null, basis: `all-process (${d.processCount} processes, ${d.sizeBasis})` };
+      }
+      const broken = [...reads].reverse().find((r) => r?.detailedCoverage
+        && r.detailedCoverage.covState !== 'MEASURED');
+      if (broken) {
+        return { pct: null, unattributedMB: null, hasTotalRow: true,
+          basis: `detailed capture did not measure: ${broken.detailedCoverage.covState}` };
+      }
       const last = [...reads].reverse().find((r) => r?.arenas?.arenaCoveragePct != null);
       return { pct: last?.arenas?.arenaCoveragePct ?? null, unattributedMB: last?.arenas?.arenaUnattributedMB ?? null,
-        hasTotalRow: last?.arenas?.totalPrivateMB != null };
+        hasTotalRow: last?.arenas?.totalPrivateMB != null,
+        basis: 'single-pid roots over an all-process total — the basis that produced 59.84%' };
     };
     const postCov = coverageOf(artifact.postPlayFloor);
+    const bootCov = coverageOf(artifact.bootFloor);
     artifact.validity = {
-      postPlayFloor: assessQuotability({
+      postPlayFloor: { ...assessQuotability({
         coveragePct: postCov.pct, unattributedMB: postCov.unattributedMB,
         hasTotalRow: postCov.hasTotalRow, what: 'the canonical post-play floor',
-      }),
-      bootFloor: (() => { const c = coverageOf(artifact.bootFloor); return assessQuotability({
-        coveragePct: c.pct, unattributedMB: c.unattributedMB, hasTotalRow: c.hasTotalRow,
-        what: 'the canonical boot floor' }); })(),
+      }), coverageBasis: postCov.basis },
+      bootFloor: { ...assessQuotability({
+        coveragePct: bootCov.pct, unattributedMB: bootCov.unattributedMB, hasTotalRow: bootCov.hasTotalRow,
+        what: 'the canonical boot floor' }), coverageBasis: bootCov.basis },
     };
     /**
      * COV-01 BLOCKS AT THE GATE, it does not caveat in prose. Ruled 2026-08-03 18:34+01:00.

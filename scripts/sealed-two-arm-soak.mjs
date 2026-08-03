@@ -31,6 +31,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { openRun, inspectRun } from './lib/detach01.mjs';
 import { acquireRunLockOrExit, lockFlagsFromArgv } from './lib/run-lock.mjs';
+import { captureDetailedDump } from './lib/detailed-dump-capture.mjs';
 import { bootConf01Session, cycleTrades } from './lib/conf01-session.mjs';
 import {
   HEAP_CYCLE_DATASET_MODE_SAME_SYMBOL,
@@ -510,6 +511,43 @@ let nextGovernorAt = Date.now();
  */
 const SEAL_STALL_LIMIT = 3;
 let sealStalls = 0;
+
+/**
+ * DETAILED-DUMP-CAPTURE (E's item 6), called inline at the two endpoints of THIS arm. Across both
+ * arms that is the four scheduled moments in E's handoff: `trades:start`, `trades:end`,
+ * `zerotrade:start`, `zerotrade:end`.
+ *
+ * Two, not every sample. A detailed dump is expensive and perturbing — the same reason the floor
+ * instrument takes its dumps at the endpoints of a settle curve rather than at every rung. E's handoff
+ * also rules out an opportunistic extra capture after the queue clears, because it samples a different
+ * browser state and is not comparable run to run.
+ */
+const DETAILED_DUMP_DIR = path.join(path.dirname(OUT), 'detailed-dumps');
+let detailedStartTaken = false;
+
+async function captureArmMoment(when) {
+  const fp = await readFootprint(session.browser).catch(() => ({}));
+  const cap = await captureDetailedDump(session.browser, {
+    totalPrivateMB: fp?.footprintTotalMB ?? null,
+    moment: `${ARM}:${when}`,
+    outDir: DETAILED_DUMP_DIR,
+  });
+  run.note({
+    __detailedDump: true,
+    at: new Date().toISOString(),
+    moment: cap.moment,
+    covState: cap.covState,
+    coveragePct: cap.arenaCoveragePct,
+    namedMB: cap.arenaNamedTotalMB,
+    totalMB: cap.totalPrivateMB ?? null,
+    processes: cap.processCount ?? null,
+    sizeBasis: cap.sizeBasis ?? null,
+    meets95: cap.arenaCoverageMeets95 ?? null,
+    error: cap.captureError ?? null,
+  });
+  log(`detailed dump ${cap.moment}: ${cap.covState} ${cap.arenaCoveragePct ?? '--'}% over ${cap.processCount ?? 0} processes`);
+  return cap;
+}
 const governorEveryMs = 3_600_000 / Math.max(1, CLOSES_PER_HOUR);
 
 /**
@@ -705,6 +743,14 @@ try {
     // this row format. A dump failure degrades to null columns rather than dropping the sample.
     arenas = (await phases.run('sample.readArenaColumns', budget('sample.readArenaColumns'),
       () => readArenaColumns(session.browser, footprint?.footprintTotalMB ?? null), { fallback: {} })).value;
+
+    // Arm-start moment: taken on the first sample with panels up rather than at boot, so it describes
+    // a running arm and is comparable with the end capture taken under the same conditions.
+    if (!detailedStartTaken && after?.length) {
+      detailedStartTaken = true;
+      await phases.run('sample.detailedDumpStart', budget('sample.detailedDumpStart'),
+        () => captureArmMoment('start'), { fallback: null });
+    }
 
     if (!before || !after || !after.length) {
       // A stalled read and a dead browser both land here, but they are not the same thing and the
@@ -1236,6 +1282,12 @@ try {
 
   // failure is a logged non-event. A lost snapshot must never look like a lost soak.
   if (SNAPSHOT_AT_END && session?.page) {
+    // Arm-end moment. Before the heap snapshot, because the snapshot forces collection and moves the
+    // very arenas this capture exists to attribute.
+    if (session?.browser) {
+      await captureArmMoment('end').catch((e) => log(`detailed dump end failed: ${String(e?.message || e).slice(0, 120)}`));
+    }
+
     const snapFile = OUT.replace(/\.jsonl$/, `.heapsnapshot`);
     log('taking end-of-arm heap snapshot (by-product; failure is a non-event)');
     const snap = await takeEndOfArmSnapshot(session.page, { outFile: snapFile, capMB: SNAPSHOT_CAP_MB })

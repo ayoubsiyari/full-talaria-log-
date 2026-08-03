@@ -84,6 +84,14 @@ export const C_LANE_GATES = [
       + 'separately, a pair with no contrast at all, whose delta is zero by construction',
   },
   {
+    id: 'COV-01-BASIS',
+    symbol: 'coverageAcrossProcesses',
+    module: 'scripts/lib/detailed-dump-capture.mjs',
+    refuses: 'one renderer\'s arenas being divided by every Chrome process\'s private memory and the '
+      + 'shortfall read as unnamed memory — and, separately, overlapping roots summing past the total '
+      + 'and reading as excellent coverage',
+  },
+  {
     id: 'COV-01-VALIDITY',
     symbol: 'assessQuotability',
     module: 'scripts/lib/memory-validity.mjs',

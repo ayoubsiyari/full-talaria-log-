@@ -203,6 +203,9 @@ export const SOAK_PHASE_BUDGETS_MS = {
   'sample.readPanels.after': 60_000,
   'sample.readFootprint': 60_000,
   'sample.readArenaColumns': 120_000,      // memory-infra detailed dump, the slowest read here
+  // Item 6 detailed capture: a full detailed dump across every Chrome process, so more generous than
+  // the roots-only read above. Taken twice per arm, not per sample.
+  'sample.detailedDumpStart': 180_000,
   'sample.readClosed': 30_000,
   'sample.readLoafCensus': 30_000,
   'sample.readOldestOpenPositionAge': 30_000,
