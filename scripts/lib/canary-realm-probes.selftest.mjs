@@ -58,6 +58,15 @@ function makeReplaySystem({
   marketPerWall = 10,
   /** Market seconds after which the realm parks itself, mid-window. */
   parkAfterMarketSec = null,
+  /**
+   * The rollback floor, honoured by `seekTo` exactly as the product does at
+   * replay-system.js:8962 — `Math.max(sessionStartIndex, min(i, len-1))`. Default
+   * 0 leaves every existing cell behaving as it did.
+   */
+  sessionStartIndex = 0,
+  /** Replace the series with a shorter one after N market seconds, mid-window. */
+  shrinkToAfterMarketSec = null,
+  shrinkTo = null,
 } = {}) {
   const proto = {
     play() {
@@ -84,9 +93,13 @@ function makeReplaySystem({
     getPlaybackMode() { return 'candle'; },
     _isAtLastLoadedBar() { return this.currentIndex >= this.fullRawData.length - 1; },
     _isSubBarStepMode() { return true; },
+    sessionStartIndex,
     seekTo(i) {
       if (seekThrows) throw new Error('seek refused');
-      this.currentIndex = Math.max(0, Math.min(i, this.fullRawData.length - 1));
+      // The clamp, verbatim in shape: a seek below the floor moves nothing and
+      // says nothing, which is why seekTo(1760) left four realms at 1880.
+      const floor = this.sessionStartIndex || 0;
+      this.currentIndex = Math.max(floor, Math.min(i, this.fullRawData.length - 1));
       this.__advanced = 0;
       this.currentTime = this.fullRawData[this.currentIndex].t;
     },
@@ -97,6 +110,13 @@ function makeReplaySystem({
       this.__timer = setInterval(() => {
         this.__advanced += marketPerWall * 0.02;
         this.currentTime = this.fullRawData[this.currentIndex].t + this.__advanced * 1000;
+        if (shrinkToAfterMarketSec !== null && shrinkTo !== null
+          && this.__advanced >= shrinkToAfterMarketSec && this.fullRawData.length > shrinkTo) {
+          // The series being replaced by a shorter one under a live playhead,
+          // which is what took four realms from 4000 bars to 1881 mid-run.
+          this.fullRawData = this.fullRawData.slice(0, shrinkTo);
+          this.currentIndex = Math.min(this.currentIndex, shrinkTo - 1);
+        }
         if (parkAfterMarketSec !== null && this.__advanced >= parkAfterMarketSec) this.__stop();
       }, 20);
       if (this.__timer.unref) this.__timer.unref();
@@ -258,6 +278,57 @@ test('seeding a realm with no data is NO_DATA, not a crash or a silent skip', ()
   const seeded = seedSessionStartFromLoadedData({ fractionIn: 0.1 });
   assert.equal(seeded[0].state, 'NO_DATA');
   assert.equal(seeded.length, 2, 'one row per realm even when one has nothing');
+});
+
+test('a realm pinned at its rollback floor is named, not reported as a failed rewind', async () => {
+  // The 17:22+01:00 re-run issued seekTo(1760) to four realms and all four stayed
+  // at 1880. `seekTo` clamps to sessionStartIndex, and the backtest path sets that
+  // floor to the last bar when no loaded bar is at or after the session start
+  // (replay-system.js:4297, :4301). "The rewind did not work" and "the rewind
+  // could never have worked" need different fixes, so they need different states.
+  installWorld([
+    makeRealm({ bars: 1881, index: 1880, sessionStartIndex: 1880 }),
+    makeRealm({ bars: 4000, index: 2724, playing: true }),
+  ]);
+  const prep = await prepareRealmsForWindow({ runway: 120, speed: 10, step: 1 });
+  const top = prep[0];
+  assert.equal(top.seekedTo, 1760, 'the gate still asks, so the refusal is observed rather than assumed');
+  assert.equal(top.seekHeld, false, 'and it records that the seek did not take');
+  assert.match(String(top.runwayBlocked), /RUNWAY_BLOCKED_BY_SESSION_FLOOR/);
+  assert.match(String(top.runwayBlocked), /1880 > target 1760/);
+  assert.equal(top.after.fromEnd, 0, 'still parked, and now the artifact says why');
+  assert.equal(top.before.sessionStartIndex, 1880);
+});
+
+test('a realm with a floor below the target rewinds, and seekHeld says so', async () => {
+  installWorld([
+    makeRealm({ bars: 1881, index: 1880, sessionStartIndex: 100 }),
+    makeRealm({ bars: 4000, index: 2724, playing: true }),
+  ]);
+  const prep = await prepareRealmsForWindow({ runway: 120, speed: 10, step: 1 });
+  assert.equal(prep[0].seekHeld, true);
+  assert.equal(prep[0].runwayBlocked, null, 'no refusal to report when the floor allows it');
+  assert.equal(prep[0].after.fromEnd, 120);
+  assert.equal(prep[0].startedVia, 'instance-play');
+});
+
+test('a series replaced under a live playhead is visible per slice, not only at the end', async () => {
+  installWorld([
+    makeRealm({
+      bars: 4000, index: 1000, playing: true, marketPerWall: 10,
+      shrinkToAfterMarketSec: 2, shrinkTo: 1881,
+    }),
+    makeRealm({ bars: 4000, index: 1000, playing: true, marketPerWall: 10 }),
+  ]);
+  const out = await sampleRealmsOverWindow({ sampleMs: 800, sliceMs: 200 });
+  const lens = out.slices.map((s) => s.perRealm[0].rawBars);
+  assert.ok(lens.some((v) => v === 4000) || lens.some((v) => v === 1881),
+    `expected the length to be recorded per slice, saw ${JSON.stringify(lens)}`);
+  assert.equal(lens[lens.length - 1], 1881, 'and to end on the shorter series');
+  const lost = out.slices.map((s) => s.perRealm[0].barsLost).filter((v) => v);
+  assert.ok(lost.some((v) => v > 0), `expected a slice to record bars lost, saw ${JSON.stringify(lost)}`);
+  // The control realm kept its series, so this is not a property of the sampler.
+  assert.ok(out.slices.every((s) => s.perRealm[1].rawBars === 4000));
 });
 
 test('the window is sliced, and every slice carries its own rate', async () => {

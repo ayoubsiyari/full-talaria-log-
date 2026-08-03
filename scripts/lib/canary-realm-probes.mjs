@@ -67,6 +67,16 @@ export function probeArmedPositions() {
         rawBars: raw,
         fromEnd: raw !== null && rs.currentIndex != null ? raw - 1 - rs.currentIndex : null,
         playing: !!rs.isPlaying,
+        /**
+         * The rollback floor, and the field that decides whether a parked realm
+         * can be rescued at all. `seekTo` clamps to `Math.max(sessionStartIndex,…)`
+         * (replay-system.js:8962), and in the backtest path a session whose start
+         * time is later than every loaded bar begins on the LAST bar with the
+         * floor set to it (:4297, :4301). Such a realm can neither advance nor be
+         * rewound, and from outside it looks exactly like one that refuses to play.
+         */
+        sessionStartIndex: rs.sessionStartIndex ?? null,
+        floorPinnedToEnd: raw !== null && rs.sessionStartIndex != null && rs.sessionStartIndex >= raw - 1,
       };
     } catch (e) { return { realm: r.name, reason: String(e && e.message) }; }
   });
@@ -152,15 +162,29 @@ export async function prepareRealmsForWindow({ runway, speed, step }) {
       currentIndex: idx,
       fromEnd: len != null && idx != null ? len - 1 - idx : null,
       playing: !!rs.isPlaying,
+      sessionStartIndex: rs.sessionStartIndex ?? null,
     };
     let seekedTo = null;
     let seekThrew = null;
+    let seekHeld = null;
+    let runwayBlocked = null;
     if (before.fromEnd != null && before.fromEnd < runway && typeof rs.seekTo === 'function') {
       // The product's own seek, not a hand-written index assignment: a realm
       // rewound by poking currentIndex would carry stale animation state.
       seekedTo = Math.max(0, len - 1 - runway);
+      /**
+       * The floor is checked BEFORE asking, because `seekTo` clamps silently: a
+       * seek below `sessionStartIndex` returns having moved nothing, and a gate
+       * that only reads `fromEnd` afterwards reports "the rewind did not work"
+       * without saying that it could never have worked. The b126 re-run issued
+       * `seekTo(1760)` to four realms and all four stayed at index 1880.
+       */
+      if (before.sessionStartIndex != null && before.sessionStartIndex > seekedTo) {
+        runwayBlocked = `RUNWAY_BLOCKED_BY_SESSION_FLOOR: sessionStartIndex ${before.sessionStartIndex} > target ${seekedTo}`;
+      }
       try { rs.seekTo(seekedTo); } catch (e) { seekThrew = String(e && e.message); }
       await sleepIn(400);
+      seekHeld = (rs.currentIndex ?? null) === seekedTo;
     }
     let startedVia = before.playing ? 'already-playing' : null;
     if (!rs.isPlaying) {
@@ -181,9 +205,11 @@ export async function prepareRealmsForWindow({ runway, speed, step }) {
     out.push({
       realm: r.name,
       state: seekThrew ? 'SEEK_THREW' : 'PREPARED',
-      why: seekThrew || undefined,
+      why: seekThrew || runwayBlocked || undefined,
       before,
       seekedTo,
+      seekHeld,
+      runwayBlocked,
       startedVia,
       after: {
         rawBars: lenAfter,
@@ -191,6 +217,7 @@ export async function prepareRealmsForWindow({ runway, speed, step }) {
         fromEnd: lenAfter != null && idxAfter != null ? lenAfter - 1 - idxAfter : null,
         playing: !!rs.isPlaying,
         stepSeconds: typeof rs.getStepSeconds === 'function' ? rs.getStepSeconds() : null,
+        sessionStartIndex: rs.sessionStartIndex ?? null,
       },
       asked: { speed, step },
     });
@@ -218,7 +245,21 @@ export async function sampleRealmsOverWindow({ sampleMs, sliceMs }) {
       const rs = w.chart && w.chart.replaySystem;
       if (!rs) return null;
       const t = rs.currentTime != null ? rs.currentTime : rs.replayTimestamp;
-      return { t: Number(t), playing: !!rs.isPlaying, active: !!rs.isActive };
+      return {
+        t: Number(t),
+        playing: !!rs.isPlaying,
+        active: !!rs.isActive,
+        /**
+         * Carried per slice because the series LENGTH moves during a run and that
+         * was invisible in the artifact: the b126 re-run settled with 4000 bars in
+         * every realm and was down to 1881 in all four by the time the window
+         * opened. A shrinking series with the playhead on its last bar is a
+         * different finding from a stalled meter, and the numbers have to be in
+         * the file rather than inferred from console output.
+         */
+        rawBars: Array.isArray(rs.fullRawData) ? rs.fullRawData.length : null,
+        currentIndex: rs.currentIndex ?? null,
+      };
     } catch (_e) { return null; }
   };
   /** Why a realm is not playing, asked of the engine rather than guessed. */
@@ -280,6 +321,9 @@ export async function sampleRealmsOverWindow({ sampleMs, sliceMs }) {
           playing: b ? b.playing : null,
           marketSecAdvanced: adv,
           marketPerWall: adv === null ? null : +(adv / wall).toFixed(2),
+          rawBars: b ? b.rawBars : null,
+          currentIndex: b ? b.currentIndex : null,
+          barsLost: a && b && a.rawBars != null && b.rawBars != null ? a.rawBars - b.rawBars : null,
         };
       }),
     });

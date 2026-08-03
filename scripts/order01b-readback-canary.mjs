@@ -451,8 +451,26 @@ async function main() {
     for (const p of prep) {
       if (p.state !== 'PREPARED') { console.log(`          ${String(p.realm).padEnd(10)} ${p.state}${p.why ? ` — ${p.why}` : ''}`); continue; }
       console.log(`          ${String(p.realm).padEnd(10)} fromEnd ${p.before.fromEnd} -> ${p.after.fromEnd}`
-        + `${p.seekedTo === null ? '' : ` (seeked to ${p.seekedTo})`}  start=${p.startedVia}  playing=${p.after.playing}`);
+        + `${p.seekedTo === null ? '' : ` (seeked to ${p.seekedTo}, held=${p.seekHeld})`}`
+        + `  floor=${p.before.sessionStartIndex}  start=${p.startedVia}  playing=${p.after.playing}`
+        + `${p.runwayBlocked ? `  ${p.runwayBlocked}` : ''}`);
     }
+
+    /**
+     * A realm pinned at its rollback floor is not a realm that refuses to play,
+     * and until this check existed the two were the same red. `seekTo` clamps to
+     * `sessionStartIndex`, and the backtest path sets that floor to the LAST bar
+     * whenever the session's start time is later than every loaded bar — so the
+     * realm can neither advance nor be rewound, by construction.
+     */
+    const flooredAtEnd = prep.filter((p) => p.state === 'PREPARED' && p.runwayBlocked);
+    check(flooredAtEnd.length === 0,
+      'no realm was pinned at its own rollback floor',
+      flooredAtEnd.length
+        ? `SESSION_FLOOR_AT_DATA_END on ${flooredAtEnd.length} realm(s): `
+          + flooredAtEnd.map((p) => `${p.realm} floor=${p.before.sessionStartIndex} of ${p.before.rawBars} bars`).join(', ')
+          + ' — the runway gate cannot rescue these, the session has to start somewhere with data ahead of it'
+        : 'every realm could be rewound if it needed to be');
 
     check(!!(observed.settle && observed.settle.settled),
       'every realm finished loading before the workload was armed',
@@ -647,6 +665,30 @@ async function main() {
           + `   min ${Math.min(...seen)} max ${Math.max(...seen)}`);
       }
     }
+    /**
+     * The series length across the window. The re-run settled with 4000 bars in
+     * every realm and opened its window with 1881 in all four, which is not a
+     * stalled meter — it is the series being replaced by a shorter one underneath
+     * a playhead that then sits on its last bar.
+     */
+    const shrunk = [];
+    for (const t of truth.rows) {
+      const lens = [
+        observed.settle && observed.settle.census.find((c) => c.realm === t.realm)?.rawBars,
+        ...observed.window.slices.map((s) => s.perRealm.find((p) => p.realm === t.realm)?.rawBars),
+      ].filter((v) => Number.isFinite(v));
+      if (lens.length > 1) {
+        const lost = Math.max(...lens) - Math.min(...lens);
+        console.log(`        ${String(t.realm).padEnd(12)} series: ${lens.join(' -> ')}${lost ? `   LOST ${lost} bars` : ''}`);
+        if (lost > 0) shrunk.push({ realm: t.realm, lost, lens });
+      }
+    }
+    check(shrunk.length === 0,
+      'the bar series each realm was measured on did not change size under it',
+      shrunk.length
+        ? `SERIES_REPLACED_MID_RUN: ${shrunk.map((s) => `${s.realm} lost ${s.lost} bars (${s.lens.join('->')})`).join('; ')}`
+        : 'every realm kept the series it settled with');
+
     const deadSlices = truth.rows.flatMap((t) => observed.window.slices
       .map((s, i) => ({ realm: t.realm, i, row: s.perRealm.find((p) => p.realm === t.realm) }))
       .filter((x) => x.row && x.row.marketSecAdvanced === 0));

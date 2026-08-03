@@ -46,6 +46,21 @@ const mutants = [
     replace: 'diagnosis: null,',
   },
   {
+    name: 'the session floor is never checked, so a clamped seek reads as a plain failed rewind',
+    find: 'if (before.sessionStartIndex != null && before.sessionStartIndex > seekedTo) {',
+    replace: 'if (false && before.sessionStartIndex != null && before.sessionStartIndex > seekedTo) {',
+  },
+  {
+    name: 'seekHeld is asserted rather than verified',
+    find: 'seekHeld = (rs.currentIndex ?? null) === seekedTo;',
+    replace: 'seekHeld = true;',
+  },
+  {
+    name: 'the series length is not carried per slice, so a replacement stays invisible',
+    find: 'rawBars: Array.isArray(rs.fullRawData) ? rs.fullRawData.length : null,\n        currentIndex: rs.currentIndex ?? null,',
+    replace: 'rawBars: null,\n        currentIndex: null,',
+  },
+  {
     name: 'the census misses an in-flight fetch, so an unsettled page reads settled',
     find: 'panLoading: !!(ch && ch._panLoading),',
     replace: 'panLoading: false,',
