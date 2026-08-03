@@ -48,7 +48,7 @@ const EXPECT_RED_CONTROL = hasFlag('expect-red-control');
 const MUTANT_SUITE = hasFlag('mutant-suite');
 const PROGRESS = hasFlag('progress');
 const MUTANT_FILTER = String(argOf('mutants', '') || '').split(',').map((s) => s.trim()).filter(Boolean);
-const OUT_JSON = path.resolve(repoRoot, argOf('out', 'docs/plan3/evidence/tal-po-ui-smoke-b125.json'));
+const OUT_JSON = path.resolve(repoRoot, argOf('out', 'docs/plan3/evidence/tal-po-ui-smoke-b126.json'));
 const SIGNATURE = 'TAL-PO-UI-SMOKE-CANARY-V1';
 const RUN_TIMEOUT_MS = Math.max(30_000, Number(argOf('timeout-ms', '150000')) || 150_000);
 const EXPECTED_BEHAVIOR_ROWS = Object.freeze([

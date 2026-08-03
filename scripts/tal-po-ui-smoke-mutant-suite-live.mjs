@@ -2,7 +2,7 @@
 /**
  * Run TAL/Rayan UI smoke row mutants against one sealed served surface.
  *
- * This is intentionally canary-compatible with tal-po-ui-smoke-watch-b125.mjs:
+ * This is intentionally canary-compatible with tal-po-ui-smoke-watch-b126.mjs:
  * it accepts --origin/--expect-badge/--expect-digest/--expect-sha/--out.
  */
 import fs from 'node:fs';
@@ -55,7 +55,7 @@ function lockFlagsFromLocalArgv(argv = process.argv) {
   };
 }
 
-const runLock = acquireRunLockOrExit({
+const runLock = await acquireRunLockOrExit({
   artifact: OUT_JSON,
   script: RUN_LOCK_IDENTITY,
   key: RUN_LOCK_IDENTITY,

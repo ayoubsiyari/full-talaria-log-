@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Watch for b125, then fire the sealed TAL/Rayan PO UI smoke canary.
+ * Watch for b126, then fire the sealed TAL/Rayan PO UI smoke canary.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -23,8 +23,8 @@ function argOf(name, fallback = '') {
 const ORIGIN = String(argOf('origin', process.env.TEST_VPS_URL || 'http://31.97.192.82:3000')).replace(/\/$/, '');
 const EXPECT_BADGE = String(argOf('expect-badge', process.env.TAL_PO_UI_EXPECT_BADGE || '20260803b126'));
 const EVERY_MS = Math.max(5000, Number(argOf('everyMs', '30000')) || 30000);
-const OUT_JSONL = path.resolve(repoRoot, argOf('watch-out', 'docs/plan3/evidence/tal-po-ui-smoke-watch-b125.jsonl'));
-const CANARY_OUT = path.resolve(repoRoot, argOf('canary-out', 'docs/plan3/evidence/tal-po-ui-smoke-b125.json'));
+const OUT_JSONL = path.resolve(repoRoot, argOf('watch-out', 'docs/plan3/evidence/tal-po-ui-smoke-watch-b126.jsonl'));
+const CANARY_OUT = path.resolve(repoRoot, argOf('canary-out', 'docs/plan3/evidence/tal-po-ui-smoke-b126.json'));
 const CANARY_SCRIPT = path.resolve(repoRoot, argOf('canary-script', path.join(__dirname, 'tal-po-ui-smoke-canary.mjs')));
 const QUEUE_SCRIPT = path.join(__dirname, 'measurement-queue.mjs');
 const QUEUE_OWNER = String(argOf('queue-owner', 'D'));
