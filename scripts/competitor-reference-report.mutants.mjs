@@ -37,6 +37,16 @@ const MUTANTS = [
     replace: '  if (false) {',
   },
   {
+    name: 'a reading taken beside another measurement is accepted anyway',
+    find: "  if (witness && witness.state === 'HOST_SHARED_DURING_RUN') {",
+    replace: '  if (false) {',
+  },
+  {
+    name: 'unknown exclusivity is treated as clear',
+    find: "  if (witness && witness.state === 'HOST_EXCLUSIVITY_UNKNOWN') {",
+    replace: '  if (false) {',
+  },
+  {
     name: 'a single run is promoted to a band — normal becomes a point again',
     find: "  const state = read.length === 1\n    ? 'SINGLE_OBSERVATION_NOT_A_BAND'",
     replace: "  const state = false\n    ? 'SINGLE_OBSERVATION_NOT_A_BAND'",

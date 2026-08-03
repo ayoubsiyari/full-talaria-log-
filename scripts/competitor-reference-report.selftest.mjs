@@ -136,6 +136,29 @@ test('a page that never drew is refused, not read as a cheap competitor', () => 
   assert.equal(r.headline.state, 'HEADLINE_PAIR_INCOMPLETE');
 });
 
+test('a reading taken beside another measurement is refused on its own witness', () => {
+  // The 21:19:03 and 21:21:41+01:00 arms ran beside E's heap-cycle-browser and
+  // their JSON was indistinguishable from the clean ones. A witness nothing
+  // refuses on is decoration, so this is the refusal.
+  const shared = armOf({
+    ...arena({ label: 'ours-2up', panels: 2, total: 380, gpu: 140 }),
+    hostExclusivity: { state: 'HOST_SHARED_DURING_RUN', why: 'another measurement was on the box: heap-cycle-browser.mjs#25764' },
+  }, { expectPanels: 2 });
+  assert.equal(shared.state, 'ARM_HOST_SHARED');
+  assert.match(shared.why, /heap-cycle-browser\.mjs#25764/);
+
+  const unknown = armOf({
+    ...arena({ label: 'ours-2up', panels: 2, total: 380, gpu: 140 }),
+    hostExclusivity: { state: 'HOST_EXCLUSIVITY_UNKNOWN', why: 'the process scan failed at one end' },
+  }, { expectPanels: 2 });
+  assert.equal(unknown.state, 'ARM_HOST_EXCLUSIVITY_UNKNOWN', 'not established is not the same as clear');
+
+  // And a contaminated run is dropped from the band rather than contributing.
+  const b = bandOf([...runs(2, [379, 384], [139, 141]), shared]);
+  assert.equal(b.n, 2);
+  assert.equal(b.rejected[0].state, 'ARM_HOST_SHARED');
+});
+
 test('an errored arm and one with no summary are named, not read as zero', () => {
   const errored = armOf(arena({ label: 'tv', panels: 1, total: 0, gpu: 0, error: 'Navigation timeout of 120000 ms exceeded\n  at foo' }), { expectPanels: 1 });
   assert.equal(errored.state, 'ARM_ERRORED');

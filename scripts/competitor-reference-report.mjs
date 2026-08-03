@@ -72,6 +72,19 @@ export function armOf(report, { expectPanels } = {}) {
   if (census === 0) {
     return { ...arm, state: 'ARM_DREW_NOTHING', why: 'the surface census found zero canvases, so no chart was rendered and the footprint is of an empty page' };
   }
+  /**
+   * A reading taken while another measurement was on the box. Two arms of the
+   * 21:10+01:00 series did exactly this and looked identical to the clean ones —
+   * the witness is only worth writing if something refuses on it, so this is that
+   * something.
+   */
+  const witness = report.hostExclusivity;
+  if (witness && witness.state === 'HOST_SHARED_DURING_RUN') {
+    return { ...arm, state: 'ARM_HOST_SHARED', why: witness.why || 'another measurement was on the box during this reading' };
+  }
+  if (witness && witness.state === 'HOST_EXCLUSIVITY_UNKNOWN') {
+    return { ...arm, state: 'ARM_HOST_EXCLUSIVITY_UNKNOWN', why: witness.why || 'exclusivity was not established, which is not the same as clear' };
+  }
   return arm;
 }
 

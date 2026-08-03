@@ -239,12 +239,60 @@ export function readNodeProcessesSync() {
  * Synchronous unlocked-run scan. Same states as the async form; no `await` to
  * forget. Refuses only on an observed browser, per classifyRunStrict.
  */
+/**
+ * What the scan has SEEN, not only what is true this instant.
+ *
+ * At 21:18–21:24+01:00 my reference series refused three arms because E's
+ * `heap-cycle-browser.mjs` (pid 25764) held the box unlocked — and let two others
+ * start, at 21:19:03 and 21:21:41, against the same live process. That instrument
+ * opens and closes Chrome in a loop, so `browserOwningPids()` saw descendants at
+ * some instants and none at others, and a run with no browser up right now is
+ * demoted to advisory and does not block. The two arms that got through then ran
+ * alongside E's next launch: exactly the contamination the host lock exists to
+ * prevent, granted by the lock itself.
+ *
+ * A cycling instrument is between launches, not idle. So the observation is sticky:
+ * a pid seen owning a browser once counts as a browser run for as long as it lives.
+ * Dead pids are reaped, so the memory cannot accumulate into a permanent refusal.
+ */
+/**
+ * One file per pid rather than one shared map. The map version failed a cell
+ * within minutes: two runs scanning at once each read the file, added their own
+ * observation and wrote it back, so whichever wrote second erased the other's.
+ * A memory of who is on the box, which loses entries precisely when several
+ * things are on the box, is worse than no memory at all.
+ */
+const OBSERVED_DIR = path.join(LOCK_DIR, 'observed-browser-pids');
+
+export function rememberBrowserOwners(pids, procs) {
+  const byPid = new Map((procs || []).map((p) => [p.pid, p]));
+  try { fs.mkdirSync(OBSERVED_DIR, { recursive: true }); } catch { /* degrades to the instant view, never to a green */ }
+  for (const pid of pids || []) {
+    try {
+      fs.writeFileSync(path.join(OBSERVED_DIR, `${pid}.json`), JSON.stringify({
+        pid, at: new Date().toISOString(), cmd: (byPid.get(pid)?.cmd || '').slice(0, 160),
+      }));
+    } catch { /* one unwritable observation must not throw out of a scan */ }
+  }
+  const alive = new Set();
+  let files = [];
+  try { files = fs.readdirSync(OBSERVED_DIR).filter((f) => f.endsWith('.json')); } catch { return alive; }
+  for (const f of files) {
+    const pid = Number(f.replace(/\.json$/, ''));
+    if (Number.isFinite(pid) && isAlive(pid)) alive.add(pid);
+    else { try { fs.unlinkSync(path.join(OBSERVED_DIR, f)); } catch { /* raced another reaper */ } }
+  }
+  return alive;
+}
+
 export function foreignRunsSync({ ignorePids = [] } = {}) {
   const procs = readNodeProcessesSync();
   if (procs === null) {
     return { state: 'FOREIGN_SCAN_UNAVAILABLE', why: 'process scan failed', runs: [], advisory: [] };
   }
-  const withBrowser = browserOwningPids();
+  const nowOwning = browserOwningPids();
+  const everOwned = rememberBrowserOwners(nowOwning === null ? [] : [...nowOwning], procs);
+  const withBrowser = nowOwning === null ? null : new Set([...nowOwning, ...everOwned]);
   const lockedPids = new Set(inspectLocks().filter((l) => l.alive).map((l) => l.pid));
   const skip = new Set([process.pid, process.ppid, ...ignorePids]);
   const runs = [];
@@ -254,9 +302,18 @@ export function foreignRunsSync({ ignorePids = [] } = {}) {
     const strict = classifyRunStrict(p.cmd);
     if (!strict.measurement) continue;
     const hasBrowser = withBrowser === null ? null : withBrowser.has(p.pid);
-    const entry = { pid: p.pid, script: strict.script, hasBrowser, cmd: p.cmd.slice(0, 160) };
-    if (hasBrowser !== false) runs.push(entry);
-    else advisory.push({ ...entry, excludedBecause: 'no browser process is running under it' });
+    const seenBefore = everOwned.has(p.pid) && !(nowOwning && nowOwning.has(p.pid));
+    const entry = {
+      pid: p.pid,
+      script: strict.script,
+      hasBrowser: seenBefore ? 'previously' : hasBrowser,
+      cmd: p.cmd.slice(0, 160),
+    };
+    if (hasBrowser !== false) {
+      runs.push(seenBefore
+        ? { ...entry, why: 'it owned a browser earlier and is still alive — a cycling instrument is between launches, not idle' }
+        : entry);
+    } else advisory.push({ ...entry, excludedBecause: 'no browser process is running under it, and none was ever observed' });
   }
   return { state: runs.length ? 'UNLOCKED_FOREIGN_RUN_DETECTED' : 'NO_FOREIGN_RUNS', runs, advisory };
 }
@@ -489,6 +546,37 @@ export function acquireRunLockOrExit(opts) {
 }
 
 /** Parse the two flags every instrument should accept, so they agree. */
+/**
+ * A witness to stamp into the artifact, because acquiring the box is not holding it.
+ *
+ * The lock is checked once, at launch. Nothing stops a foreign run starting thirty
+ * seconds later, and that is not hypothetical: two arms of my reference series ran
+ * to completion beside E's heap-cycle-browser and their JSON looked exactly like the
+ * clean ones. Reconstructing which readings were contaminated from a log at
+ * 21:30+01:00 is not a protocol. Call this before and after the measurement and put
+ * both in the report; then a contaminated reading identifies itself.
+ *
+ *   HOST_EXCLUSIVE            nothing foreign seen at either end
+ *   HOST_SHARED_DURING_RUN    something foreign was seen — the reading is not citable
+ *   HOST_EXCLUSIVITY_UNKNOWN  the scan could not run, which is not the same as clear
+ */
+export function hostExclusivityWitness(before = null) {
+  const scan = foreignRunsSync();
+  const now = { at: new Date().toISOString(), state: scan.state, runs: scan.runs.map((r) => ({ pid: r.pid, script: r.script })) };
+  if (!before) return now;
+  const sawForeign = [before, now].some((s) => s.state === 'UNLOCKED_FOREIGN_RUN_DETECTED');
+  const unknown = [before, now].some((s) => s.state === 'FOREIGN_SCAN_UNAVAILABLE');
+  return {
+    before,
+    after: now,
+    state: sawForeign ? 'HOST_SHARED_DURING_RUN' : (unknown ? 'HOST_EXCLUSIVITY_UNKNOWN' : 'HOST_EXCLUSIVE'),
+    citable: !sawForeign && !unknown,
+    why: sawForeign
+      ? `another measurement was on the box: ${[...before.runs, ...now.runs].map((r) => `${r.script}#${r.pid}`).join(', ')}`
+      : (unknown ? 'the process scan failed at one end, so exclusivity was not established' : undefined),
+  };
+}
+
 export function lockFlagsFromArgv(argv = process.argv) {
   const hit = argv.find((a) => a.startsWith('--wait-for-host='));
   return {

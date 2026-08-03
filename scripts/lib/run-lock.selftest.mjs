@@ -28,6 +28,8 @@ import {
   inspectLocks,
   isAlive,
   lockFlagsFromArgv,
+  hostExclusivityWitness,
+  rememberBrowserOwners,
   lockPathFor,
   writeArtifactAtomic,
 } from './run-lock.mjs';
@@ -294,6 +296,58 @@ test('vetoOnForeignRun releases a lock it already holds rather than sitting on o
       assert.equal(lock.ok, true, `box was ${scan.state}, so the veto must not fire`);
     }
   } finally { lock.release(); }
+});
+
+test('THE 21:19+01:00 CONTAMINATION: a cycling instrument stays visible between launches', () => {
+  // E's heap-cycle-browser (pid 25764) held the box unlocked from 21:18 to
+  // 21:24+01:00. The scan refused three of my arms against it and LET TWO THROUGH,
+  // at 21:19:03 and 21:21:41, because that instrument opens and closes Chrome in a
+  // loop and a run with no browser up at that instant is demoted to advisory. Both
+  // arms then ran beside E's next launch. The observation is sticky now.
+  const procs = [{ pid: process.pid, cmd: 'node heap-cycle-browser.mjs' }];
+  const remembered = rememberBrowserOwners([process.pid], procs);
+  assert.ok(remembered.has(process.pid), 'a pid observed owning a browser must be remembered');
+
+  // A later scan with Chrome momentarily down still remembers it.
+  const stillThere = rememberBrowserOwners([], procs);
+  assert.ok(stillThere.has(process.pid), 'the memory must survive an instant with no browser up');
+
+  // And a dead pid is reaped, so the memory cannot become a permanent refusal.
+  const deadPid = 0x7ffffff;
+  rememberBrowserOwners([deadPid], [{ pid: deadPid, cmd: 'node gone.mjs' }]);
+  assert.ok(!rememberBrowserOwners([], []).has(deadPid), 'a dead pid must not park the box forever');
+
+  // Concurrent scans must not erase each other. The first version of this memory
+  // was a single JSON map, and two runs scanning at once each read it, added their
+  // own observation and wrote it back — the second write dropping the first. It
+  // failed this cell within minutes of being written, while a real arena run was
+  // scanning alongside it. A memory that loses entries exactly when several things
+  // are on the box is worse than no memory at all.
+  const other = process.ppid;
+  rememberBrowserOwners([other], [{ pid: other, cmd: 'node someone-else.mjs' }]);
+  const both = rememberBrowserOwners([process.pid], procs);
+  assert.ok(both.has(process.pid) && both.has(other), 'two observers must both survive');
+});
+
+test('the exclusivity witness makes a contaminated reading say so itself', () => {
+  // Acquiring the box is not holding it: the lock is checked once, at launch, and
+  // nothing stops a foreign run starting thirty seconds in. Two of my arms
+  // completed beside E's instrument and their JSON looked exactly like the clean
+  // ones, which is a reading that cannot be told apart from a good one.
+  const before = hostExclusivityWitness();
+  assert.ok(['NO_FOREIGN_RUNS', 'UNLOCKED_FOREIGN_RUN_DETECTED', 'FOREIGN_SCAN_UNAVAILABLE'].includes(before.state));
+  const w = hostExclusivityWitness(before);
+  assert.ok(['HOST_EXCLUSIVE', 'HOST_SHARED_DURING_RUN', 'HOST_EXCLUSIVITY_UNKNOWN'].includes(w.state), w.state);
+  assert.equal(w.citable, w.state === 'HOST_EXCLUSIVE');
+  if (!w.citable) assert.ok(w.why, 'a non-citable reading must say what spoiled it');
+  assert.ok(w.before && w.after, 'both ends must be recorded, or the middle is unwitnessed');
+
+  // A foreign run at EITHER end spoils it: the fake below is the shape of E's run.
+  const dirty = { at: new Date().toISOString(), state: 'UNLOCKED_FOREIGN_RUN_DETECTED', runs: [{ pid: 25764, script: 'heap-cycle-browser.mjs' }] };
+  const spoiled = hostExclusivityWitness(dirty);
+  assert.equal(spoiled.state, 'HOST_SHARED_DURING_RUN');
+  assert.equal(spoiled.citable, false);
+  assert.match(spoiled.why, /heap-cycle-browser\.mjs#25764/);
 });
 
 test('writeArtifactAtomic leaves no partial file and no temp behind', () => {
