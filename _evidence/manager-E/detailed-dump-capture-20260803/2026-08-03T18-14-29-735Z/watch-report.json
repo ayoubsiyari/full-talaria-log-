@@ -1,0 +1,74 @@
+{
+  "signature": "DETAILED-DUMP-CAPTURE-WATCH-V1",
+  "startedAt": "2026-08-03T18:14:29.736Z",
+  "owner": "E",
+  "run": "detailed-dump-capture-item6",
+  "port": "auto",
+  "pollMs": 5000,
+  "captureTimeoutMs": 300000,
+  "parseTimeoutMs": 60000,
+  "runId": "2026-08-03T18-14-29-735Z",
+  "outDir": "_evidence\\manager-E\\detailed-dump-capture-20260803\\2026-08-03T18-14-29-735Z",
+  "watchReport": "_evidence\\manager-E\\detailed-dump-capture-20260803\\2026-08-03T18-14-29-735Z\\watch-report.json",
+  "capture": "_evidence\\manager-E\\detailed-dump-capture-20260803\\2026-08-03T18-14-29-735Z\\capture.json",
+  "rawTrace": "_evidence\\manager-E\\detailed-dump-capture-20260803\\2026-08-03T18-14-29-735Z\\raw-trace-events.json",
+  "parsed": "_evidence\\manager-E\\detailed-dump-capture-20260803\\2026-08-03T18-14-29-735Z\\parsed.json",
+  "events": [
+    {
+      "at": "2026-08-03T18:14:30.302Z",
+      "state": "PREFLIGHT",
+      "verdict": "QUEUE_CLEAR",
+      "reason": "clear and you are next (E/detailed-dump-capture-item6)",
+      "mayRun": true
+    },
+    {
+      "at": "2026-08-03T18:14:30.303Z",
+      "state": "CLAIMING",
+      "run": "detailed-dump-capture-item6"
+    },
+    {
+      "at": "2026-08-03T18:14:30.847Z",
+      "state": "CLAIM_RESULT",
+      "claim": {
+        "label": "measurement-queue claim",
+        "code": 0,
+        "signal": null,
+        "timedOut": false,
+        "stdoutTail": "[queue] CLAIMED by E for detailed-dump-capture-item6 (pid 12444). Release when you stop.\n",
+        "stderrTail": ""
+      }
+    },
+    {
+      "at": "2026-08-03T18:14:30.847Z",
+      "state": "CAPTURE_START",
+      "capture": "_evidence\\manager-E\\detailed-dump-capture-20260803\\2026-08-03T18-14-29-735Z\\capture.json",
+      "rawTrace": "_evidence\\manager-E\\detailed-dump-capture-20260803\\2026-08-03T18-14-29-735Z\\raw-trace-events.json"
+    },
+    {
+      "at": "2026-08-03T18:14:33.437Z",
+      "state": "CAPTURE_DONE",
+      "capture": {
+        "label": "detailed-dump-capture",
+        "code": 0,
+        "signal": null,
+        "timedOut": false,
+        "stdoutTail": "{\n \"error\": \"Error: No live soak browser with a chart page found on any chrome-owned port.\\n    at file:///C:/Users/user/Desktop/talaria1/full-talaria-log--main/scripts/live-trace-and-allocator-probe.mjs:72:20\\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\"\n}\n",
+        "stderrTail": ""
+      }
+    },
+    {
+      "at": "2026-08-03T18:14:33.986Z",
+      "state": "RELEASE_RESULT",
+      "release": {
+        "label": "measurement-queue release",
+        "code": 0,
+        "signal": null,
+        "timedOut": false,
+        "stdoutTail": "[queue] released E/detailed-dump-capture-item6. Next: C/canonical-floor-retake-clean.\n",
+        "stderrTail": ""
+      }
+    }
+  ],
+  "state": "NO_LIVE_SOAK_BROWSER",
+  "captureError": "Error: No live soak browser with a chart page found on any chrome-owned port.\n    at file:///C:/Users/user/Desktop/talaria1/full-talaria-log--main/scripts/live-trace-and-allocator-probe.mjs:72:20\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)"
+}

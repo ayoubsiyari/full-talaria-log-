@@ -7,7 +7,7 @@ A blocked manager reads this rather than waiting for a relay.
 
 ---
 
-## CURRENT STATE — E's lane · maintained in place · last updated 19:02+01:00
+## CURRENT STATE — E's lane · maintained in place · last updated 19:17+01:00
 
 > **This block is the one part of this file that is NOT append-only.** It is overwritten, so it
 > answers *what is true now*; everything below answers *what happened*. Every number here carries
@@ -18,8 +18,8 @@ A blocked manager reads this rather than waiting for a relay.
 | row | value | state |
 |---|---|---|
 | Detailed-dump capture/parser item 6 | **gate PASS 4/4 at 18:55+01:00** | `BUILT_GREEN_NOT_CAPTURED` — capture requests detailed memory-infra rows, parser consumes detailed child rows plus current flattened COV-01 arena rows without letting roots-only rows masquerade as detail |
-| Item 6 queue position | **reserved front at 18:54+01:00** | `RESERVED_FRONT_HOST_BLOCKED` — stale E/V8 reservation cancelled; queue now starts E/detailed-dump-capture-item6 |
-| Item 6 live capture | **blocked by `fire-sealed-soak.mjs#31320` at 19:02+01:00** | `UNCLAIMED_RUN_DETECTED` — no claim on file, so E will not attach over it |
+| Item 6 queue position | **reserved front at 19:16+01:00** | `RESERVED_FRONT` — watcher consumed the first reservation while proving `NO_LIVE_SOAK_BROWSER`; E re-reserved front immediately |
+| Item 6 live capture | **attempted at 19:14:30+01:00** | `NO_LIVE_SOAK_BROWSER` — queue claim/release worked, but no chart browser remained to attach to; artifact `_evidence/manager-E/detailed-dump-capture-20260803/2026-08-03T18-14-29-735Z/watch-report.json` |
 | C canonical floor parse | **10 samples parsed at 18:56+01:00** | `ROOTS_ONLY_PARSED_NOT_QUOTABLE` — `_evidence/manager-E/detailed-dump-parser-canonical-floor-pass3-20260803.json` preserves final **59.84% coverage / 271.05 MB unattributed** and `detailState=ROOTS_ONLY_FLATTENED_ARENA_COLUMNS` |
 | V8 playback rerun | **complete** | `DIAGNOSTIC_CAPTURED_CONTAMINATED` — CONF-01 same-symbol, 4 panels, playback at 10 bars/s, zero-trade reproduction; useful retainer data, not authoritative plateau/slope read |
 | Snapshot A | **captured at 15:36:47+01:00** | `OBSERVED_ARTIFACT` — `_evidence/manager-E/v8-playback-heap-slope-20260803/2026-08-03T14-34-45-491Z/A.heapsnapshot` |
@@ -35,9 +35,10 @@ A blocked manager reads this rather than waiting for a relay.
 | V8 private outdir lock semantics | **terminal lock record kept** | `HARDENED_NOT_RUN` — disposable and authoritative V8 scripts now leave `.v8-*.lock` as `ACTIVE` while live and rewrite it to `PROCESS_EXITING` with wall elapsed, planned playback minutes, and active phase instead of unlinking silently |
 | V8 plan-overrun semantics | **run-level watchdog added** | `HARDENED_NOT_RUN` — after the 90-minute playback plan elapses, live V8 scripts emit repeated `RUN_OVERDUE_ACTIVE_PHASE` events naming the active phase, so long snapshot-C writes no longer look like an anonymous stall |
 
-**Blocked on someone else** — Item 6 is reserved at the front, but live capture is blocked by an
-unclaimed running `fire-sealed-soak.mjs#31320` process observed at 19:02+01:00. The authoritative read
-is not running yet; it must run later with Cursor closed and is blocked on COV-01 coverage >=95% plus
+**Blocked on someone else** — Item 6 is reserved at the front again. The unattended watcher fired when
+the queue cleared at 19:14:30+01:00, claimed, bounded the capture phase, released, and recorded
+`NO_LIVE_SOAK_BROWSER`; the C smoke browser was gone before E could attach. The authoritative read is
+not running yet; it must run later with Cursor closed and is blocked on COV-01 coverage >=95% plus
 host-scope locking or an explicit quiet-box window.
 
 **Not quotable, and why** — C's current floor remains `NOT_QUOTABLE_COVERAGE`: **59.84% coverage /
@@ -53,8 +54,8 @@ positive constructor self-size and `m20Q6CapturedClear +7.270 MB`, are quotable 
 salvage, not as flattening/slope evidence. `BUFFER-PARTITION-DISCRIMINATOR-V1` did not assign the
 120 MB buffer shelf; its arm numbers are negative/weak-transient owner eliminations, not an owner claim.
 
-**Next required update** — When `fire-sealed-soak.mjs#31616` clears or is claimed/released, claim the
-browser queue for item 6 and run the detailed memory capture:
+**Next required update** — Keep item 6 at the front and fire the same watcher when an attachable chart
+browser is present:
 `node scripts/live-trace-and-allocator-probe.mjs --port=auto --phases=memory --memoryDetail=detailed --out=<artifact>`,
 then parse it with `node scripts/detailed-dump-parser.mjs <artifact> --out=<report>`. After COV-01 is
 recomputed, schedule the authoritative read only if identity lock, all phases, sidecars, COV-01 >=95%,
@@ -174,3 +175,6 @@ and the M17-DI2 restore in `1c8892c51`.
 - 18:54+01:00 · E · RESERVED-FRONT / HOST-BLOCKED · `DETAILED-DUMP-CAPTURE-ITEM-6` · Cancelled stale E reservation `v8-playback-heap-slope-90m-rerun` and reserved E/detailed-dump-capture-item6 at queue position 1 because item 6 blocks COV-01 and the authoritative read. Preflight still refuses launch at 18:57+01:00: `UNCLAIMED_RUN_DETECTED` for `fire-sealed-soak.mjs#31616`, so E has not claimed and has not attached to the browser.
 - 18:56+01:00 · E · PARSED / STILL BLOCKED · `C-CANONICAL-FLOOR-COV01-ROOTS-ONLY` · Parsed C's current `_evidence/manager-C/canonical-floor-retake-b126-pass3.json` into `_evidence/manager-E/detailed-dump-parser-canonical-floor-pass3-20260803.json`. The parser now consumes C's existing flattened `ARENA-COLUMNS-V1` rows as `ROOTS_ONLY_FLATTENED_ARENA_COLUMNS`, not as detailed rows. Result: `sampleCount=10`; final floor remains `NOT_QUOTABLE_COVERAGE` with **59.84% coverage / 271.05 MB unattributed** on `totalPrivateMB=674.9`, and all 10 samples lack child allocator detail. Verification: `npm run test:detailed-dump-capture` PASS 4/4 at 18:55+01:00.
 - 19:02+01:00 · E · STILL BLOCKED · `DETAILED-DUMP-CAPTURE-ITEM-6` · Rechecked preflight after commit `f819556c9`; queue still refuses launch with `UNCLAIMED_RUN_DETECTED`, now `fire-sealed-soak.mjs#31320`. E remains reserved at the front but has not claimed and has not attached to the browser.
+- 19:13+01:00 · E · READY / DRY-PROVEN · `DETAILED-DUMP-CAPTURE-WATCH` · Added unattended watcher `scripts/detailed-dump-capture-watch.mjs` and package script `watch:detailed-dump-capture`. Dry run wrote a fresh timestamped outdir at `.scratch/detailed-dump-watch-dryrun/2026-08-03T18-12-58-373Z`, proved bounded `captureTimeoutMs=300000` / `parseTimeoutMs=60000`, and attempted no queue claim or browser attach. Verification: `node --check scripts/detailed-dump-capture-watch.mjs`; `npm run test:detailed-dump-capture` PASS 4/4 at 19:12+01:00.
+- 19:14+01:00 · E · FIRED / NO BROWSER · `DETAILED-DUMP-CAPTURE-ITEM-6` · Queue flipped `QUEUE_CLEAR`; watcher claimed E/detailed-dump-capture-item6 at 19:14:30+01:00, started capture, and released at 19:14:33+01:00. Result is named `NO_LIVE_SOAK_BROWSER`, not a stall: `live-trace-and-allocator-probe.mjs` found no live chart page on chrome-owned ports after C's smoke browser was gone. Artifact: `_evidence/manager-E/detailed-dump-capture-20260803/2026-08-03T18-14-29-735Z/watch-report.json`; capture sidecar has `signatureFilenameCheck=PASS`.
+- 19:16+01:00 · E · RE-RESERVED-FRONT · `DETAILED-DUMP-CAPTURE-ITEM-6` · Because the no-browser run consumed E's reservation while proving the setup path, E re-reserved item 6 at queue position 1 ahead of C/canonical-floor-retake-clean. Watcher hardened with `--reReserveOnNoBrowser=1` default so future no-browser outcomes restore the front slot automatically after release.

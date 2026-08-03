@@ -1,0 +1,11 @@
+{
+ "signature": "LIVE-TRACE-AND-ALLOCATOR-V1",
+ "artifactFile": "capture.json",
+ "at": "2026-08-03T18:14:31.212Z",
+ "phases": "memory",
+ "bfcacheState": "default (enabled) — the running soak browser. Declared per RESET-01.",
+ "whyThisExists": "Six MONSTER-2 candidates were eliminated by reading source; the 86 ms per event has never been decomposed. One trace beats a seventh source read.",
+ "riskAccepted": "Trace window 3000 ms with ReportEvents transfer so the buffer drains rather than accumulating. The exact window is recorded so the soak sample overlapping it can be annotated. Health re-checked immediately after Tracing.end.",
+ "error": "Error: No live soak browser with a chart page found on any chrome-owned port.\n    at file:///C:/Users/user/Desktop/talaria1/full-talaria-log--main/scripts/live-trace-and-allocator-probe.mjs:72:20\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)",
+ "signatureFilenameCheck": "PASS"
+}
