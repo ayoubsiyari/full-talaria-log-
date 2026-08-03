@@ -37,21 +37,12 @@ const N = Number(process.argv[2] || 12);
 const ROUNDS = Number(process.argv[3] || 6);
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'lockrace-'));
 
+// single-launch-lock.mjs (mine) was the second arm here until 13:30, when it was
+// retired under the one-lock ruling. It is not replaced by a stub: an arm that
+// points at an absent file prints SKIP forever and reads as coverage.
 const IMPLS = [
   {
-    id: 'single-launch-lock.mjs (B) — openSync wx + mid-creation retry',
-    file: path.join(ROOT, 'scripts/lib/single-launch-lock.mjs'),
-    body: (dir) => `
-      import { acquireRunLock } from '%SPEC%';
-      const [, startAt] = process.argv.slice(2);
-      while (Date.now() < Number(startAt)) {}
-      try { acquireRunLock('raced', { dir: ${JSON.stringify(dir)} }); console.log('WON'); }
-      catch { console.log('refused'); }
-      setTimeout(() => {}, 900);
-    `,
-  },
-  {
-    id: 'run-lock.mjs (A) — openSync wx, reclaims an unparseable holder',
+    id: 'run-lock.mjs (A) — the single primitive, RUN-LOCK-01',
     file: path.join(ROOT, 'scripts/lib/run-lock.mjs'),
     body: (dir) => `
       import { acquireRunLock } from '%SPEC%';

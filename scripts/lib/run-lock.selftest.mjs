@@ -19,6 +19,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   HOST_SCOPE_KEY,
   acquireRunLock,
+  acquireRunLockOrExit,
   browserOwningPids,
   classifyRunStrict,
   foreignRuns,
@@ -67,7 +68,7 @@ test('release frees every scope, so the next run is not blocked by the last', ()
   assert.deepEqual(inspectLocks().filter((l) => l.pid === process.pid), []);
 });
 
-test('RED — THE 12:04 ACCIDENT: two different scripts cannot both hold the box', () => {
+test('RED — THE 12:04+01:00 ACCIDENT: two different scripts cannot both hold the box', () => {
   // C's canonical-floor-retake and D's mutant suite: different identities,
   // different artifacts, so identity and artifact locks both grant all of them.
   // Only the host scope refuses, and this is the cell that says so.
@@ -243,17 +244,36 @@ test("B's cell — a real instrument refuses before it boots anything", () => {
   // refusal that arrives after boot has already cost the thing it was preventing.
   const lf = plantLive(HOST_SCOPE_KEY, 'host', 'holder.mjs');
   try {
+    // Direct evidence, not a proxy: count the browsers on the box either side of
+    // the refusal. `browserOwningPids` answers `null` when it could not ask, and
+    // that is reported as its own state rather than passing quietly — a scan that
+    // silently opts out is the same hole wearing a tick.
+    const before = browserOwningPids();
+
     const t0 = Date.now();
     const r = spawnSync(process.execPath, ['scripts/order01b-readback-canary.mjs', '--speed=10', '--step=1'], {
       cwd: REPO_ROOT, encoding: 'utf8', timeout: 60000,
     });
     const elapsed = Date.now() - t0;
+    const after = browserOwningPids();
+
     assert.equal(r.status, 3, `expected exit 3, got ${r.status}: ${r.stderr?.slice(0, 400)}`);
     assert.match(r.stderr, /HOST_BUSY_REFUSED/);
     assert.match(r.stderr, /no browser was launched/);
-    // Module load dominates; the point is that it is nowhere near a boot.
-    assert.ok(elapsed < 20000, `refusal took ${elapsed}ms, which is long enough to have booted something`);
-    assert.doesNotMatch(r.stdout || '', /harness|listening|puppeteer/i);
+
+    if (before === null || after === null) {
+      console.log('    BROWSER_SCAN_UNAVAILABLE — process evidence skipped, timing and output only');
+    } else {
+      assert.ok(after.size <= before.size,
+        `browser-owning processes went ${before.size} -> ${after.size}; the refusal booted something`);
+    }
+
+    // 20s was the first bound here and it could not discriminate: a real boot of
+    // this harness to first-ready measures 15-17s, so the old assertion passed
+    // whether or not a browser had appeared. The observed refusal is ~0.5s, so
+    // 5s keeps an order of magnitude of headroom while still failing a boot.
+    assert.ok(elapsed < 5000, `refusal took ${elapsed}ms; a boot starts around 15000ms and this must stay nowhere near it`);
+    assert.doesNotMatch(`${r.stdout || ''}${r.stderr || ''}`, /harness|listening|puppeteer/i);
   } finally { fs.unlinkSync(lf); }
 });
 
@@ -268,17 +288,92 @@ test("B's cell — mutant swap: exclusive create is what enforces it", () => {
   fs.writeFileSync(file, mutated);
 
   return import(pathToFileURL(file).href).then((mut) => {
-    const lf = mut.lockPathFor(mut.HOST_SCOPE_KEY, 'host');
-    fs.mkdirSync(path.dirname(lf), { recursive: true });
-    fs.writeFileSync(lf, JSON.stringify({
-      scope: 'host', pid: process.ppid, script: 'holder.mjs', startedAt: new Date().toISOString(),
-    }));
-    const got = mut.acquireRunLock({ artifact: tmpArtifact(), script: 'victim.mjs' });
-    // The mutant must NOT refuse. That is the proof the real one's refusal comes
-    // from the exclusive create and not from anything incidental.
-    assert.equal(got.state, 'LOCK_ACQUIRED', 'mutant still refused — the cells are not bound to `wx`');
-    got.release();
+    // Each arm plants into its OWN lock directory. LOCK_DIR is derived from the
+    // module's location, so the copy under test looks in the temp dir while the
+    // real one looks in the repo — plant once for both and the control silently
+    // finds an empty directory and acquires, which reads as a broken fix.
+    const mutantLock = mut.lockPathFor(mut.HOST_SCOPE_KEY, 'host');
+    const plantMutant = () => {
+      fs.mkdirSync(path.dirname(mutantLock), { recursive: true });
+      fs.writeFileSync(mutantLock, JSON.stringify({
+        scope: 'host', pid: process.ppid, script: 'holder.mjs', startedAt: new Date().toISOString(),
+      }));
+    };
+    // A/B, because "the mutant did not refuse" is on its own satisfiable by a
+    // mutant that never saw a lock at all. The control is what makes the swap
+    // evidence about `wx` rather than about nothing.
+    let realLock = null;
+    try {
+      realLock = plantLive(HOST_SCOPE_KEY, 'host', 'holder.mjs');
+      const control = acquireRunLock({ artifact: tmpArtifact(), script: 'victim.mjs' });
+      if (control.state === 'LOCK_ACQUIRED') control.release();
+      assert.equal(control.state, 'HOST_BUSY_REFUSED',
+        'the real module did not refuse the planted holder, so this cell is not '
+        + 'set up to detect anything and the mutant arm below proves nothing');
+
+      plantMutant();
+      const got = mut.acquireRunLock({ artifact: tmpArtifact(), script: 'victim.mjs' });
+      // The mutant must NOT refuse. That is the proof the real one's refusal comes
+      // from the exclusive create and not from anything incidental.
+      assert.equal(got.state, 'LOCK_ACQUIRED', 'mutant still refused — the cells are not bound to `wx`');
+      got.release();
+    } finally {
+      // A failed assertion above must not leave the REAL host lock planted.
+      // Parking the box for every lane is a worse outcome than the red this cell
+      // reports, and a test that fails loudly and then blocks four people has
+      // not helped anyone.
+      if (realLock) { try { fs.unlinkSync(realLock); } catch { /* already gone */ } }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
+});
+
+test("B's cell, closed structurally — the guard cannot depend on a caller remembering `await`", () => {
+  // B's finding stands and was correct: with an async acquire, an un-awaited call
+  // reached the synchronous refusal prefix, raced the unlocked-run scan it was
+  // meant to be stopped by, received a Promise whose `.state` logged as undefined,
+  // and left its lock to be reclaimed as stale. One consumer had already adopted
+  // it that way within a commit of publishing it.
+  //
+  // Rather than police the keyword, the acquire path is synchronous again — the
+  // scan included — so the defect has nowhere to live. `await` in front of it is
+  // now a no-op, which is why the offender list below is advisory only.
+  assert.notEqual(acquireRunLockOrExit.constructor.name, 'AsyncFunction',
+    'acquireRunLockOrExit must stay synchronous, or a missing await silently disarms the unlocked-run scan');
+  const probe = acquireRunLockOrExit({ artifact: tmpArtifact(), script: 'sync-shape-probe.mjs', host: false });
+  try {
+    assert.equal(typeof probe.then, 'undefined', 'it must not return a thenable');
+    assert.equal(typeof probe.release, 'function');
+    assert.ok(typeof probe.state === 'string');
+  } finally { probe.release(); }
+});
+
+test("B's cell, as originally written — who calls it without await (advisory now)", () => {
+  // Presence is not binding. `acquireRunLockOrExit` refuses on a held lock in its
+  // synchronous prefix, so an un-awaited call still gets that far — which is why
+  // this reads as working. What sits AFTER the first `await` is the unlocked-run
+  // scan, and an un-awaited caller runs its own next statements alongside it, so
+  // UNLOCKED_FOREIGN_RUN_DETECTED cannot stop a launch it is racing. The caller
+  // also gets a Promise, so `.state` logs as `undefined` and `.release()` is not
+  // a function, leaving the lock to be reclaimed as stale by whoever comes next.
+  const dir = path.join(REPO_ROOT, 'scripts');
+  const offenders = [];
+  for (const f of fs.readdirSync(dir).filter((n) => n.endsWith('.mjs'))) {
+    const src = fs.readFileSync(path.join(dir, f), 'utf8');
+    const re = /acquireRunLockOrExit\s*\(/g;
+    let m;
+    while ((m = re.exec(src)) !== null) {
+      const before = src.slice(Math.max(0, m.index - 24), m.index);
+      if (/\bawait\s+$/.test(before)) continue;
+      if (/[{,]\s*$/.test(before)) continue; // the import list, not a call
+      offenders.push(`${f}:${src.slice(0, m.index).split('\n').length}`);
+    }
+  }
+  // Reported, not failed: with a synchronous acquire these call sites are correct.
+  // Kept because the list is the evidence for why the shape had to change, and
+  // because it would go red again the moment anyone makes the acquire async.
+  if (offenders.length) console.log(`[run-lock] un-awaited call sites (fine while acquire is sync): ${offenders.join(', ')}`);
+  assert.equal(acquireRunLockOrExit.constructor.name, 'Function');
 });
 
 test('the module is committed, because a shared precondition that is not in the tree is not one', () => {

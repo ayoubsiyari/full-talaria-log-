@@ -50,7 +50,7 @@ import {
   reactParityUrlWithLayout,
 } from '../chart v 1.4/chart/multichart-prod/harness/react-parity-lib.mjs';
 import { captureProvenance } from './lib/run-provenance.mjs';
-import { acquireRunLock } from './lib/single-launch-lock.mjs';
+import { acquireRunLockOrExit, lockFlagsFromArgv, writeArtifactAtomic } from './lib/run-lock.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -211,15 +211,21 @@ async function main() {
   const out = path.resolve(argOf('out',
     path.join(__dirname, '..', 'docs/plan3/evidence', `shellplay-guard-attribution-${Date.now()}.json`)));
 
-  // LAUNCH-LOCK-01. This probe's own artifact is timestamped and so cannot be
+  // RUN-LOCK-01. This probe's own artifact is timestamped and so cannot be
   // overwritten, but that is not the hazard: the hazard is that this launches a
   // Chromium and four panels onto a box someone else may be measuring on. Two
   // multi-hour runs died today to exactly that, so the probe refuses to be the
   // brief thing that starts on top of a long one.
-  const lock = acquireRunLock('shellplay-guard-attribution-probe');
-  if (lock.state === 'STALE_LOCK_RECLAIMED') {
-    log(`STALE_LOCK_RECLAIMED — previous run (pid ${lock.reclaimedFrom?.pid}) died without releasing`);
-  }
+  //
+  // A's shared primitive, not the one I wrote an hour after it. Its host scope is
+  // the part mine did not have, and the host scope is the one that matters here:
+  // this probe writes a unique filename every run, so an artifact-keyed or
+  // name-keyed lock would let it start on top of anything.
+  const lock = await acquireRunLockOrExit({
+    artifact: out,
+    script: 'shellplay-guard-attribution-probe.mjs',
+    ...lockFlagsFromArgv(),
+  });
 
   const report = {
     signature: 'SHELLPLAY-GUARD-ATTRIBUTION-V1',
@@ -228,13 +234,15 @@ async function main() {
     // that one-hour gap is what makes "were you on the box during my run"
     // unanswerable after the fact.
     atLocal: new Date().toString(),
-    lock: { state: lock.state, pid: lock.pid },
+    runLock: { state: lock.state, foreignScan: lock.foreignScan, pid: process.pid },
     provenance: captureProvenance(distIndex),
     steps: [],
   };
   const save = () => {
     fs.mkdirSync(path.dirname(out), { recursive: true });
-    fs.writeFileSync(out, JSON.stringify(report, null, 2));
+    // Atomic, so a run killed mid-write leaves the previous artifact rather than
+    // truncated JSON that parses as "no data" instead of "interrupted".
+    writeArtifactAtomic(out, JSON.stringify(report, null, 2));
   };
   log(`HEAD ${report.provenance.headSha} distV9 ${report.provenance.distV9BuildIdOnDisk} `
     + `dirtyGoverned=${report.provenance.dirtyGovernedPaths.length}`);
@@ -294,13 +302,9 @@ async function main() {
 }
 
 main().catch((err) => {
-  // A refusal to start is not a failed run, and must not be reported as one.
-  // Exit 2 matches CLEAN-TREE-01: "I declined, and wrote nothing."
-  if (err && err.state === 'INSTRUMENT_ALREADY_RUNNING') {
-    console.error(`\nREFUSED: ${err.message}\n`);
-    process.exitCode = 2;
-    return;
-  }
+  // Refusals no longer arrive here: RUN-LOCK-01 prints its named state and exits
+  // 3 itself, so a declined start cannot be reported as a failed run. Anything
+  // reaching this handler is a genuine fault.
   console.error(err);
   process.exitCode = 1;
 });
