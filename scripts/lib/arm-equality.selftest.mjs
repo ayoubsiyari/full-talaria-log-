@@ -103,6 +103,70 @@ test('without a declared window the duration difference still refuses', () => {
   assert.equal(v.state, 'ARMS_DIFFER');
 });
 
+/**
+ * PO ruling option (b), 2026-08-03 22:46+01:00. The matched window is THE passing condition for a
+ * duration-mismatched pair, not an optional reconciliation.
+ */
+test('RULED CONFIG — 10 h trade arm against the retained 3.5 h control passes in the matched window', () => {
+  const v = compareArms(
+    { closesPerHour: '30', hours: '10', out: 'trades.jsonl' },
+    { closesPerHour: '0', hours: '3.5', out: 'zero.jsonl' },
+    { comparisonWindowHours: 3.5 },
+  );
+  assert.equal(v.state, 'ARMS_COMPARABLE_IN_WINDOW');
+  assert.equal(v.comparable, true);
+  assert.equal(v.window.matchedToControl, true);
+  assert.equal(v.window.origin, 'boot');
+});
+
+test('the two claims are recorded separately, over their own spans', () => {
+  const v = compareArms(
+    { closesPerHour: '30', hours: '10' }, { closesPerHour: '0', hours: '3.5' },
+    { comparisonWindowHours: 3.5 },
+  );
+  assert.equal(v.claims.attribution.spanHours, 3.5);
+  assert.equal(v.claims.attribution.arms, 'both');
+  assert.equal(v.claims.certification.spanHours, 10);
+  assert.match(v.claims.certification.what, /NOT differenceable/,
+    'the full 10 h certifies, it does not difference — collapsing the two is how the whole run gets differenced');
+});
+
+test('a window SHORTER than the control is refused: it must BE the control, not fit inside it', () => {
+  const v = compareArms(
+    { closesPerHour: '30', hours: '10' }, { closesPerHour: '0', hours: '3.5' },
+    { comparisonWindowHours: 1 },
+  );
+  assert.equal(v.state, 'ARMS_WINDOW_NOT_MATCHED');
+  assert.equal(v.comparable, false);
+  assert.match(v.reason, /silently narrows the attribution below what was approved/);
+});
+
+test('a window from any origin other than boot is refused', () => {
+  const v = compareArms(
+    { closesPerHour: '30', hours: '10' }, { closesPerHour: '0', hours: '3.5' },
+    { comparisonWindowHours: 3.5, windowOrigin: 'steady-state' },
+  );
+  assert.equal(v.state, 'ARMS_WINDOW_ORIGIN_INVALID');
+  assert.match(v.reason, /FROM BOOT/);
+});
+
+test('equal-duration arms (the smoke pair) never enter the window path at all', () => {
+  const v = compareArms(
+    { closesPerHour: '30', hours: '0.34' }, { closesPerHour: '0', hours: '0.34' },
+    { comparisonWindowHours: 0.34 },
+  );
+  assert.equal(v.state, 'ARMS_COMPARABLE');
+  assert.equal(v.window, null, 'there is no duration to reconcile, so no window is claimed');
+});
+
+test('float noise in the window does not fail the match', () => {
+  const v = compareArms(
+    { closesPerHour: '30', hours: '10' }, { closesPerHour: '0', hours: '3.5' },
+    { comparisonWindowHours: 3.4999 },
+  );
+  assert.equal(v.state, 'ARMS_COMPARABLE_IN_WINDOW');
+});
+
 test('a nonsense window is refused rather than ignored', () => {
   for (const bad of [0, -1, 'soon']) {
     const v = compareArms(

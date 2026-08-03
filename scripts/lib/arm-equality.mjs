@@ -53,6 +53,26 @@ export function compareArms(a, b, {
    * Undeclared, a duration difference is still a confound and still refuses.
    */
   comparisonWindowHours = null,
+  /**
+   * PO RULING, option (b), 2026-08-03 22:46+01:00. The matched window is not merely *a* reconciliation
+   * that may be declared — it is THE passing condition for a duration-mismatched pair:
+   *
+   *   - the 3.5 h control is RETAINED (no 6.5 h of extra host window is bought);
+   *   - attribution compares the matched FIRST 3.5 h OF BOTH ARMS, measured FROM BOOT;
+   *   - the trade arm still CERTIFIES its full 10 h, as a separate claim over a separate span.
+   *
+   * Two things that were previously unchecked and are now conditions, because each would satisfy the
+   * old code while violating the ruling:
+   *
+   *   1. Any window shorter than the control passed. A 1 h window against a 3.5 h control is not the
+   *      ruled comparison — it silently narrows attribution below what was approved. The window must
+   *      BE the shorter arm, not merely fit inside it.
+   *   2. The window origin was never stated. "The first 3.5 h of both arms" is only meaningful from a
+   *      common origin; the same 3.5 h taken from hour 6 of one arm and hour 0 of the other is a
+   *      different experiment wearing the same number.
+   */
+  windowOrigin = 'boot',
+  windowMatchToleranceHours = 0.01,
 } = {}) {
   if (!a || !b || typeof a !== 'object' || typeof b !== 'object') {
     return { state: 'ARM_CONFIG_MISSING', comparable: false, differences: [], contrast: [],
@@ -90,7 +110,27 @@ export function compareArms(a, b, {
         reason: `the declared comparison window is ${win} h but the shorter arm runs only ${shortest} h. `
           + 'A window that does not fit inside both arms differences real samples against absent ones.' };
     }
-    window = { declaredHours: win, shortestArmHours: shortest, reconciles: durationField };
+    if (windowOrigin !== 'boot') {
+      return { state: 'ARMS_WINDOW_ORIGIN_INVALID', comparable: false, differences, contrast,
+        window: { declaredHours: win, origin: windowOrigin },
+        reason: `the comparison window is declared from '${windowOrigin}', but the ruling is the first `
+          + `${win} h of BOTH arms measured FROM BOOT. The same span taken from different origins in `
+          + 'the two arms is a different experiment wearing the same number.' };
+    }
+    if (Math.abs(win - shortest) > Number(windowMatchToleranceHours)) {
+      return { state: 'ARMS_WINDOW_NOT_MATCHED', comparable: false, differences, contrast,
+        window: { declaredHours: win, shortestArmHours: shortest },
+        reason: `the declared window is ${win} h but the control arm runs ${shortest} h. The ruled `
+          + 'comparison is the matched window — the window must BE the shorter arm, not merely fit '
+          + 'inside it. A shorter window silently narrows the attribution below what was approved.' };
+    }
+    window = {
+      declaredHours: win,
+      shortestArmHours: shortest,
+      reconciles: durationField,
+      origin: windowOrigin,
+      matchedToControl: true,
+    };
     // Reconciled: remove it from the confound list, and say so in the state below.
     differences.splice(differences.indexOf(durationDiff), 1);
   }
@@ -113,11 +153,31 @@ export function compareArms(a, b, {
   }
   const contrastText = contrast.map((c) => `${c.field} (${c.a} vs ${c.b})`).join(', ');
   if (window) {
+    const longest = Math.max(Number(a[durationField]), Number(b[durationField]));
     return {
       state: 'ARMS_COMPARABLE_IN_WINDOW', comparable: true, differences, contrast, window,
+      /**
+       * The two claims are recorded separately, because they are different claims over different
+       * spans and collapsing them is how the full run gets quietly differenced.
+       */
+      claims: {
+        attribution: {
+          spanHours: window.declaredHours,
+          from: window.origin,
+          arms: 'both',
+          what: 'the between-arm delta, valid over the matched window ONLY',
+        },
+        certification: {
+          spanHours: longest,
+          from: window.origin,
+          arms: 'the longer arm alone',
+          what: 'single-arm certification over the full duration; NOT differenceable against the control',
+        },
+      },
       reason: `the arms differ only in the trade knob [${contrastText}] once ${durationField} is reconciled by the `
-        + `declared ${window.declaredHours} h comparison window. The between-arm delta is valid over that window ONLY; `
-        + 'the longer arm still certifies its full duration, but nothing outside the window may be differenced.',
+        + `matched ${window.declaredHours} h window from ${window.origin}, which is the full control arm. `
+        + `Attribution is the between-arm delta over that window ONLY; the ${longest} h arm still certifies `
+        + 'its full duration as a separate single-arm claim, and nothing outside the window may be differenced.',
     };
   }
   return {
