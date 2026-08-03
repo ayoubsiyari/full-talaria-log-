@@ -30,11 +30,29 @@ test('DUR-01 is not assessed on a non-time axis, and is never true there', () =>
   const bars = fitTrend(series([100, 110, 120, 130, 140, 150]), { flatBandPerHour: 5, minSpanHours: 0, xUnit: 'kbars' });
   assert.equal(bars.durationOk, null, 'a bar axis cannot satisfy a duration gate');
   assert.match(bars.durationNote, /not time/);
-  // The same call on a time axis is unchanged, so no existing caller moves.
-  const hours = fitTrend(series([100, 110, 120, 130, 140, 150]), { flatBandPerHour: 5, minSpanHours: 0 });
+  // The same call on a declared time axis is unchanged, so no existing caller moves.
+  const hours = fitTrend(series([100, 110, 120, 130, 140, 150]), { flatBandPerHour: 5, minSpanHours: 0, xUnit: 'hours' });
   assert.equal(hours.durationOk, true);
   assert.equal(hours.durationNote, undefined);
   assert.equal(hours.xUnit, 'hours');
+});
+
+/**
+ * Five callers write `{ xUnit: 'per 1,000 bars played', ...fitTrend(...) }`, where the spread lands
+ * after the label. If fitTrend emitted a default xUnit it would overwrite five correct axis
+ * descriptions with 'hours' — a worse lie than the one being fixed, and asserted rather than absent.
+ */
+test('an undeclared axis emits no xUnit, so a caller-side label survives the spread', () => {
+  const t = fitTrend(series([100, 110, 120, 130, 140, 150]), { flatBandPerHour: 5 });
+  assert.equal(Object.hasOwn(t, 'xUnit'), false, 'must not clobber a caller-supplied xUnit');
+  assert.equal(t.xAxisDeclared, false, 'and the absence must be visible, not silent');
+  const merged = { xUnit: 'per 1,000 bars played', ...t };
+  assert.equal(merged.xUnit, 'per 1,000 bars played');
+});
+
+test('an undeclared axis keeps its previous durationOk, so no other lane is silently regraded', () => {
+  const t = fitTrend(series([100, 110, 120, 130, 140, 150]), { flatBandPerHour: 5, minSpanHours: 0 });
+  assert.equal(t.durationOk, true, 'unchanged until the owner declares the axis');
 });
 
 test('a verdict still stands on a non-time axis — only the duration claim is withheld', () => {
