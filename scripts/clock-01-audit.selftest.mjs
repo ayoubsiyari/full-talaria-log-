@@ -86,6 +86,24 @@ test('fixFile stamps only the bare numbers and leaves stamped ones untouched', a
   } finally { fs.rmSync(abs, { force: true }); }
 });
 
+test('REGRESSION: describing the exemption marker does not grant it', () => {
+  // My own commit message documented the marker mid-sentence and thereby exempted
+  // itself, so the message's real bare numbers went unreported.
+  const prose = 'declare it with CLOCK-01-EXEMPT-FILE: <why> at the top.\nstarted 12:04';
+  const r = scanText(prose);
+  assert.equal(r.exemptFile, undefined);
+  assert.deepEqual(r.findings.map((f) => f.token), ['12:04']);
+  // Anchored at the start of a line, with or without comment punctuation, it holds.
+  assert.equal(scanText(' * CLOCK-01-EXEMPT-FILE: fixtures\nstarted 12:04').exemptFile, 'fixtures');
+  // Line scope is unanchored on purpose: a board entry opens with its own stamp,
+  // and the exemption reaches no further than the line it sits on.
+  assert.deepEqual(scanText('- 13:49+01:00 · A · CLOCK-01-EXEMPT quoting bytes: 09:59').findings, []);
+  assert.deepEqual(
+    scanText('- 13:49+01:00 · A · CLOCK-01-EXEMPT quotes 09:59\n- 13:50+01:00 · A · started 12:04')
+      .findings.map((f) => f.token),
+    ['12:04'], 'a line-scoped exemption must not leak to the next line');
+});
+
 test('scanText counts what it looked at, so a clean file is distinguishable from an empty one', () => {
   assert.equal(scanText('no times at all').total, 0);
   assert.equal(scanText('12:00Z').total, 1);

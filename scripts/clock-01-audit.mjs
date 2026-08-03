@@ -87,8 +87,15 @@ const NOT_A_CLOCK = [
  *   CLOCK-01-EXEMPT           on the line
  *   CLOCK-01-EXEMPT-FILE: why anywhere in the first 40 lines
  */
-const EXEMPT_LINE = /CLOCK-01-EXEMPT\b/;
-const EXEMPT_FILE = /CLOCK-01-EXEMPT-FILE:\s*(.+)$/m;
+/**
+ * Scope decides the anchoring. A line-scoped opt-out may sit anywhere on its
+ * line, because board entries open with their own stamp and the blast radius is
+ * that one line. The FILE marker must OPEN a line: unanchored, it exempted my own
+ * commit message, which merely described the marker mid-sentence, and a gate any
+ * text can switch off by naming it is not a gate.
+ */
+const EXEMPT_LINE = /CLOCK-01-EXEMPT\b(?!-FILE)/;
+const EXEMPT_FILE = /^[\s*#/>|-]*CLOCK-01-EXEMPT-FILE:\s*(.+)$/m;
 
 const isIsoStamped = (line, index) => {
   // `2026-08-03T12:04:34Z` and `2026-08-03 12:04:34+01:00`: the date prefix plus
