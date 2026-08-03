@@ -237,7 +237,9 @@
     "test:index-scope": "node --test scripts/index-scope-guard.selftest.mjs",
     "mutants:index-scope": "node scripts/index-scope-guard.mutants.mjs",
     "hook:install": "node scripts/install-index-scope-hook.mjs",
-    "commit:scoped": "node scripts/commit-scoped.mjs"
+    "commit:scoped": "node scripts/commit-scoped.mjs",
+    "census:suspect-ledger": "node scripts/suspect-ledger-census.mjs",
+    "test:suspect-ledger-census": "node --test scripts/tests/suspect-ledger-census.test.mjs"
   },
   "dependencies": {
     "dukascopy-node": "^1.46.3",

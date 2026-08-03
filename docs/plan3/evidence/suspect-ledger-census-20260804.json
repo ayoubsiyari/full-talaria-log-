@@ -1,0 +1,2465 @@
+{
+  "instrument": "suspect-ledger-census",
+  "law": "exactly one of KILLED / CLEARED / DEFERRED; absence is the only forbidden state",
+  "sources": {
+    "ledger": "docs/plan3/SUSPECT-LEDGER-SEAL.md",
+    "tickets": "docs/plan3/TICKET-STATUS-LEDGER-20260729.md",
+    "postSoak": "docs/plan3/POST-SOAK-LEDGER.md"
+  },
+  "counts": {
+    "population": 165,
+    "ticketRows": 149,
+    "curatedControls": 16,
+    "stated": 2,
+    "absent": 158,
+    "illegalOpen": 5,
+    "ambiguousMultiState": 0,
+    "needIndividualStatement": 6
+  },
+  "statusTally": {
+    "scoped": 1,
+    "blocked-on-build": 7,
+    "fixed": 49,
+    "po-eyes": 25,
+    "cleared": 2,
+    "owner-blocked": 20,
+    "superseded": 29,
+    "verify-gone": 4,
+    "intended": 1,
+    "feature-request": 9,
+    "broken": 1,
+    "closed-scratched": 1
+  },
+  "killedAxes": {
+    "fixedRows": 49,
+    "withCommit": 49,
+    "withGreenGate": 49,
+    "withKillSwitchRecorded": 1,
+    "totalTicketRows": 149
+  },
+  "seats": {
+    "cited": [
+      "POST-SOAK-LEDGER-E-01",
+      "POST-SOAK-LEDGER-E-02",
+      "POST-SOAK-LEDGER-E-03"
+    ],
+    "dangling": [
+      "POST-SOAK-LEDGER-E-01",
+      "POST-SOAK-LEDGER-E-02",
+      "POST-SOAK-LEDGER-E-03"
+    ]
+  },
+  "floorNotCeiling": "Id-shaped extraction over the ticket ledger plus a curated control list. A suspect named only in prose, only in an untracked file, under two names, or only in a commit message is invisible here. The population is a LOWER BOUND: this instrument can prove an absence and cannot prove completeness.",
+  "rows": [
+    {
+      "id": "TAL-DATA-LOAD-ERROR-SURFACE",
+      "source": "ticket-ledger",
+      "status": "scoped",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": false
+    },
+    {
+      "id": "M17-DI2 / TAL-01918",
+      "source": "ticket-ledger",
+      "status": "blocked-on-build",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ILLEGAL_OPEN",
+      "ledgerStates": [
+        "OPEN"
+      ],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "M24 / TAL-01926",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01930",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01888",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01813",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01758",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01908",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01919",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01924",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01904",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01897",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01933",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01809",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "SEL-01",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "Timezone EST-to-CST override",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01861",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01885",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01905",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01932",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01777",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01750",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01927",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01903",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01810",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01683",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01751",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01697",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01696",
+      "source": "ticket-ledger",
+      "status": "po-eyes",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ILLEGAL_OPEN",
+      "ledgerStates": [
+        "OPEN"
+      ],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01699",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01698",
+      "source": "ticket-ledger",
+      "status": "po-eyes",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ILLEGAL_OPEN",
+      "ledgerStates": [
+        "OPEN"
+      ],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01617",
+      "source": "ticket-ledger",
+      "status": "cleared",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "STATED",
+      "ledgerStates": [
+        "CLEARED"
+      ],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01895",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01792",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01865",
+      "source": "ticket-ledger",
+      "status": "owner-blocked",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ILLEGAL_OPEN",
+      "ledgerStates": [
+        "OPEN",
+        "KILLED"
+      ],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01747",
+      "source": "ticket-ledger",
+      "status": "owner-blocked",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01941",
+      "source": "ticket-ledger",
+      "status": "cleared",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "STATED",
+      "ledgerStates": [
+        "CLEARED"
+      ],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01896",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "M20-A timezone sha pin",
+      "source": "ticket-ledger",
+      "status": "owner-blocked",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "M23 / TAL-01937",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01800",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01940",
+      "source": "ticket-ledger",
+      "status": "po-eyes",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01756",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "Rayan #8",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ILLEGAL_OPEN",
+      "ledgerStates": [
+        "OPEN"
+      ],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01653",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01692",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01658",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01691",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01805",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01795",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01780",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01781",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01789",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01791",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01760",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01798",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01815",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01677",
+      "source": "ticket-ledger",
+      "status": "verify-gone",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": false
+    },
+    {
+      "id": "TAL-01688",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01700",
+      "source": "ticket-ledger",
+      "status": "po-eyes",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01709",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01717",
+      "source": "ticket-ledger",
+      "status": "po-eyes",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01718",
+      "source": "ticket-ledger",
+      "status": "blocked-on-build",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01719",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01723",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01724",
+      "source": "ticket-ledger",
+      "status": "po-eyes",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01725",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01726",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01728",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01732",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01733",
+      "source": "ticket-ledger",
+      "status": "owner-blocked",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01734",
+      "source": "ticket-ledger",
+      "status": "po-eyes",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01735",
+      "source": "ticket-ledger",
+      "status": "po-eyes",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01736",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01737",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01739",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01740",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01743",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01744",
+      "source": "ticket-ledger",
+      "status": "intended",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01755",
+      "source": "ticket-ledger",
+      "status": "po-eyes",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01759",
+      "source": "ticket-ledger",
+      "status": "owner-blocked",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01768",
+      "source": "ticket-ledger",
+      "status": "po-eyes",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01769",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01784",
+      "source": "ticket-ledger",
+      "status": "feature-request",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01796",
+      "source": "ticket-ledger",
+      "status": "po-eyes",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01799",
+      "source": "ticket-ledger",
+      "status": "owner-blocked",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01802",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01814",
+      "source": "ticket-ledger",
+      "status": "feature-request",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01821",
+      "source": "ticket-ledger",
+      "status": "po-eyes",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01823",
+      "source": "ticket-ledger",
+      "status": "po-eyes",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01824",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01831",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01838",
+      "source": "ticket-ledger",
+      "status": "po-eyes",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01847",
+      "source": "ticket-ledger",
+      "status": "superseded",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01849",
+      "source": "ticket-ledger",
+      "status": "feature-request",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01850",
+      "source": "ticket-ledger",
+      "status": "owner-blocked",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01851",
+      "source": "ticket-ledger",
+      "status": "feature-request",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01852",
+      "source": "ticket-ledger",
+      "status": "feature-request",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01854",
+      "source": "ticket-ledger",
+      "status": "owner-blocked",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01862",
+      "source": "ticket-ledger",
+      "status": "po-eyes",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01864",
+      "source": "ticket-ledger",
+      "status": "owner-blocked",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01886",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01887",
+      "source": "ticket-ledger",
+      "status": "owner-blocked",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01891",
+      "source": "ticket-ledger",
+      "status": "broken",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": false
+    },
+    {
+      "id": "TAL-01892",
+      "source": "ticket-ledger",
+      "status": "blocked-on-build",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01893",
+      "source": "ticket-ledger",
+      "status": "owner-blocked",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01894",
+      "source": "ticket-ledger",
+      "status": "feature-request",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01898",
+      "source": "ticket-ledger",
+      "status": "po-eyes",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01899",
+      "source": "ticket-ledger",
+      "status": "blocked-on-build",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01900",
+      "source": "ticket-ledger",
+      "status": "blocked-on-build",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01902",
+      "source": "ticket-ledger",
+      "status": "blocked-on-build",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01906",
+      "source": "ticket-ledger",
+      "status": "feature-request",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01907",
+      "source": "ticket-ledger",
+      "status": "feature-request",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01909",
+      "source": "ticket-ledger",
+      "status": "po-eyes",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01910",
+      "source": "ticket-ledger",
+      "status": "owner-blocked",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01911",
+      "source": "ticket-ledger",
+      "status": "po-eyes",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01912",
+      "source": "ticket-ledger",
+      "status": "closed-scratched",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01913",
+      "source": "ticket-ledger",
+      "status": "owner-blocked",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01914",
+      "source": "ticket-ledger",
+      "status": "owner-blocked",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01915",
+      "source": "ticket-ledger",
+      "status": "feature-request",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "CLEARED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01916",
+      "source": "ticket-ledger",
+      "status": "po-eyes",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01917",
+      "source": "ticket-ledger",
+      "status": "po-eyes",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01920",
+      "source": "ticket-ledger",
+      "status": "verify-gone",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": false
+    },
+    {
+      "id": "TAL-01921",
+      "source": "ticket-ledger",
+      "status": "owner-blocked",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01922",
+      "source": "ticket-ledger",
+      "status": "blocked-on-build",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01923",
+      "source": "ticket-ledger",
+      "status": "po-eyes",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01925",
+      "source": "ticket-ledger",
+      "status": "po-eyes",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01928",
+      "source": "ticket-ledger",
+      "status": "po-eyes",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01929",
+      "source": "ticket-ledger",
+      "status": "po-eyes",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01931",
+      "source": "ticket-ledger",
+      "status": "owner-blocked",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01934",
+      "source": "ticket-ledger",
+      "status": "po-eyes",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01935",
+      "source": "ticket-ledger",
+      "status": "owner-blocked",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01936",
+      "source": "ticket-ledger",
+      "status": "owner-blocked",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01938",
+      "source": "ticket-ledger",
+      "status": "owner-blocked",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01939",
+      "source": "ticket-ledger",
+      "status": "owner-blocked",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": true
+    },
+    {
+      "id": "Rayan #1",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "Rayan #2",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "Rayan #3",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "Rayan #4",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "Rayan #5",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "Rayan #6b",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "Rayan #7",
+      "source": "ticket-ledger",
+      "status": "verify-gone",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": false
+    },
+    {
+      "id": "Rayan #9",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "Rayan #10",
+      "source": "ticket-ledger",
+      "status": "verify-gone",
+      "axes": {
+        "commit": false,
+        "gate": true,
+        "green": false,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "DEFERRED",
+      "safeMapping": false
+    },
+    {
+      "id": "Rayan #11",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "TAL-01807b",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": true
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "PO value-box shaky",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "PO hover one-by-one",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "PO pending SL/TP resurrect",
+      "source": "ticket-ledger",
+      "status": "fixed",
+      "axes": {
+        "commit": true,
+        "gate": true,
+        "green": true,
+        "killSwitch": false
+      },
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": "KILLED",
+      "safeMapping": true
+    },
+    {
+      "id": "SHELL-PLAY-01",
+      "source": "curated-control",
+      "status": null,
+      "axes": null,
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": null,
+      "safeMapping": null
+    },
+    {
+      "id": "DRAW-SMOKE-01",
+      "source": "curated-control",
+      "status": null,
+      "axes": null,
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": null,
+      "safeMapping": null
+    },
+    {
+      "id": "COPY-ABSENCE-01",
+      "source": "curated-control",
+      "status": null,
+      "axes": null,
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": null,
+      "safeMapping": null
+    },
+    {
+      "id": "CLOCK-01-FILE-SCOPE",
+      "source": "curated-control",
+      "status": null,
+      "axes": null,
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": null,
+      "safeMapping": null
+    },
+    {
+      "id": "GATE-DEPTH-SWEEP",
+      "source": "curated-control",
+      "status": null,
+      "axes": null,
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": null,
+      "safeMapping": null
+    },
+    {
+      "id": "EVIDENCE-CITE-01",
+      "source": "curated-control",
+      "status": null,
+      "axes": null,
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": null,
+      "safeMapping": null
+    },
+    {
+      "id": "TERRITORY-DUPLICATE-MANAGERS",
+      "source": "curated-control",
+      "status": null,
+      "axes": null,
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": null,
+      "safeMapping": null
+    },
+    {
+      "id": "TERRITORY-FOUR-TRAILERS",
+      "source": "curated-control",
+      "status": null,
+      "axes": null,
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": null,
+      "safeMapping": null
+    },
+    {
+      "id": "REPLAY-4297-PRODUCT",
+      "source": "curated-control",
+      "status": null,
+      "axes": null,
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": null,
+      "safeMapping": null
+    },
+    {
+      "id": "M20Q6-CPU-DOMAIN",
+      "source": "curated-control",
+      "status": null,
+      "axes": null,
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": null,
+      "safeMapping": null
+    },
+    {
+      "id": "ZERO-TRADE-LAG-CENSUS",
+      "source": "curated-control",
+      "status": null,
+      "axes": null,
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": null,
+      "safeMapping": null
+    },
+    {
+      "id": "MS-PER-SECOND-724-OWNER",
+      "source": "curated-control",
+      "status": null,
+      "axes": null,
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": null,
+      "safeMapping": null
+    },
+    {
+      "id": "HOARD-FLOOR-CURVE",
+      "source": "curated-control",
+      "status": null,
+      "axes": null,
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": null,
+      "safeMapping": null
+    },
+    {
+      "id": "UNLIT-DARK-ROOMS",
+      "source": "curated-control",
+      "status": null,
+      "axes": null,
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": null,
+      "safeMapping": null
+    },
+    {
+      "id": "SECOND-GPU-BOX",
+      "source": "curated-control",
+      "status": null,
+      "axes": null,
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": null,
+      "safeMapping": null
+    },
+    {
+      "id": "R7-MACHINE-COVERAGE-BACKFILL",
+      "source": "curated-control",
+      "status": null,
+      "axes": null,
+      "verdict": "ABSENT",
+      "ledgerStates": [],
+      "mapsTo": null,
+      "safeMapping": null
+    }
+  ]
+}
