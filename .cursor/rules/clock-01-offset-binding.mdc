@@ -1,0 +1,27 @@
+---
+description: CLOCK-01 wall-clock offset binding for boards, reports, verdicts, and commits
+alwaysApply: true
+---
+
+# CLOCK-01 Wall-Clock Offset Binding
+
+Every wall-clock number written anywhere must carry its UTC offset or `Z`.
+
+This applies to board prose, reports, evidence summaries, verdict lines, commit
+messages, and status updates. A row's leading timestamp does not bind later
+times inside the row text; each wall-clock mention must be self-identifying.
+
+Required forms:
+
+- `12:04+01:00`, `22:26Z`, or `2026-08-03T12:04:00+01:00`.
+- If comparing clocks, write both explicitly: `10:03:58Z / 11:03:58+01:00`.
+- Durations and rates are not wall clocks: `150s`, `45 minutes`, `10 bars/s`.
+
+Forbidden forms:
+
+- `12:04`, `00:30`, `22:26`, `late morning` when used as a concrete run time.
+- `four minutes later` when the source times are not both already offset-bound.
+- Relying on a board entry prefix like `13:00+01:00` to bind `12:04` in the prose.
+
+When fixing older text, preserve the original meaning and add the offset rather
+than converting the clock unless the source explicitly records the target zone.
