@@ -1,0 +1,263 @@
+{
+  "signature": "TAL-PO-UI-SMOKE-CANARY-V1",
+  "at": "2026-08-03T11:26:31.888Z",
+  "origin": "http://127.0.0.1:8794",
+  "expectedCoordinates": {
+    "badge": "20260803b126",
+    "digest": "",
+    "sourceCommitSha": ""
+  },
+  "surface": {
+    "origin": "http://127.0.0.1:8794",
+    "badge": "20260803b126",
+    "digest": "4c51e267ffc08e4b12c8bd4af481097c",
+    "sourceCommitSha": null,
+    "sealOk": true,
+    "buildInfoOk": false,
+    "buildInfoState": "NOT_DEPLOYED"
+  },
+  "identity": {
+    "ok": true,
+    "pairs": [
+      {
+        "name": "badge",
+        "expected": "20260803b126",
+        "observed": "20260803b126",
+        "equal": true
+      }
+    ]
+  },
+  "url": "http://127.0.0.1:8794/chart/dist-v9/index.html?mode=backtest&tal=po-ui-smoke&mcLayout=1",
+  "result": {
+    "ok": true,
+    "failures": [],
+    "rows": [
+      {
+        "name": "TAL-01696 fixed box size",
+        "ok": true,
+        "state": "OBSERVED_RIGHT",
+        "detail": {
+          "stopDims": {
+            "width": 260,
+            "height": 24
+          },
+          "limitDims": {
+            "width": 260,
+            "height": 24
+          },
+          "mutant": ""
+        }
+      },
+      {
+        "name": "TAL-01696 values update mid-drag without moving the box",
+        "ok": true,
+        "state": "OBSERVED_RIGHT",
+        "detail": {
+          "shellReused": true,
+          "shellCount": 1,
+          "bgX": "0",
+          "bgY": "0",
+          "detailX": "139",
+          "mutant": ""
+        }
+      },
+      {
+        "name": "TAL-01696 identical box size across stop/market/limit",
+        "ok": true,
+        "state": "OBSERVED_RIGHT",
+        "detail": {
+          "stopDims": {
+            "width": 260,
+            "height": 24
+          },
+          "marketDims": {
+            "width": 260,
+            "height": 24
+          },
+          "mutant": ""
+        }
+      },
+      {
+        "name": "TAL-01696 one font/size with vertical alignment",
+        "ok": true,
+        "state": "OBSERVED_RIGHT",
+        "detail": {
+          "tagFont": "'Exo 2', Roboto, sans-serif",
+          "detailFont": "'Exo 2', Roboto, sans-serif",
+          "tagSize": "11px",
+          "detailSize": "11px",
+          "tagY": "12",
+          "detailY": "12",
+          "mutant": ""
+        }
+      },
+      {
+        "name": "TAL-01696 control glyph font/vertical alignment witness",
+        "ok": true,
+        "state": "OBSERVED_RIGHT",
+        "detail": {
+          "glyphSize": "12px",
+          "dominantBaseline": "central",
+          "alignmentBaseline": "middle"
+        }
+      },
+      {
+        "name": "TAL-01696 control buttons stay put while dragging",
+        "ok": true,
+        "state": "OBSERVED_RIGHT",
+        "detail": {
+          "transform": "translate(710, 88)",
+          "x": "710",
+          "y": "88",
+          "opacity": "1",
+          "mutant": ""
+        }
+      },
+      {
+        "name": "TAL-01696 hover buttons vanish rather than blink during drag",
+        "ok": true,
+        "state": "OBSERVED_RIGHT",
+        "detail": {
+          "opacity": "0",
+          "pointerEvents": "none",
+          "hoverClass": false,
+          "mutant": ""
+        }
+      },
+      {
+        "name": "TAL-01696 SL and entry drag scale follows cursor",
+        "ok": true,
+        "state": "OBSERVED_RIGHT",
+        "detail": {
+          "y0": 0,
+          "y1": 25,
+          "delta": 25,
+          "mutant": ""
+        }
+      },
+      {
+        "name": "TAL-01696 size unit and bracket text",
+        "ok": true,
+        "state": "OBSERVED_RIGHT",
+        "detail": {
+          "entryText": "LIMIT BUY 1 Lots",
+          "tpSlInfo": "+$12.34 (1 Lots)",
+          "mutant": ""
+        }
+      },
+      {
+        "name": "TAL-01696 one box instead of two on activation",
+        "ok": true,
+        "state": "OBSERVED_RIGHT",
+        "detail": {
+          "shellCount": 1,
+          "mutant": ""
+        }
+      },
+      {
+        "name": "TAL-01698 multi-TP average updates during drag before release",
+        "ok": true,
+        "state": "OBSERVED_RIGHT",
+        "detail": {
+          "avgTP": 120,
+          "y1": "120",
+          "y2": "120",
+          "mutant": ""
+        }
+      },
+      {
+        "name": "Rayan #8 analysis-only symbol refuses placement",
+        "ok": true,
+        "state": "OBSERVED_RIGHT",
+        "detail": {
+          "result": {
+            "ok": false,
+            "reason": "analysis_only_symbol"
+          },
+          "panelMessage": "\n                <div class=\"order-validation__item\">\n                    <span class=\"order-validation__icon\">!</span>\n                    <span>NQ is analysis-only for this session. Orders can only be placed on the primary trading symbol.</span>\n                </div>",
+          "notifications": [
+            "NQ is analysis-only for this session. Orders can only be placed on the primary trading symbol."
+          ],
+          "mutant": ""
+        }
+      }
+    ],
+    "mutant": null
+  },
+  "redControl": null,
+  "mutantSuite": {
+    "ok": true,
+    "baselineOk": true,
+    "baselineFailures": [],
+    "rows": [
+      {
+        "id": "fixed-box-size",
+        "target": "TAL-01696 fixed box size",
+        "ok": true,
+        "failedRows": [
+          "TAL-01696 fixed box size"
+        ],
+        "targetState": "OBSERVED_WRONG",
+        "targetDetail": {
+          "stopDims": {
+            "width": 260,
+            "height": 24
+          },
+          "limitDims": {
+            "width": 277,
+            "height": 24
+          },
+          "mutant": "fixed-box-size"
+        }
+      },
+      {
+        "id": "value-box-moves",
+        "target": "TAL-01696 values update mid-drag without moving the box",
+        "ok": true,
+        "failedRows": [
+          "TAL-01696 values update mid-drag without moving the box"
+        ],
+        "targetState": "OBSERVED_WRONG",
+        "targetDetail": {
+          "shellReused": true,
+          "shellCount": 1,
+          "bgX": "5",
+          "bgY": "0",
+          "detailX": "139",
+          "mutant": "value-box-moves"
+        }
+      },
+      {
+        "id": "hover-blinks",
+        "target": "TAL-01696 hover buttons vanish rather than blink during drag",
+        "ok": true,
+        "failedRows": [
+          "TAL-01696 hover buttons vanish rather than blink during drag"
+        ],
+        "targetState": "OBSERVED_WRONG",
+        "targetDetail": {
+          "opacity": "1",
+          "pointerEvents": "all",
+          "hoverClass": true,
+          "mutant": "hover-blinks"
+        }
+      },
+      {
+        "id": "drag-scale-mismatch",
+        "target": "TAL-01696 SL and entry drag scale follows cursor",
+        "ok": true,
+        "failedRows": [
+          "TAL-01696 SL and entry drag scale follows cursor"
+        ],
+        "targetState": "OBSERVED_WRONG",
+        "targetDetail": {
+          "y0": 0,
+          "y1": 5,
+          "delta": 5,
+          "mutant": "drag-scale-mismatch"
+        }
+      }
+    ]
+  },
+  "verdict": "PASSED — TAL/Rayan row mutants killed one-for-one"
+}
