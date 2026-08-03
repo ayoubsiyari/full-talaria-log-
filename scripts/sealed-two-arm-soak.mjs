@@ -31,7 +31,10 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { openRun, inspectRun } from './lib/detach01.mjs';
 import { bootConf01Session, cycleTrades } from './lib/conf01-session.mjs';
-import { HEAP_CYCLE_DATASET_MODE_SAME_SYMBOL } from './lib/heap-cycle-dataset-config.mjs';
+import {
+  HEAP_CYCLE_DATASET_MODE_SAME_SYMBOL,
+  computeRequiredRunwayMs,
+} from './lib/heap-cycle-dataset-config.mjs';
 import { loadConf05Indicators } from './lib/conf05-indicators.mjs';
 import { reapOrphanedRenderers } from './lib/find-soak-port.mjs';
 import { readFootprint } from './lib/footprint.mjs';
@@ -77,6 +80,16 @@ const SAMPLE_MS = Number(argOf('sampleMs', '180000'));
 const SPEED_LADDER = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 const SPEED = Number(argOf('speed', '10'));
 const CLOSES_PER_HOUR = Number(argOf('closesPerHour', '20'));
+/**
+ * CONF01-COMMON-WINDOW-V1: the market time this arm will consume, computed from its own knobs
+ * rather than assumed. The host panel is 1m under same-symbol, so each bar is 60 market seconds.
+ * Passed to the boot gate so the artifact records how far the run outruns its data.
+ */
+const REQUIRED_RUNWAY_MS = computeRequiredRunwayMs({
+  wallMs: HOURS * 3_600_000,
+  barsPerSecond: SPEED,
+  barSeconds: 60,
+});
 const ORIGIN = String(argOf('origin', process.env.TEST_VPS_URL || 'http://31.97.192.82:3000')).replace(/\/$/, '');
 const EV = 'c:\\Users\\user\\Desktop\\talaria1\\_evidence\\manager-C';
 const OUT = argOf('out', path.join(EV, `SEALED-SOAK-${ARM.toUpperCase()}.jsonl`));
@@ -382,6 +395,10 @@ const run = openRun({
       : null,
     requestedSpeed: SPEED,
     plannedHours: HOURS,
+    // What the run asks of the data, recorded before it starts. Read alongside conf01.commonWindow
+    // in the segment start note, which records what the data actually offered.
+    requiredRunwayDays: REQUIRED_RUNWAY_MS != null
+      ? Number((REQUIRED_RUNWAY_MS / 86_400_000).toFixed(2)) : null,
     detach01: 'append-as-taken JSONL with fsync, heartbeat per sample, auto-resume across a browser death with the resume recorded as a segment boundary',
   },
 });
@@ -435,6 +452,17 @@ try {
         label: `sealed-soak-${ARM}`,
         datasetMode: HEAP_CYCLE_DATASET_MODE_SAME_SYMBOL,
         requireDeliveringPanels: 4,
+        /**
+         * CONF01-COMMON-WINDOW-V1. same-symbol already guarantees the four panels share a calendar
+         * window, but sharing one is not the same as having enough of it: this arm consumes
+         * HOURS x SPEED x 60 seconds of market time, and the gate now says out loud how many times
+         * that laps the data instead of letting it surface as parked panels and re-seeks.
+         *
+         * Declared rather than required — refusing here would refuse every long arm on this
+         * deployment, since no file holds the runway a ten-hour run at speed 10 needs.
+         */
+        requiredRunwayMs: REQUIRED_RUNWAY_MS,
+        runwayPolicy: 'declare',
       });
       /**
        * What speed the engine believes it is running, read by several routes with the answering route
@@ -480,6 +508,12 @@ try {
         effectiveSpeed: eff,
         effectiveSpeedRoute: effRead.route,
         effectiveSpeedRoutes: effRead.routes ?? null,
+        /**
+         * CONF01-COMMON-WINDOW-V1 as graded on THIS segment's live panels. Per segment rather than
+         * per run because a resumed segment re-seeds and may land on a different window, and a
+         * slope pooled across two different windows is two populations again.
+         */
+        commonWindow: session.conf01?.commonWindow ?? null,
         // Read off the LIVE object, because served bytes and executed bytes differ when a service worker
         // sits between them. Recorded at segment start rather than every sample: it cannot change without
         // a reload, and the capability digest below covers the bytes changing underneath a running arm.

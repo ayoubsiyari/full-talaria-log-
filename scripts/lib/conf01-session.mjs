@@ -32,6 +32,7 @@ import {
   assertCommonWindow,
   assessCommonWindow,
   buildDatasetPlan,
+  decideCommonWindowAction,
 } from './heap-cycle-dataset-config.mjs';
 import { armHeapCyclePoWorkload } from './heap-cycle-po-workload.mjs';
 import { reactParityUrlWithLayout } from '../../chart v 1.4/chart/multichart-prod/harness/react-parity-lib.mjs';
@@ -305,6 +306,31 @@ export async function bootConf01Session({
    * after arming. Soak arms must pass 4; residue / distinct-symbol arms leave 0.
    */
   requireDeliveringPanels = 0,
+  /**
+   * CONF01-COMMON-WINDOW-V1 runway, in MARKET milliseconds the run will consume. Derive it with
+   * `computeRequiredRunwayMs({ wallMs, barsPerSecond, barSeconds })` rather than guessing — a long
+   * run at speed 10 needs far more data than any file holds, and the point of passing it is to see
+   * that in the artifact instead of discovering it as parked panels.
+   *
+   * 0 (the default) leaves every existing caller booting exactly as before: overlap is still
+   * graded and still fails closed, runway simply is not asked about.
+   */
+  requiredRunwayMs = 0,
+  /**
+   * What to do when the seed overlaps but is too short.
+   *
+   *   'declare' (default) — record the deficit and the expected number of wraps, then continue.
+   *   'require'           — refuse to boot, for runs that need single-pass market data.
+   *
+   * Declare is the default deliberately, and it is the one judgement call in this block. A's
+   * fail-closed requirement is about OVERLAP — a seed whose panels cannot follow the host at all,
+   * which yields three inert tenants under a four-panel label and must never be measured. Runway
+   * is a different quantity: the panels do follow, the run simply revisits the window. Making that
+   * fatal by default would refuse every long soak on this deployment, since no file holds the 250
+   * days a ten-hour run at speed 10 consumes. So it is declared loudly and recorded in the
+   * artifact, and a caller that needs untainted single-pass data opts into the refusal.
+   */
+  runwayPolicy = 'declare',
   preloadScript = null,
   originOverride = null,
   skipLogin = false,
@@ -472,10 +498,24 @@ export async function bootConf01Session({
   const commonWindow = assessCommonWindow({
     hostSessionStartMs: windows.hostSessionStartMs,
     panels: windows.panels,
+    requiredRunwayMs,
   });
-  if (!commonWindow.ok) {
+  // Overlap failures are fatal. A short runway is declared unless the caller demanded otherwise —
+  // see the runwayPolicy note above for why the two are treated differently. The choice itself
+  // lives in decideCommonWindowAction so it can be tested without booting a browser.
+  const decision = decideCommonWindowAction({ assessment: commonWindow, runwayPolicy });
+  const tolerated = decision.action === 'DECLARE';
+  if (decision.action === 'REFUSE') {
     try { await browser.close(); } catch (_) {}
     assertCommonWindow(commonWindow);
+  }
+  if (tolerated) {
+    console.error(
+      `[conf01] DATASET EXHAUSTION DECLARED: the shared window holds ${commonWindow.runwayAheadDays} days `
+      + `ahead of the host session start, the run needs ${(requiredRunwayMs / 86_400_000).toFixed(2)}. `
+      + `Expect ~${commonWindow.wrapsExpected} pass(es) over the same market data — this run does NOT play through `
+      + 'fresh bars for its whole duration, and any per-bar figure taken from it counts re-seeded bars.',
+    );
   }
 
   let state = await readConf01State(page);
@@ -500,6 +540,7 @@ export async function bootConf01Session({
     advancingPanels: state.advancingPanels ?? null,
     datasetMode,
     commonWindowState: commonWindow.state,
+    runwayDeclared: tolerated,
     ok: requireDeliveringPanels <= 0
       || (Number(state.advancingPanels) >= requireDeliveringPanels),
   };
@@ -522,6 +563,25 @@ export async function bootConf01Session({
       replaySpeed,
       datasetMode,
       delivering,
+      /**
+       * The graded window travels with the run. Without it a reader cannot tell a soak that played
+       * through fresh bars from one that circled the same week forty times, and those are different
+       * measurements wearing the same duration.
+       */
+      commonWindow: {
+        signature: commonWindow.signature,
+        state: commonWindow.state,
+        ok: commonWindow.ok,
+        hostSessionStartIso: commonWindow.hostSessionStartIso ?? null,
+        intersectionStartIso: commonWindow.intersectionStartIso ?? null,
+        intersectionEndIso: commonWindow.intersectionEndIso ?? null,
+        intersectionDays: commonWindow.intersectionDays ?? null,
+        requiredRunwayMs: commonWindow.requiredRunwayMs ?? 0,
+        runwayAheadDays: commonWindow.runwayAheadDays ?? null,
+        wrapsExpected: commonWindow.wrapsExpected ?? null,
+        runwayPolicy,
+        reason: commonWindow.reason,
+      },
       // ORDER-01B: both knobs, and what the engine did with the step. A run
       // labelled with only a speed cannot be compared against another run.
       stepSeconds,

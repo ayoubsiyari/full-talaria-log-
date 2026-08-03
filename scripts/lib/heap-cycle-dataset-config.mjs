@@ -169,6 +169,31 @@ export const CONF01_COMMON_WINDOW_SIGNATURE = 'CONF01-COMMON-WINDOW-V1';
 
 const DAY_MS = 86_400_000;
 
+/**
+ * How much MARKET time a run will consume — the second half of A's exhaustion finding.
+ *
+ * Overlap and runway are different failures and the gate must not conflate them. Overlap asks
+ * "do the panels share the host's session start"; runway asks "is there enough shared data AHEAD
+ * of that start to reach the end of the run". A seed can pass the first and still park every
+ * panel an hour in, which is the dataset exhaustion the soak kept hitting.
+ *
+ * The arithmetic is the product's own: the SPEED-01 ladder is BARS PER SECOND, so a run consumes
+ *   wallSeconds x barsPerSecond x secondsPerBar
+ * of market time. It is worth seeing the size of this before trusting any long run — ten hours at
+ * speed 10 on 1m bars is 36,000 x 10 x 60 = 21.6 million market seconds, or **250 days**. No file
+ * on this deployment holds that, which is precisely why the soak wraps rather than plays through.
+ *
+ * @param {{wallMs: number, barsPerSecond: number, barSeconds?: number}} input
+ */
+export function computeRequiredRunwayMs({ wallMs, barsPerSecond, barSeconds = 60 } = {}) {
+  const wall = Number(wallMs);
+  const rate = Number(barsPerSecond);
+  const perBar = Number(barSeconds);
+  if (!Number.isFinite(wall) || !Number.isFinite(rate) || !Number.isFinite(perBar)) return null;
+  if (wall <= 0 || rate <= 0 || perBar <= 0) return 0;
+  return (wall / 1000) * rate * perBar * 1000;
+}
+
 /** Strict: only a finite number is a timestamp. `null`, `''` and `undefined` are unreadable. */
 function ms(value) {
   if (value == null || value === '') return null;
@@ -264,21 +289,39 @@ export function assessCommonWindow({ hostSessionStartMs, panels = [], requiredRu
   }
   // Runway is graded from the host start forward: bars behind it cannot be replayed into.
   const runwayAheadMs = intersectionEndMs - start;
+  /**
+   * Reported on EVERY outcome, not only the failing one. A run that fits with three days to spare
+   * and a run that fits with three minutes to spare are both "ok", and the difference decides
+   * whether the next person may lengthen the run. Silence here is how the exhaustion was
+   * rediscovered three times.
+   */
+  const runwayReport = {
+    requiredRunwayMs: runway,
+    runwayAheadMs,
+    runwayAheadDays: Number((runwayAheadMs / DAY_MS).toFixed(2)),
+    runwayDeficitMs: runway > 0 ? Math.max(0, runway - runwayAheadMs) : 0,
+    // How many times the run will exhaust the shared window and be re-seeded. >1 means the
+    // "N-hour run" covers the same market data N times, which is a different measurement.
+    wrapsExpected: runway > 0 && runwayAheadMs > 0
+      ? Number((runway / runwayAheadMs).toFixed(2))
+      : null,
+  };
   if (runway > 0 && runwayAheadMs < runway) {
     return {
       ...withIntersection,
+      ...runwayReport,
       state: 'INSUFFICIENT_RUNWAY',
       ok: false,
-      runwayAheadMs,
       reason: `every panel holds the host session start, but only ${(runwayAheadMs / DAY_MS).toFixed(2)} days `
-        + `of shared data lie ahead of it (required ${(runway / DAY_MS).toFixed(2)}). The session would run off the common window.`,
+        + `of shared data lie ahead of it (required ${(runway / DAY_MS).toFixed(2)}). The session would run off the common window `
+        + `and be re-seeded about ${runwayReport.wrapsExpected ?? '?'} time(s), so it would re-measure the same market data rather than play through it.`,
     };
   }
   return {
     ...withIntersection,
+    ...runwayReport,
     state: 'COMMON_WINDOW_OK',
     ok: true,
-    runwayAheadMs,
     reason: `all ${rows.length} panels hold the host session start; shared window `
       + `${isoOrNull(intersectionStartMs)} -> ${isoOrNull(intersectionEndMs)} (${withIntersection.intersectionDays} days)`,
   };
@@ -304,6 +347,35 @@ export function assertCommonWindow(assessment) {
   error.state = state;
   error.assessment = assessment;
   throw error;
+}
+
+/**
+ * What a caller should DO with an assessment — extracted from the boot path so the wiring can be
+ * tested without a browser.
+ *
+ * The rule this encodes, and the reason it is a function rather than an `if` inside a 200-line
+ * async boot: overlap and runway fail for different reasons and must not share an outcome.
+ *   REFUSE  — overlap is broken, or an unreadable range, or the caller demanded single-pass data.
+ *   DECLARE — the seed overlaps but is too short; the run may proceed and must say so.
+ *   PROCEED — nothing to report.
+ *
+ * @param {{assessment: object, runwayPolicy?: 'declare'|'require'}} input
+ */
+export function decideCommonWindowAction({ assessment, runwayPolicy = 'declare' } = {}) {
+  const state = assessment?.state || 'WINDOW_UNREADABLE';
+  if (assessment?.ok === true) {
+    return { action: 'PROCEED', state, reason: assessment?.reason || null };
+  }
+  if (state === 'INSUFFICIENT_RUNWAY' && String(runwayPolicy) !== 'require') {
+    return {
+      action: 'DECLARE',
+      state,
+      wrapsExpected: assessment?.wrapsExpected ?? null,
+      runwayAheadDays: assessment?.runwayAheadDays ?? null,
+      reason: assessment?.reason || null,
+    };
+  }
+  return { action: 'REFUSE', state, reason: assessment?.reason || null };
 }
 
 /**
