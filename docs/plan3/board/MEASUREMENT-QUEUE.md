@@ -18,8 +18,32 @@
 > `UNLOCKED_FOREIGN_RUN_DETECTED` scan, which is the arm that catches a run that never adopted the
 > lock at all. `npm run test:run-lock` is the cell that holds this.
 
+> ## ANY OWNER MAY RESERVE. YOU DO NOT NEED C, AND YOU NEVER DID.
+>
+> `reserve` has **no ownership check of any kind** — it takes whatever `--owner=` you pass and writes
+> it. `claim`, `release` and `cancel` guard only *your own* entries: you cannot release someone
+> else's claim or cancel their reservation, and that is the whole of the access control. **Nothing in
+> this mechanism has ever required C's permission to enter the queue.**
+>
+> Put yourself in it the moment you know you need the box:
+>
+> ```
+> node scripts/measurement-queue.mjs reserve --owner=E --run=v8-rerun --note="90m, gates the soak"
+> ```
+>
+> **Only ordering disputes come to C** — two lanes wanting the same slot, or a re-order against the
+> PO's stated priority. Not entry. Not permission. Not "is it my turn yet", which `status` answers.
+>
+> This was not written down, and on 2026-08-03 **two lanes sat idle for over an hour** waiting to be
+> registered by me while `reserve` was open to them the entire time; E's V8 re-run, the single item
+> gating the soak, was one of them. **A mechanism people believe requires an owner's permission
+> becomes that owner's bottleneck whether or not the code says so** — the belief is the bottleneck,
+> and an unstated permission model defaults to the most restrictive one anybody imagines. Documenting
+> ownership without documenting *self-service* is what created it.
+
 One Chrome-launching run at a time. Claim before you launch, release when you stop.
-Owned by C. `node scripts/measurement-queue.mjs status` is the source of truth; this file is the order and the history.
+C owns the **mechanism** — the code, the ordering decisions, and disputes. C does **not** own access
+to it. `node scripts/measurement-queue.mjs status` is the source of truth; this file is the order and the history.
 
 **Reservations are matched on owner AND run.** They used to be consumed on owner alone, so any run
 by that owner ate whatever sat at their slot. A stale `D/daily-boundary-canary` therefore blocked
@@ -176,3 +200,5 @@ head gets `NOT_YOUR_TURN`, exit 2. `release` pops your reservation and promotes 
 - 2026-08-03T14:23:04Z · CLAIM · D · TAL-PO-UI-SMOKE-MUTANTS-LIVE · eta 15m · pid 2828
 - 2026-08-03T14:26:07Z · RELEASE · D · TAL-PO-UI-SMOKE-MUTANTS-LIVE
 - 2026-08-03T14:34:45Z · CLAIM · E · v8-playback-heap-slope-90m-rerun · eta 100m · pid 28948
+- 2026-08-03T14:42:03Z · RESERVE · A · order01b-readback-canary-rerun-4up · position 1
+- 2026-08-03T14:42:54Z · CANCEL · A · idle-transient-clean-retake · was position 3

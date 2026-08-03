@@ -77,6 +77,13 @@ export const C_LANE_GATES = [
     refuses: 'a log line, artifact field or board number written without the clock that produced it',
   },
   {
+    id: 'ORPHAN-SERVER-01',
+    symbol: 'censusOf',
+    module: 'scripts/orphan-server-census.mjs',
+    refuses: 'a leftover local file server being reported as gone on the strength of a board line '
+      + 'written hours earlier, and an unreadable process list being reported as a clean box',
+  },
+  {
     id: 'RUN-GROUP-01',
     symbol: 'groupRuns',
     module: 'scripts/measurement-queue.mjs',
