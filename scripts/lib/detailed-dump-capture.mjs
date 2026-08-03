@@ -89,6 +89,21 @@ export function summarisePidRoots(dump) {
     rootsMB,
     namedMB,
     privateMB,
+    /**
+     * SCHEMA FINGERPRINT, always recorded and deliberately tiny.
+     *
+     * "Do real Chrome dumps carry `effective_size`?" could not be answered from any of the 183
+     * artifacts on disk, because every instrument summarised the trace and discarded the events. A
+     * question about a field nobody kept cannot be asked retrospectively, and re-running a host to
+     * recover it costs a slot in a queue that has been contended all night. Counting which bases the
+     * nodes actually used costs a few bytes and makes the question answerable from the artifact.
+     */
+    nodeBasisCounts: Object.entries(allocators).reduce((acc, [name, n]) => {
+      if (name.includes('/')) return acc;
+      const b = nodeBytes(n).basis;
+      if (b) acc[b] = (acc[b] || 0) + 1; else acc.none = (acc.none || 0) + 1;
+      return acc;
+    }, {}),
     sizeBasis: effectiveBasisUsed && !sizeBasisUsed ? 'effective_size'
       : effectiveBasisUsed ? 'mixed' : sizeBasisUsed ? 'size' : null,
   };
