@@ -7,7 +7,7 @@ A blocked manager reads this rather than waiting for a relay.
 
 ---
 
-## CURRENT STATE — E's lane · maintained in place · last updated 22:00+01:00
+## CURRENT STATE — E's lane · maintained in place · last updated 22:33+01:00
 
 > **This block is the one part of this file that is NOT append-only.** It is overwritten, so it
 > answers *what is true now*; everything below answers *what happened*. Every number here carries
@@ -23,7 +23,7 @@ A blocked manager reads this rather than waiting for a relay.
 | C handoff | **basis corrected at 21:28+01:00** | `HANDOFF_READY_OWNER_DETAIL_ONLY` — `docs/plan3/E-TO-C-DETAILED-DUMP-CAPTURE-HANDOFF-20260803.md` now forbids computing COV-01 from single-pid detailed roots against all-Chrome private memory; C keeps coverage on its corrected basis |
 | V8 dominator subtree fallback | **gate PASS 3/3 at 21:28+01:00** | `APPLIED_TO_DIAGNOSTIC_SNAPSHOTS` — instrument now aggregates repeated logical paths across panels before diffing; reports written beside A/B/C snapshots |
 | V8 dominator owner lead | **`_smartPrefetchCache` 0.384 → 10.827 → 13.239 MB** | `ASYMPTOTIC_HOARD_NOT_SLOPE_ANSWER` — retained subtree deltas: A-B **+10.443 MB**, B-C **+2.413 MB**, A-C **+12.855 MB** across 4 cache instances; one cache per panel filling toward capacity, not caches multiplying and not the monotone **36 MB/hour** slope owner |
-| `_smartPrefetchCache` hoard questions | **2 no/unproven answers at 21:44+01:00** | `FIX_ROW` — count-capped at 48 entries and 15 min TTL, but not proven capped to the standing **5,000 + 2,048** price-window rule; `destroy()` does not clear it; return-to-single survival unproven; refresh survival not indicated |
+| `_smartPrefetchCache` hoard questions | **gate PASS 2/2 at 22:33+01:00** | `FIXED_GREEN_STATIC` — cache payloads windowed at **5,000 + 2,048 = 7,048** bars; released on `destroy()`, `pagehide`/refresh, and `returnedToSinglePanel`; gate covers both chart mirrors |
 | C canonical floor parse | **10 samples parsed at 18:56+01:00** | `ROOTS_ONLY_PARSED_BASIS_MISMATCH_CONFIRMED` — `_evidence/manager-E/detailed-dump-parser-canonical-floor-pass3-20260803.json` preserves final **59.84% coverage / 271.05 MB unattributed** as C's old single-pid-over-all-Chrome basis, not missing detail |
 | V8 playback rerun | **complete** | `DIAGNOSTIC_CAPTURED_CONTAMINATED` — CONF-01 same-symbol, 4 panels, playback at 10 bars/s, zero-trade reproduction; useful retainer data, not authoritative plateau/slope read |
 | Snapshot A | **captured at 15:36:47+01:00** | `OBSERVED_ARTIFACT` — `_evidence/manager-E/v8-playback-heap-slope-20260803/2026-08-03T14-34-45-491Z/A.heapsnapshot` |
@@ -31,6 +31,8 @@ A blocked manager reads this rather than waiting for a relay.
 | Snapshot C | **captured at 17:07:24+01:00** | `OBSERVED_ARTIFACT` — `_evidence/manager-E/v8-playback-heap-slope-20260803/2026-08-03T14-34-45-491Z/C.heapsnapshot` |
 | Queue claim | **released at 21:59+01:00** | `RELEASED_AFTER_FAILED_BOOT` — E/v8-smart-cache-perturbation wrote an ERROR report before A; stale node pid was stopped, queue now advances to C/canonical-floor-retake-cov01 |
 | V8 smart-cache perturbation | **failed at 21:56:29+01:00** | `FAILED_BOOT_NO_MEASUREMENT` — `timeout waiting for dist-v9 single-chart ready`; no `conf01`, no perturbation applications, no A/B/C snapshots; slope remains untested by perturbation |
+| CONF-01 boot seed | **fixed at 22:18+01:00 in `e0f9e2902`** | `SHARED_PRIMITIVE_FIXED` — initial chart seed now comes from authenticated `/api/files` plus one-second `/bars` preflight before chart readiness; hardcoded `fileId=25` no longer drives CONF-01 boot |
+| V8 smart-cache perturbation rerun | **reserved at 22:17+01:00, position 5** | `QUEUED_BEHIND_C_A_C_D` — do not launch over C/canonical-floor-retake-cov01; rerun uses committed seed fix plus committed `--perturbation=disable-smart-prefetch-cache` arm |
 | Foreign host process | **started 16:37:13+01:00** | `HOST_CONTAMINATION_RISK` — `order01b-readback-canary-run.mjs#31064` joined during E's B-C interval |
 | Authoritative read capability | **GATE-01 PASS 4/4** | `BUILT_NOT_RUN` — `v8-authoritative-heap-read` samples every 3 min and overlays floors at 0/45/90 |
 | Diagnostic V8 heap used | **68.469 → 131.139 → 157.492 MB** | `DIAGNOSTIC_ONLY` — B-C +26.353 MB after A-B +62.670 MB; not authoritative slope/plateau |
@@ -62,7 +64,7 @@ salvage, not as flattening/slope evidence. `BUFFER-PARTITION-DISCRIMINATOR-V1` d
 
 **Next required update** — V8: rerun the committed smart-cache perturbation arm when E gets the queue
 again, then grade whether the monotone **36 MB/hour** JS-side slope remains after `_smartPrefetchCache`
-is disabled.
+is disabled. Product fix row is static-green; browser proof can be added after the queue clears.
 Item 6: C wires the ownership-detail call into the sampler and emits
 four detailed dump artifacts: `zerotrade:start`, `zerotrade:end`, `trades:start`, `trades:end`. E then
 parses those artifacts with `node scripts/detailed-dump-parser.mjs <files> --out=<report>`.
@@ -194,3 +196,5 @@ and the M17-DI2 restore in `1c8892c51`.
 - 21:44+01:00 · E · RECLASSIFIED · `SMART-PREFETCH-HOARD-NOT-SLOPE` · Shape is one cache per panel filling, not cache multiplication: occurrence count stays **4 → 4 → 4** while retained MB grows **+10.443 A-B** then only **+2.413 B-C**. This is an asymptotic hoard and strong evidence it is not the monotone **36 MB/hour** JS-side slope owner. Four hoard questions: capped = only entry-count capped (**48 entries**, **15 min** TTL), not proven to the standing **5,000 + 2,048** price-window rule; teardown release = **NO** by code (`destroy()` drops series/canvas but not `_smartPrefetchCache`); return-to-single survival = **UNPROVEN** and must be measured; refresh survival = **NO EVIDENCE** beyond normal document replacement. Because teardown/window discipline is not green, this is a fix row, not just a finding.
 - 21:50+01:00 · E · RUNNING · `V8-SMART-CACHE-PERTURBATION` · Reserved and claimed E/v8-smart-cache-perturbation; launch smoke check is clean. Instrument commit `b76e71852` is running `scripts/v8-monotone-heap-diff.mjs --outDir=_evidence/manager-E/v8-smart-cache-perturbation-20260803 --totalMin=90 --snapshots=3 --speed=10 --topN=25 --snapCapMB=3072 --perturbation=disable-smart-prefetch-cache`. Terminal reported claim at `2026-08-03T20:50:43Z` / `21:50:43+01:00` and boot start at `2026-08-03T20:50:44Z` / `21:50:44+01:00`.
 - 22:00+01:00 · E · FAILED BOOT · `V8-SMART-CACHE-PERTURBATION` · Attempt is **not a memory result**. Artifact `_evidence/manager-E/v8-smart-cache-perturbation-20260803/2026-08-03T20-50-44-946Z/report.json` finalized at `2026-08-03T20:56:29Z` / `21:56:29+01:00` with `verdict=ERROR`, `currentPhase=starting`, and `timeout waiting for dist-v9 single-chart ready`; `moments={}`, `heartbeats=[]`, and `perturbationApplications=[]`. Stale node pid `3452` remained after report finalization, was stopped, and queue status then read C/canonical-floor-retake-cov01 next.
+- 22:18+01:00 · E · LANDED · `CONF01-AUTHENTICATED-SEED-PREFLIGHT` · Took D's `a84423789` fix into the shared CONF-01 primitive instead of debugging the boot timeout independently. Commit `e0f9e2902`: `bootConf01Session` now selects the initial chart seed from authenticated `/api/files`, runs `preflightFileBars(..., 1000ms)` against `/api/file/<id>/bars`, and fails loudly as `CONF01_SEED_*` before `waitForDistV9SingleReady`; the old hardcoded `EURUSD fileId=25` seed is gone. E perturbation rerun reserved behind C/A/C/D as `v8-smart-cache-perturbation-rerun`.
+- 22:33+01:00 · E · FIXED + GREEN · `SMART-PREFETCH-CACHE-HOARD-DISCIPLINE` · Four questions answered in code: capped = **YES**, `_setSmartPrefetchCacheEntry` clamps cached `candles`/`bars`/array `data` to **7,048** rows; panel teardown = **YES**, `destroy()` clears `_smartPrefetchCache` and smart host-cache refs; return to single chart = **YES**, `returnedToSinglePanel` clears the host cache; refresh = **YES**, non-bfcache `pagehide` clears it and normal document replacement drops the realm. Verification: `node --check` canonical/homepage chart mirrors; `npm run gate:smart-prefetch-cache-discipline` PASS 2/2 at 22:33+01:00.

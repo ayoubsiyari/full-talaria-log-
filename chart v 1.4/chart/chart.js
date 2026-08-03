@@ -1426,6 +1426,8 @@ class Chart {
         this.loadedRanges = new Map(); // Cache loaded data ranges
         this._smartPrefetchCache = new Map(); // LRU cache for /smart|/bars|/candles payloads (prefetch + repeat loads)
         this._barsInflight = new Map(); // dedupe parallel /bars requests with identical params
+        this._smartPrefetchCacheReleaseUnloadHandler = null;
+        this._smartPrefetchReturnSingleHandler = null;
         // TradingView-style revisit: keep fetched data warm long enough that
         // flipping between recently-viewed timeframes / pairs is instant (no
         // refetch). The user pays the network cost ONCE per instrument; coming
@@ -1473,6 +1475,7 @@ class Chart {
         this._mcHostCacheFileRefs = new Map();
         this._mcHostCacheReleaseUnloadHandler = null;
         this._installMcHostCacheReleaseHook();
+        this._installSmartPrefetchCacheReleaseHooks();
         this._sharedBarStoreClientId = null;
         this._sharedBarStoreFileRefs = new Set();
         this._sharedBarStoreReleaseUnloadHandler = null;
@@ -4608,6 +4611,87 @@ class Chart {
             if (String(key || '').startsWith(`${id}|`)) return true;
         }
         return false;
+    }
+
+    _smartPrefetchCacheWindowLimit() {
+        return 5000 + 2048;
+    }
+
+    _windowSmartPrefetchPayload(payload) {
+        if (!payload || typeof payload !== 'object') return payload;
+        const limit = this._smartPrefetchCacheWindowLimit();
+        const trimArray = (rows) => {
+            if (!Array.isArray(rows) || rows.length <= limit) return rows;
+            return rows.slice(Math.max(0, rows.length - limit));
+        };
+        if (Array.isArray(payload.candles)) payload.candles = trimArray(payload.candles);
+        if (Array.isArray(payload.bars)) payload.bars = trimArray(payload.bars);
+        if (Array.isArray(payload.data)) payload.data = trimArray(payload.data);
+        if (Number(payload.returned) > limit) payload.returned = limit;
+        return payload;
+    }
+
+    _clearSmartPrefetchCache(reason = 'unknown') {
+        const before = this._smartPrefetchCache && typeof this._smartPrefetchCache.size === 'number'
+            ? this._smartPrefetchCache.size
+            : 0;
+        try {
+            if (this._smartPrefetchCache && typeof this._smartPrefetchCache.clear === 'function') {
+                this._smartPrefetchCache.clear();
+            }
+        } catch (_e) { /* cache release must never block teardown */ }
+        try {
+            if (this._mcHostCacheFileRefOwners) {
+                for (const key of Array.from(this._mcHostCacheFileRefOwners.keys())) {
+                    if (String(key || '').startsWith('smart|')) this._mcHostCacheFileRefOwners.delete(key);
+                }
+            }
+        } catch (_e) { /* ignore */ }
+        try {
+            if (this._mcHostCacheFileRefs) {
+                for (const [key, ref] of Array.from(this._mcHostCacheFileRefs.entries())) {
+                    if (String(key || '').startsWith('smart|') || ref?.kind === 'smart') {
+                        this._mcHostCacheFileRefs.delete(key);
+                    }
+                }
+            }
+        } catch (_e) { /* ignore */ }
+        this._smartPrefetchCacheLastRelease = { at: Date.now(), reason, entries: before };
+        return before;
+    }
+
+    _installSmartPrefetchCacheReleaseHooks() {
+        if (typeof window === 'undefined') return;
+        try {
+            if (!this._smartPrefetchCacheReleaseUnloadHandler) {
+                const self = this;
+                this._smartPrefetchCacheReleaseUnloadHandler = function smartPrefetchReleaseOnPagehide(ev) {
+                    if (ev && ev.persisted === true) return;
+                    self._clearSmartPrefetchCache('pagehide');
+                };
+                window.addEventListener('pagehide', this._smartPrefetchCacheReleaseUnloadHandler);
+            }
+            if (!this._smartPrefetchReturnSingleHandler) {
+                const self = this;
+                this._smartPrefetchReturnSingleHandler = function smartPrefetchReleaseOnReturnSingle() {
+                    self._clearSmartPrefetchCache('returnedToSinglePanel');
+                };
+                window.addEventListener('returnedToSinglePanel', this._smartPrefetchReturnSingleHandler);
+            }
+        } catch (_e) { /* release hooks are best-effort */ }
+    }
+
+    _removeSmartPrefetchCacheReleaseHooks() {
+        try {
+            if (typeof window !== 'undefined' && this._smartPrefetchCacheReleaseUnloadHandler) {
+                window.removeEventListener('pagehide', this._smartPrefetchCacheReleaseUnloadHandler);
+            }
+            if (typeof window !== 'undefined' && this._smartPrefetchReturnSingleHandler) {
+                window.removeEventListener('returnedToSinglePanel', this._smartPrefetchReturnSingleHandler);
+            }
+        } catch (_e) { /* ignore */ }
+        this._smartPrefetchCacheReleaseUnloadHandler = null;
+        this._smartPrefetchReturnSingleHandler = null;
     }
 
     _dropMcHostCacheFileRef(ownerId, kind, fileId) {
@@ -9256,6 +9340,7 @@ class Chart {
     _setSmartPrefetchCacheEntry(fileId, key, payload) {
         if (!this._smartPrefetchCache || !key || !payload) return;
         this._dropRawResponseTextRetainers(payload);
+        this._windowSmartPrefetchPayload(payload);
         this._smartPrefetchCache.delete(key);
         this._smartPrefetchCache.set(key, {
             at: Date.now(),
@@ -31241,6 +31326,8 @@ class Chart {
         this._frameDisplaySeries = null;
         this._resampledCache = null;
         this._panTimeTickCache = null;
+        this._clearSmartPrefetchCache('destroy');
+        this._removeSmartPrefetchCacheReleaseHooks();
 
         this.orderManager = null;
         this.replaySystem = null;

@@ -63,6 +63,8 @@
     "test:detailed-dump-capture": "node --test scripts/detailed-dump-parser.selftest.mjs",
     "gate:v8-dominator-subtree": "node --test scripts/v8-dominator-subtree-diff.selftest.mjs",
     "test:v8-dominator-subtree": "node --test scripts/v8-dominator-subtree-diff.selftest.mjs",
+    "gate:smart-prefetch-cache-discipline": "node --test \"chart v 1.4/chart/modules/smart-prefetch-cache-discipline.test.mjs\"",
+    "test:smart-prefetch-cache-discipline": "node --test \"chart v 1.4/chart/modules/smart-prefetch-cache-discipline.test.mjs\"",
     "gate:v8-authoritative-read": "node --test scripts/v8-authoritative-heap-read.selftest.mjs",
     "test:v8-authoritative-read": "node --test scripts/v8-authoritative-heap-read.selftest.mjs",
     "test:clock-01": "node --test scripts/clock-01-audit.selftest.mjs",
