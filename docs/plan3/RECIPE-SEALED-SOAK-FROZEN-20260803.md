@@ -13,10 +13,38 @@ artifact rather than quietly inheriting this one's authority.
 | governor | **30 closed round-trips/hour** | **0 — no governor at all** |
 | trade interval | one every **120 s** | n/a |
 | orders across the arm | **300** | **0** |
-| duration | **10 h** | **3.5 h** |
+| duration | **10 h** | **3.5 h** — see the matched window below |
 | speed | 10 bars/s requested | 10 bars/s requested |
 | panels | 4, same-symbol, E indicators | 4, same-symbol, E indicators |
 | dataset | CONF01 common window, runway declared | CONF01 common window, runway declared |
+
+### MATCHED COMPARISON WINDOW — ruled 2026-08-03 19:10+01:00
+
+**The between-arm delta is taken over the first 3.5 h of BOTH arms, and only there.** Both arms are
+measured from boot, so the two windows are directly comparable.
+
+The arms differ in duration, and `ARM-EQUALITY-01` correctly refused the fire because of it — with
+within-arm separability predicted to fail, a second difference between the arms would leave the
+attribution with nothing to stand on. Two ways to fix that: make the zero-trade arm 10 h (+6.5 h of
+exclusive host window in seal week), or narrow the claim. **The claim is narrowed.**
+
+Precisely what that means, because the distinction is the whole point:
+
+- **Certification claim — unchanged.** The trade arm still runs 10 h and still certifies total growth
+  under a realistic session for its full duration.
+- **Attribution claim — bounded to 3.5 h.** The bars-versus-trades split is stated over the window
+  only. **Samples beyond 3.5 h must not be differenced against the other arm**, because after that
+  point there is nothing to difference them against.
+
+This is a **reconciliation, not a waiver**. The window is declared in code
+(`COMPARISON_WINDOW_HOURS` in `fire-sealed-soak.mjs`), passed to the run, and recorded on **both**
+arms' artifacts as `betweenArmComparisonWindowHours` — so the analysis reads the bound off the run
+rather than off this document, which it may not have. The gate refuses a window that does not fit
+inside the shorter arm (`ARMS_WINDOW_UNSATISFIABLE`), and the window reconciles **duration only**: a
+second difference still refuses.
+
+If the 3.5 h delta turns out to be interesting, extend the zero-trade arm then — with evidence, rather
+than now on a guess.
 
 ### FROZEN PREDICTION — recorded 2026-08-03 18:40+01:00, before the run
 

@@ -58,3 +58,58 @@ test('an unreadable config refuses rather than passing', () => {
   assert.equal(compareArms(null, {}).state, 'ARM_CONFIG_MISSING');
   assert.equal(assertArmsComparable(null, {}).shouldRefuse, true);
 });
+
+
+/** MATCHED-WINDOW cells, ruled 19:10+01:00: reconcile the duration difference, do not waive it. */
+
+test('a declared window that fits reconciles the duration difference', () => {
+  const v = compareArms(
+    { ...BASE, hours: '10', closesPerHour: '30' },
+    { ...BASE, hours: '3.5', closesPerHour: '0' },
+    { comparisonWindowHours: 3.5 },
+  );
+  assert.equal(v.state, 'ARMS_COMPARABLE_IN_WINDOW');
+  assert.equal(v.comparable, true);
+  assert.equal(v.window.declaredHours, 3.5);
+  assert.match(v.reason, /over that window ONLY/);
+});
+
+test('a window LONGER than the shorter arm is unsatisfiable, not a rounding matter', () => {
+  const v = compareArms(
+    { ...BASE, hours: '10', closesPerHour: '30' },
+    { ...BASE, hours: '3.5', closesPerHour: '0' },
+    { comparisonWindowHours: 5 },
+  );
+  assert.equal(v.state, 'ARMS_WINDOW_UNSATISFIABLE');
+  assert.equal(v.comparable, false, 'differencing real samples against absent ones must refuse');
+});
+
+test('the window reconciles ONLY duration — a second difference still refuses', () => {
+  const v = compareArms(
+    { ...BASE, hours: '10', speed: '10', closesPerHour: '30' },
+    { ...BASE, hours: '3.5', speed: '5', closesPerHour: '0' },
+    { comparisonWindowHours: 3.5 },
+  );
+  assert.equal(v.state, 'ARMS_DIFFER');
+  assert.deepEqual(v.differences.map((d) => d.field), ['speed'],
+    'a declared window must not become a general waiver');
+});
+
+test('without a declared window the duration difference still refuses', () => {
+  const v = compareArms(
+    { ...BASE, hours: '10', closesPerHour: '30' },
+    { ...BASE, hours: '3.5', closesPerHour: '0' },
+  );
+  assert.equal(v.state, 'ARMS_DIFFER');
+});
+
+test('a nonsense window is refused rather than ignored', () => {
+  for (const bad of [0, -1, 'soon']) {
+    const v = compareArms(
+      { ...BASE, hours: '10', closesPerHour: '30' },
+      { ...BASE, hours: '3.5', closesPerHour: '0' },
+      { comparisonWindowHours: bad },
+    );
+    assert.equal(v.state, 'ARMS_WINDOW_UNSATISFIABLE', `window ${bad} should refuse`);
+  }
+});

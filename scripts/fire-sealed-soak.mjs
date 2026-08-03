@@ -111,8 +111,16 @@ if (!ARMS[ARM]) {
  * separability predicted to fail, the between-arm delta is the whole attribution, and a second
  * difference makes it uninterpretable with nothing left in reserve.
  */
+/**
+ * The declared between-arm comparison window, ruled 2026-08-03 19:10+01:00. The arms run 10 h and
+ * 3.5 h; the delta is taken over the first 3.5 h of BOTH, which are directly comparable because both
+ * are measured from boot. The trade arm still certifies its full ten hours — this narrows the
+ * ATTRIBUTION claim, not the certification claim.
+ */
+const COMPARISON_WINDOW_HOURS = SMOKE ? 0.34 : 3.5;
+
 {
-  const armVerdict = assertArmsComparable(ARMS.trades, ARMS.zerotrade);
+  const armVerdict = assertArmsComparable(ARMS.trades, ARMS.zerotrade, { comparisonWindowHours: COMPARISON_WINDOW_HOURS });
   if (armVerdict.shouldRefuse) {
     console.error(`REFUSED — ARM-EQUALITY-01 ${armVerdict.state}`);
     console.error(`  ${armVerdict.reason}`);
@@ -193,6 +201,9 @@ const args = [
   `--arm=${ARM}`, `--hours=${HOURS}`, `--speed=${SPEED}`,
   `--closesPerHour=${cfg.closesPerHour}`, `--origin=${ORIGIN}`,
   `--out=${cfg.out}`, `--expectDigest=${DIGEST}`,
+  // Carried INTO the artifact so the analysis reads the window off the run rather than off a doc.
+  // A window that lives only in prose is a window somebody differences past.
+  `--comparisonWindowHours=${COMPARISON_WINDOW_HOURS}`,
   '--requireSha=1',                       // PASSPORT-3: refuse rather than record a null for ten hours
   `--heapCapMB=${HEAP_CAP}`,              // TOOL-01
 ];

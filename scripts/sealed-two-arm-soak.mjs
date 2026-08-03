@@ -416,6 +416,16 @@ const run = openRun({
       ? 'CONF-05: four panels, E indicators, ZERO trades — bar-driven growth with the trade term absent by construction'
       : `CONF-01: four panels, E indicators, governor holding ${CLOSES_PER_HOUR} closed round-trips/hour `
         + `(one every ${(3600 / Math.max(1, CLOSES_PER_HOUR)).toFixed(0)}s, ${CLOSES_PER_HOUR * HOURS} orders across the ${HOURS}h arm)`,
+    /**
+     * ARM-EQUALITY-01 matched window. Recorded on BOTH arms so either artifact states the bound on
+     * its own, and any between-arm analysis reads the window off the run rather than off a document
+     * it may not have. Samples beyond this window are valid for the single-arm certification claim
+     * and must not be differenced against the other arm.
+     */
+    betweenArmComparisonWindowHours: Number(argOf('comparisonWindowHours', '0')) || null,
+    betweenArmComparisonNote: 'The arms differ in duration (10 h vs 3.5 h). The between-arm delta is '
+      + 'valid ONLY over this window, measured from boot in both arms. Outside it, this arm still '
+      + 'certifies its own growth; it just has nothing to be differenced against.',
     tradeGovernor: ARM === 'zerotrade' ? null : {
       spec: 'TRADE-GOVERNOR-V2',
       closedRoundTripsPerHour: CLOSES_PER_HOUR,

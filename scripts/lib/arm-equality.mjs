@@ -34,7 +34,26 @@ export const NOT_CONDITIONS = ['out', 'outPath', 'log', 'logFile', 'label', 'arm
  * @param {object|null} b effective config of arm B
  * @returns {{state:string, comparable:boolean, differences:Array, contrast:Array, reason:string}}
  */
-export function compareArms(a, b, { tradeKnobs = TRADE_KNOBS, notConditions = NOT_CONDITIONS } = {}) {
+export function compareArms(a, b, {
+  tradeKnobs = TRADE_KNOBS,
+  notConditions = NOT_CONDITIONS,
+  durationField = 'hours',
+  /**
+   * MATCHED-WINDOW RECONCILIATION, ruled 2026-08-03 19:10+01:00.
+   *
+   * The arms are 10 h and 3.5 h. Rather than spend 6.5 more hours of exclusive host window making
+   * them equal, the between-arm delta is taken over the first N hours of BOTH arms — both are
+   * measured from boot, so the windows are directly comparable.
+   *
+   * This does not WAIVE the duration difference, it NARROWS THE CLAIM: the trade arm still certifies
+   * the full ten hours, and the attribution is stated over the declared window only. A waiver would
+   * let someone difference hour nine of one arm against nothing; declaring the window means the
+   * artifact records the narrower claim and the analysis cannot quietly use the full run.
+   *
+   * Undeclared, a duration difference is still a confound and still refuses.
+   */
+  comparisonWindowHours = null,
+} = {}) {
   if (!a || !b || typeof a !== 'object' || typeof b !== 'object') {
     return { state: 'ARM_CONFIG_MISSING', comparable: false, differences: [], contrast: [],
       reason: 'one or both arm configs could not be read; a pair that cannot be compared must not be fired' };
@@ -54,9 +73,31 @@ export function compareArms(a, b, { tradeKnobs = TRADE_KNOBS, notConditions = NO
     (tradeKnobs.includes(f) ? contrast : differences).push({ field: f, a: av, b: bv });
   }
 
+  // Duration, reconciled by a declared window rather than waived.
+  let window = null;
+  const durationDiff = differences.find((d) => d.field === durationField);
+  if (durationDiff && comparisonWindowHours != null) {
+    const win = Number(comparisonWindowHours);
+    const shortest = Math.min(Number(durationDiff.a), Number(durationDiff.b));
+    if (!Number.isFinite(win) || win <= 0) {
+      return { state: 'ARMS_WINDOW_UNSATISFIABLE', comparable: false, differences, contrast, window: { declared: comparisonWindowHours },
+        reason: `the declared comparison window (${comparisonWindowHours}) is not a positive number of hours` };
+    }
+    if (win > shortest) {
+      // Declaring a window longer than the shorter arm is a claim about data that does not exist.
+      return { state: 'ARMS_WINDOW_UNSATISFIABLE', comparable: false, differences, contrast,
+        window: { declaredHours: win, shortestArmHours: shortest },
+        reason: `the declared comparison window is ${win} h but the shorter arm runs only ${shortest} h. `
+          + 'A window that does not fit inside both arms differences real samples against absent ones.' };
+    }
+    window = { declaredHours: win, shortestArmHours: shortest, reconciles: durationField };
+    // Reconciled: remove it from the confound list, and say so in the state below.
+    differences.splice(differences.indexOf(durationDiff), 1);
+  }
+
   if (differences.length > 0) {
     return {
-      state: 'ARMS_DIFFER', comparable: false, differences, contrast,
+      state: 'ARMS_DIFFER', comparable: false, differences, contrast, window,
       reason: `the arms differ in ${differences.length} condition(s) beyond the trade knob: `
         + `${differences.map((d) => `${d.field} (${d.a} vs ${d.b})`).join(', ')}. `
         + 'A between-arm delta with a second difference in it is uninterpretable, and with within-arm '
@@ -70,9 +111,18 @@ export function compareArms(a, b, { tradeKnobs = TRADE_KNOBS, notConditions = NO
         + 'creates no contrast and its delta is zero by construction. This is not a safe pair, it is an empty one.',
     };
   }
+  const contrastText = contrast.map((c) => `${c.field} (${c.a} vs ${c.b})`).join(', ');
+  if (window) {
+    return {
+      state: 'ARMS_COMPARABLE_IN_WINDOW', comparable: true, differences, contrast, window,
+      reason: `the arms differ only in the trade knob [${contrastText}] once ${durationField} is reconciled by the `
+        + `declared ${window.declaredHours} h comparison window. The between-arm delta is valid over that window ONLY; `
+        + 'the longer arm still certifies its full duration, but nothing outside the window may be differenced.',
+    };
+  }
   return {
-    state: 'ARMS_COMPARABLE', comparable: true, differences, contrast,
-    reason: `the arms differ only in the trade knob: ${contrast.map((c) => `${c.field} (${c.a} vs ${c.b})`).join(', ')}`,
+    state: 'ARMS_COMPARABLE', comparable: true, differences, contrast, window: null,
+    reason: `the arms differ only in the trade knob: ${contrastText}`,
   };
 }
 
