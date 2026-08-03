@@ -58,12 +58,104 @@ measurement.** A definition change moves the verdict by forty-five times the siz
 
 ---
 
+## 2b. CONF-01 on both bases — the split does exist, and it agrees with N1
+
+**Correction to what I told you an hour ago: I said CONF-01 had no per-process split. It does.**
+`CONF01-BASELINE-GATE-20260731.json` carries `largestRendererPrivateMB`, `gpuPrivateMB`,
+`browserPrivateMB` and the full renderer breakdown, over five reps on b120, four panels.
+
+The one thing that remains true is narrower: **`1,122.1` itself is a b116 reading and pre-dates that
+instrumentation.** Its like-for-like successor, the same measurement re-taken after the journal fix,
+is **1,159.7 MB post-GC on b120** — and that one has the split.
+
+**CONF-01 at first paint, b120, 5 reps:**
+
+| | MB | vs 1,024 bar |
+|---|---|---|
+| **all-Chrome total** | **1,342.9** | **+318.9** |
+| **page renderer** | **931.6** | **−92.4** |
+| GPU process | 246.1 | |
+| browser process | 60.1 | |
+| three spare renderers | 57.4 | |
+| utility / network service | 47.7 | |
+| **not authored by us** | **411.3** | **30.6% of the figure** |
+
+**CONF-01 after forced collection — the successor to the 1,122.1 reading:**
+
+| | MB | vs 1,024 bar |
+|---|---|---|
+| **all-Chrome total** | **1,159.7** | **+135.7** |
+| all four renderers | 798.1 | **−225.9** |
+| GPU process | 253.7 | |
+| everything else | 107.9 | |
+| **not authored by us** | **361.6** | **31.2%** |
+
+**Two configurations, two builds, one conclusion.** N1 on b121 reads 480.0 MB not-authored (34.4%);
+CONF-01 on b120 reads 411.3 MB (30.6%). Every reading we have **breaches on the total basis and
+clears on the authored basis** — CONF-01 clears by 92.4 MB at first paint and by 225.9 MB settled.
+This is not a quirk of one run.
+
+---
+
+## 2c. The recommendation, and the argument for it
+
+**Define the bar on the TOTAL basis. Report it as three rows, never one.**
+
+I want to argue against the obvious reading first, because the obvious reading is the one I would have
+given this morning and it is wrong.
+
+### Why "480 MB isn't ours, so exclude it" is wrong
+
+The largest component of the gap is the **GPU process, 246–306 MB**, and it is **not fixed overhead —
+it is downstream of what we author.** My own combined-canvas-fix measurement is the proof: releasing
+indicator-layer and linked-pane canvases dropped **GPU by about 35 MB** while renderer-private grew.
+GPU memory is the direct consequence of how many layers and canvas backing stores we create.
+
+So on an authored basis, **that canvas fix would have scored as a regression** — renderer went up,
+and the 35 MB it actually reclaimed sits in a process the metric excludes. The authored basis
+systematically penalises exactly the work we most want to do, and rewards moving cost into the GPU
+process where the metric cannot see it. **A metric that can be improved by relocating memory is worse
+than a metric that includes memory we cannot fix.**
+
+### What genuinely is fixed
+
+| | N1 b121 | CONF-01 b120 |
+|---|---|---|
+| browser process | 62.8 | 60.1 |
+| three spare renderers | 60.9 | 57.4 |
+| utility / network service | 50.3 | 47.7 |
+| **fixed floor** | **174.0** | **165.2** |
+
+**~170 MB, stable to within 9 MB across two builds and two configurations.** This part is genuinely
+immovable: the spare renderers have no page content in them, and no fix we can write removes them.
+
+### The recommendation
+
+1. **The bar stays on the total basis** — it is what the user's machine pays, and it is the only basis
+   that cannot be improved by moving cost between processes.
+2. **Every report against the bar carries three rows, not one**: **authored** (page renderer),
+   **caused** (GPU — ours by consequence, not by allocation), and **fixed** (~170 MB of browser,
+   spare renderers and utility). This is TOTAL-01 applied to the bar, for the same reason: a single
+   number that spans things with different owners cannot tell you who has to act.
+3. **If the PO wants a figure the team can be held to**, set it as the total bar minus the stated
+   fixed floor: **1,024 − 170 = ~854 MB of authored-plus-caused budget**, with the 170 MB written down
+   and re-checked when Chrome is upgraded. That keeps accountability on what we control while keeping
+   the acceptance gate on what the user experiences.
+
+The one thing I would ask the PO not to do is leave it undefined. **Today the same product both
+breaches and clears**, and whichever answer someone quotes depends on which instrument they happened
+to open.
+
+---
+
 ## 3. What I cannot tell you, stated plainly
 
-1. **CONF-01's 1,122.1 MB has no recorded per-process split.** Same gauge, so same all-Chrome basis —
-   that part is certain. But I cannot give you its page-renderer figure, because that run recorded
-   only the total. If CONF-01's non-authored overhead resembles N1's (~472–480 MB), its renderer share
-   would be roughly 640–650 MB, and that is an inference, not a reading.
+1. ~~CONF-01's 1,122.1 MB has no recorded per-process split.~~ **Withdrawn — see §2b.** The split
+   exists on b120 with five reps. What survives is narrower and stated there: `1,122.1` is a **b116**
+   reading that pre-dates the census instrumentation, so the split belongs to its successor
+   measurement (1,159.7 MB post-GC on b120) rather than to that exact figure. I reported the absence
+   before searching for the instrument that produced it, which is the same failure mode as the two
+   this file exists to document.
 2. **The post-drain page-renderer figures above are estimates**, marked as such. The floor's
    per-process split was not recorded either; I subtracted the first-paint overhead on the strength of
    W90's finding that the GPU process is near-fixed. The estimate is good enough to show the verdict
