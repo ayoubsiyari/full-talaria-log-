@@ -3,7 +3,46 @@
 Claim before you start. Announce when you land. Both as commits with SHAs.
 A blocked manager reads this rather than waiting for a relay.
 
-**One writer: C. Append-only. Newest at the bottom.**
+**One writer: C. Append-only below the state block. Newest at the bottom.**
+
+---
+
+## CURRENT STATE — C's lane · maintained in place · last updated 16:08+01:00
+
+> **This block is the one part of this file that is NOT append-only.** It is overwritten, so it
+> answers *what is true now*; everything below answers *what happened*. An append-only log cannot
+> answer the first question — you have to read to the bottom and then reconstruct which of the
+> entries above it were superseded, which is how a published verdict comes to look identical to
+> silence. Every row here carries its state, not just its number.
+
+**Quotable now**
+
+| row | value | state |
+|---|---|---|
+| canonical post-play floor, b126 | **674.9 MB** | `FLOOR_FOUND` — 600 s settle, last interval 1.3 MB |
+| canonical boot floor | **no number** | `NOT_IDLE` — curve rose 6.5 MB mid-settle; `532.6` retired, nothing replaces it |
+| method gap, 1 s read vs settled | **108.2 MB** | measured; larger than the 100.4 MB `633`-vs-`532.6` gap it explains |
+| N1 first paint | **1,122 MB** | product floor, not account history — see PINNED below |
+
+**Not quotable, and why** — `DRIFT-ABBA` (self-test only, needs a real paired run); combined canvas
+reclaim `19.6 MB` (measured against a dirty tree; the *mechanism* finding stands, the number needs
+re-cutting); `blink_gc 212 MB` growth (withdrawn, reconciled against E's 13.00 MB level); `12.7 MB`
+per pair switch (disproved by D's accumulation run); anything keyed to `totalPrivateMB` from the
+2026-08-02 arena series (host contention).
+
+**Blocked on someone else** — `COV-01` coverage sits at 55.5–59.8% and is the blocking row for the
+seal; it needs E's parsed detailed dumps, because my basis defect is one renderer's allocator roots
+against all-process private. b126 deploy is with B. Two rulings outstanding: evidence versioning
+(`_evidence` and `docs/plan3/evidence` are both gitignored while cited artifacts are force-added),
+and `IDENTITY-01` as a pre-cut check.
+
+**Queue** — `node scripts/measurement-queue.mjs status` is authoritative, not this line. **Any owner
+may reserve; you do not need C.** C's clean floor re-take is behind A and D; C's arena re-run is last
+by choice and waits on E's retainer verdict.
+
+**Gates C owns** — `npm run gate:binding-audit` · `gate:clock-01-c` · `gate:orphan-servers` ·
+`gate:queue-status` · `gate:instrument-provenance` · `gate:mirror-parity`. A `BOUND` verdict means a
+gate has a non-test caller; it does **not** mean the gate has ever refused anything.
 
 ---
 
