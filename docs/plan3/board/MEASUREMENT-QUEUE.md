@@ -243,3 +243,12 @@ silently transfer the box.
 **Evidence class: CLI_PROVEN, no self-test cell.** The logic lives in the command dispatcher rather
 than in an exported function, so it is proven by live invocation (adopted 32192; refused 25748, which
 had ended) and not by a test cell. That is a real limitation and it is stated rather than implied.
+- 2026-08-03T18:31:21Z · RECLAIMED_STALE · B/draw-smoke-rehearsal-soak pid 32192 was gone
+- 2026-08-03T18:31:21Z · CLAIM · D · TAL-PO-UI-SMOKE-MUTANTS-LIVE · eta 15m · pid 32328
+- 2026-08-03T18:34:24Z · RELEASE · D · TAL-PO-UI-SMOKE-MUTANTS-LIVE
+- 2026-08-03T19:48:55Z · ADOPT · A · competitor-reference-oneup · pid 27344 · run was already live and unclaimed
+- 2026-08-03T19:50:43Z · RESERVE · C · canonical-floor-retake-cov01 · position 1
+- 2026-08-03T19:51:14Z · CANCEL · C · canonical-floor-retake-clean · was position 2
+- 2026-08-03T19:55:52Z · RELEASE · A · competitor-reference-arms
+- 2026-08-03T19:57:02Z · ADOPT · D · TAL-PO-UI-SMOKE-MUTANTS-LIVE · pid 29092 · run was already live and unclaimed
+- 2026-08-03T19:58:20Z · RELEASE · D · TAL-PO-UI-SMOKE-MUTANTS-LIVE

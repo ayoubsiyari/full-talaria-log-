@@ -7,7 +7,7 @@ A blocked manager reads this rather than waiting for a relay.
 
 ---
 
-## CURRENT STATE — E's lane · maintained in place · last updated 19:31+01:00
+## CURRENT STATE — E's lane · maintained in place · last updated 20:08+01:00
 
 > **This block is the one part of this file that is NOT append-only.** It is overwritten, so it
 > answers *what is true now*; everything below answers *what happened*. Every number here carries
@@ -20,7 +20,8 @@ A blocked manager reads this rather than waiting for a relay.
 | Detailed-dump capture/parser item 6 | **gate PASS 4/4 at 18:55+01:00** | `E_BUILT_C_WIRES` — E parser/gate stays owned by E; capture trigger moves into C's sampler at the four scheduled moments |
 | Item 6 queue position | **E reservation cancelled at 19:22+01:00** | `TRIGGER_MOVED_TO_C_SAMPLER` — standalone attach loop retired; E no longer holds or waits for a queue slot |
 | Item 6 live capture | **attempted at 19:14:30+01:00** | `NO_LIVE_SOAK_BROWSER_STRUCTURAL` — queue claim/release worked, but empty queue meant no chart browser; artifact `_evidence/manager-E/detailed-dump-capture-20260803/2026-08-03T18-14-29-735Z/watch-report.json` |
-| C handoff | **written at 19:28+01:00** | `HANDOFF_READY` — `docs/plan3/E-TO-C-DETAILED-DUMP-CAPTURE-HANDOFF-20260803.md` gives exact in-process call, open prerequisites, write paths, and four moments |
+| C handoff | **proof gate added at 20:03+01:00** | `HANDOFF_READY` — `docs/plan3/E-TO-C-DETAILED-DUMP-CAPTURE-HANDOFF-20260803.md` gives exact in-process call, open prerequisites, write paths, four moments, and a pre-fire wiring proof |
+| V8 dominator subtree fallback | **gate PASS 2/2 at 20:05+01:00** | `BUILT_GREEN_NOT_RUN` — `v8-dominator-subtree-diff.mjs` compares retained bytes by dominator subtree when constructor naming falls under D's 10% stopping threshold |
 | C canonical floor parse | **10 samples parsed at 18:56+01:00** | `ROOTS_ONLY_PARSED_NOT_QUOTABLE` — `_evidence/manager-E/detailed-dump-parser-canonical-floor-pass3-20260803.json` preserves final **59.84% coverage / 271.05 MB unattributed** and `detailState=ROOTS_ONLY_FLATTENED_ARENA_COLUMNS` |
 | V8 playback rerun | **complete** | `DIAGNOSTIC_CAPTURED_CONTAMINATED` — CONF-01 same-symbol, 4 panels, playback at 10 bars/s, zero-trade reproduction; useful retainer data, not authoritative plateau/slope read |
 | Snapshot A | **captured at 15:36:47+01:00** | `OBSERVED_ARTIFACT` — `_evidence/manager-E/v8-playback-heap-slope-20260803/2026-08-03T14-34-45-491Z/A.heapsnapshot` |
@@ -56,9 +57,10 @@ salvage, not as flattening/slope evidence. `BUFFER-PARTITION-DISCRIMINATOR-V1` d
 
 **Next required update** — C wires the handoff call into the sampler and emits four detailed dump
 artifacts: `zerotrade:start`, `zerotrade:end`, `trades:start`, `trades:end`. E then parses those
-artifacts with `node scripts/detailed-dump-parser.mjs <files> --out=<report>`. After COV-01 is
-recomputed, schedule the authoritative read only if identity lock, all phases, sidecars, COV-01 >=95%,
-and GATE-01 can pass inline.
+artifacts with `node scripts/detailed-dump-parser.mjs <files> --out=<report>`. If D's constructor
+stopping rule trips first, run `node scripts/v8-dominator-subtree-diff.mjs <before> <after> --out=<report>`.
+After COV-01 is recomputed, schedule the authoritative read only if identity lock, all phases,
+sidecars, COV-01 >=95%, and GATE-01 can pass inline.
 
 Do not edit another lane's file; write here and let the reader come to you. This directory
 replaced a single shared board after three add/add collisions in one evening, each of which
@@ -179,3 +181,5 @@ and the M17-DI2 restore in `1c8892c51`.
 - 19:16+01:00 · E · RE-RESERVED-FRONT · `DETAILED-DUMP-CAPTURE-ITEM-6` · Because the no-browser run consumed E's reservation while proving the setup path, E re-reserved item 6 at queue position 1 ahead of C/canonical-floor-retake-clean. Watcher hardened with `--reReserveOnNoBrowser=1` default so future no-browser outcomes restore the front slot automatically after release.
 - 19:22+01:00 · E · CANCELLED / TRIGGER MOVED · `DETAILED-DUMP-CAPTURE-ITEM-6` · Director ruled `NO_LIVE_SOAK_BROWSER` structural: an empty queue has no browser to measure. E cancelled its queue reservation and retired the standalone attach loop. Capture trigger moves to C's sampler; E keeps parser/gate ownership.
 - 19:28+01:00 · E → C · HANDOFF · `DETAILED-DUMP-CAPTURE-IN-SAMPLER` · Handoff written at `docs/plan3/E-TO-C-DETAILED-DUMP-CAPTURE-HANDOFF-20260803.md`. Exact call extends C's existing `readArenaColumns(session.browser, footprintTotalMB)` path with E's `collectAllocatorDetail(browserCdp, { settleMs: 1500 })`, writes `<c-run-dir>/detailed-dumps/<moment>.detailed-dump.json`, and parses with E's `detailed-dump-parser.mjs`. Four moments: `zerotrade:start`, `zerotrade:end`, `trades:start`, `trades:end`.
+- 20:03+01:00 · E · TIGHTENED · `DETAILED-DUMP-CAPTURE-IN-SAMPLER` · Re-read the handoff as C and added the missing pre-fire proof: before a ten-hour fire depends on item 6, C must produce exactly four detailed dump artifacts, parse them with E's parser, and prove `sampleCount=4`, every sample `detailState=DETAILED_ALLOCATOR_CHILD_ROWS`, non-null COV-01 coverage fields, and adjacent diffs. Roots-only rows remain `DETAILED_DUMP_WIRING_ROOTS_ONLY`, not a pass.
+- 20:05+01:00 · E · BUILT + GREEN · `V8-DOMINATOR-SUBTREE-FALLBACK` · Pre-built D's stopping-rule fallback: `scripts/lib/heap-dominator-subtrees.mjs` computes retained bytes by dominator subtree from V8 heap snapshots, and `scripts/v8-dominator-subtree-diff.mjs` diffs before/after snapshots by stable path signatures. This is for the likely case where constructor self-size naming explains under 10% of the measured V8 delta. Self-test proves a small-self-size cache dominator retaining MB-scale leaves is found, and weak-only leaves are excluded. Verification: `npm run test:v8-dominator-subtree` PASS 2/2 at 20:05+01:00.
