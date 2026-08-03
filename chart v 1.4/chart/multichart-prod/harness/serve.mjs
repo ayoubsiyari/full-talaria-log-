@@ -670,7 +670,7 @@ function hostPageHtml(query) {
   ids.forEach((id, i) => { tfs[id] = tfList[i] || tf; });
   const cols = panels === 1 ? 1 : 2;
   const rows = panels <= 2 ? 1 : 2;
-  const buildId = '20260802b123';
+  const buildId = '20260803b125';
 
   const cfg = { pair, panels, tf, tfs, ids, iframeIds, fileIds, hostFileId, cols, rows };
 
