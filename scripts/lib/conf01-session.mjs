@@ -20,6 +20,7 @@ import {
   applyDistV9LayoutViaUi,
   dismissCookieBanner,
   loadPuppeteer,
+  preflightFileBars,
   readPanelDatasets,
   resolveDeployedFileIds,
   uiLoginDeployed,
@@ -388,16 +389,42 @@ export async function bootConf01Session({
   } else {
     await uiLoginDeployed(page, origin, email, password);
   }
-  await page.evaluate(() => {
+  const seedChoice = await resolveDeployedFileIds(page);
+  if (!seedChoice?.fileIds?.length || seedChoice.distinctSymbols === 0) {
+    throw new Error(
+      'CONF01_SEED_FILES_UNRESOLVED: /api/files did not yield authenticated deployed file IDs; '
+      + 'refusing to fall back to a hardcoded seed before chart boot',
+    );
+  }
+  const seedFileId = seedChoice.fileIds[0];
+  const seedTicker = String(seedChoice.symbols?.[0] || `FILE_${seedFileId}`).replace(/[^A-Z0-9_]/gi, '').toUpperCase() || `FILE_${seedFileId}`;
+  const seedPreflight = await preflightFileBars(page, [seedFileId], {
+    timeoutMs: 1000,
+    statePrefix: 'CONF01_SEED',
+  });
+  await page.evaluate((seed) => {
     localStorage.setItem('_uid', '1');
-    if (!localStorage.getItem('u1_backtestingSession')) {
-      localStorage.setItem('u1_backtestingSession', JSON.stringify({
-        type: 'standard',
-        startBalance: 10000,
-        session_id: `conf01-${Date.now()}`,
-        instruments: { EURUSD: { ticker: 'EURUSD', fileId: 25 } },
-      }));
-    }
+    localStorage.setItem('u1_backtestingSession', JSON.stringify({
+      type: 'standard',
+      startBalance: 10000,
+      session_id: `conf01-${Date.now()}`,
+      instruments: {
+        [seed.ticker]: {
+          ticker: seed.ticker,
+          fileId: seed.fileId,
+          tradable: true,
+        },
+      },
+    }));
+    localStorage.setItem('__conf01Seed', JSON.stringify(seed));
+  }, {
+    type: 'authenticated-api-files',
+    fileId: seedFileId,
+    ticker: seedTicker,
+    fileIds: seedChoice.fileIds,
+    symbols: seedChoice.symbols,
+    distinctSymbols: seedChoice.distinctSymbols,
+    preflight: seedPreflight,
   });
 
   const url = reactParityUrlWithLayout(`${origin}/chart/dist-v9/index.html?mode=backtest`, '1');
@@ -436,7 +463,7 @@ export async function bootConf01Session({
   // Four panels, then four symbols at four timeframes, then indicators/orders/play.
   await applyDistV9LayoutViaUi(page, panelIds.length, 0);
   await sleep(settleMs);
-  const fileChoice = await resolveDeployedFileIds(page);
+  const fileChoice = seedChoice;
   const plan = buildDatasetPlan({
     mode: datasetMode,
     panelIds,
@@ -560,6 +587,15 @@ export async function bootConf01Session({
     conf01: {
       ...compliance,
       buildId,
+      seed: {
+        type: 'authenticated-api-files',
+        fileId: seedFileId,
+        ticker: seedTicker,
+        fileIds: seedChoice.fileIds,
+        symbols: seedChoice.symbols,
+        distinctSymbols: seedChoice.distinctSymbols,
+        preflight: seedPreflight,
+      },
       replaySpeed,
       datasetMode,
       delivering,

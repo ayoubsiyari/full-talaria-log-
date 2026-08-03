@@ -1962,6 +1962,87 @@ export async function resolveDeployedFileIds(page, fallback = HEAP_CYCLE_DISTINC
   };
 }
 
+export async function preflightFileBars(page, fileIds, {
+  timeoutMs = 1000,
+  limit = 100,
+  statePrefix = 'DEPLOYED_FILE_SEED',
+} = {}) {
+  const ids = [...new Set((fileIds || []).map((id) => Number(id)).filter((id) => Number.isFinite(id)))];
+  if (!ids.length) {
+    const err = new Error(`${statePrefix}_NO_FILE_IDS: no file IDs to preflight`);
+    err.seedPreflight = { ok: false, state: `${statePrefix}_NO_FILE_IDS`, rows: [] };
+    throw err;
+  }
+  const outerTimeoutMs = Math.max(timeoutMs + 250, timeoutMs * Math.max(2, ids.length + 1));
+  const timeoutResult = new Promise((resolve) => {
+    setTimeout(() => resolve({
+      ok: false,
+      state: `${statePrefix}_TIMEOUT`,
+      detail: `seed bars preflight exceeded ${outerTimeoutMs}ms outer guard; each file has ${timeoutMs}ms fetch budget`,
+      rows: [],
+    }), outerTimeoutMs);
+  });
+  const evalResult = page.evaluate(async (selectedIds, budgetMs, rowLimit, prefix) => {
+    const rows = [];
+    for (const fileId of selectedIds) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), budgetMs);
+      try {
+        const response = await fetch(`/api/file/${encodeURIComponent(fileId)}/bars?resolution=1m&limit=${encodeURIComponent(rowLimit)}`, {
+          credentials: 'include',
+          cache: 'no-store',
+          signal: ctrl.signal,
+        });
+        const text = await response.text().catch(() => '');
+        let body = null;
+        try { body = JSON.parse(text); } catch (_) { /* keep raw head */ }
+        const bars = Array.isArray(body?.bars) ? body.bars : [];
+        const row = {
+          fileId,
+          status: response.status,
+          bars: bars.length,
+          detail: body?.detail || null,
+          head: text.slice(0, 160),
+        };
+        rows.push(row);
+        if (!response.ok) {
+          return {
+            ok: false,
+            state: `${prefix}_BARS_HTTP`,
+            detail: `file ${fileId} /bars returned HTTP ${response.status}`,
+            rows,
+          };
+        }
+        if (!bars.length) {
+          return {
+            ok: false,
+            state: `${prefix}_BARS_EMPTY`,
+            detail: `file ${fileId} /bars returned 0 bars`,
+            rows,
+          };
+        }
+      } catch (error) {
+        return {
+          ok: false,
+          state: error?.name === 'AbortError' ? `${prefix}_BARS_ABORTED` : `${prefix}_BARS_THROW`,
+          detail: `file ${fileId} /bars failed: ${String(error?.message || error)}`,
+          rows,
+        };
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    return { ok: true, state: `${prefix}_BARS_OK`, rows };
+  }, ids, timeoutMs, limit, statePrefix);
+  const result = await Promise.race([evalResult, timeoutResult]);
+  if (!result?.ok) {
+    const err = new Error(`${result?.state || `${statePrefix}_UNKNOWN`}: ${result?.detail || 'seed bars preflight failed'}`);
+    err.seedPreflight = result;
+    throw err;
+  }
+  return result;
+}
+
 /**
  * Real deployed product on 31.97.192.82 — the surface the PO measured.
  * Requires TEST_EMAIL + TEST_PASSWORD (+ optional TEST_VPS_URL).
