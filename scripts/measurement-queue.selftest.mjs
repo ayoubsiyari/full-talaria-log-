@@ -7,10 +7,26 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { evaluate, classifyProcess, scriptNameOf } from './measurement-queue.mjs';
+import { evaluate, classifyProcess, scriptNameOf, sameRun } from './measurement-queue.mjs';
 
 const proc = (pid, cmd) => ({ pid, cmd });
 const MEASURE = (pid, name) => proc(pid, `"C:\\Program Files\\nodejs\\node.exe" scripts/${name} --panels=4`);
+
+/**
+ * Reservations were consumed on owner alone, so any run by that owner ate the head slot whatever it
+ * was. A stale `D/daily-boundary-canary` therefore sat where D's PO-ordered mutant suite needed to
+ * be, and D refused to launch rather than spend the turn on the wrong run. Run identity has to be
+ * part of the match, and it has to survive the punctuation drift between a reservation typed one
+ * night and a claim typed the next morning.
+ */
+test('run matching tolerates punctuation and case drift but not a different run', () => {
+  assert.equal(sameRun('daily-boundary-canary', 'A3-DAILY-BOUNDARY-CANARY'), true, 'D reserved and claimed these as one run');
+  assert.equal(sameRun('canonical-floor-retake', 'canonical-floor-retake'), true);
+  assert.equal(sameRun('daily-boundary-canary', 'TAL-PO-UI-SMOKE-MUTANTS-LIVE'), false, 'the whole point: two D runs are not one slot');
+  assert.equal(sameRun('shell-play-discriminator', 'idle-transient-clean-retake'), false);
+  assert.equal(sameRun('', 'anything'), false, 'an empty name must not match everything');
+  assert.equal(sameRun(null, undefined), false);
+});
 
 test('classification separates measurements from tooling and infrastructure', () => {
   assert.equal(classifyProcess('node scripts/arena-timeseries.mjs --out=x'), 'measurement');

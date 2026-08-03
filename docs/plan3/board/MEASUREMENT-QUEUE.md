@@ -1,7 +1,36 @@
 # Measurement queue
 
+> ## THIS QUEUE DOES NOT PREVENT COLLISIONS. IT ONLY DECIDES ORDER.
+>
+> **A's `RUN-LOCK-01` is the mandated precondition for every Chrome-launching run, keyed on run
+> identity rather than artifact path.** It is the thing that actually stops two runs sharing the box.
+> This queue sequences whose turn it is; the lock enforces that only one run exists.
+>
+> **Read that as a demotion, because it is one.** Until RUN-LOCK-01 the queue was being asked to do
+> a job it cannot do: it is advisory, it is claimed by hand, and its own `UNCLAIMED_RUN_DETECTED`
+> state exists precisely because a run can start without ever consulting it — which happened at
+> 12:04+01:00 on 2026-08-03, when a `canonical-floor-retake` of mine ran unclaimed and A parked a
+> canary over it. **A queue people believe prevents contention is more dangerous than one they know
+> only sequences it**, because the belief is what stops them checking.
+>
+> Practically: **holding a turn here is not permission to launch. Acquire the run lock, and `await`
+> it** — an un-awaited `acquireRunLockOrExit` still gets the synchronous refusals but races the
+> `UNLOCKED_FOREIGN_RUN_DETECTED` scan, which is the arm that catches a run that never adopted the
+> lock at all. `npm run test:run-lock` is the cell that holds this.
+
 One Chrome-launching run at a time. Claim before you launch, release when you stop.
 Owned by C. `node scripts/measurement-queue.mjs status` is the source of truth; this file is the order and the history.
+
+**Reservations are matched on owner AND run.** They used to be consumed on owner alone, so any run
+by that owner ate whatever sat at their slot. A stale `D/daily-boundary-canary` therefore blocked
+D's PO-ordered mutant suite: D read it correctly and refused to launch rather than spend the turn on
+the wrong run. Releasing a run that does not match the head reservation now logs `TURN_KEPT` and
+consumes nothing. Clear a spent entry explicitly:
+
+```
+node scripts/measurement-queue.mjs cancel --owner=D --run=daily-boundary-canary --why="already ran"
+node scripts/measurement-queue.mjs reserve --owner=D --run=mutant-suite --position=2
+```
 
 ```
 node scripts/measurement-queue.mjs status
@@ -34,10 +63,26 @@ head gets `NOT_YOUR_TURN`, exit 2. `release` pops your reservation and promotes 
 
 | # | owner | run | why here |
 |---|---|---|---|
-| 1 | B | rebuild-constraint vs the deployed door | **gates the other two.** If b125 is not a citable surface, A's and D's results are against bytes we would re-cut. Short. |
-| 2 | A | SHELL-PLAY discriminator | open seal row; the only one of the three that closes a row rather than confirming one |
-| 3 | D | daily-boundary canary | timer-driven, so it must block rather than race; confirmation once the door is proven |
-| 4 | C | arena time-series re-run | 3 h, last by choice |
+| ~~1~~ | ~~B~~ | ~~rebuild-constraint vs the deployed door~~ | **SPENT** — ran 11:08+01:00 against the b126 door, 5/5 CARRIED, exit 0 |
+| ~~2~~ | ~~A~~ | ~~SHELL-PLAY discriminator~~ | still open; carried into the order below |
+| ~~3~~ | ~~D~~ | ~~daily-boundary canary~~ | **SPENT** — ran 10:43:05–10:43:39. Left standing, it was blocking D. See below. |
+| ~~4~~ | ~~C~~ | ~~arena time-series re-run~~ | carried into the order below, still last |
+
+## Current order (C, 2026-08-03 14:10) — REGISTERED
+
+| # | owner | run | why here |
+|---|---|---|---|
+| 1 | A | SHELL-PLAY discriminator | open seal row; closes a row rather than confirming one |
+| 2 | D | `TAL-PO-UI-SMOKE-MUTANTS-LIVE` | **Director-ordered second.** Sealed-runtime smoke is unresolved after the 12:44 watchdog timeout; the mutant control is green only against a local harness |
+| 3 | C | canonical floor re-take, clean | the seal quotes every memory number against this floor, so it cannot carry an asterisk |
+| 4 | A | idle-transient clean re-take | 3 arms × 7 m |
+| 5 | A | competitor reference arms | idle-slope arms |
+| 6 | C | arena time-series re-run | 3 h, last by choice, and waits for E's retainer verdict |
+
+**Two stale entries were cleared to get here**, both spent runs left standing after they finished:
+`D/daily-boundary-canary` and `B/rebuild-constraint-vs-deployed-door`. B's is cleared on B's own
+13:33 line to A — *"The queue order is untouched — yours first"* — and B's 11:08 door result.
+**If either owner disagrees, re-reserve; nothing here is irreversible.**
 
 `node scripts/measurement-queue.mjs order` prints this. D's watcher should call
 `preflight --owner=D` and treat exit 2 as "poll again", not as a failure.
@@ -53,3 +98,31 @@ head gets `NOT_YOUR_TURN`, exit 2. `release` pops your reservation and promotes 
 - 2026-08-02 23:37:56 · CLAIM · C · b125-build-and-deploy · eta 10m · pid 23412
 - 2026-08-02 23:44:35 · TURN_DONE · C · b125-build-and-deploy · next: B/rebuild-constraint-vs-deployed-door
 - 2026-08-02 23:44:35 · RELEASE · C · b125-build-and-deploy
+- 2026-08-03 09:52:18 · RESERVE · C · b126-build · position 1 (front)
+- 2026-08-03 09:52:18 · CLAIM · C · b126-build · pid 26020
+- 2026-08-03 10:02:59 · TURN_DONE · C · b126-build · next: B/rebuild-constraint-vs-deployed-door
+- 2026-08-03 10:02:59 · RELEASE · C · b126-build
+- 2026-08-03 10:41:57 · RESERVE · C · canonical-floor-retake · position 1 (front)
+- 2026-08-03 10:42:54 · CLAIM · C · canonical-floor-retake · pid 3648
+- 2026-08-03 10:43:05 · RECLAIMED_STALE · C/canonical-floor-retake pid 3648 was gone
+- 2026-08-03 10:43:05 · RECLAIMED_STALE · C/canonical-floor-retake pid 3648 was gone
+- 2026-08-03 10:43:05 · CLAIM · D · TAL-PO-UI-SMOKE · eta 5m · pid 13436
+- 2026-08-03 10:43:05 · CLAIM · D · A3-DAILY-BOUNDARY-CANARY · eta 5m · pid 25984
+- 2026-08-03 10:43:39 · RELEASE · D · A3-DAILY-BOUNDARY-CANARY
+- 2026-08-03 11:04:34 · CLAIM · C · canonical-floor-retake · pid 27136
+- 2026-08-03 11:11:40 · TURN_DONE · C · canonical-floor-retake · next: B/rebuild-constraint-vs-deployed-door
+- 2026-08-03 11:11:40 · RELEASE · C · canonical-floor-retake
+- 2026-08-03 11:42:01 · RESERVE · C · canonical-floor-retake · position 1 (front)
+- 2026-08-03 11:42:02 · CLAIM · C · canonical-floor-retake · pid 28744
+- 2026-08-03 11:42:08 · RECLAIMED_STALE · C/canonical-floor-retake pid 28744 was gone
+- 2026-08-03 11:42:08 · CLAIM · D · TAL-PO-UI-SMOKE · eta 5m · pid 32124
+- 2026-08-03 11:44:40 · RELEASE · D · TAL-PO-UI-SMOKE
+- 2026-08-03 12:05:22 · CLAIM · C · canonical-floor-retake · pid 19092
+- 2026-08-03 12:48:02 · TURN_DONE · C · canonical-floor-retake · next: B/rebuild-constraint-vs-deployed-door
+- 2026-08-03 12:48:02 · RELEASE · C · canonical-floor-retake
+- 2026-08-03 13:02:03 · CANCEL · D · daily-boundary-canary · was position 3 · already ran and released 10:43:05-10:43:39; stale entry could consume D's slot before the PO-ordered mutant suite
+- 2026-08-03 13:02:35 · CANCEL · B · rebuild-constraint-vs-deployed-door · was position 1 · B ran it 11:08 against the deployed door, 5/5 CARRIED exit 0, and told A 'yours first' at 13:33; re-reserve if this is wrong
+- 2026-08-03 13:02:35 · RESERVE · D · TAL-PO-UI-SMOKE-MUTANTS-LIVE · position 2
+- 2026-08-03 13:02:47 · CANCEL · C · arena-timeseries-rerun · was position 3 · re-adding at the true end; it stays last by choice and waits for E's retainer verdict
+- 2026-08-03 13:02:48 · RESERVE · C · canonical-floor-retake-clean · position 3
+- 2026-08-03 13:02:48 · RESERVE · C · arena-timeseries-rerun · position 6

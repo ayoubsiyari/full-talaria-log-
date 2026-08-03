@@ -100,6 +100,22 @@ export function pidAlive(pid, procs) {
   try { process.kill(Number(pid), 0); return true; } catch { return false; }
 }
 
+/**
+ * Do two queue entries name the same run?
+ *
+ * Reservations and claims are typed by different people at different hours and drift in case and
+ * punctuation — D reserved `daily-boundary-canary` and claimed `A3-DAILY-BOUNDARY-CANARY`. Exact
+ * equality would treat those as different runs and never consume the reservation; bare owner
+ * matching treats *every* run by that owner as the same one, which is the defect this closes.
+ */
+export function sameRun(a, b) {
+  const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const x = norm(a);
+  const y = norm(b);
+  if (!x || !y) return false;
+  return x === y || x.includes(y) || y.includes(x);
+}
+
 export function readState(file = STATE_FILE) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return { claim: null, history: [] }; }
 }
@@ -229,13 +245,46 @@ if (isMain) {
     // `--front` is for a PRECONDITION rather than a queue slot: the b125 deploy is not competing
     // with the runs behind it, it is the thing they are all waiting on.
     const front = process.argv.includes('--front');
-    state.reservations = front
-      ? [entry, ...(state.reservations || [])]
-      : [...(state.reservations || []), entry];
-    const position = front ? 1 : state.reservations.length;
+    // `--position=N` is 1-based and exists because the ordering decision is often "after the thing
+    // that gates it, ahead of everything else" — which is neither the front nor the back.
+    const wanted = Number(arg('position', '0'));
+    const rs = [...(state.reservations || [])];
+    let position;
+    if (front) {
+      rs.unshift(entry);
+      position = 1;
+    } else if (Number.isFinite(wanted) && wanted >= 1) {
+      const at = Math.min(Math.max(1, Math.floor(wanted)), rs.length + 1);
+      rs.splice(at - 1, 0, entry);
+      position = at;
+    } else {
+      rs.push(entry);
+      position = rs.length;
+    }
+    state.reservations = rs;
     writeState(state);
     appendLog(`- ${stamp()} · RESERVE · ${owner} · ${run} · position ${position}${front ? ' (front)' : ''}`);
     console.log(`[queue] reserved position ${position} for ${owner}/${run}.`);
+    console.log(`[queue] order: ${rs.map((r, i) => `${i + 1}. ${r.owner}/${r.run}`).join('  ')}`);
+    process.exit(0);
+  }
+  if (cmd === 'cancel') {
+    const run = arg('run');
+    if (!owner || !run) { console.error('[queue] cancel needs --owner= and --run='); process.exit(1); }
+    const rs = [...(state.reservations || [])];
+    const idx = rs.findIndex((r) => r.owner === owner && sameRun(r.run, run));
+    if (idx === -1) {
+      console.error(`[queue] no reservation matching ${owner}/${run}.`);
+      console.error(`[queue] order: ${rs.map((r, i) => `${i + 1}. ${r.owner}/${r.run}`).join('  ') || '(empty)'}`);
+      process.exit(2);
+    }
+    const [dropped] = rs.splice(idx, 1);
+    state.reservations = rs;
+    writeState(state);
+    const why = arg('why');
+    appendLog(`- ${stamp()} · CANCEL · ${dropped.owner} · ${dropped.run} · was position ${idx + 1}${why ? ` · ${why}` : ''}`);
+    console.log(`[queue] cancelled ${dropped.owner}/${dropped.run} (was position ${idx + 1}).`);
+    console.log(`[queue] order: ${rs.map((r, i) => `${i + 1}. ${r.owner}/${r.run}`).join('  ') || '(empty)'}`);
     process.exit(0);
   }
   if (cmd === 'order') {
@@ -250,18 +299,32 @@ if (isMain) {
     if (owner && claim.owner !== owner) { console.error(`[queue] REFUSED — the claim is ${claim.owner}'s, not ${owner}'s.`); process.exit(2); }
     state.history = [...(state.history || []), { ...claim, endedAs: 'RELEASED', endedAt: stamp() }];
     state.claim = null;
-    // Releasing consumes your reservation, so the next owner becomes the head automatically.
+    /**
+     * Releasing consumes your reservation, so the next owner becomes the head automatically — but
+     * only if the run you just released is the run that was reserved.
+     *
+     * MATCHING ON OWNER ALONE WAS A REAL BLOCKER, NOT A THEORETICAL ONE. A stale
+     * `D/daily-boundary-canary` entry sat at D's slot after that canary had already run and
+     * released. Any later D run would have consumed it, so D's timer-driven watcher could have
+     * spent D's turn on the wrong run and left the PO-ordered mutant suite behind an empty slot.
+     * D read the queue correctly and refused to launch rather than gamble on it.
+     */
     const rs = state.reservations || [];
-    if (rs.length && rs[0].owner === claim.owner) {
+    if (rs.length && rs[0].owner === claim.owner && sameRun(rs[0].run, claim.run)) {
       const done = rs.shift();
       state.reservations = rs;
       appendLog(`- ${stamp()} · TURN_DONE · ${done.owner} · ${done.run} · next: ${rs[0] ? `${rs[0].owner}/${rs[0].run}` : 'open'}`);
+    } else if (rs.length && rs[0].owner === claim.owner) {
+      // Visible, not silent: the turn is neither consumed nor quietly kept.
+      appendLog(`- ${stamp()} · TURN_KEPT · ${claim.owner} ran "${claim.run}" but the reservation at the head is "${rs[0].run}" — not consumed. Cancel it if it is stale.`);
+      console.log(`[queue] NOTE — you ran "${claim.run}" but your reservation is "${rs[0].run}". Reservation kept, not consumed.`);
+      console.log('[queue]        If that reservation is stale: measurement-queue.mjs cancel --owner=%s --run=%s', claim.owner, rs[0].run);
     }
     writeState(state);
     appendLog(`- ${stamp()} · RELEASE · ${claim.owner} · ${claim.run}`);
     console.log(`[queue] released ${claim.owner}/${claim.run}.${state.reservations?.[0] ? ` Next: ${state.reservations[0].owner}/${state.reservations[0].run}.` : ''}`);
     process.exit(0);
   }
-  console.error(`[queue] unknown command "${cmd}" — use status | claim | preflight | release`);
+  console.error(`[queue] unknown command "${cmd}" — use status | claim | preflight | release | reserve | cancel | order`);
   process.exit(1);
 }
