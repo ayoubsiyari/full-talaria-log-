@@ -119,6 +119,10 @@ function makeOm() {
   return om;
 }
 
+function childByClass(node, className) {
+  return node.children.find((child) => child.classList.contains(className));
+}
+
 {
   const om = makeOm();
   const group = new FakeSelection(new FakeNode('g'));
@@ -185,13 +189,41 @@ function makeOm() {
     accent: '#ef4444',
     isPreview: true,
   });
+  const marketDims = om._buildOrderLevelToastLabelInGroup(group, {
+    tagText: 'MARKET BUY 10 Lots',
+    detailText: '+$1.00 (10 Lots)',
+    detailColor: '#22c55e',
+    accent: '#2962ff',
+    isPreview: true,
+  });
   assert.equal(stopDims.width, limitDims.width, 'toast shell width is fixed across stop/limit content changes');
-  assert.equal(stopDims.height, limitDims.height, 'toast shell height is fixed across content changes');
+  assert.equal(stopDims.width, marketDims.width, 'toast shell width is fixed across stop/market/limit');
+  assert.equal(stopDims.height, limitDims.height, 'toast shell height is fixed across stop/limit content changes');
+  assert.equal(stopDims.height, marketDims.height, 'toast shell height is fixed across stop/market/limit');
   assert.equal(
     group.select('.order-level-toast-label').select('.order-level-toast-detail').attr('x'),
     '139',
     'detail column does not move with tag text width',
   );
+  const shell = group.select('.order-level-toast-label').node();
+  const tag = childByClass(shell, 'order-level-toast-tag');
+  const detail = childByClass(shell, 'order-level-toast-detail');
+  assert.equal(tag.attrs['font-family'], 'Inter, sans-serif', 'tag font family is explicit');
+  assert.equal(detail.attrs['font-family'], 'Inter, sans-serif', 'detail font family matches tag');
+  assert.equal(tag.attrs['font-size'], '11px', 'tag font size is explicit');
+  assert.equal(detail.attrs['font-size'], '11px', 'detail font size matches tag');
+  assert.equal(tag.attrs.y, '12', 'tag is vertically centered in fixed 24px shell');
+  assert.equal(detail.attrs.y, '12', 'detail is vertically centered in fixed 24px shell');
+  assert.equal(tag.attrs.dy, '0.35em', 'tag baseline offset is explicit');
+  assert.equal(detail.attrs.dy, '0.35em', 'detail baseline offset matches tag');
+
+  const badgeHost = new FakeSelection(new FakeNode('g'));
+  om._appendOrderLevelBadgeGlyph(badgeHost, 'check', 9, 9, 8);
+  const glyph = badgeHost.node().children[0];
+  assert.equal(glyph.attrs['font-family'], 'Inter, sans-serif', 'control glyph uses same font family');
+  assert.equal(glyph.attrs['font-size'], '12px', 'control glyph font size is explicit');
+  assert.equal(glyph.attrs['dominant-baseline'], 'central', 'control glyph vertical baseline is pinned');
+  assert.equal(glyph.attrs['alignment-baseline'], 'middle', 'control glyph alignment baseline is pinned');
 }
 
 {
@@ -223,6 +255,9 @@ function makeOm() {
   const badge = new FakeNode('g');
   badge.setAttribute('class', 'om-level-ctrl');
   badge.setAttribute('data-level-price', '100');
+  badge.setAttribute('transform', 'translate(710, 88)');
+  badge.setAttribute('x', '710');
+  badge.setAttribute('y', '88');
   const groupNode = new FakeNode('g');
   groupNode.children.push(badge);
   badge.parent = groupNode;
@@ -239,6 +274,9 @@ function makeOm() {
   om._applyImmediateLevelCtrlHoverForGroup(groupNode, ch);
   assert.equal(badge.styles.opacity, '1', 'hovered control is shown immediately');
   assert.equal(badge.styles.pointerEvents, 'all', 'shown controls are clickable in the same pass');
+  assert.equal(badge.attrs.transform, 'translate(710, 88)', 'hover refresh does not move control button transform');
+  assert.equal(badge.attrs.x, '710', 'hover refresh does not move control button x');
+  assert.equal(badge.attrs.y, '88', 'hover refresh does not move control button y');
   assert.equal(badge.bboxCount, 1, 'stable path avoids the old extra forced layout read per badge');
   assert.equal(rafCalls, 1, 'transitions restore once as a batch');
   delete global.requestAnimationFrame;
