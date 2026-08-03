@@ -23,14 +23,15 @@ import { HEAP_CYCLE_DATASET_MODE_SAME_SYMBOL } from './lib/heap-cycle-dataset-co
 import { loadConf05Indicators } from './lib/conf05-indicators.mjs';
 
 const MB = 1024 * 1024;
-const OUT_DIR = arg('outDir', '_evidence/manager-E/v8-playback-heap-slope-20260803');
+const OUT_ROOT = arg('outDir', '_evidence/manager-E/v8-playback-heap-slope-20260803');
+const RUN_ID = arg('runId', defaultRunId());
+const OUT_DIR = path.join(OUT_ROOT, RUN_ID);
 const TOTAL_MIN = Number(arg('totalMin', '90'));
 const SNAPSHOTS = Math.max(3, Number(arg('snapshots', '3')));
 const SNAP_CAP_MB = Number(arg('snapCapMB', '3072'));
 const TOP_N = Number(arg('topN', '25'));
 const SPEED = Number(arg('speed', '10'));
 const SNAPSHOT_INTERVAL_MS = Math.round((TOTAL_MIN * 60_000) / (SNAPSHOTS - 1));
-const FORCE_OUT = process.argv.includes('--forceOut') || arg('forceOut', '0') === '1';
 const LOCK_FILE = path.join(OUT_DIR, '.v8-playback-heap-slope.lock');
 
 function arg(name, fallback = null) {
@@ -41,6 +42,10 @@ function arg(name, fallback = null) {
 
 function log(...args) {
   console.error(`[v8-playback-heap ${new Date().toISOString()}]`, ...args);
+}
+
+function defaultRunId() {
+  return new Date().toISOString().replace(/[:.]/g, '-');
 }
 
 function mb(bytes) {
@@ -60,14 +65,12 @@ function existingEvidenceNames() {
 
 function acquireOutDirLock() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
-  if (!FORCE_OUT) {
-    const existing = existingEvidenceNames();
-    if (existing.length) {
-      throw new Error(
-        `OUTDIR_HAS_EXISTING_EVIDENCE: ${OUT_DIR} already contains ${existing.join(', ')}; `
-        + 'archive it or pass --forceOut=1 intentionally',
-      );
-    }
+  const existing = existingEvidenceNames();
+  if (existing.length) {
+    throw new Error(
+      `OUTDIR_HAS_EXISTING_EVIDENCE: ${OUT_DIR} already contains ${existing.join(', ')}; `
+      + 'choose a fresh --runId or omit it',
+    );
   }
   try {
     const fd = fs.openSync(LOCK_FILE, 'wx');
@@ -278,6 +281,9 @@ async function main() {
     condition: {
       surface: 'CONF-01 same-symbol four-panel dist-v9/backtest',
       datasetMode: HEAP_CYCLE_DATASET_MODE_SAME_SYMBOL,
+      outRoot: OUT_ROOT,
+      outDir: OUT_DIR,
+      runId: RUN_ID,
       requestedSpeed: SPEED,
       totalMin: TOTAL_MIN,
       snapshots: SNAPSHOTS,
