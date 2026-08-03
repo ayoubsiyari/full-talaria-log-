@@ -77,11 +77,11 @@ Pulled from `docs/plan3/TICKET-STATUS-LEDGER-20260729.md` and `docs/plan3/CANARY
 | --- | --- | --- |
 | TAL-01696 | **OPEN** | PO signature packet: `docs/plan3/LEDGER-CLOSEOUT-PACK-20260803.md` |
 | TAL-01698 | **OPEN** | PO signature packet: `docs/plan3/LEDGER-CLOSEOUT-PACK-20260803.md` |
-| TAL-01617 | **CLEARED** | `PO-SIGNED: PO 2026-08-03` — cleared on PO's word |
+| TAL-01617 | **CLEARED** | `PO-SIGNED: PO 2026-08-03` — PO stated resolved at 12:57+01:00 and confirmed closed at 15:44+01:00. Basis is the PO's own verification, not a gate: both rows sat `NEEDS-INFO` because no reproduction steps ever existed, so the PO is the only party who could retire them. No runtime evidence is claimed and none is owed. |
 | TAL-01865 | **OPEN** | owner-blocked on A (symbol persist) |
 | M17-DI2 / TAL-01918 | **OPEN** | blocked-on-build in ticket ledger; product guard restored on train tip — needs stamp confirmation |
 | Rayan #8 | **OPEN** | PO signature packet: `docs/plan3/LEDGER-CLOSEOUT-PACK-20260803.md` |
-| TAL-01941 | **CLEARED** | `PO-SIGNED: PO 2026-08-03` — cleared on PO's word |
+| TAL-01941 | **CLEARED** | `PO-SIGNED: PO 2026-08-03` — PO stated resolved at 12:57+01:00 and confirmed closed at 15:44+01:00. Same basis as TAL-01617: instrumentation/repro-only row with no reproduction steps, retired by the PO directly. No runtime evidence is claimed and none is owed. |
 
 > Deployed-build Script rows that are "open until Script N on stamp" are **not** listed as product defects once the fix is KILLED above; they are **verification debt** against the final tip. They still need a green Script run or an explicit PO waiver before soak fire.
 
