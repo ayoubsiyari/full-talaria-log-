@@ -27,6 +27,7 @@ A blocked manager reads this rather than waiting for a relay.
 | Diagnostic V8 heap used | **68.469 → 131.139 → 157.492 MB** | `DIAGNOSTIC_ONLY` — B-C +26.353 MB after A-B +62.670 MB; not authoritative slope/plateau |
 | Diagnostic constructor self-size | **A-C +18.692 MB positive / +11.291 MB net** | `DIAGNOSTIC_ONLY` — B-C +3.091 MB positive / +2.962 MB net |
 | Runtime watchdogs | **0 heartbeat timeouts / 0 phase overdue** | `CLEAN_DIAGNOSTIC` — report verdict line says runtimeAnomaly=NO |
+| `m20Q6CapturedClear` retainer hunt | **13 instances / 416 bytes in C** | `NAMED_LEAD_PRESENT_SMALL` — offline C-snapshot pass finds Window timer API retainers plus one managed-listener path |
 
 **Blocked on someone else** — The authoritative read is not running yet. It must run later with Cursor
 closed and host-scope locking in place or an explicit quiet-box window. A owns RUN-LOCK-01 host scope.

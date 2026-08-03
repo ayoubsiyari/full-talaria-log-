@@ -1,0 +1,93 @@
+{
+  "signature": "V8_PLAYBACK_M20Q6_RETAINER_HUNT_V1",
+  "at": "2026-08-03T16:24:50.593Z",
+  "sourceSnapshot": "_evidence/manager-E/v8-playback-heap-slope-20260803/2026-08-03T14-34-45-491Z/C.heapsnapshot",
+  "target": "m20Q6CapturedClear",
+  "retainerPaths": {
+    "signature": "TALARIA_HEAP_RETAINER_PATHS_V1",
+    "meta": {
+      "ranking": "aggregated-identical-paths-by-total-self-bytes",
+      "note": "One line per distinct retainer path; element indices collapsed to []. Dominator approx via BFS spanning tree from GC roots.",
+      "maxDepth": 20,
+      "topPaths": 20,
+      "samplePerCtor": 10000,
+      "cacheSuspectTokens": [
+        "_tfDataCache",
+        "_btTfDataCache",
+        "_smartPrefetchCache",
+        "_btTfCache",
+        "smartPrefetch",
+        "__talariaBarStore",
+        "fullRawData",
+        "rawData"
+      ]
+    },
+    "byConstructor": [
+      {
+        "constructor": "m20Q6CapturedClear",
+        "instanceCount": 13,
+        "sampledCount": 13,
+        "totalSelfBytes": 416,
+        "pathCount": 7,
+        "paths": [
+          {
+            "path": "synthetic → system / NativeContext / http://31.97.192.82:3000[] → Window [JSGlobalObject] / http://31.97.192.82:3000[global_object] → m20Q6CapturedClear[cancelAnimationFrame]",
+            "instanceCount": 3,
+            "totalSelfBytes": 96,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://31.97.192.82:3000[] → Window [JSGlobalObject] / http://31.97.192.82:3000[global_object] → m20Q6CapturedClear[clearInterval]",
+            "instanceCount": 3,
+            "totalSelfBytes": 96,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://31.97.192.82:3000[] → Window [JSGlobalObject] / http://31.97.192.82:3000[global_object] → m20Q6CapturedClear[clearTimeout]",
+            "instanceCount": 3,
+            "totalSelfBytes": 96,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "ChartDataPipeline → Chart[chart] → Array[_managedListeners] → (object elements)[elements] → Object[] → Window / http://31.97.192.82:3000[target] → system / Map[map] → Window [JSGlobalObject] / http://31.97.192.82:3000[prototype] → m20Q6CapturedClear[cancelAnimationFrame]",
+            "instanceCount": 1,
+            "totalSelfBytes": 32,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "ChartDataPipeline → Chart[chart] → Array[_managedListeners] → (object elements)[elements] → Object[] → Window / http://31.97.192.82:3000[target] → system / Map[map] → Window [JSGlobalObject] / http://31.97.192.82:3000[prototype] → m20Q6CapturedClear[clearInterval]",
+            "instanceCount": 1,
+            "totalSelfBytes": 32,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "ChartDataPipeline → Chart[chart] → Array[_managedListeners] → (object elements)[elements] → Object[] → Window / http://31.97.192.82:3000[target] → system / Map[map] → Window [JSGlobalObject] / http://31.97.192.82:3000[prototype] → m20Q6CapturedClear[clearTimeout]",
+            "instanceCount": 1,
+            "totalSelfBytes": 32,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "system / InstructionStream → system / Code[code] → system / BytecodeArray[interpreter_data] → (constant pool)[] → system / SharedFunctionInfo / m20Q6CapturedClear[] → m20Q6CapturedClear[name_or_scope_info]",
+            "instanceCount": 1,
+            "totalSelfBytes": 32,
+            "suspectTokens": [],
+            "class": "application"
+          }
+        ],
+        "classBytes": {
+          "script-source": 0,
+          "cache-suspect": 0,
+          "network-ish": 0,
+          "application": 416
+        },
+        "cacheSuspectHits": []
+      }
+    ]
+  }
+}
