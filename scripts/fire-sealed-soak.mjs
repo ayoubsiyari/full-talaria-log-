@@ -419,5 +419,27 @@ if (!seen) {
   process.exit(1);
 }
 console.log(`heartbeat: ${seen.state}, child pid ${seen.pid ?? '(unreported)'}`);
+
+/**
+ * Claim the queue for the CHILD, not for this launcher. This process exits seconds from now; a claim
+ * carrying its pid would read as abandoned almost immediately, which is how E's claim came to look
+ * stale 28 s after it was made. `seen.pid` is the soak itself and stays alive for the whole arm.
+ *
+ * Claimed after the launch proof rather than before it, because a claim for a run that never booted
+ * is worse than no claim: it holds the box against a process that does not exist.
+ */
+if (seen.pid) {
+  const q = spawnSync(process.execPath, ['scripts/measurement-queue.mjs', 'claim',
+    '--owner=C', `--run=sealed-two-arm-soak-${ARM}${SMOKE ? '-smoke' : ''}`,
+    `--pid=${seen.pid}`, `--eta=${cfg.hours}h`], { encoding: 'utf8', cwd: process.cwd() });
+  const said = String(q.stdout || q.stderr || '').trim().split('\n')[0] || '(no output)';
+  console.log(`[fire] queue claim: ${said}`);
+  // A refused claim does not stop a run that is already booted and holding RUN-LOCK-01 — but it must
+  // be said out loud, because the whole point of the queue is that the board matches the machine.
+  if (q.status !== 0) console.log('[fire] NOTE: the claim did not take. The run is live and locked; the QUEUE is wrong.');
+} else {
+  console.log('[fire] NOTE: child pid unreported, so no queue claim was made. The run holds RUN-LOCK-01 regardless.');
+}
+
 console.log('\nSoak is live and detached. It survives this shell closing.');
 process.exitCode = 0;
