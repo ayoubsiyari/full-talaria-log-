@@ -7,6 +7,10 @@ import path from 'node:path';
 import { execFileSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { readCandidateCoordinates } from './lib/a3-speed-fill-journal-parity.mjs';
+import {
+  groupRuns,
+  readNodeProcesses,
+} from './measurement-queue.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..');
@@ -18,6 +22,10 @@ function argOf(name, fallback = '') {
   const idx = process.argv.indexOf(`--${name}`);
   if (idx >= 0 && process.argv[idx + 1]) return process.argv[idx + 1];
   return fallback;
+}
+
+function hasFlag(name) {
+  return process.argv.includes(`--${name}`) || process.argv.includes(`--${name}=1`);
 }
 
 const ORIGIN = String(argOf('origin', process.env.TEST_VPS_URL || 'http://31.97.192.82:3000')).replace(/\/$/, '');
@@ -32,6 +40,8 @@ const QUEUE_RUN = String(argOf('queue-run', 'TAL-PO-UI-SMOKE'));
 const QUEUE_ETA = String(argOf('queue-eta', '5m'));
 const FORCE_PREFLIGHT_EXIT = argOf('force-preflight-exit', '');
 const STOP_AFTER_BLOCKS = Math.max(0, Number(argOf('stop-after-blocks', '0')) || 0);
+const EXCLUSIVE_QUEUE = hasFlag('exclusive-queue') || argOf('queue-mode', '') === 'exclusive';
+const AUTHORITATIVE_READ_RE = /(?:v8-|v8_|heap|detailed-dump|canonical-floor|floor-retake|sealed-two-arm-soak|fire-sealed-soak|arena|competitor-reference|footprint|memory|soak)/i;
 
 function append(row) {
   fs.mkdirSync(path.dirname(OUT_JSONL), { recursive: true });
@@ -102,12 +112,61 @@ function releaseQueue() {
   return release;
 }
 
+function authoritativeReadBlocker() {
+  const procs = readNodeProcesses();
+  if (procs === null) {
+    return {
+      ok: false,
+      state: 'MACHINE_UNREADABLE',
+      reason: 'could not read live node processes; refusing to call authoritative-read state clear',
+    };
+  }
+  const groups = groupRuns(procs, { self: process.pid });
+  const blockers = [];
+  for (const group of groups) {
+    const haystack = [
+      group.rootScript,
+      ...(group.members || []).map((m) => m.script),
+      ...(group.members || []).map((m) => m.cmd),
+    ].filter(Boolean).join(' ');
+    if (AUTHORITATIVE_READ_RE.test(haystack)) {
+      blockers.push({
+        rootPid: group.rootPid,
+        rootScript: group.rootScript,
+        members: group.members,
+      });
+    }
+  }
+  if (blockers.length) {
+    return {
+      ok: false,
+      state: 'AUTHORITATIVE_READ_ACTIVE',
+      blockers,
+      reason: blockers.map((b) => `${b.rootScript || 'node'}#${b.rootPid}`).join(' | '),
+    };
+  }
+  return { ok: true, state: 'NO_AUTHORITATIVE_READ_ACTIVE' };
+}
+
 function runCanary(surface) {
   return new Promise((resolve) => {
-    const queue = claimQueueOrBlock(surface);
-    if (!queue.ok) {
-      resolve({ ok: false, blocked: true, queue });
-      return;
+    let queue = null;
+    if (EXCLUSIVE_QUEUE) {
+      queue = claimQueueOrBlock(surface);
+      if (!queue.ok) {
+        resolve({ ok: false, blocked: true, queue });
+        return;
+      }
+    } else {
+      const blocker = authoritativeReadBlocker();
+      if (!blocker.ok) {
+        append({ event: 'CONTENTION_TOLERANT_BLOCKED', surface, blocker });
+        console.error(`TAL_PO_UI_SMOKE_BLOCKED_CONTENTION_TOLERANT ${blocker.state} ${blocker.reason || ''}`);
+        resolve({ ok: false, blocked: true, contention: blocker });
+        return;
+      }
+      append({ event: 'CONTENTION_TOLERANT_CLEAR', surface, blocker });
+      console.error('TAL_PO_UI_SMOKE_CONTENTION_TOLERANT_CLEAR no authoritative read active; not claiming queue');
     }
     const args = [
       CANARY_SCRIPT,
@@ -138,7 +197,7 @@ function runCanary(surface) {
     });
     child.on('close', (code, signal) => {
       const ok = code === 0;
-      releaseQueue();
+      if (queue) releaseQueue();
       append({
         event: ok ? 'RUN_PASSED' : 'RUN_FAILED',
         code,
@@ -153,8 +212,15 @@ function runCanary(surface) {
   });
 }
 
-append({ event: 'WATCH_START', origin: ORIGIN, expectBadge: EXPECT_BADGE, everyMs: EVERY_MS, canaryOut: CANARY_OUT });
-console.error(`TAL_PO_UI_SMOKE_WATCH_START badge=${EXPECT_BADGE} origin=${ORIGIN} everyMs=${EVERY_MS}`);
+append({
+  event: 'WATCH_START',
+  origin: ORIGIN,
+  expectBadge: EXPECT_BADGE,
+  everyMs: EVERY_MS,
+  canaryOut: CANARY_OUT,
+  mode: EXCLUSIVE_QUEUE ? 'exclusive-queue' : 'contention-tolerant',
+});
+console.error(`TAL_PO_UI_SMOKE_WATCH_START badge=${EXPECT_BADGE} origin=${ORIGIN} everyMs=${EVERY_MS} mode=${EXCLUSIVE_QUEUE ? 'exclusive-queue' : 'contention-tolerant'}`);
 
 let fired = false;
 let blockedCount = 0;
