@@ -8,7 +8,13 @@ import test from 'node:test';
 const root = path.resolve(import.meta.dirname, '../..');
 const harnessPackage = path.join(root, 'chart v 1.4/chart/multichart-prod/harness/package.json');
 const require = createRequire(harnessPackage);
-const puppeteer = require('puppeteer');
+/**
+ * HOST-SCOPE-01. A test that launches Chrome consumes the box exactly like an
+ * instrument does, and a suite run during someone's measurement contaminates it just
+ * as thoroughly — so it takes host scope too, and refuses rather than joining.
+ */
+const { withHostScope } = await import('../lib/heap-cycle-browser.mjs');
+const puppeteer = withHostScope(require('puppeteer'), { script: 'module-presence-browser.test.mjs' });
 
 const files = {
   '/host.html': 'chart v 1.4/talaria-design/live/index.html',

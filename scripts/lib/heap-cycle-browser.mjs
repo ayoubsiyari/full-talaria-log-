@@ -116,9 +116,38 @@ export async function readFrameTree(cdp, label = 'frames') {
   }
 }
 
-export async function loadPuppeteer() {
+/**
+ * HOST-SCOPE-01. Every instrument in this tree gets puppeteer from here, so this is
+ * where the box gets claimed: `launch` is wrapped to take host scope first and
+ * refuse before Chrome exists.
+ *
+ * Bound to the launch on purpose. Five contention incidents today all had the same
+ * shape — a run that simply did not ask — and the fifth was mine, twelve arms across
+ * E's V8 read. A precondition each instrument has to remember is not a precondition,
+ * and the authoritative read runs with Cursor closed and nobody there to notice.
+ *
+ * Wrapped rather than replaced: everything else on the puppeteer object is passed
+ * through untouched, so no caller has to change and no caller can opt out by
+ * accident.
+ */
+export function withHostScope(puppeteer, { script = null, artifact = null } = {}) {
+  if (!puppeteer || typeof puppeteer.launch !== 'function' || puppeteer.__talariaHostScoped) return puppeteer;
+  const scoped = Object.create(puppeteer);
+  scoped.__talariaHostScoped = true;
+  scoped.launch = async (...args) => {
+    const { ensureHostScope } = await import('./run-lock.mjs');
+    ensureHostScope({
+      script: script || path.basename(process.argv[1] || 'unknown'),
+      artifact,
+    });
+    return puppeteer.launch(...args);
+  };
+  return scoped;
+}
+
+export async function loadPuppeteer(options = {}) {
   try {
-    return require('puppeteer');
+    return withHostScope(require('puppeteer'), options);
   } catch (error) {
     throw new Error(`puppeteer unavailable under harness package: ${error?.message || error}`);
   }

@@ -41,6 +41,8 @@
     "test:known-weakness": "node --test scripts/lib/known-weakness.selftest.mjs",
     "test:bar-basis": "node --test scripts/lib/bar-basis.selftest.mjs",
     "test:settle-criterion": "node --test scripts/lib/settle-criterion.selftest.mjs",
+    "test:phase-survival": "node --test scripts/lib/phase-survival.selftest.mjs",
+    "gate:settle-roster": "node scripts/settle-compliance-roster.mjs",
     "test:first-paint-allowance": "node --test scripts/lib/first-paint-allowance.selftest.mjs",
     "test:arm-equality": "node --test scripts/lib/arm-equality.selftest.mjs",
     "test:soak-hanging-stub": "node --test scripts/tests/soak-hanging-stub.test.mjs scripts/tests/bounded-phase.test.mjs",
@@ -222,7 +224,10 @@
     "test:axis-highlight-clip-release": "npm run preflight:axis-highlight-clip-release",
     "gate:board-state": "node scripts/board-state-block-audit.mjs",
     "test:board-state": "node scripts/board-state-block-audit.selftest.mjs",
-    "mutants:board-state": "node scripts/board-state-block-audit.mutants.mjs"
+    "mutants:board-state": "node scripts/board-state-block-audit.mutants.mjs",
+    "gate:host-scope": "node scripts/host-scope-adoption-audit.mjs",
+    "test:host-scope": "node scripts/host-scope-adoption-audit.selftest.mjs",
+    "mutants:host-scope": "node scripts/host-scope-adoption-audit.mutants.mjs"
   },
   "dependencies": {
     "dukascopy-node": "^1.46.3",

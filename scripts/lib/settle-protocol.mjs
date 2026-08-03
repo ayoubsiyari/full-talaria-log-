@@ -20,6 +20,66 @@ export const SETTLE_MAX_MS = 180_000;   // 3 min
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * QUIESCE-01 — the omission this module propagated to 26 instruments, fixed here rather than in them.
+ *
+ * V1 forced collection and waited, and never stopped the page. Every instrument that inherited the
+ * protocol inherited that: it collected on a live, allocating session and read afterwards, so the
+ * pair of readings around the collection were two random-phase samples of a running sawtooth. The
+ * five b120 reps show the signature — post-GC totals spanning 188.2 MB across one configuration, and
+ * a JS heap that read HIGHER after collection in four of five.
+ *
+ * The four instruments that got this right each wrote their own local `pauseAll`, because there was
+ * no shared one to call. That is the whole mechanism of the failure: correctness was available only
+ * to whoever thought of it. It is now the default, and opting out is loud.
+ *
+ * Pauses the host realm and every child frame, reporting per-realm before/after so a pause that did
+ * not take is visible rather than assumed.
+ */
+export async function quiesce(page) {
+  const realms = await page.evaluate(() => {
+    const out = [];
+    const visit = (w, label) => {
+      try {
+        const rs = w.replaySystem || w.chart?.replaySystem;
+        if (!rs) return;
+        const before = !!rs.isPlaying;
+        if (typeof rs.pause === 'function') rs.pause();
+        else if (typeof rs.togglePlayPause === 'function' && before) rs.togglePlayPause();
+        out.push({ realm: label, before, after: !!rs.isPlaying });
+      } catch (e) { out.push({ realm: label, error: String(e).slice(0, 80) }); }
+    };
+    visit(window, 'host');
+    for (let i = 0; i < window.frames.length; i += 1) {
+      try { visit(window.frames[i], `frame${i}`); } catch (_) { /* cross-origin */ }
+    }
+    return out;
+  }).catch((e) => [{ realm: 'host', error: String(e?.message || e).slice(0, 120) }]);
+
+  const found = Array.isArray(realms) ? realms.filter((r) => !r.error) : [];
+  // Verified means: we found replay systems AND every one of them reports stopped. Finding none is
+  // NOT quiescence — it is an unknown, and an unknown must not read as a pass.
+  const verified = found.length > 0 && found.every((r) => r.after === false);
+  return {
+    quiescent: verified,
+    realms,
+    realmsFound: found.length,
+    wasPlaying: found.some((r) => r.before === true),
+    why: verified ? null
+      : (found.length === 0
+        ? 'no replay system found in any realm, so quiescence could not be established or ruled out'
+        : 'at least one realm still reports playing after the pause'),
+  };
+}
+
+/** Read total JS heap across the page's isolates, for the across-collection check in condition C. */
+async function readHeapMB(page) {
+  try {
+    const v = await page.evaluate(() => (performance?.memory?.usedJSHeapSize ?? null));
+    return v == null ? null : +(v / (1024 * 1024)).toFixed(2);
+  } catch { return null; }
+}
+
 /** Force collection on the page's isolate. Reports whether the CDP route was actually available. */
 export async function forceCollection(page, { rounds = 3, gapMs = 400, tailMs = 1500 } = {}) {
   let cdp = null;
@@ -103,6 +163,15 @@ export async function readUnderSettleProtocol({
   label = 'reading',
   log = () => {},
   skipSettle = false,
+  /**
+   * QUIESCE-01. Pausing before the settle is the DEFAULT, because a reading taken on a playing page
+   * is a different quantity and 26 instruments were silently taking it. Opting out is deliberate and
+   * requires a reason, which is recorded on the reading — an instrument that genuinely measures a
+   * live session (arena sampling during play) says so in the artifact rather than looking identical
+   * to one that forgot.
+   */
+  quiesceFirst = true,
+  quiesceOptOutReason = null,
 }) {
   const t0 = Date.now();
   let eventResult = null;
@@ -112,6 +181,22 @@ export async function readUnderSettleProtocol({
   }
   const eventAt = Date.now();
 
+  let quiescence;
+  if (quiesceFirst) {
+    log(`${label}: quiesce`);
+    quiescence = await quiesce(page);
+    if (!quiescence.quiescent) log(`${label}: QUIESCENCE NOT VERIFIED — ${quiescence.why}`);
+  } else {
+    quiescence = {
+      quiescent: false,
+      optedOut: true,
+      why: quiesceOptOutReason
+        || 'quiesceFirst=false with no reason given; this reading samples a live page and its '
+           + 'error bar is the sawtooth amplitude, not the measurement precision',
+    };
+    log(`${label}: NOT quiescing — ${quiescence.why}`);
+  }
+
   let waited = 0;
   if (!skipSettle) {
     log(`${label}: settle ${(settleMs / 1000).toFixed(0)}s`);
@@ -119,22 +204,36 @@ export async function readUnderSettleProtocol({
     waited = Date.now() - eventAt;
   }
 
+  // Condition C needs both sides of the collection. Taken here so every inheriting instrument gets
+  // the re-allocation check without writing it.
+  const heapBeforeGcMB = await readHeapMB(page);
   log(`${label}: forced collection`);
   const gc = await forceCollection(page);
+  const heapAfterGcMB = await readHeapMB(page);
 
   log(`${label}: read`);
   const value = await read();
 
   const grade = gradeSettle({ settleWaitedMs: waited, forcedGcOk: gc.forcedGcOk });
+  const heapRoseMB = (heapBeforeGcMB != null && heapAfterGcMB != null)
+    ? +(heapAfterGcMB - heapBeforeGcMB).toFixed(2) : null;
   return {
     label,
-    protocol: 'SETTLE-PROTOCOL-V1',
-    order: 'event -> settle -> forced collection -> read',
+    protocol: 'SETTLE-PROTOCOL-V2',
+    order: 'event -> quiesce -> settle -> forced collection -> read',
     at: new Date().toISOString(),
     eventResult,
     settleMs,
     settleWaitedMs: waited,
     skipSettle,
+    // The fields SETTLE-CRITERION-V2 grades on. Present on every reading now, so an artifact can be
+    // judged phase-clean or phase-corrupt after the fact instead of by reading the instrument.
+    quiescent: quiescence.quiescent,
+    quiescence,
+    heapBeforeGcMB,
+    heapAfterGcMB,
+    heapRoseAcrossCollectionMB: heapRoseMB,
+    collectionResampled: heapRoseMB == null ? null : heapRoseMB > 0,
     ...gc,
     ...grade,
     totalElapsedMs: Date.now() - t0,

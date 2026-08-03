@@ -115,7 +115,9 @@ export async function runReplayIntervalBudgetGate(options = {}) {
 
   let puppeteer;
   try {
-    puppeteer = require('puppeteer');
+    // HOST-SCOPE-01: wrapped, so `launch` takes the box before Chrome exists.
+    const { withHostScope } = await import('./lib/heap-cycle-browser.mjs');
+    puppeteer = withHostScope(require('puppeteer'), { script: 'replay-interval-budget-gate.mjs' });
   } catch (error) {
     return {
       ok: false,

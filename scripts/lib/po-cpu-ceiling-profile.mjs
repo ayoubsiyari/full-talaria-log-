@@ -25,12 +25,14 @@ const HARNESS_PKG = path.resolve(
 );
 const require = createRequire(HARNESS_PKG);
 
+/**
+ * HOST-SCOPE-01: the shared loader, not a local copy of it. This file had its own
+ * byte-identical `loadPuppeteer`, which is why it read as scoped while reaching
+ * around the chokepoint — a duplicated helper is a hole that looks like adoption.
+ */
 async function loadPuppeteer() {
-  try {
-    return require('puppeteer');
-  } catch (error) {
-    throw new Error(`puppeteer unavailable under harness package: ${error?.message || error}`);
-  }
+  const { loadPuppeteer: shared } = await import('./heap-cycle-browser.mjs');
+  return shared({ script: path.basename(process.argv[1] || 'po-cpu-ceiling-profile') });
 }
 
 function sleep(ms) {

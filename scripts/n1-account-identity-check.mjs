@@ -15,8 +15,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import puppeteer from 'puppeteer';
-import { uiLoginDeployed } from './lib/heap-cycle-browser.mjs';
+// HOST-SCOPE-01: through the shared loader, so `launch` takes the box first.
+import rawPuppeteer from 'puppeteer';
+import { uiLoginDeployed, withHostScope } from './lib/heap-cycle-browser.mjs';
+
+const puppeteer = withHostScope(rawPuppeteer, { script: 'n1-account-identity-check.mjs' });
 import { clockOf } from './lib/clock.mjs';
 
 const EV = 'c:\\Users\\user\\Desktop\\talaria1\\_evidence\\manager-C';

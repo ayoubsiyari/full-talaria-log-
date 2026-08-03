@@ -577,6 +577,168 @@ export function hostExclusivityWitness(before = null) {
   };
 }
 
+/**
+ * HOST-SCOPE-01 — the box is claimed by the act of launching a browser, not by
+ * remembering to claim first.
+ *
+ * The fifth contention incident, and it was mine. At 21:10:17+01:00 my reference
+ * series claimed the queue reporting STALE_CLAIM and ran twelve arms through
+ * 21:30:43+01:00, straight across E's V8 dominator run — which had been ADOPTED
+ * into the queue at 21:05:25+01:00 and was 37 minutes into the only memory read
+ * anyone completed today. The claim recorded pid 26196; that process was gone while
+ * the run continued as pid 31064, so `pidAlive(claim.pid)` read false, the claim
+ * read stale, and the reclaim was correct by the rules as written.
+ *
+ * Two things were wrong and only one of them is a bug:
+ *   - a claim's liveness was judged by ONE recorded pid, so a run whose launcher
+ *     exits reads as dead while it is still on the box;
+ *   - and the whole mechanism was voluntary. Every incident today came from a run
+ *     that simply did not ask. A precondition that depends on each instrument
+ *     remembering is not a precondition, and the authoritative read runs with
+ *     Cursor closed and nobody watching.
+ *
+ * So this function is bound to `puppeteer.launch` (see loadPuppeteer) rather than
+ * offered to callers. It is idempotent, it consults the queue claim by RUN rather
+ * than by pid, and it refuses before Chrome exists.
+ */
+/**
+ * From REPO_ROOT, not by walking up from LOCK_DIR. The first version resolved
+ * `LOCK_DIR/../..`, and LOCK_DIR is `<repo>/.locks`, so it pointed one level ABOVE
+ * the repo: the claim always read null and the queue check never fired. Eighteen
+ * cells and fifteen mutants were green while the guard was inert against a real
+ * launch — CARRIED and doing nothing, which is the failure class the Director named
+ * this morning and which I only found by launching something.
+ */
+export const QUEUE_STATE_FILE = path.join(REPO_ROOT, '_evidence', 'queue', 'measurement-queue.json');
+let hostScope = null;
+
+export function readQueueClaim(file = QUEUE_STATE_FILE) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')).claim || null; } catch { return null; }
+}
+
+/**
+ * Is a claim still on the box? Judged on the RUN, not on one pid.
+ *
+ * `alive: 'BY_RECORDED_PID'` is the easy case. `BY_RUN_NAME` is tonight's: the
+ * launcher is gone and a process of the same run is still working. Absent that, a
+ * claim whose pid is dead and whose run is nowhere is genuinely stale.
+ */
+export function claimLiveness(claim, procs) {
+  if (!claim) return { state: 'NO_CLAIM', alive: false };
+  /**
+   * `undefined` means "read the box for me"; `null` means "the read FAILED". The
+   * first draft used null for both, so a caller reporting a failed scan was handed a
+   * fresh scan instead and an unreadable box could answer CLAIM_LIVE — the same
+   * sentinel conflation that makes an absent file and an empty file look alike.
+   */
+  const list = procs === undefined ? readNodeProcessesSync() : procs;
+  if (list === null) {
+    return { state: 'CLAIM_LIVENESS_UNKNOWN', alive: true, why: 'the process scan failed, and an unreadable box is not an empty one' };
+  }
+  if (claim.pid && list.some((p) => p.pid === Number(claim.pid))) {
+    return { state: 'CLAIM_LIVE', alive: true, by: 'BY_RECORDED_PID', pid: Number(claim.pid) };
+  }
+  /**
+   * The run token is matched against the SCRIPT IDENTITY on each command line, not
+   * as a substring of the whole line. A first version compared the raw substring and
+   * a planted claim with `run: 'node'` matched an editor helper — a claim would then
+   * read live forever and park the box, which is tonight's failure inverted: instead
+   * of stealing a measurement it would block every one.
+   */
+  const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const token = norm(claim.run);
+  if (token.length >= 6) {
+    const hit = list.find((p) => {
+      const leaf = /([\w.-]+)\.mjs/i.exec(p.cmd);
+      if (!leaf) return false;
+      const l = norm(leaf[1]);
+      return l === token || l.startsWith(token) || token.startsWith(l);
+    });
+    if (hit) {
+      return {
+        state: 'CLAIM_LIVE', alive: true, by: 'BY_RUN_NAME', pid: hit.pid,
+        why: `the claim records pid ${claim.pid}, which is gone, but ${claim.run} is still running as pid ${hit.pid} — `
+          + 'a run whose launcher exited is still on the box',
+      };
+    }
+    return { state: 'CLAIM_STALE', alive: false, why: `pid ${claim.pid} is gone and no process of ${claim.run} is running` };
+  }
+
+  /**
+   * A token too generic to identify a script ("node", "arm2") cannot answer the
+   * question either way, so the box answers it instead: name matching is only a way
+   * to FIND the run, while the scan is the ground truth for whether anything is
+   * measuring. Refusing on a live box costs a relaunch; granting on one costs
+   * somebody's completed read, which is what today already cost us five times.
+   */
+  const scan = foreignRunsSync();
+  if (scan.state !== 'NO_FOREIGN_RUNS') {
+    return {
+      state: 'CLAIM_LIVENESS_UNKNOWN', alive: true, by: 'BY_BOX_SCAN',
+      why: `the claim's run name "${claim.run}" is too generic to identify a script, and the box is `
+        + `${scan.state}${scan.runs?.length ? `: ${scan.runs.map((r) => `${r.script}#${r.pid}`).join(', ')}` : ''}`,
+    };
+  }
+  return {
+    state: 'CLAIM_STALE', alive: false,
+    why: `pid ${claim.pid} is gone, "${claim.run}" does not identify a script, and the box scan found nothing measuring`,
+  };
+}
+
+export function ensureHostScope({
+  script = path.basename(process.argv[1] || 'unknown'),
+  artifact = null,
+  owner = process.env.TALARIA_LANE || null,
+  argv = process.argv,
+  // Injectable so a cell can exercise the real refusal against a planted claim. The
+  // path defect above was invisible precisely because nothing could point this
+  // anywhere a test controlled.
+  queueFile = QUEUE_STATE_FILE,
+} = {}) {
+  if (hostScope) return hostScope;
+
+  const declaredOff = argv.includes('--no-host-scope') || process.env.TALARIA_HOST_SCOPE_OFF === '1';
+  if (declaredOff) {
+    // Kept, but it is a declaration rather than a bypass: it is loud, it is named,
+    // and `host-scope-adoption-audit.mjs` fails if a committed instrument sets it.
+    console.warn('[host-scope] HOST_SCOPE_DECLARED_OFF — this run is not protected and its reading is not citable '
+      + 'as an exclusive measurement. Recorded so nobody reads it as one.');
+    hostScope = { state: 'HOST_SCOPE_DECLARED_OFF', citable: false, release() {} };
+    return hostScope;
+  }
+
+  const claim = readQueueClaim(queueFile);
+  const live = claimLiveness(claim);
+  if (claim && live.alive && owner && claim.owner !== owner) {
+    console.error(`[host-scope] QUEUE_HELD_BY_ANOTHER_OWNER — ${claim.owner}/${claim.run} holds the box`
+      + `${live.by === 'BY_RUN_NAME' ? ` (still running as pid ${live.pid}, its recorded pid ${claim.pid} is gone)` : ` (pid ${live.pid})`}.\n`
+      + `             ${live.why || ''}\n`
+      + '             Nothing was written and no browser was launched. This is the check that was missing at '
+      + '21:10:17+01:00, when a claim whose launcher had exited read as stale and twelve arms ran across E\'s V8 read.');
+    process.exit(3);
+  }
+
+  const lock = acquireRunLockOrExit({ script, artifact, host: true, ...lockFlagsFromArgv(argv) });
+  hostScope = {
+    state: 'HOST_SCOPE_HELD',
+    citable: true,
+    lockState: lock.state,
+    queueClaim: claim ? { owner: claim.owner, run: claim.run, liveness: live.state } : null,
+    release() { try { lock.release(); } catch { /* exit handler covers it */ } hostScope = null; },
+  };
+  return hostScope;
+}
+
+/** For cells: the singleton is module state and a test must be able to clear it. */
+export function resetHostScopeForTests() { hostScope = null; }
+
+/**
+ * Whether host scope was taken, and how. Exported so a cell can prove the LAUNCH
+ * took it rather than trusting that it did — the first version of that cell asserted
+ * only that a launch succeeded, which passed identically with the binding deleted.
+ */
+export function currentHostScope() { return hostScope; }
+
 export function lockFlagsFromArgv(argv = process.argv) {
   const hit = argv.find((a) => a.startsWith('--wait-for-host='));
   return {
