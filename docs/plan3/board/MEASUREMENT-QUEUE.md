@@ -252,3 +252,9 @@ had ended) and not by a test cell. That is a real limitation and it is stated ra
 - 2026-08-03T19:55:52Z · RELEASE · A · competitor-reference-arms
 - 2026-08-03T19:57:02Z · ADOPT · D · TAL-PO-UI-SMOKE-MUTANTS-LIVE · pid 29092 · run was already live and unclaimed
 - 2026-08-03T19:58:20Z · RELEASE · D · TAL-PO-UI-SMOKE-MUTANTS-LIVE
+- 2026-08-03T20:05:25Z · ADOPT · E · v8-dominator-subtree-diff · pid 26196 · run was already live and unclaimed
+- 2026-08-03T20:09:40Z · RESERVE · A · competitor-reference-arms · position 1
+- 2026-08-03T20:09:53Z · CANCEL · A · competitor-reference-arms · was position 1
+- 2026-08-03T20:30:43Z · RELEASE · A · competitor-reference-arms
+- 2026-08-03T20:50:03Z · RESERVE · E · v8-smart-cache-perturbation · position 1 (front)
+- 2026-08-03T20:50:44Z · CLAIM · E · v8-smart-cache-perturbation · pid 15412

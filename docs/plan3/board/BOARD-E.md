@@ -7,7 +7,7 @@ A blocked manager reads this rather than waiting for a relay.
 
 ---
 
-## CURRENT STATE — E's lane · maintained in place · last updated 21:44+01:00
+## CURRENT STATE — E's lane · maintained in place · last updated 21:50+01:00
 
 > **This block is the one part of this file that is NOT append-only.** It is overwritten, so it
 > answers *what is true now*; everything below answers *what happened*. Every number here carries
@@ -29,7 +29,8 @@ A blocked manager reads this rather than waiting for a relay.
 | Snapshot A | **captured at 15:36:47+01:00** | `OBSERVED_ARTIFACT` — `_evidence/manager-E/v8-playback-heap-slope-20260803/2026-08-03T14-34-45-491Z/A.heapsnapshot` |
 | Snapshot B | **captured at 16:22:04+01:00** | `OBSERVED_ARTIFACT` — `_evidence/manager-E/v8-playback-heap-slope-20260803/2026-08-03T14-34-45-491Z/B.heapsnapshot` |
 | Snapshot C | **captured at 17:07:24+01:00** | `OBSERVED_ARTIFACT` — `_evidence/manager-E/v8-playback-heap-slope-20260803/2026-08-03T14-34-45-491Z/C.heapsnapshot` |
-| Queue claim | **released at 17:22:24+01:00** | `RELEASED` — next queue holder is A/order01b-readback-canary-rerun-4up |
+| Queue claim | **claimed at 21:50:43+01:00** | `RUNNING` — E/v8-smart-cache-perturbation; command uses committed `b76e71852` instrument with `--perturbation=disable-smart-prefetch-cache` |
+| V8 smart-cache perturbation | **started at 21:50:44+01:00** | `RUNNING` — CONF-01 same-symbol, 4 panels, playback at 10 bars/s, `_smartPrefetchCache` disabled/cleared in each chart realm; tests whether the monotone **36 MB/hour** JS-side slope remains after removing the asymptotic cache hoard |
 | Foreign host process | **started 16:37:13+01:00** | `HOST_CONTAMINATION_RISK` — `order01b-readback-canary-run.mjs#31064` joined during E's B-C interval |
 | Authoritative read capability | **GATE-01 PASS 4/4** | `BUILT_NOT_RUN` — `v8-authoritative-heap-read` samples every 3 min and overlays floors at 0/45/90 |
 | Diagnostic V8 heap used | **68.469 → 131.139 → 157.492 MB** | `DIAGNOSTIC_ONLY` — B-C +26.353 MB after A-B +62.670 MB; not authoritative slope/plateau |
@@ -59,8 +60,8 @@ positive constructor self-size and `m20Q6CapturedClear +7.270 MB`, are quotable 
 salvage, not as flattening/slope evidence. `BUFFER-PARTITION-DISCRIMINATOR-V1` did not assign the
 120 MB buffer shelf; its arm numbers are negative/weak-transient owner eliminations, not an owner claim.
 
-**Next required update** — V8: take the perturbation run next. Disable or bypass `_smartPrefetchCache`
-to remove the asymptotic hoard, then measure whether the monotone **36 MB/hour** JS-side slope remains.
+**Next required update** — V8: wait for the smart-cache perturbation A/B/C snapshots and grade whether
+the monotone **36 MB/hour** JS-side slope remains after `_smartPrefetchCache` is disabled.
 Item 6: C wires the ownership-detail call into the sampler and emits
 four detailed dump artifacts: `zerotrade:start`, `zerotrade:end`, `trades:start`, `trades:end`. E then
 parses those artifacts with `node scripts/detailed-dump-parser.mjs <files> --out=<report>`.
@@ -190,3 +191,4 @@ and the M17-DI2 restore in `1c8892c51`.
 - 21:28+01:00 · E · APPLIED · `V8-DOMINATOR-SUBTREE-FALLBACK` · Found and fixed an undercount in the fallback before using it: repeated logical paths across panels were collapsed instead of aggregated. New regression proves repeated `Chart -> Map._smartPrefetchCache` paths aggregate before diffing. Verification: `npm run gate:v8-dominator-subtree` PASS 3/3 at 21:28+01:00.
 - 21:28+01:00 · E · DIAGNOSTIC OWNER LEAD · `V8-SLOPE-DOMINATOR-SUBTREE` · Applied the fixed dominator diff to the completed diagnostic CONF-01 four-panel playback snapshots. Reports: `A-B-dominator-subtree-diff.json`, `B-C-dominator-subtree-diff.json`, `A-C-dominator-subtree-diff.json` under `_evidence/manager-E/v8-playback-heap-slope-20260803/2026-08-03T14-34-45-491Z/`. Named owner lead is `Chart -> Map._smartPrefetchCache`: **0.384 → 10.827 → 13.239 MB**, deltas **+10.443 MB A-B**, **+2.413 MB B-C**, **+12.855 MB A-C**, occurrence count **4 → 4 → 4**. Verdict: named multi-MB product owner, flattening tail; it explains the retained-node snapshot delta lead, not the full CDP `jsHeapUsedMB` slope.
 - 21:44+01:00 · E · RECLASSIFIED · `SMART-PREFETCH-HOARD-NOT-SLOPE` · Shape is one cache per panel filling, not cache multiplication: occurrence count stays **4 → 4 → 4** while retained MB grows **+10.443 A-B** then only **+2.413 B-C**. This is an asymptotic hoard and strong evidence it is not the monotone **36 MB/hour** JS-side slope owner. Four hoard questions: capped = only entry-count capped (**48 entries**, **15 min** TTL), not proven to the standing **5,000 + 2,048** price-window rule; teardown release = **NO** by code (`destroy()` drops series/canvas but not `_smartPrefetchCache`); return-to-single survival = **UNPROVEN** and must be measured; refresh survival = **NO EVIDENCE** beyond normal document replacement. Because teardown/window discipline is not green, this is a fix row, not just a finding.
+- 21:50+01:00 · E · RUNNING · `V8-SMART-CACHE-PERTURBATION` · Reserved and claimed E/v8-smart-cache-perturbation; launch smoke check is clean. Instrument commit `b76e71852` is running `scripts/v8-monotone-heap-diff.mjs --outDir=_evidence/manager-E/v8-smart-cache-perturbation-20260803 --totalMin=90 --snapshots=3 --speed=10 --topN=25 --snapCapMB=3072 --perturbation=disable-smart-prefetch-cache`. Terminal reported claim at `2026-08-03T20:50:43Z` / `21:50:43+01:00` and boot start at `2026-08-03T20:50:44Z` / `21:50:44+01:00`.
