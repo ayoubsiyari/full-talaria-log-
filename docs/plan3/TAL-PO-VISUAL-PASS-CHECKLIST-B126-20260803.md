@@ -1,11 +1,11 @@
 # TAL PO Visual Pass Checklist — b126
 
-Timestamp: 2026-08-03 22:59+01:00  
+Timestamp: 2026-08-03 23:12+01:00  
 Surface: `20260803b126` visual pass before seal  
 Purpose: give the PO direct pass/fail rows for TAL-01696, TAL-01698, TAL-01865, Rayan #8, and the refresh-persistence directive.
 
 Mark each row `PASS` or `FAIL` from the served b126 UI. This checklist is visual evidence; it does not replace the queued served mutant suite or money-path gates.
-Rows 1–18 are **Seal Gate 3**. Rows 19–24 are **Beyond Gate** and must not extend the PO's committed visual-pass window.
+Rows 1–18 are **Seal Gate 3**. Rows 19–24 are **Beyond Gate** and must not extend the PO's committed visual-pass window. Rows 25–31 are the PO b122-recipe addendum.
 
 ## Seal Gate 3 — Rows 1–18
 
@@ -36,3 +36,13 @@ Rows 1–18 are **Seal Gate 3**. Rows 19–24 are **Beyond Gate** and must not e
 22. Money-path refresh survival restores pending orders — after refresh, pending orders remain present with the same values.
 23. Money-path refresh survival restores journal — after refresh, journal rows remain present and unchanged.
 24. Money-path refresh survival restores balance — after refresh, account balance remains intact.
+
+## PO b122 Recipe Addendum — Rows 25–31
+
+25. Candle jitter — expected state `STABLE_CANDLES` — PASS if candles remain visually anchored during play, pause, and step-through; FAIL if candles shimmer, jump, or redraw in place while the market time is not changing.
+26. Panels self-pausing — expected state `NO_SELF_PAUSE` — PASS if every visible panel continues playback until the user pauses; FAIL if any panel pauses itself, falls out of play, or silently stops advancing while the host keeps moving.
+27. Speed drift against governed rate — expected state `RATE_GOVERNED` — PASS if the observed playback rate stays aligned with the selected governed speed; FAIL if playback visibly accelerates, slows, or drifts away from the governed rate over the run.
+28. Cross-timeframe sync between panels — expected state `XTF_SYNC_BY_MARKET_TIME` — PASS if panels on different timeframes remain aligned to the same market-time playhead; FAIL if one panel leads, lags, or shows a candle inconsistent with the host market time.
+29. Black panels after refresh — expected state `PANELS_RENDER_AFTER_REFRESH` — PASS if every panel repaints with candles and overlays after refresh; FAIL if any panel is black, blank, or stuck behind an unpainted surface.
+30. Two-tries load — expected state `LOADS_FIRST_TRY` — PASS if the session opens and paints on the first load attempt; FAIL if the first load stalls, blanks, or requires a second refresh/open to become usable.
+31. Drain after pause — expected state `PAUSE_DRAIN_RELEASES_MEMORY` — PASS if pausing replay lets memory drop or stabilize after the drain window; FAIL if memory keeps rising or does not release after pause.
