@@ -114,7 +114,8 @@ function claim() {
 }
 
 async function main() {
-  log(`three arms, one slot: ${ARMS.map((a) => a.key).join(' -> ')}`);
+  log(`${new Set(ARMS.map((a) => a.key)).size} arms x ${REPEATS} rounds, one slot, round-robin: `
+    + `${ARMS.map((a) => `${a.key}#${a.round}`).join(' -> ')}`);
   const gate = await waitForBox({ owner: 'A', waitMaxMs: WAIT_MAX_MS, log });
   if (!gate.free) {
     // The state, not a guess at it: this line once printed WAIT_TIMEOUT six
