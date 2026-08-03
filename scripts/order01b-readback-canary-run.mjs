@@ -43,7 +43,7 @@ const SLICE = argOf('slice', '10000');
 const RUNWAY = argOf('runway', '120');
 const OUT = argOf('out', path.join(REPO_ROOT, 'docs/plan3/evidence/order01b-readback-canary-b126-rerun.json'));
 const WAIT_MAX_MS = Number(argOf('wait-max', String(120 * 60 * 1000)));
-const RUN_NAME = 'order01b-readback-canary-rerun-4up';
+const RUN_NAME = argOf('run-name', 'order01b-readback-canary-rerun-4up');
 
 const log = (m) => console.log(`[canary-run ${clockOf(new Date(), { seconds: true })}] ${m}`);
 
