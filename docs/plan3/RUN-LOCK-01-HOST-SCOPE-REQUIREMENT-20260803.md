@@ -96,6 +96,28 @@ class had no detector, which is why it survived four incidents.
 `lockFlagsFromArgv`. The reason `--no-host-lock` looks harmless is that the three scopes read as
 three degrees of the same thing.
 
+## 5a. R6 — a lock nobody can discover is not a lock (added 15:52+01:00, from a live incident)
+
+Written after walking onto E's measurement myself, 40 minutes after drafting section 5.
+
+`inspectLocks()` at 15:37+01:00, three minutes into E's 90-minute V8 heap-slope run, returned
+**`NO LOCKS AT ALL`**. E's run was in fact guarded — by `.v8-playback-heap-slope.lock`, a private lock
+file inside E's own `--outDir`, which `inspectLocks()` does not read because it only walks `.locks`.
+
+So the shared detector reported an idle box during a 90-minute measurement, and I put four node
+processes on it. This is not a hypothetical: it is the fifth contention incident of the day and I
+caused it while holding the requirement document for the other four open in another window.
+
+**R6 — one detector, or the detector is decorative.** Either the shared lock is the only lock, or
+`inspectLocks()` must be able to see the others. A lane's private lock is invisible to every other
+lane's pre-flight check, and a "no locks" reading that means "no locks I happen to look at" is worse
+than no reading, because it actively licenses the collision. Two lock systems that cannot see each
+other are worse than the single accident each was built for.
+
+This also sharpens R4: `RUN_WITHOUT_HOST_SCOPE` should be reachable from evidence on the box —
+a live measurement process with no corresponding host lock — rather than only from the lock tree,
+which by definition cannot show a run that never registered.
+
 ## 6. Related, already handed over
 
 - **`LOCK_DIR` needs an env override** (`TALARIA_RUN_LOCK_DIR`). It is a hard-coded constant, so the

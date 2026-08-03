@@ -37,6 +37,8 @@
     "gate:queue-status": "node scripts/measurement-queue.mjs status",
     "gate:run-lock-status": "node scripts/run-lock-status.mjs",
     "gate:clock-01": "node scripts/clock-01-audit.mjs",
+    "gate:copy-absence": "node scripts/copy-absence-census.mjs",
+    "test:copy-absence": "node scripts/copy-absence-census.selftest.mjs",
     "test:clock-01": "node --test scripts/clock-01-audit.selftest.mjs",
     "clock-01:stamp-lines": "node scripts/clock-01-stamp-lines.mjs",
     "test:checkpoint-provenance": "node --test scripts/tests/checkpoint-provenance.test.mjs",
