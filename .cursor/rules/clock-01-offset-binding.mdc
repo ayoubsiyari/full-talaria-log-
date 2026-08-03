@@ -25,6 +25,8 @@ Forbidden forms:
 
 When fixing older text, preserve the original meaning and add the offset rather
 than converting the clock unless the source explicitly records the target zone.
+Legacy board entries in the gate baseline are `UNKNOWN_OFFSET`; do not retrofit
+guessed offsets onto them.
 
 Board check:
 
