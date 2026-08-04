@@ -7,7 +7,7 @@ A blocked manager reads this rather than waiting for a relay.
 
 ---
 
-## CURRENT STATE — D's lane · maintained in place · last updated 22:30+01:00
+## CURRENT STATE — D's lane · maintained in place · last updated 14:30+01:00 / 2026-08-04T13:30Z
 
 > **This block is overwritten in place.** It answers what is true now; the log below answers what
 > happened. Every row with a number carries a state/grade so a retired measurement cannot be quoted
@@ -25,13 +25,13 @@ A blocked manager reads this rather than waiting for a relay.
 | served TAL smoke proof | **19/19 mutants PASS** | `MUTANT_SUITE_GREEN` — sealed b126, `ticket-symbols-four-fx` seed `EURUSD#25`, `GBPUSD#27`, `AUDUSD#22`, `USDJPY#29` |
 | `m20Q6CapturedClear` retained size | **416 bytes** | `CLEARED_BY_E` — demoted; medium rows are back on top |
 | V8 candidate underfit threshold | **<10% of measured delta** | `PRECOMMITTED_STOPPING_RULE` — switch to dominator-subtree retained size |
+| `ORDER01B-SUBBAR-STEP-RATE` | **0.08 / 10 market-s/wall-s** | `DEFERRED_PRODUCT_DEFECT` — Package 2 row; harness 60s refusal protects soak gates but only hides this path until a red-capable product gate and fix ship |
 
 **Blocked on someone else**
 
-E cleared `m20Q6CapturedClear` at 416 bytes retained, so D's active V8 lookup order is back to
-`_orderExecutionSeriesByFileId`, `_miSeriesByFileId`, then `_m20Q9PrefixByMaster`. D's suite is
-reserved behind A/E/C queue work and must not auto-fire outside its turn. Queue status is
-authoritative: `node scripts/measurement-queue.mjs order`.
+Package 1.1 PO hand-test is active on canary `20260804b127`; D is holding all browser/box work.
+`ORDER01B-SUBBAR-STEP-RATE` reproduction is blocked on Package 2 box time, but source attribution
+is pre-armed below so the run does not return an ambiguous number. The 60s harness refusal stays.
 
 **Not quotable, and why**
 
@@ -53,7 +53,8 @@ authoritative: `node scripts/measurement-queue.mjs order`.
 **D-owned gates/instruments in play**
 
 `scripts/tal-po-ui-smoke-canary.mjs` · `scripts/tal-po-ui-smoke-mutant-suite-live.mjs` ·
-`scripts/tal-po-ui-smoke-watch-b126.mjs` · `node scripts/clock01-board-time-offset-gate.mjs`.
+`scripts/tal-po-ui-smoke-watch-b126.mjs` · `node scripts/clock01-board-time-offset-gate.mjs` ·
+Package 2 draft gate only: `ORDER01B-SUBBAR-STEP-RATE` (not wired into PO Package 1 window).
 
 ---
 
@@ -195,3 +196,4 @@ Other lanes: [A](./BOARD-A.md) · [B](./BOARD-B.md) · [C](./BOARD-C.md) · [E](
 - 21:58+01:00 · D · GREEN · `TAL-PO-UI-SMOKE-MUTANTS-LIVE` · Served b126 mutant suite passed: baseline green and **11/11** row mutants killed one-for-one. Seed artifact records `seedSet: ticket-symbols`, preferred symbols `[EURUSD, GBPUSD, AUDUSD, USDJPY]`, selected `EURUSD#25` tradable + `GBPUSD#27` supporting, and `TAL_PO_UI_SEED_BARS_OK` with 100 bars from each. Evidence: `docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary.json`.
 - 21:58+01:00 · D · HARNESS-RULE · `PREWATCHDOG-01` · Generalization for all lanes: before accepting a 180 s watchdog, ask what the harness can prove in one second. Bad seeds, missing served files, missing routes, absent credentials, and empty account data should fail with a named preflight state, not a late watchdog with no diagnosis.
 - 22:30+01:00 · D · GREEN · `TAL-PO-UI-SMOKE-MUTANTS-LIVE-SEAL-EXT` · Extended served b126 mutant suite passed: baseline green and **19/19** row mutants killed one-for-one, adding TAL-01865 four-FX crosshair/tool label parity, displayed timezone movement, symbol restore, replay-position restore, trading/supporting overlap refusal, supporting-gold dropdown, Compare availability, and drawings market-time persistence across two panels. Seed artifact records `seedSet: ticket-symbols-four-fx`, selected `EURUSD#25`, `GBPUSD#27`, `AUDUSD#22`, `USDJPY#29`, and `TAL_PO_UI_SEED_BARS_OK` with 100 bars from each. Evidence: `docs/plan3/evidence/tal-po-ui-smoke-mutants-b126-live-summary.json`.
+- 14:30+01:00 / 2026-08-04T13:30Z · D · SOURCE-ONLY/PREARM · `ORDER01B-SUBBAR-STEP-RATE` · Package 2 row `POST-SOAK-LEDGER-D-006` / `PSL-38` remains **DEFERRED**, product defect not harness defect: sealed b126 delivered **0.08 market-s/wall-s** at speed **10** with explicit **1s** step, expected **10 market-s/wall-s**. No Chrome, no HTTP, no queue claim, no build, no product edit. Source path: `chart v 1.4/chart/modules/replay-system.js:5898-5900` defines the data floor from raw-bar spacing and returns **60s** on 1m data; `:5921-5933` marks a 1s step as below-floor route `puppet`; `:6001-6017` still accepts offered explicit step labels and resets the meter; `:6028-6042` computes the promised rate as `getTargetStepsPerWallSecond() * getStepSeconds()`; `:6452-6470` computes candle cadence and clamps explicit-step ticks to `stepsPerTick: 1`; `:5754-5795` installs `setInterval(..., interval)` for `_runCandlePlaybackTick`; `:6588-6648` advances, measures delivered market seconds from `replayTimestamp`, publishes rate, and can correct the governor; `:6668-6690` is the sub-bar advance that adds `stepMs`, syncs/clamps index, and clears `tickElapsedMs`; `:6720-6762` routes `simpleStepForward()` into that sub-bar branch; tick-mode generated intra-bar path is `:7277-7317` raw duration / fast-vs-smooth decision, `:7361-7381` `getRetainedTickPath()` forming-candle generation, and `:7527-7584` `scheduleNextTick()` / `animateTick()` scheduling. Predeclared split for the Package 2 reading: **Prediction A, governor/scheduler cadence defect** — `_runCandlePlaybackTick` entry interval lands near **12s** while entry-to-exit duration is small; inspect `getCandlePlaybackCadence`, `setInterval` period, page hidden/background tier, focused-panel timeframe. Future arm invocation: `node scripts/order01b-subbar-step-rate-probe.mjs --target=canary --badge=20260804b127 --panels=4 --focus=A --mode=candle --speed=10 --step=1 --series=tick-entry-interval,tick-duration --out=docs/plan3/evidence/order01b-subbar-scheduler-b127.json`. **Prediction B, slow tick work defect** — entry interval is near the requested **100ms** but `_runCandlePlaybackTick` or `animateTick` duration approaches the lost wall time; then attribute by panel and by call inside `simpleStepForward`, `_advanceSubBarStepForward`, `syncCurrentIndexFromReplayTimestamp`, `updateChartData`, and tick-path generation. Future arm invocation: `node scripts/order01b-subbar-step-rate-probe.mjs --target=canary --badge=20260804b127 --panels=4 --focus=A --mode=candle,tick --speed=10 --step=1 --series=tick-entry-interval,tick-duration,panel-call-duration --out=docs/plan3/evidence/order01b-subbar-slowtick-b127.json`. Red-capable product gate draft: `order01b-subbar-step-rate.product.test.mjs` must bypass the **harness** 60s refusal only under an explicit `--product-defect-probe` flag, request speed **10** + step **1s**, compute observed delivery from `replayTimestamp` delta / wall seconds, assert `observed >= 8.0 market-s/wall-s` against requested **10**, and emit `RESOLVER_CALLED_BUT_WRONG` on the known **0.08** case. It must not be wired into Package 1 or any soak gate; the 60s refusal stays until this product gate is red-capable and a shipped fix exists.
