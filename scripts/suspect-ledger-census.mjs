@@ -206,11 +206,40 @@ export function assertingLines(ledgerText) {
   return out;
 }
 
+/**
+ * The cells where a table row NAMES ITS SUBJECT — the first two, which hold the seat and the
+ * id. Everything after them is evidence prose, and prose mentions other rows' ids constantly.
+ */
+export function idCells(text) {
+  return text.replace(/^\s*\|/, '').split('|').slice(0, 2).join('|');
+}
+
+/**
+ * A row asserts a state ABOUT the id it names, not about every id it mentions. Without this
+ * precedence, §4b's siblings row — which carries a bolded DEFERRED and mentions SHELL-PLAY-01
+ * in its evidence column — cast a DEFERRED vote for SHELL-PLAY-01 and collided with the CLEARED
+ * on SHELL-PLAY-01's own row, reporting AMBIGUOUS_MULTI_STATE for a file that was correct.
+ * Same family as the "...cannot be KILLED" prose bug in stateOfLine, one layer further out:
+ * there the STATE was read from prose, here the SUBJECT is.
+ *
+ * The whole-line fallback is kept deliberately, because curated controls like the second GPU box
+ * have no row of their own and are anchored in prose by design. Naming beats mentioning; a
+ * mention still counts when nothing names it.
+ */
+function preferNaming(id, assertions, lines) {
+  const naming = assertions.filter((a) => {
+    const src = lines.find((l) => l.line === a.line);
+    return src && idCells(src.text).includes(id);
+  });
+  return naming.length ? naming : assertions;
+}
+
 /** States asserted about one population id, by shape match or by literal match. */
 export function statesForId(id, states, lines) {
   const byShape = [...idsIn(id)].flatMap((k) => states.get(k) || []);
-  if (byShape.length) return byShape;
-  return lines.filter((l) => l.text.includes(id)).map((l) => ({ state: l.state, line: l.line }));
+  if (byShape.length) return preferNaming(id, byShape, lines);
+  const mentions = lines.filter((l) => l.text.includes(id)).map((l) => ({ state: l.state, line: l.line }));
+  return preferNaming(id, mentions, lines);
 }
 
 export function seatAudit(ledgerText, postSoakText) {

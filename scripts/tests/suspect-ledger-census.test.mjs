@@ -10,7 +10,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   STATUS_MAP, CURATED, parseTicketLedger, axesOf, ledgerStates, seatAudit, idsIn,
-  stateOfLine, assertingLines, statesForId,
+  stateOfLine, assertingLines, statesForId, idCells,
 } from '../suspect-ledger-census.mjs';
 
 test('idsIn finds each id shape, and does not invent ids', () => {
@@ -154,4 +154,48 @@ test('DISCRIMINATING: a curated control is found by its anchor, and a broken anc
   // A reworded row breaks the anchor and must report absence loudly rather than pass.
   const reworded = '| 9 | **A second graphics host** | **DEFERRED** | `PSL-30` | not located |';
   assert.deepEqual(statesForId('second GPU box', ledgerStates(reworded), assertingLines(reworded)), []);
+});
+
+// ---------------------------------------------------------------------------
+// A row asserts a state about the id it NAMES, not every id it mentions. Found
+// live: §4b's siblings row carries a bolded DEFERRED and mentions SHELL-PLAY-01
+// in its evidence column, which cast a DEFERRED vote against SHELL-PLAY-01's own
+// CLEARED row and reported AMBIGUOUS_MULTI_STATE for a correct file.
+// ---------------------------------------------------------------------------
+
+test('DISCRIMINATING: a prose mention does not outvote the row that names the id', () => {
+  const ledger = [
+    '| `TAL-11111` | the thing itself | **CLEARED** | proven innocent |',
+    '| `TAL-22222` | a different thing | **DEFERRED** | the day anything binds TAL-11111 this changes |',
+  ].join('\n');
+  const lines = assertingLines(ledger);
+  const states = ledgerStates(ledger);
+  const got = statesForId('TAL-11111', states, lines).map((s) => s.state);
+  assert.deepEqual(got, ['CLEARED'], 'only the naming row votes');
+});
+
+test('MUTANT-SHAPED: without naming precedence that same fixture reads as two states', () => {
+  const ledger = [
+    '| `TAL-11111` | the thing itself | **CLEARED** | proven innocent |',
+    '| `TAL-22222` | a different thing | **DEFERRED** | the day anything binds TAL-11111 this changes |',
+  ].join('\n');
+  const lines = assertingLines(ledger);
+  // The pre-fix behaviour, reconstructed: every line containing the id votes.
+  const naive = lines.filter((l) => l.text.includes('TAL-11111')).map((l) => l.state);
+  assert.deepEqual(naive.sort(), ['CLEARED', 'DEFERRED'], 'the defect this cell guards against');
+});
+
+test('ANTI-VACUITY: an id that exists ONLY in prose still gets its state', () => {
+  // Curated controls like the second GPU box are anchored in prose and have no row.
+  const ledger = '| 9 | **The second GPU box** | **DEFERRED** | endorsed, not procured, SECOND-GPU-BOX |';
+  const lines = assertingLines(ledger);
+  const states = ledgerStates(ledger);
+  const got = statesForId('SECOND-GPU-BOX', states, lines).map((s) => s.state);
+  assert.deepEqual(got, ['DEFERRED'], 'a mention counts when nothing names it');
+});
+
+test('idCells reads only the subject columns, never the evidence prose', () => {
+  const row = '| `SEAT-1` | `THE-ID` | **CLEARED** | mentions OTHER-ID here |';
+  assert.equal(idCells(row).includes('THE-ID'), true);
+  assert.equal(idCells(row).includes('OTHER-ID'), false);
 });

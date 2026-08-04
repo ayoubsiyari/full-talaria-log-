@@ -750,6 +750,72 @@ with its own reason, which is why `PSL-21` through `PSL-23` are individual.
   only hide a row that should have existed, which is a floor problem, and §0 already says the number is a
   floor. This makes the floor's *shape* explicit rather than the count larger.
 
+### PSL-38 · CENSUS-TREE-01 — the gate census executed inside the tree it was auditing
+
+**Written by A at 11:18+01:00 / 2026-08-04T10:18Z on the Director's ruling. This row is a rule, not a
+proposal, and the rule is enforced by the instrument rather than by whoever runs it.**
+
+> **CENSUS-TREE-01, hard.** The gate-depth audit never executes against the working tree again.
+> `--scan-only` (read-only, any tree) or `--tree=<scratch copy outside the repo>`. Nothing else runs.
+
+- **owner:** A
+- **finding:** `gate-root-depth-audit.mjs --all-gates` executes every gate **and every mutation suite** in
+  the tree it walks, and a mutation suite killed mid-run leaves its mutant in the file. Stopped on
+  instruction at 23:47+01:00 on 03-08, it left **five product mutations**: the scalar clone removed at
+  `chart.js:4191` so the incremental copy aliased its source, `_evictBehindPlayheadDisabled()` negated in
+  **both** `replay-system.js` mirrors (playhead eviction off by default), a deleted `_m20J1PumpThumbs()`
+  call in **both** `order-manager.js` mirrors, and B-W18's entire `parse_guard_enabled` rollback lever
+  removed from `api_server.py`. It also rewrote **sixteen evidence artifacts belonging to other lanes**,
+  one of which flipped `tests/evidence/session-calendar-red/m22-session-calendar-fixed.json` from
+  `verdict: GREEN` to `RED`. **An instrument that rewrites the evidence of the lanes it audits can turn a
+  healthy product into a red record with nobody watching**, and it does so at the exact moment everyone
+  is reading records rather than the product.
+- **state:** `FIX_COMMITTED_NOT_SHIPPED` — the refusal is in the instrument; the census it guards has
+  still never completed, so the never-run gate population remains unmeasured.
+- **evidence:** four refusals live and exercised — `WORKING_TREE_EXECUTION_REFUSED` (executing mode with
+  no `--tree`), `SCRATCH_TREE_IS_INSIDE_THE_WORKING_TREE`, `SCRATCH_TREE_ABSENT`,
+  `SCRATCH_TREE_NOT_A_CHECKOUT` (a `--tree` with no `scripts/`, which would census an empty population
+  and report it clean). `--scan-only` verified still legal against the working tree; a scratch tree
+  outside the repo verified executing there, with the artifact still landing in the real repo and
+  `report.subject` naming which tree the population came from. Damage restored and disclosed on
+  `BOARD-A.md` at 00:55+01:00 in `7d6161861`.
+- **post-soak action:** run the census **once**, against a scratch copy, off a shared box, and publish the
+  never-run gate count. The guard makes that safe; it does not make it done. **The refusal has no
+  documented bypass and should not acquire one** — `INDEX-SCOPE-01` printing `INDEX_SCOPE_OFF=1` in its own
+  refusal message (PSL-34) is the lesson, and this instrument's failure mode is worse than a mislabelled
+  commit.
+- **seal-corrupting?** **no**, and this needs stating precisely rather than briefly. The five mutations and
+  the sixteen artifacts are all restored to HEAD, product source is clean, and every mirror pair is
+  byte-identical — verified before the b126 work continued. But it was *nearly* seal-corrupting in the
+  worst available way: had the flipped verdict not been noticed, the seal would have carried a RED record
+  against a healthy gate, and the lane that owned it would have spent the morning of the PO's
+  verification pass debugging an artifact my instrument wrote.
+
+### PSL-39 · A mirrored gate with a fixed-depth root writes its evidence into `homepage/`, and exits green
+
+- **owner:** the gates' owners (D by artifact name); A as reporter
+- **finding:** `resolve(__dirname, '../../..')` from `homepage/public/chart/modules/` lands on `homepage/`,
+  and three mirrored pairs still carry it: `excursion-single-owner-v1-conf02-bytes.test.mjs`,
+  `m19-d-marker-delta.green.test.mjs`, `m19-e-hotpath-log.green.test.mjs`. **This is worse than the read
+  case B found, not the same case.** A reading gate dies on ENOENT and shows up as a red. A *writing* gate
+  calls `mkdirSync(dirname(p), { recursive: true })` first — so it creates `homepage/docs/plan3/`, writes
+  its artifact there, asserts against what it just wrote, and **exits green**. The evidence exists, in a
+  tree nobody reads, and the gate reports success.
+- **state:** `MEASURED_NOT_FIXED` — the gate sweep is frozen, so this is recorded rather than repaired.
+- **evidence:** observed live during the census window. The canonical copies were written to
+  `docs/plan3/EXCURSION-...json` and `docs/plan3/evidence/L2-M19-{D,E}-unit.json` between 23:39+01:00 and
+  23:40+01:00 on 03-08; the mirror copies appeared at `homepage/docs/plan3/...` between 23:41:18+01:00 and
+  23:41:27+01:00, one minute later, same content, wrong root. Four stray files, now removed; the canonical copies are untouched at
+  HEAD. Population still standing per a `--scan-only` pass at 11:09+01:00: **90 gates anchor by fixed
+  relative depth, 26 of them in a mirrored tree, 25 present in both locations.**
+- **post-soak action:** fold into the gate-depth fix pass — root-walk these three pairs, then re-run each
+  in **both** locations and diff the artifact paths, because the failure is invisible in the verdict and
+  visible only in where the file landed. Worth a general check while there: **any gate that writes under a
+  root it computed by counting directories.**
+- **seal-corrupting?** **no.** No sealed byte depends on where a gate filed its artifact. It does mean any
+  "the gate produced its evidence" claim is a claim about *a* file rather than the file a reader will open,
+  and that a green from a mirrored writing gate has never proven which tree it wrote to.
+
 ### PSL-38 · ORDER01B-SUBBAR-STEP-RATE — 1s step delivers 0.08 instead of 10
 
 **Alias: `POST-SOAK-LEDGER-D-006`.**
@@ -773,7 +839,14 @@ with its own reason, which is why `PSL-21` through `PSL-23` are individual.
 - **seal-corrupting?** **no.** W1 is satisfied at the configuration actually shipped and measured in
   the envelope. This row preserves the out-of-envelope product defect so the refusal cannot hide it.
 
-### PSL-38 · The commit-msg hook and git disagree about what a trailer is
+### PSL-40 · The commit-msg hook and git disagree about what a trailer is
+
+> **Renumbered from PSL-38 at 11:0x+01:00.** D claimed PSL-38 for `ORDER01B-SUBBAR-STEP-RATE` at
+> 10:41+01:00 and I appended a second PSL-38 afterwards, so D's earlier claim stands and mine moves.
+> Two findings under one number, in the ledger whose entire discipline is one state per item — and my
+> own instrument could not see it, because `suspect-ledger-census.mjs` checks that a **cited** seat
+> exists and never checks that a seat number is **unique**. It reported 36 of 36 seats present while two
+> of them were the same integer.
 
 - **owner:** B
 - **finding:** The hook matches `^Manager:` on **any** line of the message. Git only recognises a
@@ -808,3 +881,29 @@ with its own reason, which is why `PSL-21` through `PSL-23` are individual.
   instead whether any tool matches on a subject prefix** -- the `board(B):` convention is one -- because
   a BOM ahead of an anchored match is the failure mode that would already be silent.
 - **seal-corrupting?** **no.** Subject-line bytes. It does not touch a tree, a blob or a build.
+
+### PSL-41 · "this artifact is reproducible from HEAD" is checked against build inputs, not the instrument
+
+- **owner:** whoever owns `run-provenance.mjs` / `clean-build-tree-guard.mjs`; B as reporter
+- **finding:** `order01b-readback-canary.mjs` printed **`HEAD 1bd5df0bd / tree clean`** and
+  **`PASS the tree was clean, so this artifact is reproducible from HEAD`** during B's step-60 run, while
+  **24 tracked files differed from HEAD — including the canary itself and `scripts/lib/canary-realm-probes.mjs`,
+  the module the run drove.**
+- **why it is not simply a false green:** `run-provenance.mjs` deliberately reuses **CLEAN-TREE-01's**
+  definition of a build input, so the scope is *the files that produce the shipped bytes*. On that
+  question the PASS is **correct and valuable**: the served bundle was traceable, build id matched page
+  and disk, ORDER-01B markers were present.
+- **the defect is the sentence, not the scope.** *"Reproducible from HEAD"* is a claim about the **artifact**,
+  and an artifact is a product of the instrument as much as of the bytes. An instrument 24 files off HEAD
+  cannot be re-run from HEAD to the same result. Two different questions share one PASS line, and the
+  stronger-sounding one is the unchecked one.
+- **state:** `MEASURED_NOT_FIXED`
+- **evidence:** B's step-60 run at 11:0x+01:00; `git status --porcelain` at the same minute listing 24
+  modified tracked paths including both instrument files.
+- **post-soak action:** say what was checked — *"build inputs clean; instrument not checked"* — or extend
+  the check to the instrument's own path set and let it report `INSTRUMENT_DIRTY` separately. **This
+  matters because INSTRUMENT-01 exists for precisely this**: results are not citable until the instrument
+  is committed, and the check that appears to enforce it is scoped to something else.
+- **seal-corrupting?** **no.** It does not touch the sealed bytes, and its product-side claim is sound.
+  It does mean any artifact from this family carries a reproducibility claim it has not earned, and B's
+  own step-60 numbers are among them — **cited above as investigative, not as seal evidence.**

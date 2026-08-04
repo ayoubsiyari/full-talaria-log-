@@ -80,6 +80,16 @@ function sh(cmd) {
  *     note, so crediting C would be exactly the cross-credit this change removes.
  */
 export function laneOfCommit(body) {
+  // The leading `\s*` is load-bearing for a reason that is NOT obvious, and it is accidental
+  // safety rather than a guarantee: ECMAScript's `\s` includes U+FEFF, so this reads straight
+  // through a UTF-8 byte-order mark. The same rule written in POSIX shell does NOT --
+  // `[[:space:]]` excludes it -- which is how the commit-msg hook's
+  // `sed -n 's/^Manager:...'` was blind to a BOM-led trailer, appended a second Manager from
+  // the environment, and made git report one lane's commit as another's. Measured and fixed at
+  // `fc9894d13`; 41 commit subjects in 400 still carry the mark (`PSL-39`).
+  //
+  // So: if you port this matcher to sh, awk, sed or grep, strip the BOM explicitly first. This
+  // function survived that defect by a property of the language, and nobody chose it.
   const m = String(body || '').match(/^\s*Manager:\s*([A-Za-z]+)\s*$/m);
   if (!m) return null;
   const id = m[1].trim();
