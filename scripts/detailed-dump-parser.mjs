@@ -60,9 +60,25 @@ function processCoverage(detail, proc) {
     namedMB: row.arenaNamedTotalMB,
     unattributedMB: row.arenaUnattributedMB,
     coveragePct: row.arenaCoveragePct,
-    state: row.arenaCoverageMeets95 ? 'COV_01_MEETS_95' : 'NOT_QUOTABLE_COVERAGE',
+    state: row.arenaCoverageMeets95 ? 'PROCESS_LOCAL_MEETS_95_NOT_COV01' : 'PROCESS_LOCAL_NOT_QUOTABLE_COVERAGE',
     totalPrivateMB: row.totalPrivateMB,
     totalBasis: row.totalBasis,
+  };
+}
+
+function correctedCoverageFromCaptureRow(row) {
+  if (!row || typeof row !== 'object') return null;
+  return {
+    covState: row.covState ?? null,
+    namedMB: row.arenaNamedTotalMB ?? null,
+    unattributedMB: row.arenaUnattributedMB ?? null,
+    coveragePct: row.arenaCoveragePct ?? null,
+    state: row.arenaCoverageMeets95 ? 'COV_01_MEETS_95' : 'NOT_QUOTABLE_COVERAGE',
+    totalPrivateMB: row.totalPrivateMB ?? null,
+    totalBasis: 'all-chrome-process-private',
+    sizeBasis: row.sizeBasis ?? null,
+    processCount: row.processCount ?? null,
+    basisGuard: row.basisGuard ?? null,
   };
 }
 
@@ -130,6 +146,39 @@ function extractFromTrace(file, json) {
 }
 
 function extractSummaries(file, json) {
+  if (json?.signature === 'DETAILED-DUMP-CAPTURE-V1') {
+    const row = json.row || {};
+    const selectedPid = json.selectedPid ?? row.heaviestPid ?? null;
+    const selectedProcess = (json.processes || []).find((p) => String(p?.pid) === String(selectedPid));
+    const detail = row.heaviestDetail || selectedProcess?.allocatorDetail || null;
+    if (!hasDetailShape(detail)) {
+      return [{
+        source: file,
+        label: `${path.basename(file)} :: DETAILED-DUMP-CAPTURE-V1`,
+        pid: selectedPid,
+        detail: { rootsMB: {}, childrenByRoot: {} },
+        coverage: correctedCoverageFromCaptureRow(row),
+        detailState: 'DETAILED_ALLOCATOR_CHILD_ROWS_ABSENT',
+        basisComparison: {
+          singlePidCoverage: json.singlePidCoverage ?? null,
+          note: json.singlePidCoverageNote ?? 'single-pid coverage is retained for comparison only, not COV-01',
+        },
+      }];
+    }
+    return [{
+      source: file,
+      label: `${path.basename(file)} :: ${json.moment ?? 'moment'} :: selectedPid=${selectedPid ?? '?'}`,
+      pid: selectedPid,
+      detail: cloneDetail(detail, `${path.basename(file)} :: selected detail`),
+      coverage: correctedCoverageFromCaptureRow(row),
+      detailState: 'DETAILED_ALLOCATOR_CHILD_ROWS',
+      basisComparison: {
+        singlePidCoverage: json.singlePidCoverage ?? null,
+        note: json.singlePidCoverageNote ?? 'single-pid coverage is retained for comparison only, not COV-01',
+      },
+    }];
+  }
+
   const samples = [];
   for (const proc of json?.allocatorDump?.processes || []) {
     if (!hasDetailShape(proc?.allocatorDetail)) continue;
@@ -250,6 +299,7 @@ export function buildDetailedDumpReport(files) {
       pid: s.pid ?? null,
       ts: s.ts ?? null,
       coverage: s.coverage ?? null,
+      basisComparison: s.basisComparison ?? null,
       detailState: s.detailState ?? null,
       roots: rootTable(s.detail),
       children: childTable(s.detail),

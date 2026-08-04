@@ -107,8 +107,71 @@ describe('item 6 — DETAILED-DUMP-PARSER', () => {
     assert.equal(report.sampleCount, 1);
     assert.equal(report.samples[0].pid, 456);
     assert.equal(report.samples[0].coverage.coveragePct, 95);
-    assert.equal(report.samples[0].coverage.state, 'COV_01_MEETS_95');
+    assert.equal(report.samples[0].coverage.state, 'PROCESS_LOCAL_MEETS_95_NOT_COV01');
     assert.equal(report.samples[0].detailState, 'DETAILED_ALLOCATOR_CHILD_ROWS');
+    assert.ok(report.samples[0].children.partition_alloc.some((r) => r.name === 'partition_alloc/partitions/buffer' && r.mb === 80));
+  });
+
+  it('parses C capture artifacts on the corrected all-process COV-01 basis', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'detailed-dump-parser-'));
+    const file = writeJson(dir, 'trades-start.detailed-dump.json', {
+      signature: 'DETAILED-DUMP-CAPTURE-V1',
+      moment: 'trades:start',
+      totalPrivateMB: 674.9,
+      totalBasis: 'all-chrome-process-private',
+      selectedPid: 6920,
+      singlePidCoverage: 59.84,
+      singlePidCoverageNote: 'the basis that produced the published 59.84%; kept for comparison, not for quoting',
+      processes: [
+        {
+          pid: 6920,
+          allocatorDetail: {
+            rootsMB: { v8: 60, partition_alloc: 100, malloc: 30 },
+            childrenByRoot: {
+              partition_alloc: [{ name: 'partition_alloc/partitions/buffer', mb: 80 }],
+            },
+          },
+        },
+        {
+          pid: 7000,
+          allocatorDetail: {
+            rootsMB: { gpu: 20 },
+            childrenByRoot: {
+              gpu: [{ name: 'gpu/command_buffer', mb: 12 }],
+            },
+          },
+        },
+      ],
+      row: {
+        covState: 'MEASURED',
+        arenaNamedTotalMB: 650,
+        totalPrivateMB: 674.9,
+        arenaCoveragePct: 96.31,
+        arenaUnattributedMB: 24.9,
+        arenaCoverageMeets95: true,
+        basisGuard: { state: 'SAME_BASIS', ok: true },
+        processCount: 2,
+        sizeBasis: 'effective_size',
+        heaviestPid: 6920,
+        heaviestDetail: {
+          rootsMB: { v8: 60, partition_alloc: 100, malloc: 30 },
+          childrenByRoot: {
+            partition_alloc: [{ name: 'partition_alloc/partitions/buffer', mb: 80 }],
+          },
+        },
+      },
+    });
+
+    const report = buildDetailedDumpReport([file]);
+    assert.equal(report.sampleCount, 1);
+    assert.equal(report.samples[0].pid, 6920);
+    assert.equal(report.samples[0].coverage.coveragePct, 96.31);
+    assert.equal(report.samples[0].coverage.state, 'COV_01_MEETS_95');
+    assert.equal(report.samples[0].coverage.totalBasis, 'all-chrome-process-private');
+    assert.equal(report.samples[0].coverage.sizeBasis, 'effective_size');
+    assert.equal(report.samples[0].coverage.processCount, 2);
+    assert.equal(report.samples[0].basisComparison.singlePidCoverage, 59.84);
+    assert.match(report.samples[0].basisComparison.note, /not for quoting/);
     assert.ok(report.samples[0].children.partition_alloc.some((r) => r.name === 'partition_alloc/partitions/buffer' && r.mb === 80));
   });
 
