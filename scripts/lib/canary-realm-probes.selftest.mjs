@@ -28,6 +28,7 @@ import assert from 'node:assert/strict';
  */
 const PROBES = process.env.CANARY_PROBES_MODULE || './canary-realm-probes.mjs';
 const {
+  focusInvariant,
   governorReferencePreflight,
   prepareRealmsForWindow,
   probeArmedPositions,
@@ -465,6 +466,80 @@ test('a single realm is launchable: its own timeframe is trivially the minimum',
   const out = governorReferencePreflight(govProbe([3600]));
   assert.equal(out.ok, true);
   assert.equal(out.minDisplayedSeconds, 3600);
+});
+
+/* ------------------------------------ GOVERNOR-REF-01, focus held for a run */
+
+const focusAt = (phase, focusedPanel) => ({ phase, focusedPanel });
+
+test('focus held across the whole run passes, and names what it held on', () => {
+  const out = focusInvariant([
+    focusAt('pre-flight', 'host:body'),
+    focusAt('before-window', 'host:body'),
+    focusAt('after-window', 'host:body'),
+  ]);
+  assert.equal(out.state, 'FOCUS_HELD');
+  assert.equal(out.ok, true);
+  assert.equal(out.heldOn, 'host:body');
+  assert.match(out.why, /3 samples/);
+});
+
+test('RED: focus moving inside the window is caught, with both ends named', () => {
+  const out = focusInvariant([
+    focusAt('pre-flight', 'host:body'),
+    focusAt('before-window', 'host:body'),
+    focusAt('after-window', 'panel-2'),
+  ]);
+  assert.equal(out.state, 'FOCUS_MOVED_DURING_RUN');
+  assert.equal(out.ok, false);
+  assert.equal(out.from, 'host:body');
+  assert.equal(out.to, 'panel-2');
+  assert.equal(out.atPhase, 'after-window');
+});
+
+test('RED: focus moving BEFORE the window is caught — the case a window-only check misses', () => {
+  // This is the whole reason the invariant starts at pre-flight. Focus lands on
+  // the 5m panel while the workload arms, the window then opens and closes with
+  // focus perfectly still, and a two-sample check across the window reads clean
+  // on a rate that a click set.
+  const out = focusInvariant([
+    focusAt('pre-flight', 'host:body'),
+    focusAt('before-window', 'panel-5m'),
+    focusAt('after-window', 'panel-5m'),
+  ]);
+  assert.equal(out.state, 'FOCUS_MOVED_DURING_RUN');
+  assert.equal(out.ok, false);
+  assert.equal(out.atPhase, 'before-window');
+});
+
+test('RED: unreadable focus refuses, because held cannot be asserted of nothing', () => {
+  const out = focusInvariant([
+    focusAt('pre-flight', 'host:body'),
+    focusAt('before-window', null),
+    focusAt('after-window', 'host:body'),
+  ]);
+  assert.equal(out.state, 'FOCUS_UNREADABLE');
+  assert.equal(out.ok, false);
+  assert.match(out.why, /before-window/);
+});
+
+test('RED: the string FOCUS_UNREADABLE is not a panel name', () => {
+  // probeFocusAndGovernor reports its own failure as a string in the same field.
+  // Three equal FOCUS_UNREADABLE samples would satisfy an equality check.
+  const out = focusInvariant([
+    focusAt('pre-flight', 'FOCUS_UNREADABLE'),
+    focusAt('before-window', 'FOCUS_UNREADABLE'),
+    focusAt('after-window', 'FOCUS_UNREADABLE'),
+  ]);
+  assert.equal(out.state, 'FOCUS_UNREADABLE');
+  assert.equal(out.ok, false);
+});
+
+test('RED: too few samples is not a pass — an unsampled invariant is not a held one', () => {
+  assert.equal(focusInvariant([focusAt('pre-flight', 'host:body')]).state, 'FOCUS_NOT_SAMPLED');
+  assert.equal(focusInvariant([]).state, 'FOCUS_NOT_SAMPLED');
+  assert.equal(focusInvariant(null).state, 'FOCUS_NOT_SAMPLED');
+  assert.equal(focusInvariant(null).ok, false);
 });
 
 /* --------------------------------------------------------------------- run */

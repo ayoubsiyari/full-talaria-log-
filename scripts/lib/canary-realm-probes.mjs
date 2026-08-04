@@ -105,6 +105,71 @@ export function governorReferencePreflight(probe) {
 }
 
 /**
+ * GOVERNOR-REF-01, second half — focus must not move at any point in a run.
+ *
+ * Host-side and pure. Takes focus samples labelled by phase and answers one
+ * question: did focus hold from before the workload was armed to after the window
+ * closed?
+ *
+ * Why the whole run and not just the window. The PO confirmed by hand that
+ * clicking a 5m or 1H panel changes the rate of *everything*, so focus is an
+ * input to the measurement, not a detail of it. A focus change between arming and
+ * the window is outside the sampled interval and would therefore be invisible to
+ * a window-only check, while still having set the rate the window went on to
+ * measure. My first version checked only the two ends of the window, which is the
+ * narrower question.
+ *
+ * A run whose focus moved has measured a layout it cannot name. That is a refusal
+ * even though it can only be known after the fact, because the alternative is an
+ * artifact that reads clean.
+ *
+ * @param {{phase: string, focusedPanel: string|null}[]} samples in run order
+ */
+export function focusInvariant(samples) {
+  if (!Array.isArray(samples) || samples.length < 2) {
+    return {
+      state: 'FOCUS_NOT_SAMPLED',
+      ok: false,
+      why: `focus needs at least two samples to be an invariant; got ${Array.isArray(samples) ? samples.length : 0}`,
+      samples: samples || [],
+    };
+  }
+
+  const unreadable = samples.filter((s) => !s || s.focusedPanel == null || s.focusedPanel === 'FOCUS_UNREADABLE');
+  if (unreadable.length) {
+    return {
+      state: 'FOCUS_UNREADABLE',
+      ok: false,
+      why: `focus could not be read at ${unreadable.map((s) => (s && s.phase) || '?').join(', ')}, so it cannot be asserted to have held`,
+      samples,
+    };
+  }
+
+  const first = samples[0];
+  const moved = samples.find((s) => s.focusedPanel !== first.focusedPanel);
+  if (moved) {
+    return {
+      state: 'FOCUS_MOVED_DURING_RUN',
+      ok: false,
+      why: `focus moved from ${first.focusedPanel} at ${first.phase} to ${moved.focusedPanel} at ${moved.phase};`
+        + ' the governor paces off the focused panel, so this run measured a rate set by a focus change',
+      from: first.focusedPanel,
+      to: moved.focusedPanel,
+      atPhase: moved.phase,
+      samples,
+    };
+  }
+
+  return {
+    state: 'FOCUS_HELD',
+    ok: true,
+    why: `focus held on ${first.focusedPanel} across ${samples.length} samples (${samples.map((s) => s.phase).join(' -> ')})`,
+    heldOn: first.focusedPanel,
+    samples,
+  };
+}
+
+/**
  * Which panel holds focus, and what reference timeframe each realm's governor is
  * actually using.
  *

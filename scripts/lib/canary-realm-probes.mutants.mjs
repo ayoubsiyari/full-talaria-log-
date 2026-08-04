@@ -113,6 +113,39 @@ const mutants = [
     find: 'ch.backtestingSession = { ...(ch.backtestingSession || {}), startDate };',
     replace: 'ch.__unusedBacktestingSession = { startDate };',
   },
+
+  /* ------------------------- GOVERNOR-REF-01, focus held for a whole run --- */
+
+  {
+    // The defect my own first version had: focus checked at the two ends of the
+    // window, so a click that lands while the workload arms sets the rate and
+    // then sits perfectly still through the measurement.
+    name: 'focus is checked across the window only, not from before the arm',
+    find: '  const first = samples[0];\n  const moved = samples.find((s) => s.focusedPanel !== first.focusedPanel);',
+    replace: '  const first = samples[samples.length - 2];\n  const moved = samples.slice(-2).find((s) => s.focusedPanel !== first.focusedPanel);',
+  },
+  {
+    name: 'focus moving during the run is reported as held',
+    find: "      state: 'FOCUS_MOVED_DURING_RUN',\n      ok: false,",
+    replace: "      state: 'FOCUS_HELD',\n      ok: true,",
+  },
+  {
+    name: 'unreadable focus is treated as held rather than refused',
+    find: "      state: 'FOCUS_UNREADABLE',\n      ok: false,",
+    replace: "      state: 'FOCUS_HELD',\n      ok: true,",
+  },
+  {
+    // probeFocusAndGovernor reports its own failure as this string in the same
+    // field a panel name goes in, so three equal failures satisfy equality.
+    name: "the FOCUS_UNREADABLE sentinel is accepted as a panel name",
+    find: "  const unreadable = samples.filter((s) => !s || s.focusedPanel == null || s.focusedPanel === 'FOCUS_UNREADABLE');",
+    replace: '  const unreadable = samples.filter((s) => !s || s.focusedPanel == null);',
+  },
+  {
+    name: 'an unsampled invariant passes for want of anything to disagree with',
+    find: '  if (!Array.isArray(samples) || samples.length < 2) {',
+    replace: '  if (!Array.isArray(samples) || samples.length < 0) {',
+  },
 ];
 
 let survived = 0;

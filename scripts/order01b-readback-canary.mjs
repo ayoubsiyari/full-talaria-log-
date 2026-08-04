@@ -53,6 +53,7 @@ import { armHeapCyclePoWorkload } from './lib/heap-cycle-po-workload.mjs';
 // browser; see canary-realm-probes.selftest.mjs. Passed by reference to
 // page.evaluate, which ships them by toString().
 import {
+  focusInvariant,
   governorReferencePreflight,
   prepareRealmsForWindow,
   probeArmedPositions,
@@ -185,6 +186,8 @@ async function main() {
   let verdict = null;
   /** A playback failure that must not stop the read-back probe from running. */
   let playbackFail = null;
+  /** GOVERNOR-REF-01: focus moved, so the rate this run measured has no named layout. */
+  let focusFail = null;
   let observed = {};
 
   try {
@@ -421,7 +424,12 @@ async function main() {
      * minute. The apparatus, not the product — so the apparatus now refuses to
      * start when it cannot show that it is pacing off the right clock.
      */
-    const govPreflight = governorReferencePreflight(await page.evaluate(probeFocusAndGovernor));
+    const govAtPreflight = await page.evaluate(probeFocusAndGovernor);
+    // Focus is sampled from here, before the workload is armed, because a focus
+    // change between arming and the window sets the rate the window then measures
+    // and a window-only check cannot see it.
+    const focusSamples = [{ phase: 'pre-flight', focusedPanel: govAtPreflight.focusedPanel }];
+    const govPreflight = governorReferencePreflight(govAtPreflight);
     observed.governorPreflight = govPreflight;
     check(govPreflight.ok, 'GOVERNOR-REF-01: reference timeframe is the minimum displayed',
       `${govPreflight.state} — ${govPreflight.why}`);
@@ -540,6 +548,7 @@ async function main() {
     // without recording focus is a reading of wherever the pointer last landed.
     const focusBefore = await page.evaluate(probeFocusAndGovernor);
     observed.focusBefore = focusBefore;
+    focusSamples.push({ phase: 'before-window', focusedPanel: focusBefore.focusedPanel });
     console.log(`    --- focus and governor reference, before the window ---`);
     console.log(`        focused panel: ${focusBefore.focusedPanel}`
       + `  focusedTF=${focusBefore.focusedTimeframeSeconds}s`
@@ -559,11 +568,16 @@ async function main() {
 
     const focusAfter = await page.evaluate(probeFocusAndGovernor);
     observed.focusAfter = focusAfter;
-    check(focusBefore.focusedPanel === focusAfter.focusedPanel,
-      'focus did not move during the window',
-      focusBefore.focusedPanel === focusAfter.focusedPanel
-        ? `focus held on ${focusAfter.focusedPanel} for the whole window`
-        : `FOCUS_MOVED_MID_WINDOW: ${focusBefore.focusedPanel} -> ${focusAfter.focusedPanel}`);
+    focusSamples.push({ phase: 'after-window', focusedPanel: focusAfter.focusedPanel });
+
+    const focusHeld = focusInvariant(focusSamples);
+    observed.focusInvariant = focusHeld;
+    check(focusHeld.ok, 'focus never changed during the run',
+      `${focusHeld.state}: ${focusHeld.why}`);
+    // Its own verdict state rather than the generic PUBLISH_WRONG: a moved focus
+    // does not mean the published rate is wrong, it means nobody can say which
+    // layout it is the rate of.
+    if (!focusHeld.ok) focusFail = focusHeld;
 
     // Recorded as a finding rather than asserted: if the governor's reference is
     // the focused panel's timeframe and that is not the finest one displayed, the
@@ -918,9 +932,11 @@ async function main() {
     // four realms is not a four-panel rate, however correct the scalar is.
     verdict = playbackFail
       ? fail(playbackFail.state, `${playbackFail.why} The read-back itself was still probed and is in observed.readBack.`)
-      : bad.length
-        ? fail('PUBLISH_WRONG', `A reading came back and ${bad.length} clause(s) disagreed with it: ${bad.map((b) => b.label).join('; ')}`)
-        : { state: 'PUBLISH_CORRECT', why: `read-back ${top.value} market-s/wall-s at speed ${SPEED} x step ${stepSeconds}s, measured over ${observed.window.seconds}s in ${observed.window.slices.length} slices` };
+      : focusFail
+        ? fail(focusFail.state, `${focusFail.why} The reading is in observed.readBack but is not attributable to a layout.`)
+        : bad.length
+          ? fail('PUBLISH_WRONG', `A reading came back and ${bad.length} clause(s) disagreed with it: ${bad.map((b) => b.label).join('; ')}`)
+          : { state: 'PUBLISH_CORRECT', why: `read-back ${top.value} market-s/wall-s at speed ${SPEED} x step ${stepSeconds}s, measured over ${observed.window.seconds}s in ${observed.window.slices.length} slices` };
   } finally {
     await browser.close().catch(() => {});
     await harness.close?.().catch?.(() => {});

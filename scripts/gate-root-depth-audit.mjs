@@ -20,8 +20,22 @@
  * A static scan alone cannot separate the first from the second, so this
  * executes every candidate in both locations rather than reasoning about depth.
  *
- *   node scripts/gate-root-depth-audit.mjs            # scan + execute
- *   node scripts/gate-root-depth-audit.mjs --scan-only
+ *   node scripts/gate-root-depth-audit.mjs --scan-only          # read-only, any tree
+ *   node scripts/gate-root-depth-audit.mjs --tree=<copy>       # executes; scratch only
+ *   node scripts/gate-root-depth-audit.mjs --all-gates --tree=<copy>
+ *
+ * CENSUS-TREE-01, hard. Executing mode refuses to run against the working tree.
+ * `--all-gates` executes mutation suites, and a mutation suite that is killed
+ * mid-run leaves its mutant in the file. On 03-08 that left five product
+ * mutations in the tree — the scalar clone at `chart.js:4191`, a negated
+ * `_evictBehindPlayheadDisabled()` in both `replay-system.js` mirrors, a deleted
+ * `_m20J1PumpThumbs()` call in both `order-manager.js` mirrors, and B-W18's
+ * whole `parse_guard_enabled` rollback lever removed from `api_server.py` — and
+ * rewrote sixteen evidence artifacts belonging to other lanes, one of which
+ * flipped a recorded verdict from GREEN to RED. An instrument that rewrites the
+ * evidence of the lanes it audits can turn a healthy product into a red record
+ * with nobody watching, so this is a refusal in the instrument rather than a
+ * note in a ledger.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -33,6 +47,62 @@ import { captureProvenance } from './lib/run-provenance.mjs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const log = (m) => console.log(`[root-depth] ${m}`);
+
+/**
+ * CENSUS-TREE-01 — where this run is allowed to scan and execute.
+ *
+ * Exported and pure so the refusal can be exercised without copying a tree.
+ * The artifact still lands in the real repo; only the subject moves.
+ *
+ * @param {{argv: string[], root: string, exists?: (p: string) => boolean}} o
+ */
+export function resolveScanRoot({ argv, root, exists = (p) => fs.existsSync(p) && fs.statSync(p).isDirectory() }) {
+  const executes = !argv.includes('--scan-only');
+  const flag = argv.find((a) => a.startsWith('--tree='));
+  const raw = flag ? flag.slice('--tree='.length) : null;
+
+  if (!executes) return { ok: true, state: 'READ_ONLY_SCAN', scanRoot: raw ? path.resolve(raw) : root, executes };
+
+  if (!raw) {
+    return {
+      ok: false,
+      executes,
+      state: 'WORKING_TREE_EXECUTION_REFUSED',
+      why: 'Executing mode runs gate and mutation suites, which write to the files they measure.'
+        + ' Pass --tree=<scratch copy> to execute, or --scan-only to stay read-only.'
+        + ' A killed mutation suite leaves its mutant behind, and on 03-08 that put five mutations into'
+        + ' product source and rewrote sixteen of other lanes\' evidence artifacts.',
+    };
+  }
+
+  const scanRoot = path.resolve(raw);
+  // Inside the repo is not a scratch copy: git sees it, the audit walks it, and a
+  // mutant left in it is a dirty working tree by another name.
+  const rel = path.relative(root, scanRoot);
+  if (scanRoot === root || (rel && !rel.startsWith('..') && !path.isAbsolute(rel))) {
+    return {
+      ok: false,
+      executes,
+      state: 'SCRATCH_TREE_IS_INSIDE_THE_WORKING_TREE',
+      why: `--tree=${scanRoot} is the working tree or a directory inside it. Copy the checkout somewhere outside ${root}.`,
+      scanRoot,
+    };
+  }
+  if (!exists(scanRoot)) {
+    return { ok: false, executes, state: 'SCRATCH_TREE_ABSENT', why: `--tree=${scanRoot} is not a directory that exists.`, scanRoot };
+  }
+  if (!exists(path.join(scanRoot, 'scripts'))) {
+    return {
+      ok: false,
+      executes,
+      state: 'SCRATCH_TREE_NOT_A_CHECKOUT',
+      why: `--tree=${scanRoot} has no scripts/ directory, so it is not a copy of this checkout.`
+        + ' Executing there would census an empty population and report it as a clean one.',
+      scanRoot,
+    };
+  }
+  return { ok: true, executes, state: 'SCRATCH_TREE', scanRoot };
+}
 
 const SKIP_DIRS = new Set([
   'node_modules', '.git', '.scratch', '_evidence', 'dist', 'dist-v9', 'build',
@@ -130,7 +200,7 @@ export function isGateFile(file, src) {
   return /\bGATE\b|\bORACLE\b/i.test(src.slice(0, 2000));
 }
 
-function scanFile(file, { requireAnchor = true } = {}) {
+function scanFile(file, { requireAnchor = true, root = ROOT } = {}) {
   let src;
   try { src = fs.readFileSync(file, 'utf8'); } catch { return null; }
   if (!isGateFile(file, src)) return null;
@@ -148,17 +218,24 @@ function scanFile(file, { requireAnchor = true } = {}) {
   if (!anchors.length && requireAnchor) return null;
 
   return {
-    file: path.relative(ROOT, file).replace(/\\/g, '/'),
+    file: path.relative(root, file).replace(/\\/g, '/'),
     anchors,
     usesRootWalk: /function findRoot|ANCHOR_BROKEN/.test(src),
     browserish: BROWSER_MARKERS.some((k) => src.includes(k)),
   };
 }
 
+/**
+ * The tree gates are executed in. Set once by main() from CENSUS-TREE-01 and
+ * never ROOT in an executing run — a gate that resolves anything from cwd would
+ * otherwise write into the working tree from a scratch-copy census.
+ */
+let SUBJECT_TREE = ROOT;
+
 function spawnNode(args, timeoutMs = 30_000) {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, args, {
-      cwd: ROOT, env: { ...process.env, NO_COLOR: '1' },
+      cwd: SUBJECT_TREE, env: { ...process.env, NO_COLOR: '1' },
     });
     let out = '';
     let killed = false;
@@ -308,17 +385,37 @@ async function main() {
   // never ran is absent while scoring as present, and the cause of its absence
   // is a detail.
   const allGates = process.argv.includes('--all-gates');
+
+  // CENSUS-TREE-01, before anything is walked: executing mode needs a scratch
+  // copy. The refusal is here rather than in a ledger because the last run of
+  // this instrument mutated product source and other lanes' evidence, and a rule
+  // that depends on the operator remembering it is the same class of mechanism
+  // that has failed five times on this box.
+  const treeGate = resolveScanRoot({ argv: process.argv, root: ROOT });
+  if (!treeGate.ok) {
+    log(`REFUSED — ${treeGate.state}`);
+    log(`  ${treeGate.why}`);
+    log(`  scratch copy: robocopy "${ROOT}" "<somewhere outside the repo>" /E /XD node_modules .git`);
+    process.exitCode = 1;
+    return;
+  }
+  const SCAN_ROOT = treeGate.scanRoot;
+  SUBJECT_TREE = SCAN_ROOT;
+  log(`subject tree: ${treeGate.state} ${SCAN_ROOT}${treeGate.executes ? ' (executing)' : ' (read-only)'}`);
+
   const tag = allGates ? 'all-gates' : 'root-depth';
   const out = path.resolve(path.join(ROOT, 'docs/plan3/evidence', `${tag}-audit-${Date.now()}.json`));
 
-  const files = walk(ROOT);
+  const files = walk(SCAN_ROOT);
   let hits;
   if (changedOnly) {
+    // The change list comes from the real repo, read-only; the files are then run
+    // wherever the subject tree is.
     hits = changedFiles().map((rel) => ({ file: rel, anchors: [], usesRootWalk: true, browserish: false }));
   } else if (allGates) {
-    hits = files.map((f) => scanFile(f, { requireAnchor: false })).filter(Boolean);
+    hits = files.map((f) => scanFile(f, { requireAnchor: false, root: SCAN_ROOT })).filter(Boolean);
   } else {
-    hits = files.map((f) => scanFile(f)).filter(Boolean);
+    hits = files.map((f) => scanFile(f, { root: SCAN_ROOT })).filter(Boolean);
   }
   log(`${files.length} .mjs files scanned, ${hits.length} ${allGates ? 'gate files found' : 'gates anchor by fixed relative depth'}`);
 
@@ -351,7 +448,11 @@ async function main() {
     // repo root is either deliberate (a sibling directory) or the defect. Only
     // running it can tell, which is why this is not the headline number.
     staticallySuspect: hits.filter((h) => h.anchors.some((a) => !a.resolvesToRepoRoot))
-      .map((h) => ({ file: h.file, anchors: h.anchors.map((a) => `${a.literal} -> ${path.relative(ROOT, a.resolved) || '<root>'}`) })),
+      .map((h) => ({ file: h.file, anchors: h.anchors.map((a) => `${a.literal} -> ${path.relative(SCAN_ROOT, a.resolved) || '<root>'}`) })),
+    // Which tree the population came from. A census of a scratch copy is not a
+    // census of HEAD unless the copy is stated, and the artifact is the only place
+    // a later reader can find that out.
+    subject: { state: treeGate.state, tree: SCAN_ROOT, executed: treeGate.executes, isWorkingTree: SCAN_ROOT === ROOT },
     gates: hits,
     executed: [],
   };
@@ -374,7 +475,7 @@ async function main() {
     for (;;) {
       const h = queue.shift();
       if (!h) return;
-      const full = path.join(ROOT, h.file);
+      const full = path.join(SCAN_ROOT, h.file);
       // Parse before executing. A file that does not parse has never run in any
       // location, and it is the cheapest thing to check and the easiest to miss:
       // tonight's two were a declaration inserted inside an import block and a
