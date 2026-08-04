@@ -108,6 +108,13 @@ export const C_LANE_GATES = [
       + 'by a stated criterion, and an unmeasured amplitude being borrowed from another quantity',
   },
   {
+    id: 'COV-01-VERDICT',
+    symbol: 'assessCov01',
+    module: 'scripts/lib/cov01-verdict.mjs',
+    refuses: 'coverage quoted from a mean that hides a moment below the floor, a missing moment read as '
+      + 'anything other than unmeasured, and the single-pid basis that produced 59.84% being graded at all',
+  },
+  {
     id: 'READING-VALIDITY-01',
     symbol: 'assessReading',
     module: 'scripts/lib/reading-validity.mjs',

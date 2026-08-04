@@ -32,6 +32,7 @@ import crypto from 'node:crypto';
 import { openRun, inspectRun } from './lib/detach01.mjs';
 import { acquireRunLockOrExit, lockFlagsFromArgv } from './lib/run-lock.mjs';
 import { captureDetailedDump } from './lib/detailed-dump-capture.mjs';
+import { assessCov01, loadMoments } from './lib/cov01-verdict.mjs';
 import { bootConf01Session, cycleTrades } from './lib/conf01-session.mjs';
 import {
   HEAP_CYCLE_DATASET_MODE_SAME_SYMBOL,
@@ -44,7 +45,10 @@ import { perBarFields, evaluateGauges } from './lib/soak-gauges.mjs';
 import { readBuildInfo, shaChanged } from './lib/build-info.mjs';
 import { computeSeal } from './lib/seal.mjs';
 import { checkSpeed01Served, capabilityDigest, readSpeed01Runtime } from './lib/served-capability.mjs';
-import { deliveredRate, evaluateRateHold, readEffectiveRateReadback, assessRateFloor } from './lib/rate-hold.mjs';
+import {
+  deliveredRate, evaluateRateHold, readEffectiveRateReadback, assessRateFloor,
+  RATE_FLOOR_BARS_PER_SEC as RATE_FLOOR_DEFAULT,
+} from './lib/rate-hold.mjs';
 import { forcedGcPauseProbe } from './lib/forced-gc-pause-probe.mjs';
 import { arenaColumns, rankRowGrowth } from './lib/arena-columns.mjs';
 import { collectMemoryDump } from './process-memory-census.mjs';
@@ -70,7 +74,12 @@ const SAMPLE_MS = Number(argOf('sampleMs', '180000'));
  * that W1's 1% could never have survived it.
  */
 const RATE_FLOOR_WINDOW_MS = Number(argOf('rateFloorWindowMs', '60000'));
-const RATE_FLOOR_FRACTION = Number(argOf('rateFloorFraction', '0.5'));
+/**
+ * BARS PER SECOND OF THE STEP. Target 10, floor 8 — the PO's hand count of 600 bars per minute, and
+ * a floor tight enough that W1's 0.08 could never have survived it while still tolerating warm-up
+ * jitter. Absolute rather than a fraction of requested: an arm holding 0.1 perfectly is still wrong.
+ */
+const RATE_FLOOR_BARS_PER_SEC = Number(argOf('rateFloorBarsPerSec', String(RATE_FLOOR_DEFAULT)));
 /** POST-REFRESH-01. Long enough that a healthy chart moves the playhead well clear of read jitter. */
 const POST_REFRESH_PLAY_WINDOW_MS = Number(argOf('postRefreshPlayWindowMs', '20000'));
 /**
@@ -544,6 +553,11 @@ let detailedStartTaken = false;
 let bootEndpointTaken = false;
 let bootEndpointReading = null;
 let rateFloorChecked = false;
+/**
+ * The engine's step, read once at boot. Every bars/s in this run is denominated by it, and a sample
+ * taken before it is known carries a null rate rather than one divided by the panel timeframe.
+ */
+let stepSecondsLive = null;
 
 async function captureArmMoment(when) {
   const fp = await readFootprint(session.browser).catch(() => ({}));
@@ -766,17 +780,19 @@ try {
             return { sampleA, sampleB, hostTf: bh.tf ?? ah.tf ?? null, playing: bh.playing ?? null };
           }, { fallback: null })).value;
 
+        stepSecondsLive = stepRead.value;
         const hostTfSec = floorWindow ? tfSeconds(floorWindow.hostTf) : null;
         const measured = floorWindow
-          ? deliveredRate(floorWindow.sampleA, floorWindow.sampleB, { baseTimeframeSec: hostTfSec || 60 })
+          ? deliveredRate(floorWindow.sampleA, floorWindow.sampleB,
+            { baseTimeframeSec: hostTfSec || 60, stepSec: stepSecondsLive })
           : { ok: false, why: 'the rate-floor window did not complete within its budget' };
         const rateFloor = assessRateFloor({
           measured,
           requestedSpeed: SPEED,
-          stepSec: stepRead.value,
+          stepSec: stepSecondsLive,
           hostTfSec,
           windowSec: RATE_FLOOR_WINDOW_MS / 1000,
-          floorFraction: RATE_FLOOR_FRACTION,
+          floorBarsPerSec: RATE_FLOOR_BARS_PER_SEC,
           label: `${ARM} first-minute delivered-rate floor`,
         });
         run.note({
@@ -791,7 +807,8 @@ try {
           effectiveStepSeconds: session.conf01?.effectiveStepSeconds ?? null,
           hostPlaying: floorWindow?.playing ?? null,
         });
-        log(`rate floor: ${rateFloor.state} — ${rateFloor.actualMarketSecPerWallSec ?? 'n/a'} of ${rateFloor.expectedMarketSecPerWallSec ?? 'n/a'} market-s/wall-s`);
+        log(`rate floor: ${rateFloor.state} — ${rateFloor.actualBarsPerSec ?? 'n/a'} bars/s of the `
+          + `${stepSecondsLive ?? '?'}s step (target ${SPEED}, floor ${RATE_FLOOR_BARS_PER_SEC})`);
         if (rateFloor.abort) {
           run.note({ __void: true, segment, why: `RATE-FLOOR-01 ${rateFloor.state}: ${rateFloor.why}` });
           log(`REFUSING: ${rateFloor.why}`);
@@ -995,9 +1012,9 @@ try {
     const hostPanel = after.find((r) => r.isHost) || after[0] || {};
     const rateSample = { atMs: Date.now(), replayTimestamp: hostPanel.playheadMs, replayIndex: hostPanel.replayIndex };
     const hostTfSec = tfSeconds(hostPanel.tf);
-    const rate = (prevRateSample && hostTfSec)
-      ? deliveredRate(prevRateSample, rateSample, { baseTimeframeSec: hostTfSec })
-      : { ok: false, why: prevRateSample ? `host panel timeframe unreadable (${hostPanel.tf}) — bars/s has no denominator` : 'first sample' };
+    const rate = (prevRateSample && stepSecondsLive)
+      ? deliveredRate(prevRateSample, rateSample, { baseTimeframeSec: hostTfSec, stepSec: stepSecondsLive })
+      : { ok: false, why: prevRateSample ? 'the engine step is unreadable — bars/s has no denominator, and the host timeframe is not a substitute for it' : 'first sample' };
     prevRateSample = rateSample;
     /**
      * The live-panel count is computed ~40 lines below this push, so until now the RATE-HOLD series
@@ -1006,7 +1023,7 @@ try {
      * computation, which would change what the primary gauge measures to fix a bookkeeping order.
      */
     const rateEntry = rate.ok
-      ? { hours: +((Date.now() - t0) / 3600000).toFixed(4), marketSecPerWallSec: rate.marketSecPerWallSec, barsPerSec: rate.barsPerSec, barsPerSecDenominatorSec: rate.barsPerSecDenominatorSec, speed: SPEED, livePanels: null }
+      ? { hours: +((Date.now() - t0) / 3600000).toFixed(4), barsPerSec: rate.barsPerSec, barsPerSecDenominatorSec: rate.barsPerSecDenominatorSec, barsPerSecDenominator: 'step', marketSecPerWallSec: rate.marketSecPerWallSec, speed: SPEED, livePanels: null }
       : null;
     if (rateEntry) rateSeries.push(rateEntry);
     const rateReadback = (await phases.run('sample.readEffectiveRateReadback', budget('sample.readEffectiveRateReadback'),
@@ -1034,15 +1051,23 @@ try {
       const r = deliveredRate(
         { atMs: prevP.atMs, replayTimestamp: prevP.playheadMs, replayIndex: prevP.replayIndex },
         { atMs: Date.now(), replayTimestamp: p.playheadMs, replayIndex: p.replayIndex },
-        { baseTimeframeSec: tfSec },
+        { baseTimeframeSec: tfSec, stepSec: stepSecondsLive },
       );
       return {
         id: p.id, tf: p.tf,
-        // PRIMARY unit. Live-panel detection reads THIS, never bars/s: a 1h panel delivering market
-        // time can sit between bars for minutes and would look parked on a bars/s > 0 test.
+        // LIVENESS reads market-seconds, never bars/s: a 1h panel delivering market time can sit
+        // between bars for minutes and would look parked on a bars/s > 0 test.
         marketSecPerWallSec: r.ok ? r.marketSecPerWallSec : null,
+        // Delivery in the governed unit — same denominator as the headline, so the two are comparable.
         barsPerSec: r.ok ? r.barsPerSec : null,
-        barsPerSecDenominatorSec: tfSec,
+        barsPerSecDenominatorSec: r.ok ? r.barsPerSecDenominatorSec : null,
+        barsPerSecDenominator: r.ok ? r.barsPerSecDenominator : null,
+        /**
+         * This panel's OWN bar cadence, which is a different question and used to share the name
+         * `barsPerSec` with the line above it. On a 1h panel stepping 1m these differ by 60x.
+         */
+        barsPerSecOfTimeframe: r.ok ? r.barsPerSecOfTimeframe : null,
+        timeframeDenominatorSec: tfSec,
         why: r.ok ? null : r.why,
       };
     });
@@ -1075,10 +1100,12 @@ try {
       phaseSlowestMs: phaseSummary.slowestPhase?.ms ?? null,
       phaseSlowest: phaseSummary.slowestPhase?.phase ?? null,
       // RATE-HOLD inputs, per sample.
-      // RATE-HOLD primary unit: market-seconds delivered per wall-second. bars/s is derived display.
-      marketSecPerWallSec: rate.ok ? rate.marketSecPerWallSec : null,
+      // PRIMARY UNIT: bars per second OF THE STEP. Target 10, floor 8. Market-seconds rides along as
+      // a reconciliation field and is never graded — it scales with the step, which is the bug.
       deliveredBarsPerSec: rate.ok ? rate.barsPerSec : null,
-      barsPerSecDenominatorSec: rate.ok ? rate.barsPerSecDenominatorSec : hostTfSec,
+      barsPerSecDenominatorSec: rate.ok ? rate.barsPerSecDenominatorSec : stepSecondsLive,
+      barsPerSecDenominator: 'step',
+      marketSecPerWallSec: rate.ok ? rate.marketSecPerWallSec : null,
       deliveredRateRoute: rate.ok ? rate.route : null,
       deliveredRateTimeframe: hostPanel.tf ?? null,
       deliveredRateTimeframeSec: hostTfSec,
@@ -1337,6 +1364,8 @@ try {
     }
 
     let storageAfterRefresh = null;
+    // POST-REFRESH-01's verdict, hoisted to the scope that publishes the number it gates.
+    let postRefreshVerdict = null;
     try {
       await session.page.reload({ waitUntil: 'domcontentloaded', timeout: 120000 });
       await new Promise((r) => setTimeout(r, 45000));
@@ -1451,6 +1480,44 @@ try {
       log(`post-refresh play: ${resumed === true ? 'RESUMES' : resumed === false ? 'DOES NOT RESUME' : 'UNMEASURED'}`
         + ` (advance ${advancedMs ?? 'n/a'} market-ms via ${playBack?.resume?.route ?? 'no route'})`);
 
+      /**
+       * POST-REFRESH-01, the refusal.
+       *
+       * The two censuses above only described the page. This decides what may be published from it,
+       * because `endToPostRefresh` is a storage delta measured across the refresh and it is only a
+       * measurement of the product if the product came back. Over four black panels and a frozen
+       * playhead the same subtraction still yields a tidy number, and that number is worse than no
+       * number: it looks like evidence and it is the residue of a broken page.
+       *
+       * UNMEASURED IS NOT A PASS. A paint census that could not read the canvases and a playhead that
+       * could not be read are recorded as their own states and both withhold the number, for the same
+       * reason UNPROVEN is not a pass in READING-VALIDITY-01.
+       */
+      const paintOk = withChart.length > 0 && painted.length >= withChart.length && withChart.length >= 4;
+      const postRefreshOk = paintOk && resumed === true;
+      postRefreshVerdict = {
+        check: 'POST-REFRESH-01',
+        pass: postRefreshOk,
+        state: postRefreshOk ? 'CHART_SURVIVED_REFRESH'
+          : withChart.length === 0 ? 'PAINT_UNMEASURED'
+            : !paintOk ? 'PANELS_DID_NOT_REPAINT'
+              : resumed === null ? 'PLAY_UNMEASURED' : 'PLAY_DID_NOT_RESUME',
+        panelsPainted: painted.length,
+        panelsExpected: withChart.length,
+        playResumed: resumed,
+        advancedMarketMs: advancedMs,
+        why: postRefreshOk ? null
+          : `${painted.length} of ${withChart.length} panels repainted and play `
+            + `${resumed === true ? 'resumed' : resumed === false ? 'did not resume' : 'could not be measured'}`
+            + ' after the mid-run refresh. Refusing to publish endToPostRefresh: a storage delta taken '
+            + 'across a dead chart measures teardown, not the product.',
+      };
+      run.note({ __postRefreshVerdict: true, ...postRefreshVerdict });
+      if (!postRefreshOk) {
+        run.note({ __void: true, scope: 'endToPostRefresh', segment, why: `POST-REFRESH-01 ${postRefreshVerdict.state}: ${postRefreshVerdict.why}` });
+        log(`REFUSING endToPostRefresh: ${postRefreshVerdict.state}`);
+      }
+
       // The other half of DRAW-SMOKE-01: the same refresh, read back.
       if (DRAWINGS_SMOKE) {
         const back = (await endPhases.run('end.readDrawings', SOAK_PHASE_BUDGETS_MS['end.readDrawings'],
@@ -1479,11 +1546,30 @@ try {
     } catch (err) {
       run.note({ __storageCensus: true, when: 'post-refresh', failed: true, why: String(err).slice(0, 160) });
     }
+    /**
+     * POST-REFRESH-01 gates both diffs that span the refresh. `startToEnd` is untouched by it — that
+     * one is measured entirely before the reload and a chart that dies on refresh does not retract
+     * the ten hours before it.
+     */
+    const refreshQuotable = postRefreshVerdict?.pass === true;
+    const withheld = (label) => ({
+      withheld: true,
+      check: 'POST-REFRESH-01',
+      state: postRefreshVerdict?.state ?? 'POST_REFRESH_UNASSERTED',
+      why: postRefreshVerdict?.why
+        ?? `${label} spans a refresh that POST-REFRESH-01 never asserted, so there is no evidence the `
+          + 'chart came back and the delta cannot be attributed to the product.',
+    });
     run.note({
       __storageDiff: true,
       startToEnd: diffStorage(storageAtStart, storageAtEnd, { labelA: 'arm-start', labelB: 'arm-end' }),
-      endToPostRefresh: storageAfterRefresh ? diffStorage(storageAtEnd, storageAfterRefresh, { labelA: 'arm-end', labelB: 'post-refresh' }) : null,
-      startToPostRefresh: storageAfterRefresh ? diffStorage(storageAtStart, storageAfterRefresh, { labelA: 'arm-start', labelB: 'post-refresh' }) : null,
+      endToPostRefresh: !storageAfterRefresh ? null
+        : refreshQuotable ? diffStorage(storageAtEnd, storageAfterRefresh, { labelA: 'arm-end', labelB: 'post-refresh' })
+          : withheld('endToPostRefresh'),
+      startToPostRefresh: !storageAfterRefresh ? null
+        : refreshQuotable ? diffStorage(storageAtStart, storageAfterRefresh, { labelA: 'arm-start', labelB: 'post-refresh' })
+          : withheld('startToPostRefresh'),
+      postRefreshAssertion: postRefreshVerdict,
       readingNote: 'Storage surviving a refresh is retention the user carries BETWEEN sessions. Process-memory gauges cannot see it, so this is a different quantity from every MB figure published so far and must not be added to them.',
     });
   }
@@ -1516,7 +1602,19 @@ try {
     log(`snapshot ${snap.ok ? `written ${snap.mb} MB` : `not taken: ${snap.skippedWhy || snap.failedWhy}`}`);
   }
 
-  run.finish({ completed: true, segments: segment });
+  /**
+   * COV-01, the four-moment verdict — the seam E handed back as `AGGREGATION_NOT_IN_E_PARSER`.
+   *
+   * Emitted at the end of EVERY arm even though only two of the four moments can exist yet, because
+   * the honest state after one arm is MOMENTS_MISSING and printing it is what makes the gap visible.
+   * The green can only appear on the second arm's run, once both arms' artifacts share the dump
+   * directory — which is exactly right: COV-01 is a claim about the pair, not about one arm.
+   */
+  const cov01 = assessCov01({ moments: loadMoments(DETAILED_DUMP_DIR) });
+  run.note({ __cov01Verdict: true, at: new Date().toISOString(), dumpDir: DETAILED_DUMP_DIR, ...cov01 });
+  log(`COV-01: ${cov01.state}${cov01.pass ? '' : ` — ${cov01.why}`}`);
+
+  run.finish({ completed: true, segments: segment, cov01State: cov01.state, cov01Pass: cov01.pass });
 } catch (err) {
   run.note({ __error: true, error: String(err && err.stack ? err.stack : err).slice(0, 600) });
   run.finish({ completed: false, segments: segment });

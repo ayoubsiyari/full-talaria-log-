@@ -1,0 +1,134 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {
+  assessCov01, loadMoments, momentFileName, COV01_MOMENTS, COV01_FLOOR_PCT,
+} from './cov01-verdict.mjs';
+
+const moment = (name, coveragePct, over = {}) => ({
+  moment: name,
+  present: true,
+  coveragePct,
+  namedMB: coveragePct != null ? +(coveragePct * 6.749).toFixed(2) : null,
+  totalMB: 674.9,
+  totalBasis: 'all-chrome-process-private',
+  processCount: 7,
+  covState: 'MEASURED',
+  ...over,
+});
+
+const allAt = (pct) => COV01_MOMENTS.map((m) => moment(m, pct));
+
+test('four moments all clearing the floor is the only green', () => {
+  const v = assessCov01({ moments: allAt(96.4) });
+  assert.equal(v.state, 'COV01_GREEN');
+  assert.equal(v.pass, true);
+  assert.equal(v.quotable, true);
+  assert.equal(v.worstMoment.coveragePct, 96.4);
+});
+
+test('the worst moment is the verdict — an average above the floor does not rescue one below it', () => {
+  const v = assessCov01({
+    moments: [moment('trades:start', 99), moment('trades:end', 99),
+      moment('zerotrade:start', 99), moment('zerotrade:end', 83)],
+  });
+  assert.equal(v.meanPct, 95, 'the mean clears the floor');
+  assert.equal(v.state, 'COVERAGE_BELOW_FLOOR');
+  assert.equal(v.pass, false);
+  assert.equal(v.worstMoment.moment, 'zerotrade:end');
+  assert.equal(v.spreadPct, 16);
+});
+
+test('the published 59.84% grades RED rather than throwing', () => {
+  const v = assessCov01({ moments: allAt(59.84) });
+  assert.equal(v.state, 'COVERAGE_BELOW_FLOOR');
+  assert.match(v.why, /59\.84% against a 95% floor/);
+});
+
+test('absent moments are UNMEASURED, distinct from below-floor', () => {
+  const v = assessCov01({ moments: [moment('trades:start', 99), moment('trades:end', 99)] });
+  assert.equal(v.state, 'MOMENTS_MISSING');
+  assert.equal(v.pass, false);
+  assert.deepEqual(v.missing, ['zerotrade:start', 'zerotrade:end']);
+  assert.match(v.why, /not a pass either/);
+});
+
+test('no moments at all is missing, not vacuously green', () => {
+  const v = assessCov01({ moments: [] });
+  assert.equal(v.state, 'MOMENTS_MISSING');
+  assert.equal(v.pass, false);
+  assert.equal(v.missing.length, 4);
+});
+
+test('a failed capture is its own state and is never read as zero coverage', () => {
+  const v = assessCov01({
+    moments: [...allAt(99).slice(0, 3),
+      moment('zerotrade:end', null, { covState: 'CAPTURE_FAILED', captureError: 'target closed' })],
+  });
+  assert.equal(v.state, 'CAPTURE_FAILED');
+  assert.notEqual(v.state, 'COVERAGE_BELOW_FLOOR');
+  assert.equal(v.failedMoments[0].error, 'target closed');
+});
+
+test('BASIS-GUARD-01: single-pid coverage is refused, not graded, even at 99%', () => {
+  const v = assessCov01({
+    moments: [...allAt(99).slice(0, 3),
+      moment('zerotrade:end', 99, { processCount: 1, totalBasis: 'single-renderer-private' })],
+  });
+  assert.equal(v.state, 'BASIS_REJECTED');
+  assert.equal(v.pass, false);
+  assert.match(v.why, /divides one renderer by the whole browser/);
+});
+
+test('an all-Chrome total over one process is still the 59.84% basis and is refused', () => {
+  const v = assessCov01({ moments: allAt(99).map((m) => ({ ...m, processCount: 1 })) });
+  assert.equal(v.state, 'BASIS_REJECTED');
+});
+
+test('a captured moment with no coverage figure is unreadable, not a pass', () => {
+  const v = assessCov01({ moments: [...allAt(99).slice(0, 3), moment('zerotrade:end', null)] });
+  assert.equal(v.state, 'COVERAGE_UNREADABLE');
+  assert.equal(v.pass, false);
+});
+
+test('exactly at the floor passes and a hair under does not', () => {
+  assert.equal(assessCov01({ moments: allAt(COV01_FLOOR_PCT) }).pass, true);
+  assert.equal(assessCov01({ moments: allAt(94.99) }).pass, false);
+});
+
+test('the moments span both arms, so one arm alone can never go green', () => {
+  const tradesOnly = [moment('trades:start', 99), moment('trades:end', 99)];
+  assert.equal(assessCov01({ moments: tradesOnly }).state, 'MOMENTS_MISSING');
+});
+
+test('loadMoments reads E\'s artifact contract off disk and reports gaps', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cov01-'));
+  fs.writeFileSync(path.join(dir, momentFileName('trades:start')), JSON.stringify({
+    signature: 'DETAILED-DUMP-CAPTURE-V1',
+    moment: 'trades:start',
+    totalPrivateMB: 674.9,
+    totalBasis: 'all-chrome-process-private',
+    singlePidCoverage: 59.84,
+    row: { arenaCoveragePct: 97.1, arenaNamedTotalMB: 655.3, processCount: 7, covState: 'MEASURED' },
+  }));
+  const loaded = loadMoments(dir);
+  const first = loaded.find((m) => m.moment === 'trades:start');
+  assert.equal(first.present, true);
+  assert.equal(first.coveragePct, 97.1);
+  assert.equal(first.singlePidCoverage, 59.84, 'the rejected basis rides along for comparison');
+  assert.equal(loaded.filter((m) => !m.present).length, 3);
+  assert.match(loaded.find((m) => m.moment === 'trades:end').why, /no artifact at/);
+  assert.equal(assessCov01({ moments: loaded }).state, 'MOMENTS_MISSING');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('an unreadable artifact is absent, not a silent skip', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cov01-'));
+  fs.writeFileSync(path.join(dir, momentFileName('trades:start')), '{ truncated');
+  const loaded = loadMoments(dir);
+  assert.equal(loaded.find((m) => m.moment === 'trades:start').present, false);
+  assert.match(loaded.find((m) => m.moment === 'trades:start').why, /unreadable/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});

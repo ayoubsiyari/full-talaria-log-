@@ -91,10 +91,63 @@ const check = (n, p, d) => { results.push({ name: n, pass: p, detail: d }); cons
   const tfSeconds = new Function(`${body}; return tfSeconds;`)();
   const cases = [['1m', 60], ['5m', 300], ['15m', 900], ['1h', 3600], ['4h', 14400], ['1d', 86400], ['30s', 30]];
   const bad = cases.filter(([i, o]) => tfSeconds(i) !== o);
-  check('the bars/s denominator is read from the panel timeframe, all cases', bad.length === 0,
+  // Not the bars/s denominator any more — that is the step. This reads the panel's own cadence.
+  check('the panel timeframe is read for all cases', bad.length === 0,
     bad.length ? `wrong: ${JSON.stringify(bad)}` : cases.map(([i, o]) => `${i}=${o}s`).join(' '));
   check('an unreadable timeframe returns null rather than a wrong denominator',
     tfSeconds('weekly') === null && tfSeconds(null) === null && tfSeconds('') === null, 'null on garbage');
+}
+
+/**
+ * 2b. The unit, wired. The renaming that produced 0.08 and 602 was invisible at the call site, so
+ * these cells read the call sites rather than the helper's own tests.
+ */
+{
+  const src = fs.readFileSync('scripts/sealed-two-arm-soak.mjs', 'utf8');
+  /** Every `deliveredRate(...)` argument list, by paren depth — a regex undercounts the multi-line ones. */
+  const callArgs = (code) => {
+    const out = [];
+    const re = /\bdeliveredRate\s*\(/g;
+    let m;
+    while ((m = re.exec(code))) {
+      if (/import|from '/.test(code.slice(Math.max(0, m.index - 80), m.index))) continue;
+      let depth = 1; let i = re.lastIndex;
+      while (i < code.length && depth > 0) {
+        if (code[i] === '(') depth += 1;
+        else if (code[i] === ')') depth -= 1;
+        i += 1;
+      }
+      out.push(code.slice(re.lastIndex, i - 1));
+    }
+    return out;
+  };
+  const calls = callArgs(src);
+  const withoutStep = calls.filter((c) => !/stepSec\s*:/.test(c));
+  check('every deliveredRate call in the soak passes a step denominator', calls.length >= 3 && withoutStep.length === 0,
+    withoutStep.length ? `${withoutStep.length} of ${calls.length} calls pass no stepSec`
+      : calls.length < 3 ? `only found ${calls.length} call sites — the scanner is undercounting`
+        : `${calls.length} call sites, all denominated by the step`);
+  // CONTROL. A presence check that has never gone red is a presence check nobody has tested.
+  const injected = callArgs(`${src}\nconst x = deliveredRate(a, b, { baseTimeframeSec: 3600 });`);
+  check('CONTROL: the step-denominator check catches a call that omits the step',
+    injected.filter((c) => !/stepSec\s*:/.test(c)).length === 1,
+    'an injected timeframe-only call is caught');
+  check('the floor is graded in bars/s, not as a fraction of requested',
+    /floorBarsPerSec\s*:/.test(src) && !/floorFraction/.test(src),
+    /floorFraction/.test(src) ? 'floorFraction survives in the soak' : 'floorBarsPerSec');
+}
+
+// 2c. POST-REFRESH-01 gates the number rather than merely describing the page.
+{
+  const src = fs.readFileSync('scripts/sealed-two-arm-soak.mjs', 'utf8');
+  const diff = src.match(/__storageDiff: true[\s\S]{0,900}?\}\);/);
+  const gated = !!diff && /refreshQuotable\s*\?/.test(diff[0]) && /withheld\(/.test(diff[0]);
+  check('endToPostRefresh is withheld unless POST-REFRESH-01 passed', gated,
+    gated ? 'both refresh-spanning diffs are gated on the assertion'
+      : 'the storage diff publishes across the refresh without consulting the assertion');
+  check('an unmeasured refresh is not a pass',
+    /PAINT_UNMEASURED/.test(src) && /PLAY_UNMEASURED/.test(src) && /POST_REFRESH_UNASSERTED/.test(src),
+    'unmeasured paint, unmeasured play and an unasserted refresh are distinct withholding states');
 }
 
 // 3. The pause-probe refuses when the pause did not take.
