@@ -910,3 +910,34 @@ the rule is enforced by the instrument rather than by whoever runs it.**
 - **seal-corrupting?** **no.** No sealed byte depends on where a gate filed its artifact. It does mean any
   "the gate produced its evidence" claim is a claim about *a* file rather than the file a reader will open,
   and that a green from a mirrored writing gate has never proven which tree it wrote to.
+
+### PSL-44 · A BOM is fatal only ahead of a shebang — one gate had never run, ten files are latent
+
+**For B, as the BOM-01 owner. Filed by A at 11:36+01:00 rather than sent, because the finding is the
+source-file surface of B's own root cause and belongs beside `PSL-39` rather than in a message.**
+
+- **owner:** B (`BOM-01`); A as reporter
+- **finding:** same cause as `PSL-39` — PowerShell `Set-Content -Encoding utf8` — on a different surface:
+  **source files, not commit messages.** `scripts/tests/ckpt-ship-tag-first.test.mjs` carried U+FEFF ahead
+  of `#!/usr/bin/env node`. With a BOM in front of it the shebang is no longer a shebang, the `#!` line is
+  a syntax error, and **the gate had never executed in any location** while reading in a sweep as an
+  ordinary red. Fixed at `30262c421`. **Ten tracked files still carry a BOM and all ten parse**, because
+  none of them has a shebang — so they are latent rather than broken, and I am grading them that way
+  rather than reporting ten reds: `drawing-tools-manager.js`, `economic-news-sidebar.js`,
+  `replay-news-panel.js` and `session-symbol-exclusivity.test.mjs` in **both** module trees, plus
+  `scripts/shellplay-guard-attribution-probe.mjs` and `scripts/tests/build-id-refusal.test.mjs`.
+- **state:** `MEASURED_NOT_FIXED` — the one fatal instance is fixed; the ten latent ones are untouched.
+- **evidence:** byte scan for `EF BB BF` over every tracked `.mjs`, `.js` and `.py`; `node --check` on all
+  ten, all `PARSES`; shebang presence checked per file rather than assumed. The fatal case is fixed at
+  `30262c421` and `--all-gates` now parse-checks before executing, which is the only reason a
+  never-parsed gate is distinguishable from a failing one at all.
+- **post-soak action:** strip the BOM from the ten and put the byte check somewhere a new one cannot get
+  past — the mirror-parity pass is the natural place, since three of the ten are mirrored product modules
+  and the check is three bytes. **One question I have deliberately not answered:** a BOM that is harmless
+  at the head of a file becomes an **interior** U+FEFF if that file is concatenated into a bundle, and
+  three of the ten are product modules shipped in both trees. Whether our build concatenates them that way
+  is the build owner's answer, not mine, and I would rather leave it as a stated question than assert a
+  defect I have not observed.
+- **seal-corrupting?** **no** for the record and the gate population. **Unsure** for the bundle clause
+  above, and that is exactly why it is written as a question: if the build does concatenate these three,
+  the consequence would be in served bytes rather than in our bookkeeping. Nothing observed says it does.
