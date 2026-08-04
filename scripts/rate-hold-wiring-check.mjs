@@ -50,7 +50,10 @@ const check = (n, p, d) => { results.push({ name: n, pass: p, detail: d }); cons
 // 1. Every identifier the soak's hot path names must exist in the source it imports from.
 {
   const src = fs.readFileSync('scripts/sealed-two-arm-soak.mjs', 'utf8');
-  const named = ['deliveredRate', 'evaluateRateHold', 'readEffectiveRateReadback', 'pauseProbe', 'readStorageCensus', 'diffStorage', 'tfSeconds'];
+  // `pauseProbe` was renamed `forcedGcPauseProbe` when the probe grew its forced-collection leg. The
+  // stale name here made this cell a permanent false RED on a check that gates the soak's wiring, which
+  // is worse than no cell at all: it teaches the reader to skim past the one state meant to stop them.
+  const named = ['deliveredRate', 'evaluateRateHold', 'readEffectiveRateReadback', 'forcedGcPauseProbe', 'readStorageCensus', 'diffStorage', 'tfSeconds', 'assessRateFloor'];
   const missing = named.filter((n) => !new RegExp(`\\b${n}\\b`).test(src));
   check('every helper the loop calls is referenced in the soak', missing.length === 0, missing.length ? `missing ${missing.join(', ')}` : `${named.length} present`);
 
