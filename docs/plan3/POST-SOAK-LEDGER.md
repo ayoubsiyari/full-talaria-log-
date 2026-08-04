@@ -749,3 +749,62 @@ with its own reason, which is why `PSL-21` through `PSL-23` are individual.
 - **seal-corrupting?** **no**, and worth being precise about why: it cannot make a stated row wrong. It can
   only hide a row that should have existed, which is a floor problem, and §0 already says the number is a
   floor. This makes the floor's *shape* explicit rather than the count larger.
+
+### PSL-38 · ORDER01B-SUBBAR-STEP-RATE — 1s step delivers 0.08 instead of 10
+
+**Alias: `POST-SOAK-LEDGER-D-006`.**
+
+- **owner:** D for Package 2 triage; product owner TBD after mechanism attribution
+- **finding:** The product genuinely delivers **0.08 market-s/wall-s** at speed **10** with explicit
+  step **1s** on the sealed 1-minute chart path, where the requested rate is **10 market-s/wall-s**.
+  That is **125x slow**. The harness refusal added on 2026-08-04T09:34Z protects future W1/soak
+  measurements by keeping them inside the shipped native-bar envelope, but it does **not** fix this
+  product defect and must never be read as doing so.
+- **state:** `MEASURED_NOT_FIXED`
+- **evidence:** A's canary-as-written readings: **0.07** yesterday and **0.08** last night, both through
+  the old default `--step=1`; D's governed-rate proof at the shipped envelope read **601.65, 601.65,
+  603.64, 602.64 market-s/wall-s**. Harness guard now refuses explicit steps below **60s** in
+  `scripts/lib/heap-cycle-po-workload.mjs`, and the queued wrapper default moved from `--step=1` to
+  `--step=60` in `scripts/order01b-readback-canary-run.mjs`.
+- **post-soak action:** Package 2 rows 2.1-2.3 should reproduce and attribute the generated intra-bar
+  path. First split the failure into scheduler/governor cadence versus slow tick work, then name the
+  owning panel/call if the tick itself is slow. Do not remove the harness refusal until the product
+  path has a red-capable gate and a shipped fix.
+- **seal-corrupting?** **no.** W1 is satisfied at the configuration actually shipped and measured in
+  the envelope. This row preserves the out-of-envelope product defect so the refusal cannot hide it.
+
+### PSL-38 · The commit-msg hook and git disagree about what a trailer is
+
+- **owner:** B
+- **finding:** The hook matches `^Manager:` on **any** line of the message. Git only recognises a
+  trailer in the message's **final paragraph**. The two therefore disagree on real inputs, and the
+  disagreement is silent in the direction that loses attribution: a message consisting solely of
+  `Manager: B` satisfies the hook -- it sees its own trailer and appends nothing -- while
+  `git log --format='%(trailers:key=Manager)'` returns **empty**. The commit lands unattributed and
+  nothing reports it.
+- **state:** `MEASURED_NOT_FIXED`
+- **evidence:** cell *"a message that is ONLY a trailer line has no git trailer at all"* in
+  `scripts/tests/commit-msg-hook.test.mjs`, added at `fc9894d13`. Found by the suite failing during
+  the BOM-01 fix, not by review.
+- **post-soak action:** make the hook assert what **git** will parse rather than what `sed` can find --
+  verify with `git interpret-trailers --parse` after writing, and refuse if the trailer it just
+  guaranteed is not the trailer git reports. **The hook currently proves the text is present, not that
+  the field is readable**, which is the presence-versus-binding distinction it was built to enforce on
+  everyone else.
+- **seal-corrupting?** **no.** Attribution metadata on future commits.
+
+### PSL-39 · 41 commit subjects carry a UTF-8 BOM
+
+- **owner:** unowned; B as reporter
+- **finding:** 41 of the last 400 commits have a subject beginning with U+FEFF, from PowerShell's
+  `Set-Content -Encoding utf8` writing message files. The cause is closed for future commits at
+  `fc9894d13`; the 41 existing subjects are unchanged.
+- **state:** `MEASURED_NOT_FIXED` -- deliberately, since fixing it means rewriting history
+- **evidence:** census over `git log -400`; 3 of the 41 are post-hook and **all 3 are correctly
+  attributed**, and **no commit in the repo carries conflicting attribution**. The vulnerability was live
+  and unexercised.
+- **post-soak action:** leave them. Rewriting 41 commit objects to clean a leading invisible character
+  would break every SHA cited across the plan3 corpus, and this file is full of such citations. **Decide
+  instead whether any tool matches on a subject prefix** -- the `board(B):` convention is one -- because
+  a BOM ahead of an anchored match is the failure mode that would already be silent.
+- **seal-corrupting?** **no.** Subject-line bytes. It does not touch a tree, a blob or a build.
