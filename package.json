@@ -31,6 +31,7 @@
     "gate:clock-01-c-commits": "node scripts/clock-01-audit.mjs --commits=20",
     "test:gate-binding-audit": "node --test scripts/gate-binding-audit.selftest.mjs",
     "gate:mirror-parity": "node scripts/mirror-parity-check.mjs",
+    "gate:served-build-agreement": "node scripts/served-build-agreement.mjs",
     "test:mirror-parity": "node --test scripts/mirror-parity-check.selftest.mjs",
     "test:run-lock": "node --test scripts/lib/run-lock.selftest.mjs",
     "test:queue": "node --test scripts/measurement-queue.selftest.mjs",
