@@ -52,9 +52,38 @@ function scratchRepo() {
       return { ok: false, stderr: (error.stderr || '') + (error.stdout || '') };
     }
   };
+  // `-m` cannot carry a byte-order mark; a BOM only ever arrives through a message FILE,
+  // which is how PowerShell's `Set-Content -Encoding utf8` reached a commit subject.
+  const commitFromFile = (bytes, env = {}) => {
+    fs.writeFileSync(path.join(dir, `f${Math.random().toString(36).slice(2)}.txt`), 'x\n');
+    git(['add', '-A']);
+    const msgPath = path.join(dir, `msg${Math.random().toString(36).slice(2)}.txt`);
+    fs.writeFileSync(msgPath, bytes);
+    try {
+      git(['commit', '-F', msgPath], env);
+      return { ok: true, stderr: '' };
+    } catch (error) {
+      return { ok: false, stderr: (error.stderr || '') + (error.stdout || '') };
+    }
+  };
   const lastMessage = () => git(['log', '-1', '--format=%B']);
-  return { dir, git, commit, lastMessage };
+  const lastSubject = () => git(['log', '-1', '--format=%s']).replace(/\n+$/, '');
+  const lastManager = () => git(['log', '-1', '--format=%(trailers:key=Manager,valueonly)']).trim();
+  // Removes only the BOM-stripping block, leaving every other behaviour intact, so a cell
+  // that passes against this mutant is not testing what it claims to test.
+  const removeBomStrip = () => {
+    const p = path.join(dir, '.git/hooks/commit-msg');
+    const src = fs.readFileSync(p, 'utf8');
+    const start = src.indexOf('BOM=$(printf');
+    const end = src.indexOf('\nfi', src.indexOf('exit 1\n  fi'));
+    if (start === -1 || end === -1) throw new Error('MUTANT_ANCHOR_ABSENT: the BOM block moved');
+    fs.writeFileSync(p, src.slice(0, start) + src.slice(end + 3));
+    fs.chmodSync(p, 0o755);
+  };
+  return { dir, git, commit, commitFromFile, lastMessage, lastSubject, lastManager, removeBomStrip };
 }
+
+const BOM = '\uFEFF';
 
 const withRepo = (fn) => {
   const repo = scratchRepo();
@@ -223,4 +252,78 @@ test('every declared state has a distinct exit code', () => {
   const codes = Object.values(HOOK_EXIT);
   assert.equal(new Set(codes).size, codes.length, 'two states sharing a code cannot be told apart');
   assert.equal(HOOK_EXIT.HOOK_ACTIVE, 0, 'only ACTIVE may be a success');
+});
+
+// ---------------------------------------------------------------------------
+// BOM-01. A UTF-8 BOM at the start of the message file makes the first line
+// unmatchable by the hook's `^Manager:` anchor. Measured consequence before the
+// fix: a message reading `Manager: C`, committed by a worktree set to B, landed
+// as B with no warning -- the cross-lane misattribution this hook exists to
+// prevent, produced by the hook. Reached commit subjects at 7c82824c1 and
+// stopped ckpt-ship-tag-first.test.mjs parsing before that.
+//
+// Why the shell was vulnerable and director-digest was not: JavaScript's `\s`
+// includes U+FEFF, so `/^\s*Manager:/m` reads straight through a BOM. POSIX
+// `[[:space:]]` does not, so `sed -n 's/^Manager:...'` sees a different line.
+// ---------------------------------------------------------------------------
+
+test('DISCRIMINATING: a BOM hiding a DISAGREEING trailer is refused, not silently relabelled', () => {
+  withRepo((repo) => {
+    const r = repo.commitFromFile(`${BOM}Manager: C\n`, { TALARIA_MANAGER: 'B' });
+    assert.equal(r.ok, false, 'a BOM-hidden Manager: C must not land under lane B');
+    assert.match(r.stderr, /Manager: C but this worktree is/);
+    assert.match(r.stderr, /stripped a UTF-8 BOM/);
+  });
+});
+
+test('MUTANT: without the BOM strip, that same commit lands MISATTRIBUTED to the wrong lane', () => {
+  withRepo((repo) => {
+    repo.removeBomStrip();
+    const r = repo.commitFromFile(`${BOM}Manager: C\n`, { TALARIA_MANAGER: 'B' });
+    assert.equal(r.ok, true, 'the unfixed hook accepts it, which is the defect');
+    assert.equal(repo.lastManager(), 'B', 'git reports B for a commit whose author wrote C');
+    assert.match(repo.lastMessage(), /Manager: C/, 'C is still in the body, outvoted by the appended B');
+  });
+});
+
+test('the BOM is stripped from the subject, and exactly one trailer lands', () => {
+  withRepo((repo) => {
+    const r = repo.commitFromFile(`${BOM}board(B): a subject\n`, { TALARIA_MANAGER: 'B' });
+    assert.equal(r.ok, true);
+    assert.equal(repo.lastSubject().startsWith(BOM), false, 'no U+FEFF survives into the subject');
+    assert.equal(repo.lastSubject(), 'board(B): a subject');
+    assert.equal(repo.lastMessage().match(/^Manager:/gm).length, 1);
+  });
+});
+
+test('a BOM-only difference does not change behaviour that was already correct', () => {
+  withRepo((repo) => {
+    const plain = repo.commitFromFile('board(B): plain\n', { TALARIA_MANAGER: 'B' });
+    assert.equal(plain.ok, true);
+    assert.equal(plain.stderr.includes('stripped a UTF-8 BOM'), false, 'no notice when there is no BOM');
+    assert.equal(repo.lastManager(), 'B');
+  });
+});
+
+test('ANTI-VACUITY: a BOM-led message with an AGREEING trailer still lands, so the strip is not a blanket refusal', () => {
+  withRepo((repo) => {
+    const r = repo.commitFromFile(`${BOM}board(B): subject\n\nManager: B\n`, { TALARIA_MANAGER: 'B' });
+    assert.equal(r.ok, true);
+    assert.equal(repo.lastManager(), 'B');
+    assert.equal(repo.lastMessage().match(/^Manager:/gm).length, 1, 'not duplicated');
+  });
+});
+
+// Found by this suite failing, and it bounds the severity of BOM-01 rather than inflating it.
+// The hook reads `^Manager:` on ANY line; git only recognises a trailer in the final
+// paragraph. So a message that is nothing but `Manager: B` has no trailer as far as git is
+// concerned, while the hook treats it as one. The two disagree, and the BOM only ever blinds
+// line 1 -- which is the subject in every normal message, where a trailer does not live.
+test('a message that is ONLY a trailer line has no git trailer at all, hook agreement notwithstanding', () => {
+  withRepo((repo) => {
+    const r = repo.commitFromFile('Manager: B\n', { TALARIA_MANAGER: 'B' });
+    assert.equal(r.ok, true, 'the hook sees its own trailer and does not append a second');
+    assert.equal(repo.lastManager(), '', 'git sees a subject, not a trailer: attribution is LOST');
+    assert.match(repo.lastMessage(), /Manager: B/, 'the text is there; only the trailer block is not');
+  });
 });

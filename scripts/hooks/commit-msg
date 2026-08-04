@@ -34,6 +34,35 @@ MSG_FILE="$1"
 
 VALID='^(Director|[A-E])$'
 
+# A UTF-8 BOM at the start of the message file makes the FIRST LINE unmatchable by the
+# `^Manager:` anchor below. That is not cosmetic. Measured: a message whose first line is
+# `Manager: C`, written with a BOM, is read by this hook as carrying NO trailer, so the
+# disagreement refusal never fires, `Manager: B` is appended from the environment, and git
+# then reports the trailer as B. One lane's commit becomes another's with no warning --
+# the exact misattribution this hook exists to prevent, caused by the hook.
+#
+# PowerShell's `Set-Content -Encoding utf8` writes a BOM on PS5, which is how it reached a
+# commit subject at `7c82824c1` and how it stopped `ckpt-ship-tag-first.test.mjs` parsing.
+# Stripped here rather than at every call site, because the call sites are shells nobody
+# controls and this is the one place the field is read.
+BOM=$(printf '\357\273\277')
+if [ "$(head -c 3 "$MSG_FILE" 2>/dev/null)" = "$BOM" ]; then
+  if tail -c +4 "$MSG_FILE" > "$MSG_FILE.talaria-bom" 2>/dev/null; then
+    mv "$MSG_FILE.talaria-bom" "$MSG_FILE"
+    # Announced, not silent: the message file was written by a tool that will do it again,
+    # and a fix nobody is told about is how this survived unnoticed in the first place.
+    echo "commit-msg: stripped a UTF-8 BOM from the message file." >&2
+    echo "  Whatever wrote it emits BOMs; on PowerShell use" >&2
+    echo "  [System.IO.File]::WriteAllText(path, text) rather than Set-Content -Encoding utf8." >&2
+  else
+    rm -f "$MSG_FILE.talaria-bom"
+    echo "commit-msg: message file starts with a UTF-8 BOM and it could not be" >&2
+    echo "            stripped. Refusing: the Manager: trailer cannot be read reliably" >&2
+    echo "            through a BOM, and a wrong attribution is worse than no commit." >&2
+    exit 1
+  fi
+fi
+
 # A merge commit's message is written by git, not by a lane, and refusing it would
 # strand anyone mid-merge with no way to finish. Attributing a merge to whoever ran it
 # would also be false: the work in it belongs to the branches, not the merger.
