@@ -23,7 +23,9 @@ HARD CONSTRAINTS
   Director). Do not use TALARIA_FREEZE_OVERRIDE.
 - No builds: nothing that runs build:chart-v9, bump-dist-v9-cache or sync-v9-to-homepage, and do
   not touch chart/dist-v9 or homepage/public/chart.
-- Edit only your own board, docs/plan3/board/BOARD-A.md.
+- Boards: do not edit any board but docs/plan3/board/BOARD-A.md.
+- Code: you MAY edit the files your task names below, plus tests for them. This task requires
+  editing scripts/board-state-block.mjs and scripts/board-state-block-audit.mjs, which you own.
 - Commit with: node scripts/commit-scoped.mjs -F <msgfile> <path>...
   Put "Manager: A" in the FINAL PARAGRAPH. Git only reads a trailer from the last paragraph, so a
   message whose entire body is "Manager: A" carries no trailer at all (PSL-40).
@@ -83,25 +85,32 @@ HARD CONSTRAINTS
 - No deploys. A freeze is armed on the host (lift requires the Director). Do not use
   TALARIA_FREEZE_OVERRIDE.
 - No builds, and do not touch chart/dist-v9 or homepage/public/chart.
-- Edit only your own board, docs/plan3/board/BOARD-C.md.
+- Boards: do not edit any board but docs/plan3/board/BOARD-C.md.
+- Code: you MAY edit .gitignore, the evidence/commit tooling, and tests for them — task 1 is
+  explicitly about making the tree enforce a rule, which cannot be done from a board.
 - Commit with: node scripts/commit-scoped.mjs -F <msgfile> <path>...
   Put "Manager: C" in the FINAL PARAGRAPH (git reads trailers only from the last paragraph).
 
 YOUR TASK 1 — settle the evidence-versioning ruling that BOARD-C:63-65 lists as outstanding.
-There is now a concrete artifact proving it matters, found today:
+B measured the damage today and it is larger than first reported. B's first version of this prompt
+said "b114's ship log exists on disk and was never committed" — that was wrong, and the corrected
+finding is worse:
 
-- .gitignore:106 ignores docs/plan3/* wholesale.
-- Release ship logs are force-added, so b107 through b112 are tracked.
-- b114's ship log is NOT tracked. It exists on disk, it was cited, and it was never committed.
+- .gitignore:106 ignores docs/plan3/* wholesale, so evidence survives only if force-added.
+- Ship logs force-added and therefore present in THIS tree: b107-b112, plus b127.
+- Ship logs that exist only in B's other working directory (C:\...\manager-b-plan3), never
+  committed, and therefore invisible to anyone working here: b100-b106 and b114. Eight of them.
+- Ship logs that exist NOWHERE locally: b115 through b126. Twelve builds.
+- The host's own PINNED manifests confirm b113-b120 and b126 shipped. So twelve shipped builds
+  have no retained ship log in either checkout.
 
-So the convention did not merely risk losing cited evidence — it silently lost a ship's worth, and
-nobody noticed for five days, because a force-add that never happens produces no error. b127's
-logs are tracked only because B remembered to add -f. A convention that depends on remembering is
-the same class of failure as a deploy freeze that depends on the ship calling it, which is how
-b126 shipped through an armed freeze on 2026-08-03 with nothing recorded.
+Two mechanisms, not one. Force-add dependence loses what was never added; a second working
+directory means "on disk" and "in the tree" are different questions and nobody was asking the
+second. b127's logs are tracked only because B remembered.
 
-Decide the rule and make the tree enforce it rather than describing it. Whatever you land, the
-test is: can a cited artifact fail to be committed WITHOUT producing an error?
+Decide the rule and make the tree enforce it rather than describing it. The test for whatever you
+land: can a cited artifact fail to be committed WITHOUT producing an error? Today the answer is
+yes, twenty times over.
 
 YOUR TASK 2 — BOARD-C's state block is stale and two lines inside it are now false.
 The stamp reads 16:44+01:00, which is YESTERDAY's 16:44, and you committed to BOARD-C today at
@@ -138,7 +147,9 @@ HARD CONSTRAINTS
 - No deploys. A freeze is armed on the host (lift requires the Director). Do not use
   TALARIA_FREEZE_OVERRIDE.
 - No builds, and do not touch chart/dist-v9 or homepage/public/chart.
-- Edit only your own board, docs/plan3/board/BOARD-D.md.
+- Boards: do not edit any board but docs/plan3/board/BOARD-D.md.
+- Code: you MAY add the draft product gate and its test as new files, and read anything. Do not
+  change replay/order engine behaviour during the PO's window — attribute it, do not fix it yet.
 - Commit with: node scripts/commit-scoped.mjs -F <msgfile> <path>...
   Put "Manager: D" in the FINAL PARAGRAPH (git reads trailers only from the last paragraph).
 
@@ -185,7 +196,11 @@ HARD CONSTRAINTS
 - No deploys. A freeze is armed on the host (lift requires the Director). Do not use
   TALARIA_FREEZE_OVERRIDE.
 - No builds, and do not touch chart/dist-v9 or homepage/public/chart.
-- Edit only your own board, docs/plan3/board/BOARD-E.md.
+- Boards: do not edit any board but docs/plan3/board/BOARD-E.md.
+- Code: you MAY edit scripts/lib/cache-stamp-coherence.mjs and its formatter, plus tests. Task 1
+  is a formatter change and cannot be done from a board. (First issue of this prompt said "edit
+  only your own board" and then asked for a gate edit; that was contradictory and E correctly
+  obeyed the stricter half. Corrected here.)
 - Commit with: node scripts/commit-scoped.mjs -F <msgfile> <path>...
   Put "Manager: E" in the FINAL PARAGRAPH (git reads trailers only from the last paragraph).
 
@@ -222,6 +237,56 @@ If those legacy shells are unreachable from every shipped entry point, they are 
 generating permanent red. If they ARE reachable, this is a live defect and has been for 46 builds.
 Either answer is worth having; neither needs a browser. deploy/served-module-reachability.mjs and
 deploy/dead-indicator-copies.test.mjs are precedent for the technique.
+
+YOUR TASK 2 IS ALREADY ANSWERED AND YOU WERE RIGHT. B checked your reachability conclusion
+against the SERVED b127 image, expecting to contradict it, because the build runs
+deploy/strip-nonserved-chart-assets.sh and its "entry points kept" list does NOT mention either
+legacy shell. Both are present in the served image anyway:
+
+  talaria-homepage:canary-20260804b127
+  /usr/share/nginx/html/chart/multichart/  ->  chart-host.html (54681 b), multichart-shell.html
+                                               (41276 b), engine-api-guards.js, sync-bridge.js,
+                                               multichart-manager.js, multichart.css
+
+So "live exposed stale-shell defect, not dead unreachable weight" is correct, and the strip step
+does not remove them despite not listing them.
+
+USE THIS AS THE EXPECTED OUTPUT FOR TASK 1. B extracted the served stamps per shell by filesystem
+read (no HTTP). The five cross-shell conflicts are all dist-v9/index.html against
+multichart/chart-host.html, on exactly these modules:
+
+  chart-indicators-full.js     20260804b127  vs  20260729b100
+  indicator-performance.js     20260804b127  vs  20260729b100
+  market-calculations.js       20260804b127  vs  20260729b100
+  module-presence-runtime.js   20260804b127  vs  20260729b100
+  session-calendar.js          20260804b127  vs  20260729b100
+
+That is 5, matching conflictCount exactly, so the count was never wrong — only unactionable.
+When your formatter change lands, it should print these five and nothing else. If it prints a
+different set, the formatter is wrong, not this list.
+
+TWO THINGS THE COUNT OF 5 DOES NOT INCLUDE, and they are worse:
+  - chart-host.html loads ./engine-api-guards.js?v=20260524a10 and ./sync-bridge.js?v=20260524a10
+    — stamps from 24 May.
+  - multichart-shell.html loads engine-api-guards.js?v=20260509 and multichart-manager.js?v=20260509
+    — 9 May.
+engine-api-guards.js is therefore served under two different stamps from two different shells
+(a10 and 20260509) and appears in neither conflict count, most likely because the two shells spell
+its path differently ("./engine-api-guards.js" vs "engine-api-guards.js") and the grouping key is
+the raw string. Worth confirming and reporting as a sixth finding: a conflict detector that groups
+by unnormalised path will miss exactly the shells that are most stale, because old shells are also
+the ones with old path conventions.
+
+WHY IT MATTERS, stated precisely so it is not overclaimed: `?v=` is a cache-buster, not a content
+selector, so the BYTES on disk are b127 for every one of these. The defect is that a browser which
+loaded the legacy shell at b100 has those five modules cached under the b100 URL, and the legacy
+shell still hands out that same URL — so the cache-buster fails to bust and that visitor keeps
+running b100 JS against a b127 server. It is not reachable from the V9 product path, so exposure is
+bookmarks and history rather than normal navigation.
+
+THE PO'S WINDOW IS NOT AFFECTED and you can say so on your board: dist-v9/index.html is uniformly
+20260804b127 across all 64 of its module references, and multichart-prod/chart-embed.html is
+b127 too. Package 1.1 and the soak both run on those.
 
 DO NOT RUN --write-baseline. It would turn the gate green and retire an already-named stale-shell
 finding in the same stroke. That is silencing dressed as maintenance. B found this red during the
