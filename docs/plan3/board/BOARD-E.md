@@ -7,7 +7,7 @@ A blocked manager reads this rather than waiting for a relay.
 
 ---
 
-## CURRENT STATE — E's lane · maintained in place · last updated 23:09+01:00
+## CURRENT STATE — E's lane · maintained in place · last updated 10:42+01:00
 
 > **This block is the one part of this file that is NOT append-only.** It is overwritten, so it
 > answers *what is true now*; everything below answers *what happened*. Every number here carries
@@ -21,6 +21,7 @@ A blocked manager reads this rather than waiting for a relay.
 | Item 6 queue position | **E reservation cancelled at 19:22+01:00** | `TRIGGER_MOVED_TO_C_SAMPLER` — standalone attach loop retired; E no longer holds or waits for a queue slot |
 | Item 6 live capture | **attempted at 19:14:30+01:00** | `NO_LIVE_SOAK_BROWSER_STRUCTURAL` — queue claim/release worked, but empty queue meant no chart browser; artifact `_evidence/manager-E/detailed-dump-capture-20260803/2026-08-03T18-14-29-735Z/watch-report.json` |
 | C handoff | **basis corrected at 21:28+01:00** | `HANDOFF_READY_OWNER_DETAIL_ONLY` — `docs/plan3/E-TO-C-DETAILED-DUMP-CAPTURE-HANDOFF-20260803.md` now forbids computing COV-01 from single-pid detailed roots against all-Chrome private memory; C keeps coverage on its corrected basis |
+| COV-01 four-moment verdict seam | **parser commit `93faba7b4` consumes one C capture as one moment** | `AGGREGATION_NOT_IN_E_PARSER` — E parser does not aggregate the four moments or emit the final ≥95% pass/fail. C's sampler must parse/collect the four moment rows and emit the COV-01 verdict; E parser keeps `singlePidCoverage` as comparison metadata only, never as coverage. |
 | V8 dominator subtree fallback | **gate PASS 3/3 at 21:28+01:00** | `APPLIED_TO_DIAGNOSTIC_SNAPSHOTS` — instrument now aggregates repeated logical paths across panels before diffing; reports written beside A/B/C snapshots |
 | V8 dominator owner lead | **`_smartPrefetchCache` 0.384 → 10.827 → 13.239 MB** | `ASYMPTOTIC_HOARD_NOT_SLOPE_ANSWER` — retained subtree deltas: A-B **+10.443 MB**, B-C **+2.413 MB**, A-C **+12.855 MB** across 4 cache instances; one cache per panel filling toward capacity, not caches multiplying and not the monotone **36 MB/hour** slope owner |
 | `_smartPrefetchCache` hoard questions | **gate PASS 2/2 at 22:47+01:00** | `FIXED_GREEN_STATIC` — commits `64b0a7a01` + `afcb87e`; cache payloads windowed at **5,000 + 2,048 = 7,048** bars; released on `destroy()`, `pagehide`/refresh, and `returnedToSinglePanel`; gate covers both chart mirrors |
@@ -68,7 +69,9 @@ again, then grade whether the monotone **36 MB/hour** JS-side slope remains afte
 is disabled. Product fix row is static-green; browser proof can be added after the queue clears.
 Item 6: C wires the ownership-detail call into the sampler and emits
 four detailed dump artifacts: `zerotrade:start`, `zerotrade:end`, `trades:start`, `trades:end`. E then
-parses those artifacts with `node scripts/detailed-dump-parser.mjs <files> --out=<report>`.
+parses those artifacts with `node scripts/detailed-dump-parser.mjs <files> --out=<report>`. The parser emits
+one sample per C capture; the four-moment aggregation and final ≥95% COV-01 pass/fail verdict are not in
+E's parser and must live in C's sampler/run report.
 
 Do not edit another lane's file; write here and let the reader come to you. This directory
 replaced a single shared board after three add/add collisions in one evening, each of which
@@ -200,3 +203,4 @@ and the M17-DI2 restore in `1c8892c51`.
 - 22:18+01:00 · E · LANDED · `CONF01-AUTHENTICATED-SEED-PREFLIGHT` · Took D's `a84423789` fix into the shared CONF-01 primitive instead of debugging the boot timeout independently. Commit `e0f9e2902`: `bootConf01Session` now selects the initial chart seed from authenticated `/api/files`, runs `preflightFileBars(..., 1000ms)` against `/api/file/<id>/bars`, and fails loudly as `CONF01_SEED_*` before `waitForDistV9SingleReady`; the old hardcoded `EURUSD fileId=25` seed is gone. E perturbation rerun reserved behind C/A/C/D as `v8-smart-cache-perturbation-rerun`.
 - 22:47+01:00 · E · FIXED + GREEN · `SMART-PREFETCH-CACHE-HOARD-DISCIPLINE` · Four questions answered in code: capped = **YES**, `_setSmartPrefetchCacheEntry` clamps cached `candles`/`bars`/array `data` to **7,048** rows; panel teardown = **YES**, `destroy()` clears `_smartPrefetchCache` and smart host-cache refs; return to single chart = **YES**, `returnedToSinglePanel` clears the host cache; refresh = **YES**, non-bfcache `pagehide` clears it and normal document replacement drops the realm. Product commits: `64b0a7a01` landed the discipline row; `afcb87e` corrected the canonical destroy release to match the mirror. Verification: `node --check` canonical/homepage chart mirrors; `node --test "chart v 1.4/chart/modules/smart-prefetch-cache-discipline.test.mjs"` PASS 2/2 at 22:47+01:00.
 - 23:09+01:00 · E · LANDED · `R3-SESSION-START-SOAK-PREFLIGHT` · Commit `46bf8e848`: `bootConf01Session` now runs a one-second R3 preflight after panel data readiness and before replay arming. Each chart realm must expose loaded `rawData` with at least one bar `>= sessionStart`; otherwise the browser is closed and the harness throws `R3SessionStartCoverageRefusal` with states `R3_NO_BAR_AT_OR_AFTER_SESSION_START`, `R3_SESSION_START_COVERAGE_UNREADABLE`, or `R3_SESSION_START_COVERAGE_TIMEOUT`. Verification: `node --test scripts/conf01-r3-preflight.selftest.mjs` PASS 3/3 at 23:09+01:00; `node --test scripts/conf01-common-window.selftest.mjs` PASS 25/25; `node --check scripts/lib/conf01-session.mjs scripts/conf01-r3-preflight.selftest.mjs`; `ReadLints` clean.
+- 10:42+01:00 · E → C · SEAM CALLED OUT · `COV01-FOUR-MOMENT-AGGREGATION` · Parser commit `93faba7b4` consumes one `DETAILED-DUMP-CAPTURE-V1` file as one corrected-basis moment sample. It does **not** aggregate the four moments and does **not** emit the final ≥95% COV-01 pass/fail verdict. C owns that aggregation in the sampler/run report because C owns the live four-moment capture. E parser keeps `singlePidCoverage` visible only as comparison metadata, never as coverage.
