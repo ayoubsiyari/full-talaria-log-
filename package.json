@@ -47,6 +47,7 @@
     "test:boot-endpoint": "node --test scripts/lib/boot-endpoint-reading.selftest.mjs",
     "test:rate-floor": "node --test scripts/lib/rate-hold.selftest.mjs",
     "test:cov01-verdict": "node --test scripts/lib/cov01-verdict.selftest.mjs",
+    "gate:cov01": "node scripts/cov01-verdict-report.mjs",
     "gate:settle-roster": "node scripts/settle-compliance-roster.mjs",
     "test:first-paint-allowance": "node --test scripts/lib/first-paint-allowance.selftest.mjs",
     "test:arm-equality": "node --test scripts/lib/arm-equality.selftest.mjs",
