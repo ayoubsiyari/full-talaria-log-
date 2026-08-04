@@ -186,12 +186,13 @@ test("duration kill-switch keeps legacy Date.parse handling for numeric strings"
   global.window = {};
 });
 
-test("pending fills do not force-open the trade card", () => {
+test("pending fills open the trade card, and the kill-switch silences it", () => {
   global.window = {};
   const manager = Object.create(OrderManager.prototype);
-  assert.equal(manager._shouldAutoOpenTradeCardOnPendingFill(), false);
+  assert.equal(manager._shouldAutoOpenTradeCardOnPendingFill(), true,
+    "a fill pauses playback, so the card opens with it");
 
   global.window = { __TALARIA_DISABLE_PENDING_FILL_NO_AUTO_CARD_V1: true };
-  assert.equal(manager._shouldAutoOpenTradeCardOnPendingFill(), true,
-    "kill-switch reconstructs the old blocking popup");
+  assert.equal(manager._shouldAutoOpenTradeCardOnPendingFill(), false,
+    "kill-switch restores the silent activation");
 });

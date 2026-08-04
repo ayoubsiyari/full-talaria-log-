@@ -219,14 +219,20 @@ function panelStateSessionId() {
     }
 }
 
-/** Live engine for a tile: the host chart in-process, else the iframe's. */
+/**
+ * Live engine for a tile: the host chart in-process, else the iframe's.
+ *
+ * Manager entries expose the element as `frame`. Reading `entry.iframe` here meant
+ * this returned null for every non-host tile, so callers silently fell back to
+ * whatever the host was showing.
+ */
 function liveChartForPanel(mgr, panelId) {
     try {
         if (panelId === HOST_PANEL_ID) return (typeof window !== "undefined" && window.chart) || null;
         const entry = mgr && mgr.charts && typeof mgr.charts.get === "function"
             ? mgr.charts.get(panelId)
             : null;
-        const win = entry && entry.iframe && entry.iframe.contentWindow;
+        const win = entry && entry.frame && entry.frame.contentWindow;
         return (win && win.chart) || null;
     } catch (_) {
         return null; // cross-origin or torn-down frame
@@ -1810,6 +1816,63 @@ let _hostViewportFrozenCheck = () => false;
 let _hostBootResizeTimer = 0;
 /** Debounced viewport re-sync after panel focus (drawing tool / click switch). */
 let _focusViewportSyncTimer = 0;
+/** Host range the last focus-driven fan-out published, so an unchanged range is not re-pinned. */
+let _lastFocusViewportSyncSig = "";
+
+/**
+ * True while any tile owns a pan/zoom gesture, so the focus fan-out must not
+ * overwrite offsetX underneath it.
+ *
+ * The manager stores each tile's element as `frame`; the earlier guard here read
+ * `entry.iframe`, which is never set, so it always reported "not panning" and the
+ * fan-out fired 60ms into the user's first drag on a freshly focused panel. That
+ * reset the offset before the pan crossed its commit threshold, which is why the
+ * first click on an unfocused panel appeared to be spent on focus alone.
+ */
+function focusGestureInFlight(mgr) {
+    const dragging = (win) => {
+        try {
+            if (!win) return false;
+            if (win.__talariaGestureOwnerV1) return true;
+            const ch = win.chart;
+            return !!(ch && ch.drag && ch.drag.active);
+        } catch (_) {
+            return false; // cross-origin / teardown
+        }
+    };
+    if (dragging(typeof window !== "undefined" ? window : null)) return true;
+    try {
+        if (!mgr || !mgr.charts || typeof mgr.charts.values !== "function") return false;
+        for (const entry of mgr.charts.values()) {
+            if (!entry || entry.host) continue;
+            if (dragging(entry.frame && entry.frame.contentWindow)) return true;
+        }
+    } catch (_) { /* teardown */ }
+    return false;
+}
+
+/**
+ * Bar-granular identity of the host viewport: right-edge bar, zoom, pair and
+ * timeframe. Deliberately not offsetX — pixel jitter between two clicks made
+ * every select re-pin the panels, and each re-pin walked them a fraction of a
+ * bar sideways until the offset clamp stopped it.
+ */
+function hostViewportSignature(ch) {
+    try {
+        if (!ch) return "";
+        const rightIdx = typeof ch.getVisibleEndIndex === "function" ? ch.getVisibleEndIndex() : null;
+        const cw = Number(ch.candleWidth);
+        if (!Number.isFinite(rightIdx) || !Number.isFinite(cw)) return "";
+        return [
+            ch.currentFileId != null ? String(ch.currentFileId) : "",
+            String(ch.currentTimeframe || ""),
+            String(rightIdx),
+            cw.toFixed(2),
+        ].join("|");
+    } catch (_) {
+        return "";
+    }
+}
 /** Wired by the order-mirror effect when multichart mounts. */
 let _broadcastClearDraftPreviewImpl = null;
 
@@ -5352,21 +5415,16 @@ export default function MultichartGrid({
                 clearTimeout(_focusViewportSyncTimer);
                 _focusViewportSyncTimer = setTimeout(() => {
                     try {
-                        // Skip host-led viewport fan-out while the newly focused
-                        // iframe is mid-pan (first-click focus races the gesture).
-                        let iframePanning = false;
-                        try {
-                            if (focusedPanelId && focusedPanelId !== "A" && mgr.charts) {
-                                const entry = mgr.charts.get
-                                    ? mgr.charts.get(focusedPanelId)
-                                    : null;
-                                const iw = entry && entry.iframe && entry.iframe.contentWindow;
-                                const ich = iw && iw.chart;
-                                iframePanning = !!(ich && ich.drag && ich.drag.active);
-                            }
-                        } catch (_ePan) { /* cross-origin / teardown */ }
-                        if (iframePanning) return;
+                        // Skip host-led viewport fan-out while any tile is mid-pan
+                        // (first-click focus races the gesture).
+                        if (focusGestureInFlight(mgr)) return;
                         const ch = window.chart;
+                        // Focus is not a viewport event. Publish only when the host
+                        // range actually moved since the last focus fan-out; a
+                        // re-pin of the range already on screen is pure drift.
+                        const sig = hostViewportSignature(ch);
+                        if (sig && sig === _lastFocusViewportSyncSig) return;
+                        _lastFocusViewportSyncSig = sig;
                         if (ch && typeof ch.dispatchScrollSync === "function") {
                             ch.dispatchScrollSync(true);
                         }

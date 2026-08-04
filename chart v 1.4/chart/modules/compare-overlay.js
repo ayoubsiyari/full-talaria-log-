@@ -806,7 +806,11 @@ class CompareOverlay {
             const fullName = file.original_name?.replace(/\.(csv|CSV)$/, '').toUpperCase() || `FILE_${file.id}`;
             const symbolName = extractSymbolName(file.original_name) || fullName;
             const flagHtml = resolveFlagHtml(symbolName);
-            const isAdded = overlayedIds.includes(file.id) || linkedPaneIds.includes(file.id);
+            // Compared ids arrive as numbers from one caller and strings from another,
+            // so match on the string form rather than by identity.
+            const fileKey = String(file.id);
+            const isAdded = overlayedIds.some((v) => String(v) === fileKey)
+                || linkedPaneIds.some((v) => String(v) === fileKey);
 
             const item = document.createElement('div');
             item.className = `ssd-item compare-ssd-item${isAdded ? ' added' : ''}`;
@@ -821,16 +825,24 @@ class CompareOverlay {
                     <div class="ssd-item-sub">${subLine}</div>
                 </div>
                 <div class="compare-symbol-actions">
-                    <button type="button" class="compare-action-btn" data-mode="same-scale" data-file-id="${file.id}">Overlay</button>
+                    <button type="button" class="compare-action-btn" data-mode="same-scale" data-file-id="${file.id}"${isAdded ? ' disabled aria-disabled="true"' : ''}>${isAdded ? 'Added' : 'Overlay'}</button>
                 </div>
             `;
 
             const btn = item.querySelector('.compare-action-btn');
             if (btn) btn.dataset.symbol = symbolName;
+            // A symbol already on the canvas offers nothing to click: the add path
+            // returns at its duplicate guard, so the button only looked live.
+            if (btn && isAdded) {
+                btn.style.opacity = '0.4';
+                btn.style.cursor = 'default';
+                btn.style.pointerEvents = 'none';
+            }
 
             item.querySelectorAll('.compare-action-btn').forEach((b) => {
                 b.addEventListener('click', (e) => {
                     e.stopPropagation();
+                    if (b.disabled) return;
                     const mode = b.dataset.mode;
                     const fileId = parseInt(b.dataset.fileId, 10);
                     const symbol = b.dataset.symbol;
@@ -3056,8 +3068,9 @@ class CompareOverlay {
     }
     
     async addOverlay(fileId, symbol) {
-        // Check if already added
-        if (this.overlays.find(o => o.fileId === fileId)) {
+        // Check if already added. String compare: one caller passes a parsed number
+        // and another the raw dataset id, so identity let a duplicate through.
+        if (this.overlays.find(o => String(o.fileId) === String(fileId))) {
             console.log('Symbol already added as overlay');
             return;
         }
@@ -3378,6 +3391,47 @@ class CompareOverlay {
     /**
      * Build per-overlay left axis layout (width + domain) — matches main price axis styling.
      */
+    /** Close-price extent over every bar the overlay holds, padded like the in-view path. */
+    _overlayFullPriceExtent(overlay) {
+        let minPrice = Infinity;
+        let maxPrice = -Infinity;
+        const rows = Array.isArray(overlay?.data) && overlay.data.length
+            ? overlay.data
+            : (Array.isArray(overlay?.rawData) ? overlay.rawData : []);
+        for (const d of rows) {
+            const c = Number(d && d.c);
+            if (!Number.isFinite(c)) continue;
+            if (c < minPrice) minPrice = c;
+            if (c > maxPrice) maxPrice = c;
+        }
+        if (!Number.isFinite(minPrice) || !Number.isFinite(maxPrice)) {
+            return { minPrice: 0, maxPrice: 1 };
+        }
+        const pad = ((maxPrice - minPrice) || Math.abs(maxPrice) * 0.01 || 1) * 0.1;
+        return { minPrice: minPrice - pad, maxPrice: maxPrice + pad };
+    }
+
+    /**
+     * Say once, per overlay, that its bars do not reach the visible window. Latched
+     * on the overlay so a per-frame render cannot turn this into a toast storm.
+     */
+    _warnOverlayOutOfView(overlay) {
+        if (!overlay || overlay._outOfViewNotified) return;
+        overlay._outOfViewNotified = true;
+        const msg = `${overlay.symbol} has no bars in the visible range — compare is on, but its data does not reach this part of the session.`;
+        try {
+            if (typeof this.chart?.showNotification === 'function') {
+                this.chart.showNotification(msg);
+                return;
+            }
+        } catch (_) { /* ignore */ }
+        try { window.__TalariaToastStack?.show(msg, { type: 'warning', duration: 4000 }); } catch (_) { /* ignore */ }
+    }
+
+    _clearOverlayOutOfViewWarning(overlay) {
+        if (overlay && overlay._outOfViewNotified) overlay._outOfViewNotified = false;
+    }
+
     _buildOverlayAxisLayouts() {
         const chart = this.chart;
         const visibleOverlays = this.overlays.filter(o => o.visible);
@@ -3413,21 +3467,38 @@ class CompareOverlay {
                 d.t >= visibleStartTime && d.t <= visibleEndTime
             );
             if (overlayData.length < 2) {
+                // Fewer than two of this overlay's bars land inside the window on
+                // screen. A 0..1 axis here was the whole of the reported symptom:
+                // nothing was plotted and the strip carried numbers that belonged
+                // to no instrument, so a metal compared against a currency pair —
+                // different trading calendar, so often no overlap — looked like it
+                // had simply been ignored. Fall back to the overlay's own extent so
+                // the strip is real and named, and say once that the bars are
+                // outside the view rather than failing silently.
+                const extent = this._overlayFullPriceExtent(overlay);
                 const fallbackW = typeof chart._measurePriceAxisStripWidth === 'function'
-                    ? chart._measurePriceAxisStripWidth(0, 1, numYTicks, overlay.symbol, { data: overlay.data, priceHeight })
+                    ? chart._measurePriceAxisStripWidth(
+                        extent.minPrice, extent.maxPrice, numYTicks,
+                        chart.currentSymbol || overlay.symbol,
+                        { data: overlay.data, priceHeight }
+                    )
                     : Math.max(48, chart.margin.r || 48);
+                const span = (extent.maxPrice - extent.minPrice) || 1;
                 layouts.push({
                     overlay,
                     axisX,
                     axisWidth: fallbackW,
-                    minPrice: 0,
-                    maxPrice: 1,
+                    minPrice: extent.minPrice,
+                    maxPrice: extent.maxPrice,
                     priceHeight,
-                    yScale: null
+                    yScale: (price) =>
+                        m.t + priceHeight - ((price - extent.minPrice) / span) * priceHeight,
                 });
                 axisX += fallbackW;
+                this._warnOverlayOutOfView(overlay);
                 return;
             }
+            this._clearOverlayOutOfViewWarning(overlay);
 
             let minPrice = Infinity;
             let maxPrice = -Infinity;

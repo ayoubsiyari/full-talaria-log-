@@ -1160,6 +1160,13 @@ if (typeof window !== 'undefined') {
 }
 
 class Chart {
+    /**
+     * Ceiling on a pair switch's loading UI. Generous on purpose — a cold, wide
+     * intraday window over a slow link is legitimately slow, and this must only
+     * catch a switch that is never going to settle.
+     */
+    static PAIR_SWITCH_LOAD_TIMEOUT_MS = 45000;
+
     constructor(canvasElement = null, svgElement = null, options = {}) {
         _talariaRegisterEngine(this);
         installChartContextMenuCapture();
@@ -2664,8 +2671,21 @@ class Chart {
 
         const sessionIdForTf = this.getActiveTradingSessionId();
         let initialTf = this._resolveBacktestInitialTimeframe(sessionIdForTf);
-        const serverTf = await this._fetchSavedSessionTimeframe(sessionIdForTf);
-        if (serverTf) initialTf = serverTf;
+        // The server copy of chartView.timeframe is a debounced echo of the local
+        // one, so on this device it can only be equal or older. Letting it win
+        // unconditionally is what sent every re-entry back to the timeframe the
+        // session was created with, however many times the user had changed it.
+        // With nothing recorded locally (first open, another browser) the server
+        // copy is still the only continuation we have, so it applies as before.
+        const localTf = this._sessionTimeframeRestoreEnabled()
+            ? this._savedBacktestTimeframe(sessionIdForTf)
+            : null;
+        if (localTf) {
+            initialTf = localTf;
+        } else {
+            const serverTf = await this._fetchSavedSessionTimeframe(sessionIdForTf);
+            if (serverTf) initialTf = serverTf;
+        }
         this.currentTimeframe = initialTf;
         this._persistBacktestTimeframeChoice(initialTf);
         try { this._emitTimeframeChanged(); } catch (_tfE) { /* ignore */ }
@@ -13571,13 +13591,23 @@ class Chart {
             const tf = this._normalizeBacktestTimeframe(this.currentTimeframe);
             // Host only: this backup is keyed by session and not by panel, so a
             // panel writing the pair here would decide the host's boot symbol.
-            const viewFileId = (!this.isPanel && this.currentFileId !== null && this.currentFileId !== undefined)
-                ? String(this.currentFileId)
-                : null;
-            if (tf || viewFileId) {
-                payload.chartView = {};
-                if (tf) payload.chartView.timeframe = tf;
-                if (viewFileId) payload.chartView.fileId = viewFileId;
+            //
+            // Withholding only the pair was not enough. A panel still wrote a
+            // chartView carrying its own timeframe, and because the tier merge
+            // replaces the whole chartView object rather than merging its keys,
+            // that write deleted the host's saved fileId. A single-chart session
+            // that had ever been in multichart then booted onto the pair it was
+            // created with. Panels restore from the panel state map, so they have
+            // no reason to appear in this key at all.
+            if (!this.isPanel) {
+                const viewFileId = (this.currentFileId !== null && this.currentFileId !== undefined)
+                    ? String(this.currentFileId)
+                    : null;
+                if (tf || viewFileId) {
+                    payload.chartView = {};
+                    if (tf) payload.chartView.timeframe = tf;
+                    if (viewFileId) payload.chartView.fileId = viewFileId;
+                }
             }
             if (this.replaySystem && this.replaySystem.isActive) {
                 payload.replay = {
@@ -13679,6 +13709,37 @@ class Chart {
             }
         } catch (_e) { /* ignore */ }
         return true;
+    }
+
+    /** Default-ON kill-switch for local-first timeframe restore. Set false to revert. */
+    _sessionTimeframeRestoreEnabled() {
+        try {
+            if (typeof window !== 'undefined' && window.__TALARIA_SESSION_TIMEFRAME_RESTORE === false) {
+                return false;
+            }
+        } catch (_e) { /* ignore */ }
+        return true;
+    }
+
+    /**
+     * The timeframe this device last recorded for the session, or null.
+     *
+     * _resolveBacktestInitialTimeframe() answers the same question but falls back
+     * to '1m', so it cannot tell "the user never chose" from "the user chose 1m".
+     * Boot needs that distinction to know whether the server copy has anything to
+     * add.
+     */
+    _savedBacktestTimeframe(sessionId) {
+        if (!sessionId) return null;
+        const pick = (tf) => this._normalizeBacktestTimeframe(tf);
+        const backup = this._readTradingSessionLocalBackup(sessionId);
+        const fromBackup = pick(backup?.chartView?.timeframe) || pick(backup?.replay?.timeframe);
+        if (fromBackup) return fromBackup;
+        try {
+            const fromKey = pick(userStorage.getItem(this._backtestLastTimeframeStorageKey(sessionId)));
+            if (fromKey) return fromKey;
+        } catch (_e) { /* ignore */ }
+        return null;
     }
 
     /**
@@ -14307,6 +14368,30 @@ class Chart {
 
             if (this._replaySessionPlayheadRestoreEnabled()
                 && state.replay && typeof state.replay === 'object') {
+                // The server copy is written by a throttled patch (up to 20s apart
+                // while playing) plus a keepalive flush on unload that a torn-down
+                // page can lose. The local backup is force-written on that same
+                // unload and cannot be dropped in transit, so when it holds a later
+                // playhead for this session it is the newer record and the one to
+                // restore. Later-wins only: this can never move the user backwards,
+                // and a deliberate rewind is honoured below by playheadRewoundAt.
+                const backupReplay = backupSnapForRt && backupSnapForRt.replay;
+                if (backupReplay && typeof backupReplay === 'object') {
+                    const serverTs = this._parseReplayRestoreTimestamp(state.replay);
+                    const backupTs = this._parseReplayRestoreTimestamp(backupReplay);
+                    const serverRewound = Number(state.replay.playheadRewoundAt);
+                    const backupRewound = Number(backupReplay.playheadRewoundAt);
+                    const serverRewindIsNewer = Number.isFinite(serverRewound)
+                        && (!Number.isFinite(backupRewound) || serverRewound > backupRewound);
+                    if (Number.isFinite(backupTs)
+                        && (!Number.isFinite(serverTs) || backupTs > serverTs + 500)
+                        && !serverRewindIsNewer) {
+                        state.replay = Object.assign({}, state.replay, {
+                            replayTimestamp: backupReplay.replayTimestamp,
+                            currentIndex: backupReplay.currentIndex,
+                        });
+                    }
+                }
                 this._pendingReplayState = state.replay;
                 const rd = state.replay.dashboard;
                 if (rd && typeof rd === 'object' && Number.isFinite(Number(rd.furthest_replay_ts))) {
@@ -25499,6 +25584,13 @@ class Chart {
             this._persistBacktestTimeframeChoice(newTimeframe);
         }
         try { this.scheduleChartViewSave(); } catch (e) { /* ignore */ }
+        // Same reason the pair switch writes its own backup (see loadFileData): a
+        // timeframe change decides where a refresh lands, and scheduleChartViewSave
+        // is dropped outright before the session hydrates, so on its own it loses
+        // every change made in the first seconds of a session.
+        if (!this.isPanel && this.isBacktestMode && this._sessionTimeframeRestoreEnabled()) {
+            try { this._writeTradingSessionLocalBackupThrottled({ force: true }); } catch (_tfBackup) { /* ignore */ }
+        }
         try { this._emitTimeframeChanged(); } catch (e) { /* ignore */ }
         if (this.currentSymbol) {
             this.updateChartTitle(this.currentSymbol);
@@ -26180,12 +26272,52 @@ class Chart {
         if (nextLabel) {
             try { this.updateChartTitle(nextLabel); } catch (_e) { /* ignore */ }
         }
+        this._armPairSwitchLoadWatchdog(nextLabel);
+    }
+
+    /**
+     * A pair switch that never settles used to hold the frozen frame and the dots
+     * for the rest of the session: the bar fetches carry no wall-clock ceiling, so a
+     * request that never resolves left no path back to a usable chart or to any
+     * message. One shot per switch, cleared the moment the switch ends — not a poll.
+     *
+     * Kill-switch: window.__TALARIA_DISABLE_PAIR_SWITCH_WATCHDOG_V1 = true
+     */
+    _armPairSwitchLoadWatchdog(nextLabel) {
+        this._clearPairSwitchLoadWatchdog();
+        try {
+            if (typeof window !== 'undefined' && window.__TALARIA_DISABLE_PAIR_SWITCH_WATCHDOG_V1 === true) {
+                return;
+            }
+        } catch (_e) { /* ignore */ }
+        const seq = this._pairSwitchLoadSeq;
+        const label = nextLabel || this.currentSymbol || 'this symbol';
+        this._pairSwitchWatchdogTimer = setTimeout(() => {
+            this._pairSwitchWatchdogTimer = null;
+            if (!this._pairSwitchLoading) return;
+            if (seq != null && this._pairSwitchLoadSeq !== seq) return;
+            console.warn(`⏱️ Pair switch to ${label} did not settle within ${Chart.PAIR_SWITCH_LOAD_TIMEOUT_MS}ms`);
+            try {
+                if (typeof this.showNotification === 'function') {
+                    this.showNotification(`${label} did not finish loading. Pick the symbol again, or choose another one.`);
+                }
+            } catch (_e) { /* ignore */ }
+            try { this._endPairSwitchLoading(seq); } catch (_e) { /* ignore */ }
+        }, Chart.PAIR_SWITCH_LOAD_TIMEOUT_MS);
+    }
+
+    _clearPairSwitchLoadWatchdog() {
+        if (this._pairSwitchWatchdogTimer) {
+            clearTimeout(this._pairSwitchWatchdogTimer);
+            this._pairSwitchWatchdogTimer = null;
+        }
     }
 
     /** Lift pair-switch freeze + loading dots once the new bars are committed. */
     _endPairSwitchLoading(loadSeq) {
         if (!this._pairSwitchLoading) return;
         if (loadSeq != null && this._pairSwitchLoadSeq !== loadSeq) return;
+        this._clearPairSwitchLoadWatchdog();
         this._pairSwitchLoading = false;
         this._pairSwitchLoadSeq = null;
         this._dataSwitchAxisInteractionUntil = null;
@@ -26245,12 +26377,14 @@ class Chart {
         this.ctx.font = awaiting ? '14px Roboto, sans-serif' : '16px Roboto, sans-serif';
         this.ctx.textAlign = 'center';
         this.ctx.textBaseline = 'middle';
+        // While awaiting, the animated dots occupy the exact centre of the pane, so
+        // the label sits above them instead of through them.
         this.ctx.fillText(
             awaiting
                 ? 'Loading chart…'
                 : 'No data to display. Please upload or select a CSV file.',
             this.w / 2,
-            this.h / 2
+            awaiting ? (this.h / 2) - 22 : this.h / 2
         );
         if (awaiting) {
             try { this._showChartCenterLoadingDots(); } catch (_) { /* ignore */ }
@@ -31263,6 +31397,8 @@ class Chart {
         if (_talariaChartDestroyDisabled()) return false;
         this._destroyed = true;
 
+        try { this._clearPairSwitchLoadWatchdog(); } catch (_e) { /* ignore */ }
+
         try {
             if (this.orderManager && typeof this.orderManager.destroy === 'function') {
                 this.orderManager.destroy();
@@ -31307,6 +31443,9 @@ class Chart {
         this._indLayerCanvas = null;
         this._indLayerCtx = null;
         this._indLayerCacheKey = null;
+
+        this._clearSmartPrefetchCache('destroy');
+        this._removeSmartPrefetchCacheReleaseHooks();
 
         try {
             if (this.canvas) {

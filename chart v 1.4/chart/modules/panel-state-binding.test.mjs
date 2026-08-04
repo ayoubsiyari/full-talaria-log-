@@ -148,7 +148,10 @@ test('PANELBIND: an iframe tile is captured from the manager cache and its own e
         fileId: 'f-gbpusd', symbol: 'GBPUSD', timeframe: '1H', chartType: 'line',
         visibleStartSec: 10, visibleEndSec: 20,
       },
-      iframe: { contentWindow: { chart: { candleWidth: 4, priceScale: { mode: 'linear', autoScale: true } } } },
+      // `frame` is the property multichart-manager.js actually sets on an entry.
+      // This stub said `iframe`, which matched a reader that could never resolve a
+      // real tile — so the cell was green while the product captured nothing.
+      frame: { contentWindow: { chart: { candleWidth: 4, priceScale: { mode: 'linear', autoScale: true } } } },
     },
   });
 
@@ -166,7 +169,7 @@ test('PANELBIND: a torn-down iframe still yields identity, minus its zoom', () =
   const mgr = fakeManager({
     B: {
       state: { symbol: 'GBPUSD', timeframe: '1H' },
-      get iframe() { throw new Error('cross-origin'); },
+      get frame() { throw new Error('cross-origin'); },
     },
   });
   const patch = plain(s.api.capture(mgr, 'B'));

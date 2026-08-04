@@ -640,11 +640,38 @@ test('neutering table: PG-1 through PG-5 and B3 go red when guards are disabled'
   )));
 });
 
-test('focus-side-effect finding: guard reads entry.iframe but manager entries expose entry.frame', () => {
-  assert.ok(SOURCE.includes('const iw = entry && entry.iframe && entry.iframe.contentWindow;'),
-    'focus panning guard still reads entry.iframe');
-  assert.ok(SOURCE.includes('const ch = entry && entry.frame && entry.frame.contentWindow'),
-    'nearby manager-entry access uses entry.frame');
+test('focus-side-effect fix: the panning guard reads entry.frame, the property manager entries expose', () => {
+  // Previously this cell pinned the defect: the guard read entry.iframe, which no
+  // manager entry ever sets, so it reported "not panning" for every panel and the
+  // focus fan-out reset offsetX 60ms into the user's first drag. It now pins the
+  // fix, so a return to entry.iframe fails here.
+  // Property reads only — the prose above the guard still names the old property.
+  const iframeReads = SOURCE.match(/entry\.iframe\s*(&&|\.|\)|,|;)/g) || [];
+  assert.deepStrictEqual(iframeReads, [],
+    'no reader of the non-existent entry.iframe survives');
+  assert.ok(SOURCE.includes('dragging(entry.frame && entry.frame.contentWindow)'),
+    'the panning guard reaches panels through entry.frame');
+  assert.ok(SOURCE.includes('const win = entry && entry.frame && entry.frame.contentWindow;'),
+    'liveChartForPanel resolves an iframe tile through entry.frame too');
+  assert.ok(SOURCE.includes('function focusGestureInFlight(mgr)')
+    && SOURCE.includes('if (focusGestureInFlight(mgr)) return;'),
+    'the focus fan-out actually consults the guard');
+  assert.ok(SOURCE.includes('win.__talariaGestureOwnerV1'),
+    'the guard honours the established gesture-owner flag, not only drag.active');
   note('focus-guard-entry-frame-finding', true,
-    'reported separately: panning guard likely never observes iframe panels');
+    'fixed: the panning guard now observes iframe panels');
+});
+
+test('focus-side-effect fix: an unchanged host range is not re-published on focus', () => {
+  // Second half of the same defect: focus re-pinned the range already on screen,
+  // and each re-pin walked the panels a fraction of a bar left until the offset
+  // clamp stopped them.
+  assert.ok(SOURCE.includes('function hostViewportSignature(ch)'),
+    'the host range has a bar-granular identity');
+  assert.ok(SOURCE.includes('if (sig && sig === _lastFocusViewportSyncSig) return;'),
+    'an unchanged range short-circuits the focus fan-out');
+  assert.ok(!/hostViewportSignature[\s\S]{0,400}offsetX/.test(SOURCE),
+    'the signature is not built from offsetX, whose pixel jitter caused the drift');
+  note('focus-viewport-resync-dedupe', true,
+    'focus no longer republishes a viewport the panels already show');
 });

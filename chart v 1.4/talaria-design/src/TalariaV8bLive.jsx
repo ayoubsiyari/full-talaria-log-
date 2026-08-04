@@ -11449,6 +11449,24 @@ function v9ResolveSessionFileId(sessionPairs, symbolId, fileIdFromEntry) {
   return hit?.fileId ?? null;
 }
 
+/**
+ * True when this dataset is already overlaid on the focused chart. The add path
+ * returns at its duplicate guard for these, so the button has nothing to do and
+ * must not read as available.
+ */
+function v9IsComparedFileId(fileId) {
+  if (typeof window === "undefined" || fileId == null) return false;
+  try {
+    const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+    const overlays = ch?.compareOverlay?.overlays;
+    if (!Array.isArray(overlays) || overlays.length === 0) return false;
+    const key = String(fileId);
+    return overlays.some((o) => String(o?.fileId) === key);
+  } catch (_) {
+    return false;
+  }
+}
+
 /** Add a session symbol as a compare overlay (same action as the former OHLC + button). */
 function v9AddCompareSymbol(symbolId, fileId) {
   if (typeof window === "undefined") return;
@@ -11471,6 +11489,8 @@ function v9AddCompareSymbol(symbolId, fileId) {
     grid.runCommand("addCompareSymbol", { fileId: fid, symbol: sym, mode: "same-scale" }, opts)
       .catch((err) => {
         console.warn("[V9 compare] addCompareSymbol on panel failed", err);
+        const ac = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+        ac?.showNotification?.(`Could not compare ${sym || "symbol"} on this panel.`);
       });
     return;
   }
@@ -36368,24 +36388,31 @@ const TalariaV8bLive = () => {
                           <div style={{fontSize:12,fontWeight:isAct?700:600,color:s.supporting?V9_SUPPORTING_GOLD:isAct?c.acL:isH?c.tx:c.ts,fontFamily:F,lineHeight:1.2}}>{s.id}</div>
                           <div style={{fontSize:12,color:c.tm,lineHeight:1.2}}>{s.name}</div>
                         </div>
-                        {!isAct && s.fileId != null && focusedPanelId === "A" && (
-                          <button
-                            type="button"
-                            className="add-symbol-btn add-symbol-btn--inline"
-                            title="Compare / add symbol"
-                            aria-label={`Compare ${s.id}`}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              v9AddCompareSymbol(s.id, s.fileId);
-                            }}
-                          >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" aria-hidden="true">
-                              <line x1="12" y1="5" x2="12" y2="19" strokeLinecap="round" />
-                              <line x1="5" y1="12" x2="19" y2="12" strokeLinecap="round" />
-                            </svg>
-                          </button>
-                        )}
+                        {!isAct && s.fileId != null && focusedPanelId === "A" && (() => {
+                          const compared = v9IsComparedFileId(s.fileId);
+                          return (
+                            <button
+                              type="button"
+                              className="add-symbol-btn add-symbol-btn--inline"
+                              disabled={compared}
+                              aria-disabled={compared || undefined}
+                              title={compared ? `${s.id} is already on the chart` : "Compare / add symbol"}
+                              aria-label={compared ? `${s.id} already compared` : `Compare ${s.id}`}
+                              style={compared ? { opacity: 0.35, cursor: "default", pointerEvents: "none" } : undefined}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (compared) return;
+                                v9AddCompareSymbol(s.id, s.fileId);
+                              }}
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" aria-hidden="true">
+                                <line x1="12" y1="5" x2="12" y2="19" strokeLinecap="round" />
+                                <line x1="5" y1="12" x2="19" y2="12" strokeLinecap="round" />
+                              </svg>
+                            </button>
+                          );
+                        })()}
                       </div>
                     );
                   })}
@@ -41408,24 +41435,31 @@ const TalariaV8bLive = () => {
                             <div style={{ fontSize:11, fontWeight:isAct?700:600, color:s.supporting?V9_SUPPORTING_GOLD:isAct?c.acL:isH?c.tx:c.ts, lineHeight:1.3 }}>{s.id}</div>
                             <div style={{ fontSize:9, color:c.tm, lineHeight:1.3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.name}</div>
                           </div>
-                          {!isAct && s.fileId != null && focusedPanelId === "A" && (
-                            <button
-                              type="button"
-                              className="add-symbol-btn add-symbol-btn--inline"
-                              title="Compare / add symbol"
-                              aria-label={`Compare ${s.id}`}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                v9AddCompareSymbol(s.id, s.fileId);
-                              }}
-                            >
-                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" aria-hidden="true">
-                                <line x1="12" y1="5" x2="12" y2="19" strokeLinecap="round" />
-                                <line x1="5" y1="12" x2="19" y2="12" strokeLinecap="round" />
-                              </svg>
-                            </button>
-                          )}
+                          {!isAct && s.fileId != null && focusedPanelId === "A" && (() => {
+                            const compared = v9IsComparedFileId(s.fileId);
+                            return (
+                              <button
+                                type="button"
+                                className="add-symbol-btn add-symbol-btn--inline"
+                                disabled={compared}
+                                aria-disabled={compared || undefined}
+                                title={compared ? `${s.id} is already on the chart` : "Compare / add symbol"}
+                                aria-label={compared ? `${s.id} already compared` : `Compare ${s.id}`}
+                                style={compared ? { opacity: 0.35, cursor: "default", pointerEvents: "none" } : undefined}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  if (compared) return;
+                                  v9AddCompareSymbol(s.id, s.fileId);
+                                }}
+                              >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" aria-hidden="true">
+                                  <line x1="12" y1="5" x2="12" y2="19" strokeLinecap="round" />
+                                  <line x1="5" y1="12" x2="19" y2="12" strokeLinecap="round" />
+                                </svg>
+                              </button>
+                            );
+                          })()}
                         </div>
                       );
                     })}

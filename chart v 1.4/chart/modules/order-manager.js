@@ -1721,11 +1721,76 @@ class OrderManager {
                 </div>`;
         }
         try { this.showOrderPanel?.(); } catch (_e) { /* ignore */ }
-        try { this.showNotification?.(message, 'warning', 3200); } catch (_e) { /* ignore */ }
+        // showNotification's third parameter is an options object, so passing the
+        // duration as a bare number silently discarded it. It also has to reach the
+        // user when the native panel is the hidden mount behind the V9 rail, which
+        // is the only surface #orderValidation above can paint on.
+        let notified = false;
+        try {
+            if (typeof this.showNotification === 'function') {
+                this.showNotification(message, 'warning', { timeoutMs: 3200 });
+                notified = true;
+            }
+        } catch (_e) { /* ignore */ }
+        if (!notified) {
+            try {
+                window.__TalariaToastStack?.show(String(message), { type: 'warning', duration: 3200 });
+            } catch (_e) { /* ignore */ }
+        }
+    }
+
+    /**
+     * The dataset id behind an analysis-only row, so the refusal survives a display
+     * alias. _getActiveTicker() returns what the chart shows, which for futures and
+     * metals is not always the session's ticker spelling; comparing file ids as well
+     * means the gate cannot be walked past by a symbol that merely reads differently.
+     */
+    _analysisOnlyFileIds() {
+        const ids = new Set();
+        let session = this.chart?.backtestingSession || null;
+        if (!session && typeof userStorage !== 'undefined') {
+            try {
+                session = JSON.parse(userStorage.getItem('backtestingSession') || '{}');
+            } catch (_e) {
+                session = null;
+            }
+        }
+        if (!session || typeof session !== 'object') return ids;
+        const supporting = Array.isArray(session.supporting_tickers || session.supportingTickers)
+            ? (session.supporting_tickers || session.supportingTickers)
+            : [];
+        const supportingKeys = new Set(supporting.map((t) => this._normalizeTicker(t)).filter(Boolean));
+        const rows = [
+            ...(Array.isArray(session.files) ? session.files : []),
+            ...Object.values(session.instruments || {}),
+        ];
+        rows.forEach((row) => {
+            if (!row || typeof row !== 'object') return;
+            const rowKey = this._normalizeTicker(row.ticker || row.symbol || row.name || row.id);
+            const analysisOnly = row.view_only === true
+                || row.tradable === false
+                || (rowKey && supportingKeys.has(rowKey));
+            if (!analysisOnly) return;
+            [row.fileId, row.datasetId, row.sourceFileId, row.id].forEach((v) => {
+                if (v === null || v === undefined) return;
+                const s = String(v).trim();
+                if (s) ids.add(s);
+            });
+        });
+        return ids;
     }
 
     _refuseAnalysisOnlyOrderIfNeeded(ticker = this._getActiveTicker()) {
-        if (!this._isAnalysisOnlyTicker(ticker)) return false;
+        let analysisOnly = this._isAnalysisOnlyTicker(ticker);
+        if (!analysisOnly) {
+            try {
+                const fid = this.chart && this.chart.currentFileId != null
+                    ? String(this.chart.currentFileId).trim()
+                    : '';
+                analysisOnly = !!fid && this._analysisOnlyFileIds().has(fid);
+            } catch (_e) { /* ignore */ }
+        }
+        if (!analysisOnly) return false;
         const label = String(ticker || 'This symbol').toUpperCase();
         this._showOrderPanelValidationError(`${label} is analysis-only for this session. Orders can only be placed on the primary trading symbol.`);
         return true;
@@ -3761,10 +3826,18 @@ class OrderManager {
         }
     }
 
-    /** Pending activation stays visible on-chart; its trade card remains available from the row. */
+    /**
+     * A fill is a decision point: playback pauses there, so the trade card opens
+     * with it. Previously the card only opened for market orders and had to be
+     * reached from the trade row, which made a limit fill during playback pass
+     * with nothing on screen.
+     *
+     * Kill-switch: window.__TALARIA_DISABLE_PENDING_FILL_NO_AUTO_CARD_V1 = true
+     * restores the silent activation.
+     */
     _shouldAutoOpenTradeCardOnPendingFill() {
-        return typeof window !== 'undefined'
-            && window.__TALARIA_DISABLE_PENDING_FILL_NO_AUTO_CARD_V1 === true;
+        return !(typeof window !== 'undefined'
+            && window.__TALARIA_DISABLE_PENDING_FILL_NO_AUTO_CARD_V1 === true);
     }
 
     _getCurrentTickSnapshot() {
@@ -19540,6 +19613,17 @@ class OrderManager {
         const activeTicker = this._normalizeTicker(this._getActiveTicker?.() || '');
         const previousTicker = this._lastOrderVisualSyncTicker || null;
         this._lastOrderVisualSyncTicker = activeTicker || previousTicker;
+        if (previousTicker && activeTicker && previousTicker !== activeTicker) {
+            // Validation messages are about the symbol that was refused, so they
+            // must not outlive the switch away from it.
+            try {
+                const vbox = typeof document !== 'undefined' ? document.getElementById('orderValidation') : null;
+                if (vbox) {
+                    vbox.className = 'order-validation';
+                    vbox.innerHTML = '';
+                }
+            } catch (_e) { /* ignore */ }
+        }
         if (!_orderPairSwitchDraftRebindV1Enabled()) return false;
         if (!previousTicker || !activeTicker || previousTicker === activeTicker) return false;
 
@@ -30693,6 +30777,14 @@ class OrderManager {
             this._explicitPlaceIntentUntil = Date.now() + 120000;
         }
         const keepPanelOpen = options.keepPanelOpen === true;
+        // First gate, ahead of the replay / price-data alerts. An analysis-only
+        // symbol is refused for what it is, not for the state of the chart, and a
+        // supporting symbol that has not finished loading was otherwise refused
+        // with "No price data available" — or, when the panel was mid-preview,
+        // with nothing at all.
+        if (this._refuseAnalysisOnlyOrderIfNeeded()) {
+            return { ok: false, reason: 'analysis_only_symbol' };
+        }
         if (this._shouldBlockPlaceDuringPreviewDrag()) {
             console.warn('🟦OM-DIAG place blocked while preview drag is active');
             return { ok: false, reason: 'preview_drag_active' };
@@ -33984,8 +34076,8 @@ class OrderManager {
         
         this.updatePositionsPanel();
 
-        // Keep the fill candle observable. The same card opens from the trade row;
-        // the kill-switch restores the legacy blocking popup.
+        // Playback has just paused on the fill, so the card lands on a still chart.
+        // The kill-switch restores the silent activation.
         if (this._shouldAutoOpenTradeCardOnPendingFill()) {
             this.showTradeJournalModal(order, false, null);
         }

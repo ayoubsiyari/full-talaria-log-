@@ -59,6 +59,10 @@ export function V9ReactPlaceOrder({ c, F, symbol, currentSymbol, setOrderPanelOp
   const [tpDist, setTpDist] = useState("—");
   const [tpProfitMeta, setTpProfitMeta] = useState("—");
   const [rrBar, setRrBar] = useState({ risk: "50%", reward: "50%" });
+  // The engine writes refusals into the native panel's #orderValidation, which is
+  // the hidden mount behind this rail — so a blocked order (an analysis-only
+  // symbol, for one) had no visible surface here at all.
+  const [validationTxt, setValidationTxt] = useState("");
 
   useLayoutEffect(() => {
     if (typeof window === "undefined") return;
@@ -130,6 +134,10 @@ export function V9ReactPlaceOrder({ c, F, symbol, currentSymbol, setOrderPanelOp
         risk: $("tpRiskRewardBarRisk")?.style?.width || "50%",
         reward: $("tpRiskRewardBarReward")?.style?.width || "50%",
       });
+
+      const vbox = $("orderValidation");
+      const vErr = !!vbox && vbox.className.indexOf("order-validation--error") !== -1;
+      setValidationTxt(vErr ? (vbox.textContent || "").replace(/\s+/g, " ").trim() : "");
 
       syncPresetOptions();
     }, 180);
@@ -660,6 +668,29 @@ export function V9ReactPlaceOrder({ c, F, symbol, currentSymbol, setOrderPanelOp
             <span style={{ fontSize: 13, fontWeight: 600, color: c.ts }}>{marginTxt}</span>
           </div>
         </div>
+
+        {validationTxt && (
+          <div
+            role="alert"
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 8,
+              marginBottom: 10,
+              padding: "9px 11px",
+              borderRadius: 8,
+              border: "1px solid rgba(251,113,133,0.45)",
+              background: "rgba(251,113,133,0.12)",
+              color: "#FDA4AF",
+              fontSize: 11,
+              lineHeight: "15px",
+              fontFamily: F,
+            }}
+          >
+            <span style={{ fontWeight: 700 }}>!</span>
+            <span>{validationTxt}</span>
+          </div>
+        )}
 
         <button
           type="button"
