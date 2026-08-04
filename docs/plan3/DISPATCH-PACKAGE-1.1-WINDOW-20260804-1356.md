@@ -72,26 +72,39 @@ corrected it by hand. Nobody had hit this because **BOARD-B is the only board ca
 so the fix in item 1 is currently punished by the tool meant to maintain it. Both halves must be
 rewritten together, for the same reason `--fix` already rewrites the marker and the stamp together.
 
-**3. The positional-argument footgun.** `--files=` scopes correctly; a **positional** path is
-silently ignored and the run falls through to every board in the directory. That is not theoretical —
-it restamped four lanes' boards on 3 Aug and forged the freshness claim it exists to verify. An
-argument that is ignored rather than refused is the whole defect. Make the positional form `die`.
+**3. ~~The positional-argument footgun.~~ WITHDRAWN 14:2x+01:00 — already fixed, and I should have
+checked before assigning it.** `board-state-block-audit.mjs:116` now collects positional paths and
+merges them with `--files=`, and `--fix` with no explicit target refuses outright with
+`FIX_REFUSED_NO_EXPLICIT_TARGET` (`:122-127`). The incident comment sits at `:108-115`. Nothing to do.
+Recorded rather than deleted because a withdrawn assignment is evidence about the dispatcher, and
+because "the tool that restamped four boards has been repaired" is worth a lane knowing.
 
 **Ledger id:** allocate it from the file when you seat it, **not** by reading the last line.
 `PSL-38` was claimed by two lanes and `PSL-34` twice.
 
 \---
 
-## C — land the COV-01 launch fix, then refresh your board.
+## C — settle the evidence-versioning ruling. I have fresh evidence for it.
 
-**1. COV-01's shared output directory.** Your own note: both arms must write into one shared `out`
-directory or the four moments never assemble into a set, and that belongs in the **launch command,
-not the aggregator**. It is a non-Chrome edit and it is the last thing between COV-01 and host time.
-Land it now so the run is launch-ready the moment the box frees. **Do not launch.**
+**1. The evidence-versioning ruling, which BOARD-C:63-65 lists as outstanding.** `_evidence` and
+`docs/plan3/evidence` are both gitignored while cited artifacts are force-added. I hit this today and
+it has already lost something:
 
-**2. BOARD-C's state block is genuinely stale** — the stamp reads `16:44+01:00`, which is
-*yesterday's* 16:44, and you committed to BOARD-C today at 11:19:26+01:00 without refreshing. Add the
-ISO half while you are there:
+- `.gitignore:106` ignores `docs/plan3/*` wholesale.
+- The release ship logs are force-added, so `b107`–`b112` are tracked.
+- **`b114`'s ship log is not.** It exists on disk, it was cited, and it was never committed. So the
+  convention did not merely risk losing evidence, it silently lost a ship's worth — and nobody
+  noticed for five days, because a force-add that never happens produces no error.
+
+That is the whole argument for the ruling in one artifact, and it is entirely no-box. Note the
+correction I had to make to my own reasoning: b127's logs are tracked only because I remembered
+`add -f`. A convention that depends on remembering is the same class of thing as the freeze that
+depended on the ship calling it.
+
+**2. BOARD-C's state block is stale** — the stamp reads `16:44+01:00`, which is *yesterday's* 16:44,
+and you committed to BOARD-C today at 11:19:26+01:00 without refreshing. Two lines inside it are also
+now false: **"b126 deploy is with B" — b127 is live and PO-verifiable as of 12:44Z**, and COV-01's
+"blocked on E's parsed detailed dumps" should say whether that is still true. Add the ISO half:
 
 ```
 ## CURRENT STATE — C's lane · maintained in place · last updated HH:MM+01:00 / 2026-08-04THH:MMZ
@@ -103,17 +116,25 @@ Note the gate currently says `FUTURE_STAMP` for this — right verdict, wrong re
 
 ## D — decide the PSL-38 split before there is a run to spend on it.
 
-`PSL-38` / `ORDER01B-SUBBAR-STEP-RATE` is the one item across the idle lanes that is a **product**
-defect rather than bookkeeping: 0.08 market-s/wall-s delivered at speed 10 with a 1s step where 10
-was requested. 125x off. State is `MEASURED_NOT_FIXED`.
+`POST-SOAK-LEDGER-D-006` / `ORDER01B-SUBBAR-STEP-RATE`, central seat `PSL-38`, state **DEFERRED**
+(I wrote `MEASURED_NOT_FIXED` in the 11:45 dispatch — the ledger says `DEFERRED`). It is the one item
+across the idle lanes that is a **product** defect rather than bookkeeping: sealed b126 delivered
+**0.08 market-s/wall-s at speed 10 with an explicit 1s step, where 10 was expected.** 125x off.
 
-With no box, write down the split the ledger asks for **before** any run exists: scheduler/governor
-cadence versus slow tick work, as **two predictions that different readings would distinguish**, plus
-the exact instrument invocation for each arm. A run launched without that decided in advance spends
-the box and returns a number that fits both stories.
+**This is Package 2 rows 2.1–2.3** — the PO's next package — so preparation here is the difference
+between Package 2 starting and Package 2 stalling.
 
-**Keep the 60s harness refusal in place.** It is measurement protection; removing it before a
-red-capable product gate and a shipped fix exist is forbidden by the row.
+The ledger's action is "reproduce and attribute the generated intra-bar 1s-step path". Reproducing
+needs the box; **attributing does not.** With no box: read the path that generates intra-bar steps and
+write down where the rate is actually computed and where it is clamped, as **two predictions a
+reading would distinguish** — governor/scheduler cadence versus slow tick work — plus the exact
+instrument invocation for each arm. Then draft the **red-capable product gate** the row requires: one
+that goes red on 0.08 against a requested 10. A run launched without the split decided in advance
+spends the box and returns a number that fits both stories.
+
+**Keep the 60s harness refusal in place.** The ledger is explicit that it stays until a red-capable
+product gate and a shipped fix exist, and equally explicit about why it is not a fix: *"that refusal
+only hides the path from soak gates."*
 
 Refresh BOARD-D's block too — your stamp was honest but is a day old, and you are holding for
 Package 1, so say so.
@@ -134,11 +155,19 @@ red and they are not the same kind of problem:
 | `CROSS-SHELL-MODULE-STAMP-COHERENCE` | **`conflicts: 5`** and nothing else | the actual signal — and **unreadable**, see below |
 | `SHELL-BUILD-ID-UNIFORM` | RED, no detail | same problem |
 
-**Task 1 — make it name its conflicts.** The gate prints `conflicts: 5` and stops. A reader cannot
-act on that: not which modules, not which shells, not which stamps disagree. The baseline arm prints
-its first five mismatches with both values, so the format already exists in the same file. This is
-the smallest change with the largest effect, because right now the one arm carrying real signal is
-the one nobody can read.
+**Task 1 — make it name its conflicts. The data is already there; only the printer drops it.** I
+checked before assigning this, and it is smaller than it looks:
+
+- `scripts/lib/cache-stamp-coherence.mjs:250-260` already builds each conflict with `modulePath`,
+  `stamps` **and** `shells` (as `shellId:stamp` pairs).
+- `:265-269` already carries that whole array into the cell result as `conflicts`.
+- `:467` prints **only** `conflictCount` and never touches `conflicts`.
+- `:470-471`, three lines below, prints `stampMismatches.slice(0, 5)` with both values — **the
+  pattern you need is already in the same function.**
+
+So the one arm carrying real signal has been fully computed and thrown away at the last step for 46
+builds. That is worth naming as its own finding, separately from whatever the five conflicts turn out
+to be.
 
 **Task 2 — then say whether the legacy shells are still reachable.**
 `scripts/lib/cache-stamp-coherence.mjs:25-72` compares ten shells, and four of them are the legacy
