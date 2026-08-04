@@ -6,8 +6,13 @@
  * - RESOLVER_ABSENT_FROM_TREE: refusal helper is missing.
  * - RESOLVER_PRESENT_BUT_UNCALLED: placement reaches allocation on a supporting ticker.
  * - RESOLVER_CALLED_BUT_WRONG: helper is called but does not block or omits panel message.
+ * - RAIL_CANNOT_SHOW_REFUSAL: the panel message lands in a hidden mount the shipped
+ *   V9 rail never reads, so the refusal is invisible to the user.
  */
 import { createRequire } from 'node:module';
+import { readFileSync, existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import assert from 'node:assert/strict';
 
 global.window = {};
@@ -88,5 +93,33 @@ for (const [name, path] of surfaces) {
 
     states.push(`${name}: RESOLVER_CALLED_AND_RIGHT`);
 }
+
+// The native #orderValidation box is off-screen under the V9 shell, so the block
+// above only proves the engine spoke, not that anyone heard it. The rail that
+// actually ships has to mirror that box out and render it.
+const here = path.dirname(fileURLToPath(import.meta.url));
+const shellCandidates = [
+    path.join(here, '..', '..', 'talaria-design', 'src', 'TalariaV8bLive.jsx'),
+    path.join(here, '..', '..', '..', '..', 'chart v 1.4', 'talaria-design', 'src', 'TalariaV8bLive.jsx'),
+];
+const shellPath = shellCandidates.find((p) => existsSync(p));
+assert.ok(shellPath, 'RAIL_CANNOT_SHOW_REFUSAL: live shell source not found from either surface');
+const shell = readFileSync(shellPath, 'utf8');
+assert.match(
+    shell,
+    /getElementById\("orderValidation"\)/,
+    'RAIL_CANNOT_SHOW_REFUSAL: live shell never reads #orderValidation',
+);
+assert.match(
+    shell,
+    /order-validation--error/,
+    'RAIL_CANNOT_SHOW_REFUSAL: live shell does not distinguish the error state',
+);
+assert.match(
+    shell,
+    /data-v9-order-validation="1"/,
+    'RAIL_CANNOT_SHOW_REFUSAL: live shell has no element that renders the refusal',
+);
+states.push('rail: REFUSAL_REACHES_THE_RAIL');
 
 console.log(`GREEN — analysis-only order gate bound (${states.join(' | ')})`);

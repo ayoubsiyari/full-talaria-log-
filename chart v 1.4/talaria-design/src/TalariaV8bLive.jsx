@@ -12135,6 +12135,8 @@ const TalariaV8bLive = () => {
   const [omSlDistTxt, setOmSlDistTxt] = useState("—");
   const [omTpDistTxt, setOmTpDistTxt] = useState("—");
   const [omPlaceButtonTxt, setOmPlaceButtonTxt] = useState("");
+  /** Refusal text mirrored out of the hidden panel's #orderValidation, "" when clear. */
+  const [omValidationTxt, setOmValidationTxt] = useState("");
   const [omOrderQtyTxt, setOmOrderQtyTxt] = useState("0");
   const [omFuturesMinRiskTxt, setOmFuturesMinRiskTxt] = useState("");
   /** Per-row strings scraped from hidden #orderPanel (order-manager) — matches chart/preview math. */
@@ -19450,6 +19452,14 @@ const TalariaV8bLive = () => {
       setOmRewardSummaryTxt((prev) => (prev === rwd ? prev : rwd));
       const pbt = document.getElementById("placeOrderButton")?.textContent?.replace(/\s+/g, " ").trim() || "";
       setOmPlaceButtonTxt((prev) => (prev === pbt ? prev : pbt));
+      // The engine writes refusals into the native panel's #orderValidation, which
+      // is the hidden mount behind this rail — so a blocked order (an analysis-only
+      // symbol, for one) had no visible surface here at all.
+      const vbox = document.getElementById("orderValidation");
+      const vtxt = vbox && vbox.className.indexOf("order-validation--error") !== -1
+        ? (vbox.textContent || "").replace(/\s+/g, " ").trim()
+        : "";
+      setOmValidationTxt((prev) => (prev === vtxt ? prev : vtxt));
 
       const sd = document.getElementById("slPipsDisplay")?.textContent?.trim() || "—";
       let td = document.getElementById("tpDistanceDisplay")?.textContent?.trim() || "—";
@@ -41321,6 +41331,14 @@ const TalariaV8bLive = () => {
             const isPr   = swHov==="exec-btn_dn";
             return (
               <div style={{ padding:"0 8px 6px", flexShrink:0 }}>
+                {omValidationTxt ? (
+                  <div data-v9-order-validation="1" style={{ marginBottom:6, padding:"5px 7px", borderRadius:3,
+                           background:"rgba(255,80,104,0.10)", border:"1px solid rgba(255,80,104,0.45)",
+                           fontSize:10, fontWeight:700, lineHeight:1.35, color:"#FF8A9C", fontFamily:F,
+                           WebkitFontSmoothing:"antialiased" }}>
+                    {omValidationTxt}
+                  </div>
+                ) : null}
                 <div onClick={() => {
                     const list = screenshots.map((s) => ({ dataUrl: s.dataUrl, name: s.name || "" }));
                     const trimmedNotes = String(notesText || "").trim();

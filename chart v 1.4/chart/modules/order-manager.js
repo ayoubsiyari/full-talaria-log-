@@ -1720,7 +1720,6 @@ class OrderManager {
                     <span>${message}</span>
                 </div>`;
         }
-        try { this.showOrderPanel?.(); } catch (_e) { /* ignore */ }
         // showNotification's third parameter is an options object, so passing the
         // duration as a bare number silently discarded it. It also has to reach the
         // user when the native panel is the hidden mount behind the V9 rail, which
