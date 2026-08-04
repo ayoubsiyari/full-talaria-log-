@@ -124,6 +124,61 @@ test('loadMoments reads E\'s artifact contract off disk and reports gaps', () =>
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+/**
+ * THE SEAM WITH E'S PARSER, tested on a real artifact rather than asserted in prose.
+ *
+ * E's parser is the sanctioned per-moment reader, so the obvious integration is to route this
+ * aggregator through it. These two cells are why that would be wrong: `correctedCoverageFromCaptureRow`
+ * sets `totalBasis: 'all-chrome-process-private'` as a LITERAL, so every moment it returns claims the
+ * corrected basis whatever the artifact says. That is correct for its own job — it parses captures it
+ * knows are V1 — and unfalsifiable as the input to a basis guard.
+ */
+const writeArtifact = (dir, name, { processCount = 7, totalBasis = 'all-chrome-process-private', pct = 97.1 } = {}) => {
+  fs.writeFileSync(path.join(dir, momentFileName(name)), JSON.stringify({
+    signature: 'DETAILED-DUMP-CAPTURE-V1',
+    moment: name,
+    totalPrivateMB: 674.9,
+    totalBasis,
+    singlePidCoverage: 59.84,
+    row: {
+      arenaCoveragePct: pct, arenaNamedTotalMB: 403.85, processCount, covState: 'MEASURED',
+      arenaCoverageMeets95: pct >= 95,
+    },
+  }));
+};
+
+test('a single-pid artifact on disk is refused, and that is the 59.84% shape', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cov01-seam-'));
+  for (const m of COV01_MOMENTS) writeArtifact(dir, m);
+  assert.equal(assessCov01({ moments: loadMoments(dir) }).state, 'COV01_GREEN', 'four good moments are green');
+
+  // Narrow the numerator back to one process — the exact regression BASIS-GUARD-01 exists to catch.
+  writeArtifact(dir, 'zerotrade:end', { processCount: 1 });
+  const v = assessCov01({ moments: loadMoments(dir) });
+  assert.equal(v.state, 'BASIS_REJECTED');
+  assert.equal(v.pass, false);
+  assert.equal(v.offending[0].moment, 'zerotrade:end');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('routing through E\'s parser would make the basis guard unfalsifiable', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cov01-seam-'));
+  writeArtifact(dir, 'trades:start', { processCount: 1, totalBasis: 'single-renderer-private' });
+  const file = path.join(dir, momentFileName('trades:start'));
+
+  const { parseDetailedDumpArtifacts } = await import('../detailed-dump-parser.mjs');
+  const parsed = parseDetailedDumpArtifacts([file]);
+  const viaE = (parsed.samples || parsed)[0];
+  assert.equal(viaE.coverage.totalBasis, 'all-chrome-process-private',
+    'E\'s parser reports the corrected basis for an artifact that declares the rejected one');
+
+  // Reading the artifact directly keeps the field falsifiable.
+  const mine = loadMoments(dir).find((m) => m.moment === 'trades:start');
+  assert.equal(mine.totalBasis, 'single-renderer-private');
+  assert.equal(mine.processCount, 1);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('an unreadable artifact is absent, not a silent skip', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cov01-'));
   fs.writeFileSync(path.join(dir, momentFileName('trades:start')), '{ truncated');
