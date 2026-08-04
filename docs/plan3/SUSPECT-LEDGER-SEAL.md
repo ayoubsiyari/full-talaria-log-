@@ -124,6 +124,38 @@ This tip's PROC-3 run: **18 roster rows GREEN**; overall status RED only because
 
 ---
 
+### 0g · The census produced a false absence, inside the corpus it claimed to search
+
+Two of the PO's ten items were published as `REFERENT_NOT_LOCATED`. **Both were wrong, in different
+ways, and the difference matters more than the count.**
+
+| item | published | actual | why the instrument missed it |
+| --- | --- | --- | --- |
+| the second GPU box | `REFERENT_NOT_LOCATED` | **in the corpus**, `RECIPE-SEALED-SOAK-FROZEN-20260803.md:240` and `BOARD-C.md:1263` | **search failure.** The text was in the frozen soak recipe, one of the most-read documents in the project, and I said no request existed |
+| the unlit dark rooms | `REFERENT_NOT_LOCATED` | **outside the corpus**, `scripts/n1-heavy-vs-fresh.mjs:5` | **scope failure.** The census reads `docs/plan3` prose only, so a suspect named in a script header is invisible to it by construction. Seated `PSL-37` |
+
+The second is a stated limit I should have declared up front. **The first is the one error a census is not
+permitted to make** — it is a manufactured absence, in an instrument whose entire claim is that absence is
+the forbidden state. It also propagated: the same false sentence reached `POST-SOAK-LEDGER.md` and the
+§2 handoff to A before anyone read it, so one unchecked search became three documents.
+
+**Read every `REFERENT_NOT_LOCATED` in this file as "B's search did not find it", never as "it is not
+there."** The two remaining unlocated items in row 8's cohort carry that caveat now.
+
+**A "correction" that made the record worse.** The R7 row was recorded at 00:28+01:00 as ambiguous, with
+two candidate referents named. At 00:3x+01:00 I replaced that with `REFERENT_LOCATED — and it is mine`,
+a single confident answer that **discarded the ambiguity I had correctly captured an hour before**. A
+third candidate has since surfaced — checklist #7, COV-01 coverage calibration, RED at 59.8% — which fits
+"machine-coverage backfill" at least as well as either. Restored to `REFERENT_CONTESTED` with all three.
+Confidence rose while accuracy fell, no gate could see it, and only a re-read caught it.
+
+**Why this section exists at all.** The PO's finding this morning is that our measuring apparatus is less
+trustworthy than the thing it measures — 0.08 against 8.0 from a harness, against 600 bars per minute
+measured by hand. This file is part of that apparatus, so its own false readings belong in it, at the
+top, where a reader meets them before they meet a number.
+
+---
+
 ### 0f · PO signature lines — 62 rows had nowhere to sign
 
 The law requires a DEFERRED row to carry a PO signature line left **empty**, because the PO signs at
@@ -612,11 +644,18 @@ of the six do not land where the rule would have put them.**
 The PO named ten items directly. They are stated here with the other six curated controls, because a
 control's *gap* is a suspect even though the control itself is a rule and cannot be killed.
 
-**Two of the ten could not be located in the tracked corpus, and are marked
-`REFERENT_NOT_LOCATED`.** They still carry a state, because absence is forbidden — but the state rests
-on my inability to find the underlying finding, not on evidence about it. Saying so is the whole point
-of the discipline that produced this section: an honest "I could not find this" is a valid entry, and a
-confident verdict over a referent I never located would be the manufactured zero in prose form.
+~~**Two of the ten could not be located in the tracked corpus, and are marked `REFERENT_NOT_LOCATED`.**~~
+**Corrected 08:5x+01:00: both were located, and both of my "not located" verdicts were wrong.** The
+second GPU box was in the corpus all along, in the frozen soak recipe; the unlit dark rooms were in
+`scripts/`, which this census never reads. **Zero of the ten are now unlocated.** Full accounting in §0g
+and `PSL-37`.
+
+The paragraph that stood here argued that an honest *"I could not find this"* is a valid entry and better
+than a confident verdict over a referent I never located. That is still true, and it is not what happened.
+Two of those entries were not honest limits — one was a search that missed a line in a document everyone
+reads, and the other was a corpus boundary I never declared. **A stated inability to find something is
+only honest if the search behind it was real**, and "I could not find it" is a claim about the world that
+needs the same evidence as any other.
 
 > **Row 10 was one of three until 00:3x+01:00, and the correction is worth reading.** I reported "R7's
 > machine-coverage backfill" as unlocatable after checking A's M20-Q6 gate R7 and the M21-2 R7 review
@@ -635,9 +674,9 @@ confident verdict over a referent I never located would be the manufactured zero
 | 5 | **The ~724 ms/s owner** | **DEFERRED** |  | `PSL-29` | **The owner was never named**, which is the item. The figure family is real and the readings disagree by design: C measured **867.3 ms/s** unthresholded main-thread task total, **657.7 ms/s** blocking time, and **861 ms/s** busy by a second decomposition (86.1% of wall); B measured **302 ms/s** thresholded and a **~700–800 ms/s** floor. The exact value **724 is not in the tracked corpus** — `REFERENT_NOT_LOCATED` for that number specifically, though the quantity it belongs to is unambiguous. The only candidate mechanism on record is a **working diagnosis**, not an attribution: the host computing indicators through the asynchronous worker pipeline, busy-coalescing at high speed. A working diagnosis is not an owner. |
 | 6 | **The hoard-floor curve** | **DEFERRED** |  | `PSL-14` | `C-SUS-22`. Ruled post-soak by the Director: the end-of-arm paused curve was **removed from both arms**, recorded as Amendment 2 of `RECIPE-SEALED-SOAK-FROZEN-20260803.md` at `f0531a352`. The hour-0 curve remains and covers the boot end. Related and separately seated: the canonical floor itself is `FLOOR_FOUND` but **`NOT_QUOTABLE_COVERAGE`** at 59.84% (`C-SUS-06`, `PSL-11`), and on the corrected criterion its curve **could never have graded settled** because the instrument's default ladder had a 300 s last gap against a 600 s minimum (`C-SUS-17`). |
 | 7 | **The drawings full verification** | **DEFERRED** |  | `PSL-27` | **Two different claims about one feature, and the distinction is the answer.** D's is the stronger: fix `f2e9d4fdb`, gate `drawing-market-time-persist.test.mjs`, and served mutant **`drawings-index-persist` killed on b126** — a runtime kill on the sealed build, so market-time drawing persistence *is* verified. B's `DRAW-SMOKE-01` grader is a different claim and a weaker one: **13/13 as a pure function, symbols present in the served b126 bytes, and it has never executed against a build.** A grader that has never run is not a passing gate. Deferred on B's half only; D's half is KILLED in §4f. |
-| 8 | **The unlit dark rooms** | **DEFERRED** |  | `PSL-30` | **`REFERENT_NOT_LOCATED`.** The word "dark" does not appear anywhere in the tracked `docs/plan3` corpus, boards included. I will not guess: the nearest concepts are gates that never ran (14 of them, `PSL-04`), roster switches absent from the served build (11 of 14, `PSL-17`), the 2,049 swallowed catches of which 189 are CRITICAL (`PSL-16`), and `DRIFT-ABBA`, which was reported complete having never run (`C-SUS-07`, `PSL-12`). Any of those fits "an unlit room" and they are all separately seated. **The PO's referent needs naming before this can be stated on evidence.** |
-| 9 | **The second GPU box** | **DEFERRED** |  | `PSL-30` | **`REFERENT_NOT_LOCATED`.** No request for a second machine appears in the corpus. "GPU" occurs only as GPU-private *memory* in A's competitor bands — reference band **433–501 MB GPU** for one chart, and the finding that **GPU private is flat across 2 and 4 panels** (138.95–142.95 MB), against an advisor expectation of 130–180 MB. **That entire series is withdrawn** (`PSL-01`) because the window overlapped E's V8 run, and the flat-GPU finding is withdrawn with it — A's own note is that it was the one they most wanted to keep. If "second GPU box" means a second host to escape the contention that withdrew those arms, that need is real and evidenced throughout, but the phrase itself is the PO's and not the corpus's. |
-| 10 | **R7's machine-coverage backfill** | **DEFERRED** |  | `PSL-31` | **`REFERENT_LOCATED` — corrected 00:3x+01:00, and it is mine.** `R7` is the seventh row of **my own** requirement series to A in `docs/plan3/RUN-LOCK-01-HOST-SCOPE-REQUIREMENT-20260803.md`, which stops at **R6**. R1–R6 all scope the lock to **one machine**: R1 host scope not declinable without a reason, R2 name the state at acquisition, R3 the artifact records `scopesHeld`, R4 `inspectLocks()` reports the class, R5 document the asymmetry, R6 one detector or the detector is decorative (added from a live incident where `inspectLocks()` read **none** while three runs were live). **R7 does not exist because I stopped at R6** — the machine-coverage backfill is the unwritten row that extends coverage across machines and backfills which machine each existing artifact ran on. Two red herrings I checked first and discarded: A's ephemeral-discovery gate R7 in the M20-Q6 capture reuse, and M21-2 R7 the review round. **Neither is the PO's R7.** |
+| 8 | **The unlit dark rooms** | **DEFERRED** |  | `PSL-30` | **`REFERENT_LOCATED_OUTSIDE_MY_CORPUS` — corrected 08:5x+01:00.** The phrase is at **`scripts/n1-heavy-vs-fresh.mjs:5`**: *"WHY THIS IS NOW LOAD-BEARING RATHER THAN A DARK ROOM. The 1,122 MB first-paint reading is what…"* — a dark room is an **unmeasured baseline**, and an unlit one is a comparison nobody has taken. That reading fits the PO's phrasing and nothing in the docs did. **My census searched `docs/plan3` prose only**, so any suspect named exclusively in code or script headers was invisible to it by construction. Still DEFERRED: the referent is now named, the measurement is not taken, and the nearest adjacent gaps stay real — 14 gates that never ran (`PSL-04`) and the first-paint reading this comment is about. ~~The word "dark" does not appear anywhere in the tracked `docs/plan3` corpus.~~ I will not guess: the nearest concepts are gates that never ran (14 of them, `PSL-04`), roster switches absent from the served build (11 of 14, `PSL-17`), the 2,049 swallowed catches of which 189 are CRITICAL (`PSL-16`), and `DRIFT-ABBA`, which was reported complete having never run (`C-SUS-07`, `PSL-12`). Any of those fits "an unlit room" and they are all separately seated. **The PO's referent needs naming before this can be stated on evidence.** |
+| 9 | **The second GPU box** | **DEFERRED** |  | `PSL-30` | **`REFERENT_LOCATED` — my "not located" was FALSE, corrected 08:5x+01:00.** It is in the corpus, in the **frozen soak recipe**: `RECIPE-SEALED-SOAK-FROZEN-20260803.md:240` — *"A second GPU-bearing box is endorsed and **blocks nothing** — it buys parallelism later, not validity now"* — and at `BOARD-C.md:1263`, where C recorded host conditions as **exclusivity, not relocation**: the soak stays on the RTX box, the EC2 r6i is **refused** for having no GPU (software rasterisation), and a second GPU-bearing box is endorsed. **State: endorsed, not procured, blocks nothing.** No fix, switch or gate, and none required — it is capacity, not a defect. My original claim below was a search failure inside a corpus I said I had searched, which is the one error a census is not allowed to make. ~~`REFERENT_NOT_LOCATED`. No request for a second machine appears in the corpus.~~ "GPU" occurs only as GPU-private *memory* in A's competitor bands — reference band **433–501 MB GPU** for one chart, and the finding that **GPU private is flat across 2 and 4 panels** (138.95–142.95 MB), against an advisor expectation of 130–180 MB. **That entire series is withdrawn** (`PSL-01`) because the window overlapped E's V8 run, and the flat-GPU finding is withdrawn with it — A's own note is that it was the one they most wanted to keep. If "second GPU box" means a second host to escape the contention that withdrew those arms, that need is real and evidenced throughout, but the phrase itself is the PO's and not the corpus's. |
+| 10 | **R7's machine-coverage backfill** | **DEFERRED** |  | `PSL-31` | **`REFERENT_CONTESTED` — downgraded 08:5x+01:00 from a confident single answer.** There are **three** live candidates and I cannot rule between them: (1) **my own unwritten seventh requirement**, below; (2) **A's real R7** at `BOARD-A.md:856` and `:871` — the *ephemeral-discovery gate* in `m20q6-capture-reuse.test.mjs`, which **landed** with the capture-reuse fix, so if this is the referent the item is KILLED rather than deferred; (3) **checklist item #7**, `COV-01 coverage calibration: named categories ≥95% of total private`, owner **C**, due **Tue 4 Aug** — still **RED** at 59.8% with 271.05 MB unattributed, and "coverage backfill" describes it almost exactly. Only the PO can say which was meant, and the underlying hazard — five independent `R<n>` namespaces — is seated at `PSL-36`. **A note on #7's ownership, since it is due today:** the checklist names **C**, and the Director this morning assigned the COV-01 four-moment live calibration to **E**. One of those is stale. ~~`REFERENT_LOCATED` — corrected 00:3x+01:00, and it is mine.~~ `R7` is the seventh row of **my own** requirement series to A in `docs/plan3/RUN-LOCK-01-HOST-SCOPE-REQUIREMENT-20260803.md`, which stops at **R6**. R1–R6 all scope the lock to **one machine**: R1 host scope not declinable without a reason, R2 name the state at acquisition, R3 the artifact records `scopesHeld`, R4 `inspectLocks()` reports the class, R5 document the asymmetry, R6 one detector or the detector is decorative (added from a live incident where `inspectLocks()` read **none** while three runs were live). **R7 does not exist because I stopped at R6** — the machine-coverage backfill is the unwritten row that extends coverage across machines and backfills which machine each existing artifact ran on. Two red herrings I checked first and discarded: A's ephemeral-discovery gate R7 in the M20-Q6 capture reuse, and M21-2 R7 the review round. **Neither is the PO's R7.** |
 
 ### The six B-lane controls
 

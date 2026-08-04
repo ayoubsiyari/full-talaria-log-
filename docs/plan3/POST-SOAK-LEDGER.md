@@ -590,10 +590,14 @@ with its own reason, which is why `PSL-21` through `PSL-23` are individual.
     (`PSL-04`), 11 of 14 roster switches absent from the served build (`PSL-17`), 189 CRITICAL
     swallowed catches of 2,049 (`PSL-16`), and `DRIFT-ABBA` reported complete having never run
     (`PSL-12`).
-  - **"the second GPU box"** — no request for a second machine exists in the corpus. GPU appears only as
-    GPU-*private memory* in A's competitor bands, and **that whole series is withdrawn** (`PSL-01`). If
-    it means a second host to escape the contention that withdrew those arms, the *need* is evidenced
-    everywhere; the phrase is not.
+- **"the second GPU box"** — **RETRACTED 08:5x+01:00. This bullet was false.** The referent is in the
+  corpus and in the **frozen soak recipe**: `RECIPE-SEALED-SOAK-FROZEN-20260803.md:240`, *"A second
+  GPU-bearing box is endorsed and blocks nothing — it buys parallelism later, not validity now"*, plus
+  `BOARD-C.md:1263` recording host conditions as exclusivity rather than relocation — soak stays on the
+  RTX box, EC2 r6i **refused** for having no GPU. State: **endorsed, not procured**. My guess that "the
+  need is evidenced everywhere, the phrase is not" was **exactly wrong in both halves**: the phrase is
+  there and the need is explicitly *not* blocking. ~~no request for a second machine exists in the
+  corpus…~~
 - **withdrawn from this seat at 00:3x+01:00:** *"R7's machine-coverage backfill"* was here as a third
   unlocatable item. **It is located and it is mine** — see `PSL-31`. I had searched for other lanes'
   vocabulary and not my own; the referent is the seventh row of a requirement document I wrote.
@@ -706,3 +710,42 @@ with its own reason, which is why `PSL-21` through `PSL-23` are individual.
   bytes wrong. It does mean §2's completeness claim is a **four-of-five-lanes** claim, and any reader who
   treats the ledger as a whole-campaign census is wrong in one direction, for one lane. I would rather
   that be written down than inferred from a row count.
+
+### PSL-36 · Five independent R-numbering namespaces, and a hold cited against the wrong one
+
+- **owner:** unowned; B as reporter
+- **finding:** `R<n>` is not a project-wide identifier. At least five live namespaces use it, and two
+  collisions have already cost real time in a single night:
+  - **RUN-LOCK-01 R1–R6** (B → A) — host-scope requirements. **No R7 exists.**
+  - **C's soak packet R1–R3** — `ARM-EQUALITY-01` landed `991607f77`, first-paint ratification, forced-GC
+    pause-probe.
+  - **E's R3** — session-start soak preflight, landed `46bf8e848`.
+  - **A's R7** — ephemeral-discovery gate in `m20q6-capture-reuse.test.mjs`, landed with capture-reuse.
+  - **The Director's instrument checklist 1–13**, where **#7 is COV-01 coverage calibration**.
+  - Plus historical `B-R1..B-R9`, `R-W22 R1–R4` and `M21-2 R6/R7` in the journal.
+- **state:** `MEASURED_NOT_FIXED`
+- **evidence:** the soak was held "under R5" at 00:47+01:00. **R5 in the only R-series addressed to a lane
+  is "document the asymmetry where the flags are defined"**, about `--no-host-lock`. The citable basis was
+  C's `RATE-FLOOR-01` at `305497bf5`. Separately, "R7's machine-coverage backfill" has three candidate
+  referents across three namespaces and remains unresolved.
+- **post-soak action:** namespace the identifiers — `RUNLOCK-R5`, `SOAK-R1`, `CHECKLIST-07` — or accept
+  that every `R<n>` citation needs its document named beside it. **Two of tonight's confusions were mine
+  and one was the Director's**, which is the argument that this is the notation and not the reader.
+- **seal-corrupting?** **no.** Naming. It does mean a hold, a requirement and a due-today checklist item
+  can share a label, and that a reader who resolves the wrong one investigates the wrong thing.
+
+### PSL-37 · The suspect census reads prose only, so code-named suspects are invisible
+
+- **owner:** B
+- **finding:** `suspect-ledger-census.mjs` builds its population from `docs/plan3` markdown — the ticket
+  ledger, the suspect-ledger sections and a curated control list. **Nothing named only in a script
+  header, a comment or a gate name can enter the population.** "The unlit dark rooms" was published as
+  unlocatable and lives at `scripts/n1-heavy-vs-fresh.mjs:5`.
+- **state:** `MEASURED_NOT_FIXED`
+- **evidence:** §0g of the suspect ledger; census population definition in the instrument.
+- **post-soak action:** extend the corpus to script headers and gate names, or state the scope limit in
+  the census output itself so a floor is never read as a ceiling. **The output currently does not say
+  which corpus it searched**, which is what let a scope limit be published as an absence.
+- **seal-corrupting?** **no**, and worth being precise about why: it cannot make a stated row wrong. It can
+  only hide a row that should have existed, which is a floor problem, and §0 already says the number is a
+  floor. This makes the floor's *shape* explicit rather than the count larger.

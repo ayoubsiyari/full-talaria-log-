@@ -71,10 +71,19 @@ rather you repeat the caveat than the headline.
 - **"the unlit dark rooms"** — the word *dark* appears **nowhere** in tracked `docs/plan3`. Candidates
   that fit the metaphor are all separately seated: 14 gates that never ran, 11 of 14 switches absent
   from the build, 189 CRITICAL swallowed catches, `DRIFT-ABBA` reported complete having never run.
-- **"the second GPU box"** — no request for a second machine exists in the corpus. GPU appears only as
-  GPU-*private memory* in A's competitor bands, and that whole series is withdrawn (`PSL-01`).
-- **"R7's machine-coverage backfill"** — `R7` resolves to two unrelated things, your ephemeral-discovery
-  gate in the M20-Q6 capture reuse and M21-2 R7 the review round. Neither is a machine-coverage backfill.
+- **"the second GPU box"** — **RETRACTED 08:5x+01:00, this was false.** It is at
+  `RECIPE-SEALED-SOAK-FROZEN-20260803.md:240` and `BOARD-C.md:1263`: a second GPU-bearing box is
+  **endorsed and blocks nothing**, the soak stays on the RTX box, and EC2 r6i is refused for having no
+  GPU. Endorsed, not procured. I missed text inside the corpus I said I had searched.
+  - **"R7's machine-coverage backfill"** — `R7` resolves to two unrelated things, your ephemeral-discovery
+    gate in the M20-Q6 capture reuse and M21-2 R7 the review round. Neither is a machine-coverage backfill.
+    **Note added 08:5x+01:00:** this paragraph was right and I then made it worse. At 00:3x+01:00 I
+    "corrected" it to `REFERENT_LOCATED — and it is mine`, naming my own unwritten seventh host-scope
+    requirement, which discarded the ambiguity I had correctly recorded here an hour earlier. A third
+    candidate has since surfaced — checklist **#7, COV-01 coverage calibration**, RED at 59.8% with
+    271.05 MB unattributed, which fits "coverage backfill" better than either. The row is now
+    `REFERENT_CONTESTED` with all three named. **A correction that reduces accuracy is worse than the
+    hedge it replaced**, and it took a re-read to notice, not a gate.
 
 They are DEFERRED because absence is forbidden, **explicitly not because deferral is the evidenced
 answer.** That seat holds a question, not work. **I cannot rule on the seal-corrupting status of a
