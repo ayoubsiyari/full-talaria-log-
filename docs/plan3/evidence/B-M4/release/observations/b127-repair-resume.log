@@ -1,0 +1,108 @@
+=== b127 REPAIR + RESUME === build=20260804b127 prior=20260803b126
+=== 1. name the new images what they are ===
+  talaria-homepage:canary-20260804b127 label=20260804b127 revision=101fe7e50d6f98fc8fb0ab326ace742753d0b23b
+  talaria-trading-chart:canary-20260804b127 label=20260804b127 revision=101fe7e50d6f98fc8fb0ab326ace742753d0b23b
+TAG_B127_OK
+=== 2. restore 20260803b126's tag from the retained tarball (rollback integrity) ===
+Loaded image: talaria-homepage:canary-20260803b126
+Loaded image: talaria-trading-chart:canary-20260803b126
+  talaria-homepage:canary-20260803b126 label=20260803b126
+  talaria-trading-chart:canary-20260803b126 label=20260803b126
+ROLLBACK_TAG_RESTORED
+B127_STILL_INTACT
+=== 3. save b127 rollback image + PINNED manifest ===
+build_id=20260804b127
+pinned_at=2026-08-04T12:37:51Z
+source_commit=101fe7e50d6f98fc8fb0ab326ace742753d0b23b
+source_tag=roster-20260804b127-source
+chart_image=talaria-trading-chart:canary-20260804b127
+homepage_image=talaria-homepage:canary-20260804b127
+chart_id=sha256:d7966ccea4fdd23b60227fa3ed08b23ff9176fc7829d3396f71871d0a321ac68
+homepage_id=sha256:d443bed2e120863116a731b02c675bca49e56bb324da983e4d7e48277b458a2a
+strict_label=1
+buildid_label=20260804b127
+train_rows=PACKAGE1_TEN_DEFECTS
+note=repaired_from_misnamed_build_see_b127-repair-resume.log
+PINNED_OK bytes=320142220
+=== 4. repoint .env to b127 (backed up first) ===
+79:TRADING_CHART_IMAGE=talaria-trading-chart:canary-20260804b127
+80:HOMEPAGE_IMAGE=talaria-homepage:canary-20260804b127
+    image: talaria-homepage:canary-20260804b127
+    image: talaria-journal-backend:latest
+    image: talaria-trading-chart:canary-20260804b127
+ENV_REPOINTED
+=== 5. up -d --no-build ===
+ Container talaria-questdb-1 Running 
+ Container talaria-db-1 Running 
+ Container talaria-journal-backend-1 Running 
+ Container talaria-redis-1 Running 
+ Container talaria-trading-chart-1 Recreate 
+ Container talaria-trading-chart-worker-1 Recreate 
+ Container talaria-trading-chart-worker-1 Recreated 
+ Container talaria-trading-chart-1 Recreated 
+ Container talaria-homepage-1 Recreate 
+ Container talaria-homepage-1 Recreated 
+ Container talaria-db-1 Waiting 
+ Container talaria-db-1 Healthy 
+ Container talaria-questdb-1 Waiting 
+ Container talaria-journal-backend-1 Waiting 
+ Container talaria-db-1 Waiting 
+ Container talaria-redis-1 Waiting 
+ Container talaria-redis-1 Waiting 
+ Container talaria-questdb-1 Waiting 
+ Container talaria-journal-backend-1 Waiting 
+ Container talaria-db-1 Waiting 
+ Container talaria-journal-backend-1 Healthy 
+ Container talaria-redis-1 Healthy 
+ Container talaria-db-1 Healthy 
+ Container talaria-journal-backend-1 Healthy 
+ Container talaria-questdb-1 Healthy 
+ Container talaria-db-1 Healthy 
+ Container talaria-redis-1 Healthy 
+ Container talaria-trading-chart-1 Starting 
+ Container talaria-questdb-1 Healthy 
+ Container talaria-trading-chart-worker-1 Starting 
+ Container talaria-trading-chart-1 Started 
+ Container talaria-trading-chart-1 Waiting 
+ Container talaria-trading-chart-worker-1 Started 
+ Container talaria-trading-chart-1 Healthy 
+ Container talaria-homepage-1 Starting 
+ Container talaria-homepage-1 Started 
+UP_DONE=2026-08-04T12:38:42Z
+LIVE_PIN_SET=20260804b127
+=== 6. wait for health ===
+  attempt 1: trading-chart=healthy shell_http=200
+HEALTH_OK
+=== 7. MEAS-01 — stamp + images from the running system ===
+shell_http=200
+SERVED_STAMP=window.__TALARIA_CHART_BUILD_ID='20260804b127'
+stamp_v_refs=67
+  talaria-homepage-1               talaria-homepage:canary-20260804b127
+  talaria-trading-chart-1          talaria-trading-chart:canary-20260804b127
+  talaria-trading-chart-worker-1   talaria-trading-chart:canary-20260804b127
+MEAS01_OK
+=== 8. PACKAGE 1 payload on the wire (HTTP, browser-equivalent) ===
+  engine   PAIR_SWITCH_LOAD_TIMEOUT_MS              3
+  engine   serverRewindIsNewer                      2
+  engine   _sessionTimeframeRestoreEnabled          3
+  om       _analysisOnlyFileIds                     2
+  om       _refuseAnalysisOnlyOrderIfNeeded         8
+  compare  _warnOverlayOutOfView                    2
+  compare  _overlayFullPriceExtent                  2
+  bundle   orderValidation                          1
+  bundle   __talariaGestureOwnerV1                  1
+  bundle   no .iframe reader                        0 (must be 0)
+CHART_ENGINE_BUILD = '20260804b127'
+HTTP_WIRE_OK
+=== 9. final state ===
+LIVE_PIN=20260804b127
+PRIOR_PIN=20260803b126
+DEPLOY_FLAG=clear
+DEPLOY FREEZE: none
+canary-20260731b119.tar.gz
+canary-20260731b120.tar.gz
+canary-20260803b126.tar.gz
+canary-20260804b127.tar.gz
+/dev/sda1       193G  145G   49G  76% /
+CANARY_CHECKPOINT_OK build_id=20260804b127 sha=101fe7e50d6f98fc8fb0ab326ace742753d0b23b
+PO_SHOULD_READ=20260804b127
