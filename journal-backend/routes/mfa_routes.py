@@ -1,3 +1,4 @@
+from __future__ import annotations
 # routes/mfa_routes.py — TOTP MFA (enterprise_website_security_spec.md §4.1)
 
 from datetime import datetime

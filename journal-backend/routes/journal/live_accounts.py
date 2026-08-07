@@ -1,3 +1,4 @@
+from __future__ import annotations
 # routes/journal/live_accounts.py
 """Persisted live journal accounts (personal / prop) for manual trade journals."""
 

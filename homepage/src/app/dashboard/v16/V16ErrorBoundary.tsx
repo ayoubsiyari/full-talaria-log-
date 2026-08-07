@@ -77,8 +77,8 @@ export default class V16ErrorBoundary extends React.Component<Props, State> {
           justifyContent: "center",
           padding: 24,
           boxSizing: "border-box",
-          background: "#07080E",
-          fontFamily: "'Exo 2', sans-serif",
+          background: "#000000",
+          fontFamily: '"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif',
           textAlign: "center",
         }}
       >
@@ -109,12 +109,12 @@ export default class V16ErrorBoundary extends React.Component<Props, State> {
                 fontSize: 13,
                 fontWeight: 700,
                 color: "#fff",
-                background: "rgba(74,106,255,0.85)",
-                border: "1px solid rgba(74,106,255,0.5)",
+                background: "rgba(48,144,255,0.85)",
+                border: "1px solid rgba(48,144,255,0.5)",
                 borderRadius: 8,
                 padding: "9px 18px",
                 cursor: "pointer",
-                fontFamily: "'Exo 2', sans-serif",
+                fontFamily: '"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif',
               }}
             >
               {isArabic ? "إعادة التحميل" : "Reload"}

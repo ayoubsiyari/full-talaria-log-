@@ -1,7 +1,7 @@
 import React, { useMemo } from "react";
 import { buildPathCloudModel, pathToSvgPoints } from "./tradePathCloudUtils.js";
 
-const F = "'Exo 2', sans-serif";
+const F = "var(--font-ui), Helvetica, Arial, sans-serif";
 
 /**
  * Trade Path Cloud — overlay normalized R paths (in-trade + post-exit) for session journal trades.
@@ -54,93 +54,69 @@ export default function TradePathCloudPanel({ entries = [], c, maxLines = 120 })
   }, [model.bands, yExtent, w, h]);
 
   const visiblePaths = model.paths.slice(-maxLines);
+  const up = c?.gn || "var(--up)";
+  const down = c?.rd || "var(--down)";
+  const accent = c?.acL || "var(--accent)";
+  const line = c?.brH || "var(--line-strong)";
+  const warn = c?.gold || "var(--warn)";
+  const muted = c?.tm || "var(--text-faint)";
 
   return (
-    <div style={{ background: c.bg, border: `1px solid ${c.br}`, padding: "12px 14px" }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 10,
-          gap: 10,
-        }}
-      >
-        <div style={{ fontSize: 9, fontWeight: 700, color: c.tm, letterSpacing: "0.07em" }}>
-          TRADE PATH CLOUD
-        </div>
-        <div style={{ fontSize: 9, fontWeight: 700, color: c.tm, fontFamily: F, fontVariantNumeric: "tabular-nums" }}>
+    <section data-trades-panel="" data-path-cloud="">
+      <header data-trades-panel-h="">
+        Trade path cloud
+        <em>
           {model.withPath} / {model.total} with R-path
-        </div>
-      </div>
+        </em>
+      </header>
 
       {model.withPath === 0 ? (
-        <div
-          style={{
-            minHeight: 120,
-            display: "grid",
-            placeItems: "center",
-            fontSize: 10,
-            fontWeight: 600,
-            color: c.tm,
-            fontFamily: F,
-            textAlign: "center",
-            lineHeight: 1.45,
-            padding: "8px 12px",
-          }}
-        >
-          No bar R-path data yet. Paths are recorded while trades are open and saved to the session journal on
-          close — take a few backtest trades to populate this chart.
-        </div>
+        <p data-trades-panel-empty="" data-tall="1">
+          R-paths appear after open trades record bar excursions — close a few to fill this cloud.
+        </p>
       ) : (
         <svg
           width="100%"
           height={h}
           viewBox={`0 0 ${w} ${h}`}
           preserveAspectRatio="none"
-          style={{ display: "block", background: c.el, border: `1px solid ${c.br}` }}
+          data-path-cloud-svg=""
           role="img"
           aria-label="Trade path cloud"
         >
-          {/* Post-exit tint (right half) */}
           <rect x={exitX} y={0} width={w - exitX} height={h} fill="rgba(255,140,66,0.06)" />
-          {/* Zero R line */}
           {(() => {
             const range = Math.max(0.25, yExtent.yMax - yExtent.yMin);
             const y0 = 12 + (h - 24) - ((0 - yExtent.yMin) / range) * (h - 24);
             if (y0 < 8 || y0 > h - 8) return null;
-            return <line x1={8} x2={w - 8} y1={y0} y2={y0} stroke={c.brH} strokeDasharray="4 4" />;
+            return <line x1={8} x2={w - 8} y1={y0} y2={y0} stroke={line} strokeDasharray="4 4" />;
           })()}
-          {/* Percentile band */}
-          {bandD ? <path d={bandD} fill="rgba(140,160,255,0.12)" stroke="none" /> : null}
-          {/* Individual trade paths */}
+          {bandD ? <path d={bandD} fill="rgba(48,144,255,0.12)" stroke="none" /> : null}
           {visiblePaths.map((row, index) => (
             <path
               key={`${row.id ?? index}-${index}`}
               d={pathToSvgPoints(row.path, w, h, yExtent.yMin, yExtent.yMax)}
               fill="none"
-              stroke={row.win ? c.gn : c.rd}
+              stroke={row.win ? up : down}
               strokeWidth={index % 17 === 0 ? 1.8 : 0.9}
               opacity={index % 17 === 0 ? 0.75 : 0.16}
             />
           ))}
-          {/* Median */}
           {medianD ? (
-            <path d={medianD} fill="none" stroke={c.acL} strokeWidth={2.4} opacity={0.95} />
+            <path d={medianD} fill="none" stroke={accent} strokeWidth={2.4} opacity={0.95} />
           ) : null}
-          {/* Exit divider */}
-          <line x1={exitX} x2={exitX} y1={8} y2={h - 8} stroke={c.gold} strokeDasharray="5 5" strokeWidth={1.2} />
-          <text x={exitX - 4} y={h - 2} fill={c.tm} fontSize={8} fontWeight={900} fontFamily={F} textAnchor="end">
+          <line x1={exitX} x2={exitX} y1={8} y2={h - 8} stroke={warn} strokeDasharray="5 5" strokeWidth={1.2} />
+          <text x={exitX - 4} y={h - 2} fill={muted} fontSize={8} fontWeight={700} fontFamily={F} textAnchor="end">
             EXIT
           </text>
-          <text x={16} y={12} fill={c.tm} fontSize={8} fontWeight={700} fontFamily={F}>
+          <text x={16} y={12} fill={muted} fontSize={8} fontWeight={650} fontFamily={F}>
             In trade
           </text>
-          <text x={w - 12} y={12} fill={c.tm} fontSize={8} fontWeight={700} fontFamily={F} textAnchor="end">
+          <text x={w - 12} y={12} fill={muted} fontSize={8} fontWeight={650} fontFamily={F} textAnchor="end">
             Post-exit
           </text>
         </svg>
       )}
-    </div>
+    </section>
   );
 }

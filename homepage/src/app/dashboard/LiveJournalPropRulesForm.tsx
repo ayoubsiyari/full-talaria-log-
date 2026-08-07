@@ -8,15 +8,15 @@ import {
   liveJournalPropStepFormat,
 } from "@/lib/liveJournalPropRules";
 
-const F = "'Exo 2', sans-serif";
+const F = '"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif';
 const C = {
-  el: "#0F1119",
+  el: "#141416",
   brH: "rgba(140,160,255,0.22)",
   tx: "rgba(255,255,255,0.92)",
   ts: "rgba(255,255,255,0.55)",
   tm: "rgba(255,255,255,0.38)",
-  ac: "#4A6AFF",
-  acD: "rgba(38,67,247,0.08)",
+  ac: "#3090FF",
+  acD: "rgba(48,144,255,0.08)",
 } as const;
 
 const STEP_OPTIONS: { id: LiveJournalPropStepFormat; label: string }[] = [

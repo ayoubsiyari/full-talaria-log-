@@ -9,11 +9,13 @@
  */
 
 export const TF_PINNED_STORAGE_KEY = "talaria_v9_tf_pinned";
+export const TF_CUSTOM_STORAGE_KEY = "talaria_v9_tf_custom";
 export const TOOL_PINNED_STORAGE_KEY = "talaria_v9_tool_pinned";
 export const TOOLBAR_PIN_STORAGE_VERSION = 1;
 
 /** Mirrors the pin-button caps in the V9 toolbar UI. */
 export const TF_PINNED_MAX = 10;
+export const TF_CUSTOM_MAX = 24;
 export const TOOL_PINNED_MAX = 20;
 
 export const DEFAULT_TF_PINNED = ["1m", "5m", "15m", "1H", "4H", "1D"];
@@ -86,6 +88,16 @@ export function loadTfPinned() {
 
 export function saveTfPinned(ids) {
   savePins(TF_PINNED_STORAGE_KEY, ids, TF_PINNED_MAX);
+}
+
+/** Custom intervals the user added in the timeframe menu (survive refresh). */
+export function loadTfCustom() {
+  const stored = loadPins(TF_CUSTOM_STORAGE_KEY, TF_CUSTOM_MAX);
+  return stored === null ? [] : stored;
+}
+
+export function saveTfCustom(ids) {
+  savePins(TF_CUSTOM_STORAGE_KEY, ids, TF_CUSTOM_MAX);
 }
 
 export function loadToolPinned() {

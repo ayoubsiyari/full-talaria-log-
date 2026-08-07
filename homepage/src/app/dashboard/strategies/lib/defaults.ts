@@ -3,7 +3,7 @@ import { normalizeInstrumentList, normalizeMarketCategories } from './instrument
 export const SL_COLORS = {
   orderFlow: { color: '#06b6d4', bg: 'rgba(6,182,212,0.12)', bd: '#06b6d4' },
   priceAction: { color: '#f97316', bg: 'rgba(249,115,22,0.12)', bd: '#f97316' },
-  context: { color: '#2643F7', bg: 'rgba(38,67,247,0.12)', bd: '#2643F7' },
+  context: { color: '#232CF4', bg: 'rgba(48,144,255,0.12)', bd: '#232CF4' },
 };
 
 export const PRE_VAR_COLORS = {

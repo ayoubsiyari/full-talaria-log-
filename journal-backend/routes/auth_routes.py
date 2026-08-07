@@ -1,7 +1,16 @@
 # routes/auth_routes.py
 
-from flask import Blueprint, request, jsonify, current_app
-from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity, get_jwt
+from flask import Blueprint, request, jsonify, current_app, make_response
+from flask_jwt_extended import (
+    create_access_token,
+    create_refresh_token,
+    jwt_required,
+    get_jwt_identity,
+    get_jwt,
+    set_access_cookies,
+    set_refresh_cookies,
+    unset_jwt_cookies,
+)
 from sqlalchemy import text
 from models import db, User, Profile, BlockedIP, SecurityLog, FailedLoginAttempt
 from email_service import send_verification_email, send_password_reset_email, send_welcome_email, send_welcome_coupon_email
@@ -22,6 +31,45 @@ from talaria_security.password import (
 )
 
 from subscription_access import user_entitles_journal
+from platform_sections import PLATFORM_SECTION_KEYS, platform_section_enabled, user_may_use_platform_section
+
+
+def _auth_user_payload(user: User) -> dict:
+    """Shape expected by homepage DashboardShell / auth-fuse (/api/auth/me + login)."""
+    from dashboard_access import effective_dashboard_modules, user_has_any_dashboard_access
+    from user_public_id import ensure_user_public_id
+
+    has_journal_access = user_entitles_journal(user)
+    dashboard_modules = effective_dashboard_modules(user)
+    active_profile = Profile.query.filter_by(user_id=user.id, is_active=True).first()
+    public_id = ensure_user_public_id(user)
+    return {
+        "id": user.id,
+        "email": user.email,
+        "name": user.name,
+        "role": user.role,
+        "email_verified": True,
+        "is_admin": user.is_admin,
+        "is_waitlisted": bool(getattr(user, "is_waitlisted", False)),
+        "has_active_profile": active_profile is not None,
+        "has_journal_access": has_journal_access,
+        "manual_full_access": bool(getattr(user, "has_journal_access", False)),
+        "has_dashboard_access": user_has_any_dashboard_access(user),
+        "dashboard_modules": dashboard_modules,
+        "public_id": public_id,
+    }
+
+
+def _platform_payload(user: User) -> dict:
+    sections = {}
+    global_sections = {}
+    for key in PLATFORM_SECTION_KEYS:
+        global_sections[key] = platform_section_enabled(key, True)
+        sections[key] = user_may_use_platform_section(user, key)
+    return {
+        "sections": sections,
+        "sections_globally_enabled": global_sections,
+    }
 
 # Security settings (aligned with enterprise_website_security_spec.md §4.2)
 MAX_FAILED_ATTEMPTS = MAX_FAILED_LOGIN_ATTEMPTS
@@ -471,18 +519,8 @@ def login_user():
         except ValueError:
             pass
 
-    # has_journal_access is the admin manual full-access flag; do not overwrite on login.
-    from dashboard_access import effective_dashboard_modules, user_has_any_dashboard_access
-
-    has_journal_access = user_entitles_journal(user)
-    dashboard_modules = effective_dashboard_modules(user)
-    
     # Successful login - clear failed attempts for this IP
     clear_failed_attempts(client_ip)
-
-    # Check if user has an active profile
-    active_profile = Profile.query.filter_by(user_id=user.id, is_active=True).first()
-    has_active_profile = active_profile is not None
 
     # Create both access and refresh tokens with admin claim
     access_token = create_access_token(
@@ -494,20 +532,17 @@ def login_user():
         additional_claims={"is_admin": user.is_admin}
     )
 
-    return jsonify({
+    # Homepage expects httpOnly journal_token cookie (same name as chart API).
+    body = {
         "token": access_token,
         "refresh_token": refresh_token,
-        "user": {
-            "id": user.id,
-            "email": user.email,
-            "email_verified": True,
-            "is_admin": user.is_admin,
-            "has_active_profile": has_active_profile,
-            "has_journal_access": has_journal_access,
-            "has_dashboard_access": user_has_any_dashboard_access(user),
-            "dashboard_modules": dashboard_modules,
-        }
-    }), 200
+        "user": _auth_user_payload(user),
+        "platform": _platform_payload(user),
+    }
+    resp = make_response(jsonify(body), 200)
+    set_access_cookies(resp, access_token)
+    set_refresh_cookies(resp, refresh_token)
+    return resp
 
 
 @auth_bp.route('/register', methods=['POST'])
@@ -975,6 +1010,20 @@ def get_profile():
     }), 200
 
 
+@auth_bp.route('/me', methods=['GET'])
+@jwt_required()
+def auth_me():
+    """Identity for Next dashboard shell — mirrors chart GET /api/auth/me shape."""
+    user_id = int(get_jwt_identity())
+    user = User.query.get(user_id)
+    if not user or not user.is_active:
+        return jsonify({"error": "Not authenticated"}), 401
+    return jsonify({
+        "user": _auth_user_payload(user),
+        "platform": _platform_payload(user),
+    }), 200
+
+
 @auth_bp.route('/refresh', methods=['POST'])
 @jwt_required(refresh=True)
 def refresh():
@@ -985,14 +1034,18 @@ def refresh():
         identity=current_user_id,
         additional_claims={"is_admin": claims.get('is_admin', False)}
     )
-    return jsonify({"token": new_access_token}), 200
+    resp = make_response(jsonify({"token": new_access_token}), 200)
+    set_access_cookies(resp, new_access_token)
+    return resp
     
 
 @auth_bp.route('/logout', methods=['POST'])
-@jwt_required()
+@jwt_required(optional=True)
 def logout():
-    """Logout user (client should remove tokens)"""
-    return jsonify({"message": "Logged out successfully"}), 200
+    """Logout user — clear JWT cookies for the browser session."""
+    resp = make_response(jsonify({"message": "Logged out successfully"}), 200)
+    unset_jwt_cookies(resp)
+    return resp
 
 
 @auth_bp.route('/validate-token', methods=['POST'])

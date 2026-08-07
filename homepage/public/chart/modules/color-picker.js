@@ -384,21 +384,30 @@ class ColorPicker {
         this.updateSelectedSwatches();
         this.updateOpacityGradient();
         
-        // Position picker
+        // Position picker — cap to viewport and scroll instead of cropping.
         this.picker.style.display = 'block';
+        const pad = 8;
+        const maxW = Math.max(80, window.innerWidth - pad * 2);
+        const maxH = Math.max(120, window.innerHeight - pad * 2);
+        this.picker.style.boxSizing = 'border-box';
+        this.picker.style.maxWidth = `${maxW}px`;
+        this.picker.style.maxHeight = `${maxH}px`;
+        this.picker.style.overflowX = 'hidden';
+        this.picker.style.overflowY = 'auto';
+        void this.picker.offsetHeight;
         const rect = this.picker.getBoundingClientRect();
-        
+        const w = Math.min(rect.width || 0, maxW);
+        const h = Math.min(rect.height || 0, maxH);
+
         let top = y + 10;
         let left = x;
-        
-        // Adjust if off-screen
-        if (top + rect.height > window.innerHeight) top = y - rect.height - 10;
-        if (left + rect.width > window.innerWidth) left = window.innerWidth - rect.width - 10;
-        if (left < 10) left = 10;
-        if (top < 10) top = 10;
-        
-        this.picker.style.top = top + 'px';
-        this.picker.style.left = left + 'px';
+        if (top + h > window.innerHeight - pad) top = y - h - 10;
+        if (left + w > window.innerWidth - pad) left = window.innerWidth - pad - w;
+        if (left < pad) left = pad;
+        if (top < pad) top = pad;
+
+        this.picker.style.top = Math.round(top) + 'px';
+        this.picker.style.left = Math.round(left) + 'px';
     }
 
     hide() {

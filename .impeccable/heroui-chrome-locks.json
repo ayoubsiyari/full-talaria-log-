@@ -1,0 +1,85 @@
+{
+  "title": "HeroUI chrome redesign — three locks",
+  "question": "Confirm structure before rebuild. Pick the combination that matches how you trade.",
+  "options": [
+    {
+      "id": "dock-right-true-light-full",
+      "label": "Right dock · true light · full shell",
+      "kicker": "RECOMMENDED SHAPE",
+      "thesis": "Order ticket docks right (HeroUI drawer). Light mode is mist/white surfaces with ink text. Full chrome pass: top bar, rail, menus, panels, order ticket, bottom bar.",
+      "palette": [
+        "#000000",
+        "#FFFFFF",
+        "#3090FF",
+        "#EBE9FE"
+      ],
+      "materials": [
+        "soft 12px radii",
+        "1px hairlines",
+        "flat CTAs"
+      ],
+      "viewport": "Dark or light shell; Place Order opens a clean right drawer; sun/moon at rail bottom.",
+      "risk": "Largest pass — denser to ship, but one unified system."
+    },
+    {
+      "id": "dock-right-true-light-order-first",
+      "label": "Right dock · true light · order + shell skeleton",
+      "kicker": "PHASED",
+      "thesis": "Same HeroUI system and light/dark tokens, but ship order panel + rail theme toggle + token layer first; restyle remaining windows in the next pass.",
+      "palette": [
+        "#000000",
+        "#FFFFFF",
+        "#3090FF",
+        "#EBE9FE"
+      ],
+      "materials": [
+        "tokens first",
+        "order ticket hero",
+        "rail toggle"
+      ],
+      "viewport": "Theme switch works everywhere; order panel is the showcase; older menus stay until pass 2.",
+      "risk": "Two visual generations briefly coexist."
+    },
+    {
+      "id": "floating-ticket-true-light-full",
+      "label": "Floating ticket · true light · full shell",
+      "kicker": "ALTERNATE",
+      "thesis": "Order ticket is a floating HeroUI card (draggable), not a dock. Full shell restyle with light/dark.",
+      "palette": [
+        "#000000",
+        "#FFFFFF",
+        "#3090FF",
+        "#2C537A"
+      ],
+      "materials": [
+        "floating card",
+        "soft elevation via surface only",
+        "flat CTAs"
+      ],
+      "viewport": "Ticket overlays chart; rail still hosts theme toggle.",
+      "risk": "Can cover candles; needs careful default position."
+    },
+    {
+      "id": "dock-right-soft-gray-full",
+      "label": "Right dock · soft gray light · full shell",
+      "kicker": "ALTERNATE LIGHT",
+      "thesis": "Light mode stays low-glare gray (not white paper) for long sessions; otherwise same HeroUI full shell.",
+      "palette": [
+        "#F4F5F7",
+        "#FFFFFF",
+        "#3090FF",
+        "#000000"
+      ],
+      "materials": [
+        "matte gray ground",
+        "white raised panels",
+        "blue selection"
+      ],
+      "viewport": "Day mode without pure white wash; night stays Obsidian black.",
+      "risk": "Less brand-mist drama; calmer for all-day use."
+    }
+  ],
+  "reroll": false,
+  "canon": false,
+  "steer": true
+}

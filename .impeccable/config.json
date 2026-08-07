@@ -1,0 +1,21 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [
+      "chart v 1.4/chart/**",
+      "homepage/public/chart/**",
+      "chart v 1.4/talaria-design/live/index.html"
+    ],
+    "ignoreValues": [
+      {
+        "rule": "layout-transition",
+        "value": "*",
+        "files": [
+          "chart v 1.4/talaria-design/src/TalariaV8bLive.jsx"
+        ],
+        "createdAt": "2026-08-07T15:08:03.738Z",
+        "reason": "User asked to re-run Obsidian restore; intentional panel collapse/resize height transitions in Live chrome; needed to unblock Indicators/Settings/Replay JSX restore"
+      }
+    ]
+  }
+}

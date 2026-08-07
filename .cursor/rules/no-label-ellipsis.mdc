@@ -1,0 +1,32 @@
+---
+description: Chrome labels must show full text — no ellipsis truncation; size controls for the longest label
+alwaysApply: true
+---
+
+# No label ellipsis (full text, stable size)
+
+UI chrome labels and control text must appear in full. Do not clip them with dots.
+
+## Required
+
+- Show the complete label: `Candles`, `Hollow Candles`, `Heikin Ashi`, `Indicators`, etc.
+- Size a control to the **longest** label in its set so the control width does not jump when the selection changes.
+- Prefer `white-space: nowrap` with enough width (or reflow to two lines only when the layout already allows wrapping). Never use `text-overflow: ellipsis` on toolbar / menu / button / tab labels.
+- Do not hide those labels at breakpoints with `display: none` as a substitute for truncation.
+
+## Forbidden on chrome labels
+
+- `text-overflow: ellipsis` (or equivalent “…” clipping)
+- `max-width` + `overflow: hidden` that shortens a known closed set of labels
+- Changing font size only on long labels to “make it fit” while shorter ones stay larger (that still reads as size jitter)
+
+## Allowed exceptions
+
+- **User-generated or unbounded strings** in dense lists (file names, ticket subjects, message previews, custom template names) may ellipsize when the row has a fixed density budget — not closed product labels.
+- Chart canvas paint paths are out of scope.
+
+## When adding a labeled control
+
+1. List every possible label string.
+2. Size the control for the longest one.
+3. Verify at the narrowest supported chrome width that the full text still shows (scroll the mid-toolbar zone if needed — do not truncate).

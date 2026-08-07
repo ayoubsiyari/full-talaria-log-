@@ -2,7 +2,7 @@
 
 import React from "react";
 
-const F = "'Exo 2', sans-serif";
+const F = '"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif';
 
 export type GateVariant =
   | "subscription"
@@ -303,7 +303,7 @@ function GateDialogCard({
       style={{
         width: "100%",
         maxWidth: 420,
-        borderRadius: 16,
+        borderRadius: 8,
         padding: "28px 26px 24px",
         background:
           "linear-gradient(165deg, rgba(22,24,34,0.98) 0%, rgba(12,14,22,0.98) 100%)",
@@ -316,12 +316,12 @@ function GateDialogCard({
           style={{
             width: 48,
             height: 48,
-            borderRadius: 12,
+            borderRadius: 6,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            background: "rgba(74,106,255,0.12)",
-            border: "1px solid rgba(74,106,255,0.28)",
+            background: "rgba(48,144,255,0.12)",
+            border: "1px solid rgba(48,144,255,0.28)",
             flexShrink: 0,
           }}
           aria-hidden
@@ -365,7 +365,7 @@ function GateDialogCard({
         style={{
           width: "100%",
           padding: "14px 18px",
-          borderRadius: 12,
+          borderRadius: 6,
           border: "none",
           cursor: "pointer",
           fontFamily: F,
@@ -374,8 +374,8 @@ function GateDialogCard({
           letterSpacing: isArabic ? 0 : "0.06em",
           textTransform: isArabic ? "none" : "uppercase",
           color: "rgba(255,255,255,0.96)",
-          background: "linear-gradient(135deg, #1e38e8, #4A6AFF)",
-          boxShadow: "0 4px 20px rgba(38,67,247,0.35)",
+          background: "linear-gradient(135deg, #3090FF, #3090FF)",
+          boxShadow: "0 4px 20px rgba(48,144,255,0.35)",
         }}
       >
         {primaryCta}
@@ -387,7 +387,7 @@ function GateDialogCard({
           width: "100%",
           marginTop: 10,
           padding: "12px 14px",
-          borderRadius: 10,
+          borderRadius: 6,
           border: "1px solid rgba(255,255,255,0.08)",
           background: "rgba(255,255,255,0.03)",
           cursor: "pointer",

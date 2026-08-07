@@ -1,0 +1,291 @@
+/* Obsidian shell pass — topbar / TF / candles / indicators / replay / rail / menus.
+   Flat fills, accent #3090FF, no glow gradients. Loaded after chrome-obsidian-surfaces.css.
+   Does not style canvas paint paths. */
+
+/* ── Flatten decorative gradients inside chrome + portaled shell menus ── */
+[data-v9-chrome] [style*="linear-gradient"],
+[data-v9-app] [data-sdrop="1"] [style*="linear-gradient"],
+[data-indicators-panel] [style*="linear-gradient"],
+[data-alert-v2] [style*="linear-gradient"],
+[data-alert-win] [style*="linear-gradient"],
+.talaria-alert-overlay [style*="linear-gradient"] {
+  background-image: none !important;
+  box-shadow: none !important;
+  filter: none !important;
+  text-shadow: none !important;
+}
+
+/* Menu / panel top accent → 1px flat hairline */
+[data-v9-app] [data-sdrop="1"] > div:first-child[style*="height:2"],
+[data-indicators-panel] > div:first-child[style*="height:2"],
+[data-alert-v2] > div:first-child[style*="height:2"] {
+  background: var(--accent) !important;
+  background-image: none !important;
+  height: 1px !important;
+  opacity: 0.9;
+}
+
+/* Active left tick on menu rows → solid accent */
+[data-v9-app] [data-sdrop="1"] [style*="position:absolute"][style*="width:2"][style*="left:0"],
+[data-indicators-panel] [style*="position:absolute"][style*="width:2"][style*="left:0"],
+[data-v9-rail] [style*="position:absolute"][style*="width: 2"],
+[data-v9-rail] [style*="position:absolute"][style*="width:2"] {
+  background: var(--accent) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  filter: none !important;
+}
+
+/* Bottom active underline on topbar / replay buttons → solid bar */
+[data-v9-topbar] button > div[style*="bottom"][style*="height:2"],
+[data-v9-replaybar] button > div[style*="bottom"][style*="height:2"],
+[data-v9-topbar] [role="button"] > div[style*="bottom"][style*="height:2"] {
+  background: var(--accent) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  left: 18% !important;
+  right: 18% !important;
+  width: auto !important;
+  transform: none !important;
+  border-radius: 1px;
+}
+
+/* Hide noisy 1px hover underlines */
+[data-v9-topbar] button > div[style*="bottom"][style*="height:1"],
+[data-v9-replaybar] button > div[style*="bottom"][style*="height:1"],
+[data-tf-bar] button > div[style*="bottom"][style*="height:1"] {
+  display: none !important;
+}
+
+/* ── Top bar ── */
+[data-v9-topbar] {
+  font-family: var(--font-ui) !important;
+  height: var(--topbar-h) !important;
+  min-height: var(--topbar-h) !important;
+  background: var(--surface) !important;
+  border-bottom: 1px solid var(--line) !important;
+  gap: 2px !important;
+}
+[data-v9-topbar] button,
+[data-v9-topbar] [role="button"] {
+  font-family: var(--font-ui) !important;
+  border-radius: var(--radius-control) !important;
+  box-shadow: none !important;
+  filter: none !important;
+}
+[data-v9-topbar] button:hover,
+[data-v9-topbar] [role="button"]:hover {
+  background: var(--surface-raised) !important;
+}
+
+/* Symbol / Candles / Indicators openers */
+[data-v9-topbar] [data-tb-item="symbol"],
+[data-v9-topbar] [data-tb-item="chartType"],
+[data-v9-topbar] [data-indicators-btn],
+[data-v9-topbar] [data-tb-item="tf-more"] {
+  border-radius: var(--radius-control) !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.01em;
+}
+[data-v9-topbar] [data-indicators-btn][aria-expanded="true"],
+[data-v9-topbar] [data-tb-item="chartType"][aria-expanded="true"],
+[data-v9-topbar] [data-tb-item="symbol"][aria-expanded="true"] {
+  background: var(--accent-quiet) !important;
+  color: var(--accent) !important;
+}
+
+/* ── Timeframes ── */
+[data-tf-bar] {
+  display: flex !important;
+  align-items: center !important;
+  gap: 1px !important;
+  position: relative !important;
+}
+[data-tf-bar] button[data-tf] {
+  min-height: 28px !important;
+  padding: 4px 8px !important;
+  border-radius: var(--radius-control) !important;
+  font-family: var(--font-ui) !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  color: var(--text-muted) !important;
+  background: transparent !important;
+  border: none !important;
+  transition: background var(--motion), color var(--motion);
+}
+[data-tf-bar] button[data-tf]:hover {
+  background: var(--surface-raised) !important;
+  color: var(--text) !important;
+}
+[data-tf-bar] button[data-tf][data-active="1"] {
+  background: var(--accent-quiet) !important;
+  color: var(--accent) !important;
+  font-weight: 700 !important;
+}
+/* Sliding TF indicator → solid accent underline */
+[data-tf-bar] > div[style*="position:absolute"][style*="bottom"] {
+  background: var(--accent) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  filter: none !important;
+  height: 2px !important;
+  border-radius: 1px;
+}
+
+/* TF dropdown rows */
+[data-v9-app] [data-sdrop="1"] [data-tf-pin] {
+  color: var(--text-faint);
+}
+[data-v9-app] [data-sdrop="1"] [data-tf-pin][data-on="1"] {
+  color: var(--accent) !important;
+}
+
+/* ── Left toolbar / rail ── */
+[data-v9-rail] {
+  width: var(--rail-w) !important;
+  background: var(--surface) !important;
+  border-right: 1px solid var(--line) !important;
+  font-family: var(--font-ui) !important;
+}
+[data-v9-rail] button {
+  border-radius: var(--radius-control) !important;
+  box-shadow: none !important;
+  filter: none !important;
+}
+[data-v9-rail] button:hover {
+  background: var(--surface-raised) !important;
+}
+
+/* ── Replay bar ── */
+[data-v9-replaybar] {
+  height: var(--replaybar-h) !important;
+  min-height: var(--replaybar-h) !important;
+  background: var(--surface) !important;
+  border-top: 1px solid var(--line) !important;
+  font-family: var(--font-ui) !important;
+}
+[data-v9-replaybar] button {
+  border-radius: var(--radius-control) !important;
+  box-shadow: none !important;
+  filter: none !important;
+  font-family: var(--font-ui) !important;
+}
+[data-v9-replaybar] button:hover {
+  background: var(--surface-raised) !important;
+}
+/* Speed track fill → flat accent */
+[data-v9-replaybar] [style*="border-radius:99"][style*="height:3"],
+[data-v9-replaybar] [style*="border-radius: 99"][style*="height: 3"] {
+  background: var(--line-strong) !important;
+  background-image: none !important;
+}
+[data-v9-replaybar] [style*="border-radius:99"] > div,
+[data-v9-replaybar] [style*="border-radius: 99"] > div {
+  background: var(--accent) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+/* Thumb triangle — solid accent, no glow */
+[data-v9-replaybar] [style*="clip-path"][style*="polygon"] {
+  background: var(--accent) !important;
+  background-image: none !important;
+  filter: none !important;
+}
+/* REAL chip */
+[data-v9-replaybar] button[aria-pressed="true"] {
+  background: var(--accent-quiet) !important;
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+}
+/* Account metrics tabular */
+[data-v9-replaybar] [data-rp-metric],
+[data-v9-replaybar] span {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Replay opts / goto menus */
+[data-v9-app] [data-replay-mode-root] [data-sdrop="1"],
+[data-v9-app] [data-sdrop="1"] {
+  background: var(--surface) !important;
+  border: 1px solid var(--line-strong) !important;
+  border-radius: var(--radius-panel) !important;
+  box-shadow: none !important;
+  filter: none !important;
+  font-family: var(--font-ui) !important;
+}
+
+/* ── Indicators panel ── */
+[data-indicators-panel] {
+  background: var(--surface) !important;
+  border: 1px solid var(--line-strong) !important;
+  border-radius: var(--radius-panel) !important;
+  box-shadow: none !important;
+  filter: none !important;
+  font-family: var(--font-ui) !important;
+  color: var(--text) !important;
+  overflow: hidden;
+}
+[data-indicators-panel] button,
+[data-indicators-panel] input,
+[data-indicators-panel] [role="button"] {
+  font-family: var(--font-ui) !important;
+  box-shadow: none !important;
+  filter: none !important;
+}
+[data-indicators-panel] input[type="text"],
+[data-indicators-panel] input:not([type]) {
+  background: var(--surface-sunken) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: var(--radius-control) !important;
+  color: var(--text) !important;
+}
+[data-indicators-panel] input:focus {
+  border-color: var(--accent) !important;
+  outline: none !important;
+}
+
+/* Chart-type / TF / symbol dropdowns share sdrop */
+[data-v9-app] [data-sdrop="1"] button,
+[data-v9-app] [data-sdrop="1"] [role="menuitem"] {
+  border-radius: 0;
+  font-family: var(--font-ui) !important;
+}
+
+/* Logo menu Dashboard CTA → flat white/black Obsidian primary */
+[data-v9-app] [data-sdrop="1"] [style*="linear-gradient(135deg"] {
+  background: var(--cta-bg) !important;
+  background-image: none !important;
+  color: var(--cta-fg) !important;
+  border: none !important;
+  border-radius: var(--radius-cta) !important;
+  box-shadow: none !important;
+}
+[data-v9-app] [data-sdrop="1"] [style*="linear-gradient(135deg"] span,
+[data-v9-app] [data-sdrop="1"] [style*="linear-gradient(135deg"] svg {
+  color: var(--cta-fg) !important;
+  stroke: var(--cta-fg) !important;
+  fill: var(--cta-fg) !important;
+}
+
+/* Alert overlay belt (legacy + v2) */
+.talaria-alert-overlay,
+[data-alert-win],
+[data-alert-v2] {
+  font-family: var(--font-ui) !important;
+  box-shadow: none !important;
+  filter: none !important;
+}
+.talaria-alert-overlay {
+  background: var(--overlay) !important;
+}
+
+/* Portaled chrome menus: no glow */
+[data-v9-app] [data-sdrop="1"],
+[data-indicators-panel],
+[data-alert-v2] {
+  box-shadow: none !important;
+  filter: none !important;
+  backdrop-filter: none !important;
+}

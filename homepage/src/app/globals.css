@@ -30,31 +30,33 @@
   --chart-5: 27 87% 67%;
 }
 
+/* Obsidian dark — matches chrome-tokens / V9 product chrome */
 .dark {
-  --background: 240 10% 4%;
-  --foreground: 210 40% 98%;
-  --card: 240 10% 4%;
-  --card-foreground: 210 40% 98%;
-  --popover: 240 10% 4%;
-  --popover-foreground: 210 40% 98%;
-  --primary: 217 91% 60%;
-  --primary-foreground: 210 40% 98%;
-  --secondary: 217.2 32.6% 17.5%;
-  --secondary-foreground: 210 40% 98%;
-  --muted: 217.2 32.6% 17.5%;
-  --muted-foreground: 215 20.2% 65.1%;
-  --accent: 217.2 32.6% 17.5%;
-  --accent-foreground: 210 40% 98%;
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 210 40% 98%;
-  --border: 217.2 32.6% 25%;
-  --input: 217.2 32.6% 25%;
-  --ring: 217 91% 60%;
-  --chart-1: 220 70% 50%;
+  --background: 0 0% 0%;
+  --foreground: 240 5% 96%;
+  --card: 240 6% 4%;
+  --card-foreground: 240 5% 96%;
+  --popover: 240 6% 4%;
+  --popover-foreground: 240 5% 96%;
+  --primary: 214 100% 59%; /* #3090FF */
+  --primary-foreground: 0 0% 0%;
+  --secondary: 210 48% 33%; /* slate */
+  --secondary-foreground: 0 0% 100%;
+  --muted: 240 5% 8%;
+  --muted-foreground: 240 6% 62%;
+  --accent: 214 100% 59%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 8 100% 66%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 240 12% 16%;
+  --input: 240 12% 16%;
+  --ring: 214 100% 59%;
+  --radius: 0.375rem;
+  --chart-1: 214 100% 59%;
   --chart-2: 160 60% 45%;
   --chart-3: 30 80% 55%;
-  --chart-4: 280 65% 60%;
-  --chart-5: 340 75% 55%;
+  --chart-4: 260 30% 70%;
+  --chart-5: 8 100% 66%;
 }
 
 @layer base {

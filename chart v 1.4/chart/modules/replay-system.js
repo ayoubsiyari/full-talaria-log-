@@ -5336,8 +5336,9 @@ class ReplaySystem {
         }
         this._lastToggleTime = now;
         
-        // Read current state and toggle
-        const wasPlaying = this.isPlaying;
+        // Include isPlayStarting — play() defers isPlaying to rAF; without this,
+        // a second Space/click during start calls play() again instead of pause().
+        const wasPlaying = !!(this.isPlaying || this.isPlayStarting);
         
         if (wasPlaying) {
             this.pause();

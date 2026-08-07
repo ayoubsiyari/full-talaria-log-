@@ -261,8 +261,8 @@ function ConnectedCard({ conn, onSync, onDelete, syncing }: { conn: Connection; 
     return `${Math.floor(diff / 86400000)}d ago`;
   })() : "never";
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 12, border: `1px solid ${conn.status === "error" ? "rgba(255,96,96,0.3)" : S.border}`, background: S.card }}>
-      <div style={{ width: 36, height: 36, borderRadius: 10, background: `${def?.color ?? "#666"}22`, border: `1px solid ${def?.color ?? "#666"}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.1rem", color: def?.color ?? "#fff", flexShrink: 0 }}>{def?.icon ?? "⬤"}</div>
+    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 6, border: `1px solid ${conn.status === "error" ? "rgba(255,96,96,0.3)" : S.border}`, background: S.card }}>
+      <div style={{ width: 36, height: 36, borderRadius: 6, background: `${def?.color ?? "#666"}22`, border: `1px solid ${def?.color ?? "#666"}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.1rem", color: def?.color ?? "#fff", flexShrink: 0 }}>{def?.icon ?? "⬤"}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <StatusDot status={conn.status} />
@@ -324,7 +324,7 @@ function ConnectModal({ state, onChange, onSubmit, onClose }: {
 
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "20px 24px", borderBottom: `1px solid ${S.border}` }}>
-          <div style={{ width: 44, height: 44, borderRadius: 12, background: `${broker.color}1a`, border: `1px solid ${broker.color}40`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.35rem", color: broker.color }}>{broker.icon}</div>
+          <div style={{ width: 44, height: 44, borderRadius: 6, background: `${broker.color}1a`, border: `1px solid ${broker.color}40`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.35rem", color: broker.color }}>{broker.icon}</div>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 700, fontSize: "1rem", color: S.text }}>Connect {broker.name}</div>
             <div style={{ fontSize: "0.72rem", color: S.textMuted, marginTop: 2 }}>
@@ -357,7 +357,7 @@ function ConnectModal({ state, onChange, onSubmit, onClose }: {
               <div style={{ fontSize: "0.78rem", color: S.textMuted }}>See the official documentation for setup instructions.</div>
             )}
             {isCsvOnly && (
-              <div style={{ marginTop: 20, padding: "12px 14px", borderRadius: 10, border: `1px solid ${S.border}`, background: S.elevated }}>
+              <div style={{ marginTop: 20, padding: "12px 14px", borderRadius: 6, border: `1px solid ${S.border}`, background: S.elevated }}>
                 <div style={{ fontSize: "0.72rem", color: S.bluePale, fontWeight: 600, marginBottom: 4 }}>After exporting:</div>
                 <div style={{ fontSize: "0.72rem", color: S.textSec, lineHeight: 1.5 }}>Go to the <strong style={{ color: S.text }}>Analytics</strong> tab and click <strong style={{ color: S.bluePale }}>⬆ CSV</strong> in the top toolbar to upload your file.</div>
               </div>
@@ -455,7 +455,7 @@ function ConnectView({
       <div style={{ marginBottom: 32 }}>
         <h2 style={{ fontSize: "0.78rem", fontWeight: 700, color: S.textMuted, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 14 }}>Connected accounts {connections.length > 0 && `(${connections.length})`}</h2>
         {connections.length === 0 ? (
-          <div style={{ padding: "20px 16px", borderRadius: 12, border: `1px dashed ${S.border}`, textAlign: "center", color: S.textDim, fontSize: "0.82rem", background: S.card }}>
+          <div style={{ padding: "20px 16px", borderRadius: 6, border: `1px dashed ${S.border}`, textAlign: "center", color: S.textDim, fontSize: "0.82rem", background: S.card }}>
             No connected brokers yet. Select one below to get started.
           </div>
         ) : (
@@ -486,7 +486,7 @@ function ConnectView({
 
       {/* Jump to analytics if trades exist */}
       {tradeCount > 0 && (
-        <div style={{ marginTop: 40, padding: "16px 20px", borderRadius: 14, border: `1px solid ${S.border}`, background: S.elevated, display: "flex", alignItems: "center", gap: 16 }}>
+        <div style={{ marginTop: 40, padding: "16px 20px", borderRadius: 8, border: `1px solid ${S.border}`, background: S.elevated, display: "flex", alignItems: "center", gap: 16 }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: "0.85rem", fontWeight: 600, color: S.bluePale }}>{tradeCount} trades ready to analyse</div>
             <div style={{ fontSize: "0.72rem", color: S.textMuted, marginTop: 2 }}>Click Analytics tab to view your dashboard.</div>

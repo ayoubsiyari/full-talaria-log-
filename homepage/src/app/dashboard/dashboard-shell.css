@@ -1,10 +1,10 @@
-/* Dashboard shell — Design system: TalariaV8b dark theme (bg #07080E, el #0F1119, accent #4A6AFF) */
+/* Dashboard shell — Design system: Obsidian V9 (bg #000, accent #3090FF) */
 
 .db-layout {
   min-height: 100vh;
-  background: #07080E;
-  color: rgba(255,255,255,0.92);
-  font-family: 'Exo 2', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
 }
 
 .db-layout * {
@@ -17,12 +17,12 @@
   justify-content: space-between;
   gap: 16px;
   padding: 16px 32px;
-  border-bottom: 1px solid rgba(140,160,255,0.10);
-  background: #0F1119;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-raised);
   position: sticky;
   top: 0;
   z-index: 100;
-  box-shadow: 0 2px 18px rgba(0,0,0,0.5);
+  box-shadow: none;
 }
 
 .db-brand {
@@ -38,8 +38,8 @@
   width: 30px;
   height: 30px;
   border-radius: 7px;
-  background: rgba(74,106,255,0.08);
-  border: 1px solid rgba(74,106,255,0.22);
+  background: var(--accent-quiet);
+  border: 1px solid var(--line);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -56,7 +56,7 @@
 .db-brand-title {
   font-size: 14px;
   font-weight: 700;
-  color: rgba(255,255,255,0.92);
+  color: var(--text);
   letter-spacing: 0.04em;
   line-height: 1.2;
 }
@@ -81,7 +81,7 @@
 
 .db-nav-link {
   background: transparent;
-  border: 1px solid rgba(140,160,255,0.10);
+  border: 1px solid var(--line);
   border-radius: 7px;
   padding: 6px 14px;
   font-family: inherit;
@@ -96,14 +96,14 @@
 }
 
 .db-nav-link:hover {
-  color: rgba(255,255,255,0.92);
+  color: var(--text);
   border-color: rgba(140,160,255,0.22);
 }
 
 .db-nav-link--active {
-  color: #4A6AFF;
-  border-color: rgba(74,106,255,0.25);
-  background: rgba(74,106,255,0.08);
+  color: var(--accent);
+  border-color: color-mix(in oklab, var(--accent) 40%, transparent);
+  background: var(--accent-quiet);
 }
 
 .db-nav-link--logout {
@@ -138,15 +138,15 @@
   width: 100%;
   background: rgba(140,160,255,0.05);
   border: 1px solid rgba(140,160,255,0.12);
-  border-radius: 8px;
+  border-radius: 6px;
   padding: 10px 12px;
-  color: rgba(255,255,255,0.92);
+  color: var(--text);
   font-family: inherit;
   font-size: 13px;
 }
 .db-field-input:focus {
   outline: none;
-  border-color: rgba(74,106,255,0.35);
+  border-color: rgba(48,144,255,0.35);
 }
 .db-field-label {
   display: block;
@@ -235,13 +235,13 @@
 .db-hero-greeting {
   font-size: clamp(26px, 3.5vw, 32px);
   font-weight: 800;
-  color: rgba(255,255,255,0.92);
+  color: var(--text);
   line-height: 1.1;
   margin: 0 0 8px;
 }
 
 .db-hero-greeting span {
-  color: #4A6AFF;
+  color: var(--accent);
 }
 
 .db-hero-date {
@@ -262,13 +262,13 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgba(74,106,255,0.08);
-  border: 1px solid rgba(74,106,255,0.22);
+  background: var(--accent-quiet);
+  border: 1px solid var(--line);
   border-radius: 6px;
   padding: 4px 10px;
   font-size: 10px;
   font-weight: 700;
-  color: #4A6AFF;
+  color: var(--accent);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -289,9 +289,9 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: #0A0C14;
+  background: #0a0a0b;
   border: 1px solid rgba(140,160,255,0.12);
-  border-radius: 8px;
+  border-radius: 6px;
   padding: 8px 16px;
   font-family: inherit;
   font-size: 11px;
@@ -303,7 +303,7 @@
 }
 
 .db-btn-sm:hover {
-  color: rgba(255,255,255,0.92);
+  color: var(--text);
   border-color: rgba(140,160,255,0.25);
 }
 
@@ -325,9 +325,9 @@
   display: block;
   width: 2px;
   height: 9px;
-  background: #4A6AFF;
+  background: #3090FF;
   flex-shrink: 0;
-  box-shadow: 0 0 4px rgba(38,67,247,0.35);
+  box-shadow: 0 0 4px rgba(48,144,255,0.35);
 }
 
 .db-shortcuts-wrap {
@@ -340,7 +340,7 @@
   gap: 1px;
   background: rgba(140,160,255,0.08);
   border: 1px solid rgba(140,160,255,0.08);
-  border-radius: 12px;
+  border-radius: 6px;
   overflow: hidden;
 }
 
@@ -351,7 +351,7 @@
 }
 
 .db-shortcut-card {
-  background: #0A0C14;
+  background: #0a0a0b;
   padding: 22px;
   display: flex;
   align-items: center;
@@ -377,20 +377,20 @@
 .db-shortcut-icon {
   width: 36px;
   height: 36px;
-  border-radius: 9px;
-  background: rgba(74,106,255,0.08);
-  border: 1px solid rgba(74,106,255,0.18);
+  border-radius: 6px;
+  background: var(--accent-quiet);
+  border: 1px solid rgba(48,144,255,0.18);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: #4A6AFF;
+  color: var(--accent);
 }
 
 .db-shortcut-name {
   font-size: 13px;
   font-weight: 700;
-  color: rgba(255,255,255,0.92);
+  color: var(--text);
   margin-bottom: 2px;
 }
 
@@ -410,21 +410,21 @@
 }
 
 .db-shortcut-card:hover .db-shortcut-arrow {
-  color: #4A6AFF;
+  color: var(--accent);
   transform: translateX(2px);
 }
 
 /* Cards (panels) */
 .db-card {
-  background: #0F1119;
-  border: 1px solid rgba(140,160,255,0.10);
-  border-radius: 12px;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: 6px;
 }
 
 .db-link-muted {
   font-size: 10px;
   font-weight: 600;
-  color: #4A6AFF;
+  color: var(--accent);
   letter-spacing: 0.04em;
   font-variant-numeric: tabular-nums;
   text-decoration: none;
@@ -440,9 +440,9 @@
 
 /* Empty state */
 .db-empty-panel {
-  background: #0F1119;
+  background: var(--surface-raised);
   border: 1px solid rgba(140,160,255,0.08);
-  border-radius: 12px;
+  border-radius: 6px;
   padding: 56px 32px;
   display: flex;
   flex-direction: column;
@@ -453,20 +453,20 @@
 .db-empty-icon {
   width: 50px;
   height: 50px;
-  border-radius: 12px;
-  background: rgba(74,106,255,0.08);
-  border: 1px solid rgba(74,106,255,0.18);
+  border-radius: 6px;
+  background: var(--accent-quiet);
+  border: 1px solid rgba(48,144,255,0.18);
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: 18px;
-  color: #4A6AFF;
+  color: var(--accent);
 }
 
 .db-empty-title {
   font-size: 16px;
   font-weight: 700;
-  color: rgba(255,255,255,0.92);
+  color: var(--text);
   margin-bottom: 8px;
 }
 
@@ -489,9 +489,9 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  background: linear-gradient(135deg, #1e38e8, #4A6AFF);
+  background: linear-gradient(135deg, #3090FF, #3090FF);
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   padding: 10px 20px;
   font-family: inherit;
   font-size: 12px;
@@ -500,7 +500,7 @@
   text-decoration: none;
   cursor:default;
   letter-spacing: 0.06em;
-  box-shadow: 0 2px 10px rgba(38,67,247,0.35);
+  box-shadow: 0 2px 10px rgba(48,144,255,0.35);
   transition: filter 0.12s;
 }
 
@@ -511,7 +511,7 @@
 .db-btn-ghost {
   background: transparent;
   border: 1px solid rgba(140,160,255,0.15);
-  border-radius: 8px;
+  border-radius: 6px;
   padding: 10px 20px;
   font-family: inherit;
   font-size: 12px;
@@ -523,7 +523,7 @@
 }
 
 .db-btn-ghost:hover {
-  color: rgba(255,255,255,0.92);
+  color: var(--text);
   border-color: rgba(140,160,255,0.25);
 }
 
@@ -542,9 +542,9 @@
 
 /* Sessions list (compact) */
 .db-panel {
-  background: #0F1119;
+  background: var(--surface-raised);
   border: 1px solid rgba(140,160,255,0.08);
-  border-radius: 12px;
+  border-radius: 6px;
   overflow: hidden;
 }
 
@@ -594,19 +594,19 @@
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: rgba(74,106,255,0.08);
-  border: 1px solid rgba(74,106,255,0.18);
+  background: var(--accent-quiet);
+  border: 1px solid rgba(48,144,255,0.18);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: #4A6AFF;
+  color: var(--accent);
 }
 
 .db-sname {
   font-size: 12px;
   font-weight: 700;
-  color: rgba(255,255,255,0.92);
+  color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -625,7 +625,7 @@
 }
 
 .db-smeta-prop {
-  color: #4A6AFF;
+  color: var(--accent);
   opacity: 0.85;
 }
 
@@ -635,7 +635,7 @@
 }
 
 .db-session-row:hover .db-chevron {
-  color: #4A6AFF;
+  color: var(--accent);
 }
 
 /* Account grid */
@@ -651,7 +651,7 @@
 }
 
 .db-acct-cell {
-  background: #0F1119;
+  background: var(--surface-raised);
   padding: 16px 20px;
   display: flex;
   align-items: flex-start;
@@ -662,8 +662,8 @@
   width: 28px;
   height: 28px;
   border-radius: 7px;
-  background: #0A0C14;
-  border: 1px solid rgba(140,160,255,0.10);
+  background: #0a0a0b;
+  border: 1px solid var(--line);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -691,7 +691,7 @@
 }
 
 .db-acct-value--active {
-  color: #4A6AFF;
+  color: var(--accent);
 }
 
 /* Loading */
@@ -719,7 +719,7 @@
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  border: 2px solid rgba(74,106,255,0.15);
+  border: 2px solid rgba(48,144,255,0.15);
 }
 
 .db-loading-spinner::after {
@@ -728,7 +728,7 @@
   inset: 0;
   border-radius: 50%;
   border: 2px solid transparent;
-  border-top-color: #4A6AFF;
+  border-top-color: var(--accent);
   animation: db-spin 0.8s linear infinite;
 }
 
@@ -750,15 +750,15 @@
   align-items: center;
   justify-content: center;
   border-radius: 6px;
-  border: 1px solid rgba(74,106,255,0.22);
-  background: rgba(74,106,255,0.08);
-  color: #4A6AFF;
+  border: 1px solid var(--line);
+  background: var(--accent-quiet);
+  color: var(--accent);
   flex-shrink: 0;
 }
 
 /* Table tweaks inside cards */
 .db-table-head {
-  border-bottom: 1px solid rgba(140,160,255,0.10);
+  border-bottom: 1px solid var(--line);
 }
 
 .db-table-head th {
@@ -770,7 +770,7 @@
 }
 
 .db-table-row:hover {
-  background: rgba(74,106,255,0.05);
+  background: rgba(48,144,255,0.05);
 }
 
 /* Thin scrollbar — dark UI track + pill thumb (matches Talaria backtest reference) */
@@ -791,14 +791,14 @@
 
 .tlr-scroll::-webkit-scrollbar-thumb {
   background: rgba(123, 138, 184, 0.82);
-  border-radius: 10px;
+  border-radius: 6px;
   border: 1px solid transparent;
   background-clip: padding-box;
 }
 
 .tlr-scroll::-webkit-scrollbar-thumb:hover {
   background: rgba(145, 158, 205, 0.92);
-  border-radius: 10px;
+  border-radius: 6px;
 }
 
 .tlr-scroll::-webkit-scrollbar-corner {
@@ -837,7 +837,7 @@ html[dir="ltr"] .dashboard-shell [lang="ar"] {
 .support-csat-row { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 18px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
 .support-csat-btn {
   padding: 6px 12px;
-  border-radius: 8px;
+  border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.04);
   color: #e8e4dc;

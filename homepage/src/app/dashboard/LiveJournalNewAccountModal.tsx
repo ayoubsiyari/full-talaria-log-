@@ -22,7 +22,7 @@ import {
   type LiveJournalLimitsPayload,
 } from "@/lib/liveJournalLimits";
 
-const F = "'Exo 2', sans-serif";
+const F = '"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif';
 
 const MARKETS = ["Forex", "Futures", "Stocks", "Crypto", "Indices"];
 const PROP_CHALLENGE_MARKETS = ["Forex", "Futures"];
@@ -95,14 +95,14 @@ export function LiveJournalNewAccountModal({
   journalLimits: journalLimitsProp = null,
 }: LiveJournalNewAccountModalProps) {
   const c = {
-    ac: "#2643F7",
-    acL: "#4A6AFF",
-    acD: "rgba(38,67,247,0.08)",
-    acB: "rgba(38,67,247,0.22)",
-    acG: "rgba(74,106,255,0.35)",
-    bg: "#07080E",
-    sf: "#0A0C14",
-    el: "#0F1119",
+    ac: "#232CF4",
+    acL: "#3090FF",
+    acD: "rgba(48,144,255,0.08)",
+    acB: "rgba(48,144,255,0.22)",
+    acG: "transparent",
+    bg: "#000000",
+    sf: "#0a0a0b",
+    el: "#141416",
     br: "rgba(140,160,255,0.05)",
     brH: "rgba(140,160,255,0.12)",
     tx: "rgba(255,255,255,0.92)",
@@ -547,7 +547,7 @@ export function LiveJournalNewAccountModal({
                 textAlign: "center",
                 opacity: typeAtLimit ? 0.45 : 1,
                 background: isA
-                  ? "rgba(74,106,255,0.07)"
+                  ? "rgba(48,144,255,0.07)"
                   : isH
                     ? "rgba(255,255,255,0.03)"
                     : "transparent",
@@ -862,8 +862,8 @@ export function LiveJournalNewAccountModal({
     textTransform: "uppercase",
     color: enabled ? "rgba(255,255,255,0.96)" : c.tm,
     background: enabled ? `linear-gradient(135deg,${c.ac},${c.acL})` : "rgba(140,160,255,0.10)",
-    border: `1px solid ${enabled ? "rgba(74,106,255,0.55)" : "rgba(140,160,255,0.18)"}`,
-    boxShadow: enabled ? "0 2px 8px rgba(38,67,247,0.25)" : "none",
+    border: `1px solid ${enabled ? "rgba(48,144,255,0.55)" : "rgba(140,160,255,0.18)"}`,
+    boxShadow: enabled ? "0 2px 8px rgba(48,144,255,0.25)" : "none",
     cursor: "default",
     opacity: enabled ? 1 : 0.55,
     boxSizing: "border-box",
@@ -893,8 +893,8 @@ export function LiveJournalNewAccountModal({
         ? `linear-gradient(135deg,${c.ac},${c.acL})`
         : `linear-gradient(135deg,#00A882,${c.gn})`
       : "rgba(140,160,255,0.10)",
-    border: `1px solid ${enabled ? (effectiveType === "prop" ? "rgba(74,106,255,0.55)" : "rgba(0,212,161,0.5)") : "rgba(140,160,255,0.18)"}`,
-    boxShadow: enabled ? `0 2px 8px ${effectiveType === "prop" ? "rgba(38,67,247,0.25)" : "rgba(0,212,161,0.25)"}` : "none",
+    border: `1px solid ${enabled ? (effectiveType === "prop" ? "rgba(48,144,255,0.55)" : "rgba(0,212,161,0.5)") : "rgba(140,160,255,0.18)"}`,
+    boxShadow: enabled ? `0 2px 8px ${effectiveType === "prop" ? "rgba(48,144,255,0.25)" : "rgba(0,212,161,0.25)"}` : "none",
     cursor: saving ? "not-allowed" : "default",
     opacity: enabled ? 1 : 0.55,
     boxSizing: "border-box",
@@ -1176,13 +1176,13 @@ export function LiveJournalNewAccountModal({
                 onMouseEnter={(e) => {
                   if (!saving) {
                     e.currentTarget.style.background = `linear-gradient(135deg,${c.acL},#6A8AFF)`;
-                    e.currentTarget.style.boxShadow = "0 2px 14px rgba(38,67,247,0.5)";
+                    e.currentTarget.style.boxShadow = "0 2px 14px rgba(48,144,255,0.5)";
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (!saving) {
                     e.currentTarget.style.background = `linear-gradient(135deg,${c.ac},${c.acL})`;
-                    e.currentTarget.style.boxShadow = "0 2px 8px rgba(38,67,247,0.25)";
+                    e.currentTarget.style.boxShadow = "0 2px 8px rgba(48,144,255,0.25)";
                     e.currentTarget.style.transform = "scale(1)";
                   }
                 }}

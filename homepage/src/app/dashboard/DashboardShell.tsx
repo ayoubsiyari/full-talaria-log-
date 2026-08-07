@@ -97,18 +97,18 @@ type NotifRow = {
   read_at?: string | null;
 };
 
-const F = "'Exo 2', sans-serif";
+const F = 'var(--font-ui), "Helvetica Neue", Helvetica, Arial, sans-serif';
 
-/** Dark chrome tokens — parity with `talaria-design` / `TalariaV8b` `c` map. */
+/** Obsidian chrome — CSS-var bridge (see styles/obsidian/chrome-tokens.css). */
 const DASH_C = {
-  el: "#0F1119",
-  bg: "#07080E",
-  tx: "rgba(255,255,255,0.92)",
-  ts: "rgba(255,255,255,0.55)",
-  acL: "#4A6AFF",
-  acD: "rgba(38,67,247,0.08)",
-  acG: "rgba(38,67,247,0.12)",
-  hv: "rgba(255,255,255,0.07)",
+  el: "var(--surface-raised)",
+  bg: "var(--bg)",
+  tx: "var(--text)",
+  ts: "var(--text-muted)",
+  acL: "var(--accent)",
+  acD: "var(--accent-quiet)",
+  acG: "transparent",
+  hv: "var(--surface-raised)",
 } as const;
 
 const PROFILE_PANEL_W = 300;
@@ -260,7 +260,7 @@ function DashboardNotificationBell({
             overflowY: "auto",
             background: DASH_C.el,
             border: "1px solid rgba(140,160,255,0.16)",
-            borderRadius: 10,
+            borderRadius: 6,
             boxShadow: "0 16px 48px rgba(0,0,0,0.55)",
             zIndex: openUpward ? 11002 : 200,
           }}
@@ -670,7 +670,7 @@ export default function DashboardShell({
 
       {/* V16 dashboard owns the full top chrome (logo + source/filters bar). */}
       {!isV16DashboardPage ? (
-      <header style={{ height: 64, flexShrink: 0, display: "flex", alignItems: "center", gap: 0, background: DASH_C.el, boxShadow: "0 2px 18px rgba(0,0,0,0.5)", zIndex: 2 }}>
+      <header style={{ height: 64, flexShrink: 0, display: "flex", alignItems: "center", gap: 0, background: DASH_C.el, borderBottom: "1px solid var(--line)", zIndex: 2 }}>
         <div style={{ width: 64, flexShrink: 0, height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <img src="/LOGO-07.png" style={{ width: 52, height: 52, objectFit: "contain" }} alt="" />
         </div>
@@ -683,9 +683,8 @@ export default function DashboardShell({
               width: 1.5,
               height: 36,
               flexShrink: 0,
-              background: `linear-gradient(180deg,transparent,${DASH_C.acL},transparent)`,
-              boxShadow: `0 0 6px ${DASH_C.acL}`,
-            }}
+              background: DASH_C.acL,
+                          }}
           />
           <div style={{ fontSize: 13, fontWeight: 700, color: DASH_C.ts, letterSpacing: "0.06em", fontFamily: F, position: "relative", top: 2 }}>
             {pageTitle}
@@ -721,7 +720,7 @@ export default function DashboardShell({
                     textDecoration: "none",
                     padding: "4px 10px",
                     borderRadius: 6,
-                    border: "1px solid rgba(74,106,255,0.35)",
+                    border: "1px solid rgba(48,144,255,0.35)",
                     fontFamily: F,
                   }}
                 >
@@ -755,7 +754,7 @@ export default function DashboardShell({
 
         {/* Left Sidebar — V16 dashboard uses its own nav rail */}
         {!isV16DashboardPage ? (
-        <nav style={{ width: 64, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", padding: "8px 0 6px", background: DASH_C.el, gap: 1, boxShadow: "4px 0 20px rgba(0,0,0,0.45)", zIndex: 1 }}>
+        <nav style={{ width: 64, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", padding: "8px 0 6px", background: DASH_C.el, gap: 1, borderRight: "1px solid var(--line)", zIndex: 1 }}>
           {NAV_ITEMS.map(({ id, label, icon }) => {
             const active = activeView === id;
             const hovered = navHoverId === id && !active;
@@ -819,9 +818,8 @@ export default function DashboardShell({
                       top: "20%",
                       bottom: "20%",
                       width: 2,
-                      background: `linear-gradient(180deg,transparent,${DASH_C.acL},transparent)`,
-                      boxShadow: `0 0 6px ${DASH_C.acG}`,
-                    }}
+                      background: DASH_C.acL,
+                                          }}
                   />
                 ) : null}
                 {icon}
@@ -861,9 +859,8 @@ export default function DashboardShell({
                     top: "20%",
                     bottom: "20%",
                     width: 2,
-                    background: `linear-gradient(180deg,transparent,${DASH_C.acL},transparent)`,
-                    boxShadow: `0 0 6px ${DASH_C.acG}`,
-                  }}
+                    background: DASH_C.acL,
+                                      }}
                 />
               ) : null}
               <svg width={21} height={21} viewBox="0 0 24 24" fill="none" aria-hidden><circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.5"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
@@ -882,7 +879,7 @@ export default function DashboardShell({
                   padding: 0,
                   background: DASH_C.el,
                   border: "1px solid rgba(140,160,255,0.18)",
-                  borderRadius: 12,
+                  borderRadius: 6,
                   boxShadow: "0 20px 56px rgba(0,0,0,0.65)",
                   fontFamily: F,
                   zIndex: 11001,
@@ -893,7 +890,7 @@ export default function DashboardShell({
                   style={{
                     height: 2,
                     borderRadius: "12px 12px 0 0",
-                    background: `linear-gradient(90deg,transparent,${DASH_C.acL},transparent)`,
+                    background: DASH_C.acL,
                     opacity: 0.85,
                   }}
                 />
@@ -909,7 +906,7 @@ export default function DashboardShell({
                         alignItems: "center",
                         justifyContent: "center",
                         background: DASH_C.acD,
-                        border: "1px solid rgba(74,106,255,0.35)",
+                        border: "1px solid rgba(48,144,255,0.35)",
                         color: DASH_C.acL,
                         fontSize: 14,
                         fontWeight: 800,
@@ -974,7 +971,7 @@ export default function DashboardShell({
                     fontWeight: 700,
                     color: DASH_C.acL,
                     background: DASH_C.acD,
-                    border: "1px solid rgba(74,106,255,0.28)",
+                    border: "1px solid rgba(48,144,255,0.28)",
                     textDecoration: "none",
                     fontFamily: F,
                     boxSizing: "border-box" as const,

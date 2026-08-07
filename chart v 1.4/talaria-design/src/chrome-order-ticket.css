@@ -1,0 +1,287 @@
+/* Obsidian Order ticket — denser stack, advanced-first, flat CTAs.
+   Loaded after chrome-rebuild.css. Logic stays in TalariaV8bLive.jsx. */
+
+[data-order-v2="1"] {
+  --ord-entry: var(--accent);
+  --ord-sl: var(--down);
+  --ord-tp: var(--up);
+  --ord-well: var(--surface-sunken);
+  background: var(--surface) !important;
+}
+
+/* Header: tighter, size mode as quiet chip */
+[data-order-v2="1"] [data-win-header] {
+  padding: 8px 10px !important;
+  gap: 8px !important;
+  min-height: 44px;
+}
+[data-order-v2="1"] [data-win-title] {
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.01em;
+}
+[data-order-v2="1"] [data-order-mode-chip] {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-quiet);
+  border: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+/* Hero — symbol is the hero; metrics as a quiet strip */
+[data-order-v2="1"] [data-order-hero] {
+  padding: 10px 12px 10px !important;
+  border-bottom: 1px solid var(--line) !important;
+  background: var(--surface) !important;
+}
+[data-order-v2="1"] [data-order-hero] [data-order-sym] {
+  height: 32px !important;
+  padding: 0 10px !important;
+  border-radius: 6px !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  background: var(--surface-raised) !important;
+  border: 1px solid var(--line) !important;
+}
+[data-order-v2="1"] [data-order-hero] [data-order-asset] {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+[data-order-v2="1"] [data-order-metrics] {
+  gap: 12px !important;
+  margin-top: 8px !important;
+}
+[data-order-v2="1"] [data-order-metrics] span {
+  font-size: 10px !important;
+  color: var(--text-faint) !important;
+}
+[data-order-v2="1"] [data-order-metrics] b {
+  color: var(--text-muted) !important;
+  font-weight: 650 !important;
+}
+
+/* Stack density */
+[data-order-v2="1"] [data-order-stack] {
+  padding: 8px 10px !important;
+  gap: 8px !important;
+}
+
+/* Blocks — quieter frames */
+[data-order-v2="1"] [data-order-block] {
+  border: 1px solid var(--line) !important;
+  border-radius: 6px !important;
+  background: var(--surface) !important;
+  padding: 8px 10px !important;
+}
+[data-order-v2="1"] [data-order-block] > [data-order-block-title] {
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.06em !important;
+  color: var(--text-faint) !important;
+  margin-bottom: 6px !important;
+}
+
+/* Combined Side + Type */
+[data-order-v2="1"] [data-order-intent] {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+[data-order-v2="1"] [data-order-side] {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 6px !important;
+}
+[data-order-v2="1"] [data-order-side] button {
+  height: 36px !important;
+  border-radius: 6px !important;
+  font-size: 12px !important;
+  font-weight: 750 !important;
+  letter-spacing: 0.08em !important;
+  border: 1px solid var(--line) !important;
+  background: var(--surface-sunken) !important;
+  color: var(--text-muted) !important;
+  transition: background var(--motion), color var(--motion), border-color var(--motion) !important;
+}
+[data-order-v2="1"] [data-order-side] button[data-active="1"][data-side="buy"] {
+  background: color-mix(in oklab, var(--up) 22%, var(--surface)) !important;
+  color: var(--up) !important;
+  border-color: color-mix(in oklab, var(--up) 55%, transparent) !important;
+}
+[data-order-v2="1"] [data-order-side] button[data-active="1"][data-side="sell"] {
+  background: color-mix(in oklab, var(--down) 22%, var(--surface)) !important;
+  color: var(--down) !important;
+  border-color: color-mix(in oklab, var(--down) 55%, transparent) !important;
+}
+
+[data-order-v2="1"] [data-order-type] {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+}
+[data-order-v2="1"] [data-order-type] button {
+  flex: 1;
+  height: 28px !important;
+  border: none !important;
+  border-radius: 4px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  background: transparent !important;
+  color: var(--text-muted) !important;
+  cursor: default;
+}
+[data-order-v2="1"] [data-order-type] button[data-active="1"] {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--line) !important;
+}
+
+/* Size well — flat, no inset glow */
+[data-order-v2="1"] [data-order-size-row] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+[data-order-v2="1"] [data-order-size-well] {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  box-shadow: none !important;
+  flex: 1;
+  min-width: 0;
+}
+[data-order-v2="1"] [data-order-size-well] input {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--text) !important;
+  font-weight: 700 !important;
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+  min-width: 0;
+  outline: none;
+}
+[data-order-v2="1"] [data-order-size-meta] {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Levels — accent rail cards, no diamond costume */
+[data-order-v2="1"] [data-order-levels] {
+  padding: 0 !important;
+  overflow: hidden;
+}
+[data-order-v2="1"] [data-order-levels] > [data-order-block-title] {
+  padding: 8px 10px 0 !important;
+  margin-bottom: 4px !important;
+}
+[data-order-v2="1"] [data-order-level] {
+  position: relative;
+  margin: 6px 8px;
+  border: 1px solid var(--line) !important;
+  border-radius: 6px !important;
+  background: var(--surface-sunken) !important;
+  overflow: hidden;
+}
+[data-order-v2="1"] [data-order-level]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--ord-entry);
+}
+[data-order-v2="1"] [data-order-level="entry"]::before { background: var(--ord-entry); }
+[data-order-v2="1"] [data-order-level="sl"]::before { background: var(--ord-sl); }
+[data-order-v2="1"] [data-order-level="tp"]::before { background: var(--ord-tp); }
+
+[data-order-v2="1"] [data-order-level-head] {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 6px 10px;
+  border-bottom: 1px solid var(--line);
+}
+[data-order-v2="1"] [data-order-level-head] [data-order-level-title] {
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+[data-order-v2="1"] [data-order-level="entry"] [data-order-level-title] { color: var(--ord-entry); }
+[data-order-v2="1"] [data-order-level="sl"] [data-order-level-title] { color: var(--ord-sl); }
+[data-order-v2="1"] [data-order-level="tp"] [data-order-level-title] { color: var(--ord-tp); }
+
+[data-order-v2="1"] [data-order-level-count] {
+  padding: 0 5px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 750;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+}
+
+/* R:R — flat, no glow */
+[data-order-v2="1"] [data-order-rr] {
+  flex-shrink: 0;
+  padding: 6px 10px 4px;
+  border-top: 1px solid var(--line);
+}
+[data-order-v2="1"] [data-order-rr-bar] {
+  display: flex;
+  height: 3px;
+  gap: 2px;
+  border-radius: 2px;
+  overflow: hidden;
+}
+[data-order-v2="1"] [data-order-rr-bar] > span {
+  display: block;
+  opacity: 0.85;
+  box-shadow: none !important;
+}
+
+/* Sticky foot */
+[data-order-v2="1"] [data-order-foot] {
+  padding: 10px 12px 12px !important;
+  border-top: 1px solid var(--line) !important;
+  background: var(--surface) !important;
+}
+[data-order-v2="1"] [data-order-foot] [data-brand-btn="primary"] {
+  height: 40px !important;
+  border-radius: 6px !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}
+[data-order-v2="1"][data-side="buy"] [data-order-foot] [data-brand-btn="primary"] {
+  /* keep flat white/black CTA — side is already chosen above */
+}

@@ -594,7 +594,7 @@ export function buildStrategyGroups(
     byName.set(id, {
       id,
       label: s.name,
-      color: "#4A6AFF",
+      color: "#3090FF",
       count: 0,
       sessionCount: 0,
       journalCount: 0,
@@ -609,7 +609,7 @@ export function buildStrategyGroups(
     const cur = byName.get(id) || {
       id,
       label: name,
-      color: "#4A6AFF",
+      color: "#3090FF",
       count: 0,
       sessionCount: 0,
       journalCount: 0,
@@ -625,7 +625,7 @@ export function buildStrategyGroups(
       const cur = byName.get(id) || {
         id,
         label: name,
-        color: "#4A6AFF",
+        color: "#3090FF",
         count: 0,
         sessionCount: 0,
         journalCount: 0,

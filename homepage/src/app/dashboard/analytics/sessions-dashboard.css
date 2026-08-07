@@ -1,10 +1,10 @@
-/* Sessions dashboard — Zain (root layout) + blue accents on #0a0c0f */
+/* Sessions dashboard — Zain (root layout) + blue accents on var(--bg) */
 
 .sd-root {
-  background: #0a0c0f;
+  background: var(--bg);
   min-height: 100vh;
-  font-family: var(--font-zain), system-ui, sans-serif;
-  color: #e8e4dc;
+  font-family: var(--font-ui);
+  color: var(--text);
   padding: 0;
 }
 
@@ -18,7 +18,7 @@
   justify-content: space-between;
   padding: 18px 32px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  background: #0a0c0f;
+  background: var(--bg);
 }
 
 .sd-logo-area {
@@ -30,8 +30,8 @@
 .sd-logo-mark {
   width: 28px;
   height: 28px;
-  background: rgba(59, 130, 246, 0.15);
-  border: 1px solid rgba(59, 130, 246, 0.35);
+  background: var(--accent-quiet);
+  border: 1px solid color-mix(in oklab, var(--accent) 40%, transparent);
   border-radius: 6px;
   display: flex;
   align-items: center;
@@ -56,7 +56,7 @@
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #e8e4dc;
+  color: var(--text);
 }
 
 .sd-brand-sub {
@@ -89,12 +89,12 @@
 }
 
 .sd-btn-primary {
-  background: #2563eb;
+  background: var(--accent-hover);
   color: #fff;
   border: none;
   border-radius: 8px;
   padding: 8px 16px;
-  font-family: var(--font-zain), system-ui, sans-serif;
+  font-family: var(--font-ui);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.05em;
@@ -136,7 +136,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #60a5fa;
+  background: var(--accent-hover);
   flex-shrink: 0;
 }
 
@@ -145,7 +145,7 @@
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 7px;
   padding: 7px 14px;
-  font-family: var(--font-zain), system-ui, sans-serif;
+  font-family: var(--font-ui);
   font-size: 11px;
   font-weight: 600;
   color: #9b97a0;
@@ -156,7 +156,7 @@
 
 .sd-btn-ghost:hover {
   border-color: rgba(255, 255, 255, 0.2);
-  color: #e8e4dc;
+  color: var(--text);
 }
 
 .sd-subnav {
@@ -169,7 +169,7 @@
 }
 
 .sd-subnav-link {
-  font-family: var(--font-zain), system-ui, sans-serif;
+  font-family: var(--font-ui);
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -186,8 +186,8 @@
 }
 
 .sd-subnav-link--active {
-  color: #e8e4dc;
-  border-bottom-color: #2563eb;
+  color: var(--text);
+  border-bottom-color: var(--accent-hover);
 }
 
 .sd-main {
@@ -202,7 +202,7 @@
   gap: 1px;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
+  border-radius: 8px;
   overflow: hidden;
   margin-bottom: 32px;
 }
@@ -225,7 +225,7 @@
 .sd-stat-value {
   font-size: 36px;
   font-weight: 700;
-  color: #e8e4dc;
+  color: var(--text);
   line-height: 1;
 }
 
@@ -242,7 +242,7 @@
   font-size: 11px;
   color: #4a4850;
   margin-top: 6px;
-  font-family: var(--font-zain), system-ui, sans-serif;
+  font-family: var(--font-ui);
   font-variant-numeric: tabular-nums;
 }
 
@@ -257,9 +257,9 @@
 .sd-filter-btn {
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 20px;
+  border-radius: 8px;
   padding: 6px 16px;
-  font-family: var(--font-zain), system-ui, sans-serif;
+  font-family: var(--font-ui);
   font-size: 12px;
   font-weight: 500;
   color: #4a4850;
@@ -273,15 +273,15 @@
 }
 
 .sd-filter-btn.sd-active {
-  background: #2563eb;
-  border-color: #2563eb;
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
   color: #fff;
   font-weight: 700;
 }
 
 .sd-table-wrap {
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
+  border-radius: 8px;
   overflow: hidden;
 }
 
@@ -378,7 +378,7 @@
   justify-content: center;
   flex-shrink: 0;
   cursor:default;
-  color: #60a5fa;
+  color: var(--accent-hover);
   transition: background 0.12s, transform 0.12s;
 }
 
@@ -396,13 +396,13 @@
 .sd-row-name {
   font-size: 13px;
   font-weight: 600;
-  color: #e8e4dc;
+  color: var(--text);
 }
 
 .sd-row-date {
   font-size: 10px;
   color: #4a4850;
-  font-family: var(--font-zain), system-ui, sans-serif;
+  font-family: var(--font-ui);
   font-variant-numeric: tabular-nums;
   margin-top: 2px;
 }
@@ -414,7 +414,7 @@
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 6px;
   padding: 4px 10px;
-  font-family: var(--font-zain), system-ui, sans-serif;
+  font-family: var(--font-ui);
   font-size: 11px;
   font-weight: 500;
   color: #9b97a0;
@@ -457,15 +457,15 @@
 }
 
 .sd-balance {
-  font-family: var(--font-zain), system-ui, sans-serif;
+  font-family: var(--font-ui);
   font-variant-numeric: tabular-nums;
   font-size: 12px;
   font-weight: 500;
-  color: #e8e4dc;
+  color: var(--text);
 }
 
 .sd-date-range {
-  font-family: var(--font-zain), system-ui, sans-serif;
+  font-family: var(--font-ui);
   font-variant-numeric: tabular-nums;
   font-size: 10px;
   color: #4a4850;
@@ -473,7 +473,7 @@
 }
 
 .sd-created-cell {
-  font-family: var(--font-zain), system-ui, sans-serif;
+  font-family: var(--font-ui);
   font-variant-numeric: tabular-nums;
   font-size: 10px;
   color: #4a4850;
@@ -492,7 +492,7 @@
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 7px;
   padding: 5px 10px;
-  font-family: var(--font-zain), system-ui, sans-serif;
+  font-family: var(--font-ui);
   font-size: 10px;
   font-weight: 600;
   color: #6b6870;
@@ -507,7 +507,7 @@
 
 .sd-act-btn:hover {
   border-color: rgba(255, 255, 255, 0.18);
-  color: #e8e4dc;
+  color: var(--text);
 }
 
 .sd-act-btn.sd-challenge {
@@ -534,7 +534,7 @@
 }
 
 .sd-table-message h3 {
-  color: #e8e4dc;
+  color: var(--text);
   font-size: 16px;
   font-weight: 600;
   margin: 12px 0 8px;
@@ -552,7 +552,7 @@
 .sd-stats-grid--stack {
   grid-template-columns: 1fr;
   gap: 1px;
-  border-radius: 12px;
+  border-radius: 8px;
 }
 
 @media (min-width: 640px) {
@@ -581,7 +581,7 @@
 }
 
 .sd-modal-panel {
-  border-radius: 14px;
+  border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: #111318;
   padding: 32px 36px;
@@ -591,10 +591,10 @@
 }
 
 .sd-modal-panel h2 {
-  font-family: var(--font-zain), system-ui, sans-serif;
+  font-family: var(--font-ui);
   font-size: 22px;
   font-weight: 600;
-  color: #e8e4dc;
+  color: var(--text);
   margin: 0 0 8px;
 }
 
@@ -618,7 +618,7 @@
 }
 
 .sd-modal-choice {
-  border-radius: 12px;
+  border-radius: 8px;
   border: 2px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.02);
   padding: 28px 24px;
@@ -637,7 +637,7 @@
 
 .sd-modal-choice svg {
   margin: 0 auto 12px;
-  color: #60a5fa;
+  color: var(--accent-hover);
 }
 
 .sd-modal-choice-alt svg {
@@ -652,7 +652,7 @@
 .sd-modal-choice-title {
   font-weight: 600;
   font-size: 15px;
-  color: #e8e4dc;
+  color: var(--text);
   margin-bottom: 6px;
 }
 
@@ -669,7 +669,7 @@
   height: 90vh;
   max-width: 1200px;
   background: #030508;
-  border-radius: 14px;
+  border-radius: 8px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
@@ -685,7 +685,7 @@
   border-radius: 50%;
   background: rgba(30, 33, 38, 0.95);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #e8e4dc;
+  color: var(--text);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -702,7 +702,7 @@
   width: 100%;
   height: 100%;
   border: none;
-  border-radius: 14px;
+  border-radius: 8px;
 }
 
 .sd-link-design-preview {
@@ -710,7 +710,7 @@
   border: 1px solid rgba(56, 189, 248, 0.35);
   background: rgba(56, 189, 248, 0.08);
   padding: 8px 14px;
-  font-family: var(--font-zain), system-ui, sans-serif;
+  font-family: var(--font-ui);
   font-size: 11px;
   font-weight: 600;
   color: #7dd3fc;
@@ -730,7 +730,7 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: transparent;
   padding: 8px 14px;
-  font-family: var(--font-zain), system-ui, sans-serif;
+  font-family: var(--font-ui);
   font-size: 11px;
   font-weight: 600;
   color: #9b97a0;
@@ -741,5 +741,5 @@
 
 .sd-link-admin:hover {
   border-color: rgba(255, 255, 255, 0.18);
-  color: #e8e4dc;
+  color: var(--text);
 }

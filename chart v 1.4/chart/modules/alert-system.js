@@ -4,275 +4,375 @@
  */
 
 function injectAlertSystemStyles() {
-    if (document.getElementById('alert-system-styles')) return;
+    // Always refresh — drop legacy navy/glow alert chrome so Obsidian tokens win.
+    document.querySelectorAll('style#alert-system-styles, style#alert-system-styles-v2').forEach((el) => el.remove());
     const style = document.createElement('style');
-    style.id = 'alert-system-styles';
+    style.id = 'alert-system-styles-v2';
     style.textContent = `
-.alert-settings-popup.overlay-settings-popup,
-.alert-settings-popup {
+/* ── Create / Edit Alert — Obsidian chrome ── */
+.talaria-alert-overlay {
     display: flex;
     position: fixed;
     inset: 0;
     z-index: 100050;
     align-items: center;
     justify-content: center;
-    background: rgba(0, 0, 0, 0.55);
-    backdrop-filter: blur(4px);
-    font-family: 'Exo 2', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    padding: 16px;
+    box-sizing: border-box;
+    background: var(--overlay, rgba(0, 0, 0, 0.55));
+    font-family: var(--font-ui, "Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif);
+    color: var(--text, #f4f4f5);
 }
-.alert-settings-content.overlay-settings-content,
-.alert-settings-content {
-    width: min(400px, 94vw);
-    max-height: 85vh;
-    overflow: hidden;
+.talaria-alert-overlay[data-v9-chrome] button,
+.talaria-alert-overlay[data-v9-chrome] [role="button"] {
+    cursor: default !important;
+}
+[data-alert-win] {
+    width: min(420px, 100%);
+    max-height: min(88vh, 640px);
     display: flex;
     flex-direction: column;
-    border-radius: 10px;
-    background: #0d0f18;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
-    font-family: inherit;
-    color: #d1d5db;
+    overflow: hidden;
+    border-radius: var(--radius-panel, 8px);
+    background: var(--surface, #0a0a0b) !important;
+    border: 1px solid var(--line, rgba(162, 161, 205, 0.22)) !important;
+    box-shadow: none !important;
+    filter: none !important;
+    color: var(--text, #f4f4f5);
+    animation: tlrAlertIn 0.16s ease-out;
 }
-.alert-settings-content .overlay-settings-header {
-    padding: 14px 18px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    background: #0d0f18;
+@keyframes tlrAlertIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
 }
-.alert-settings-content .overlay-settings-title {
-    font-size: 15px;
-    font-weight: 600;
-    color: #e8eaef;
-    font-family: inherit;
-}
-.alert-settings-content .overlay-settings-close {
-    background: transparent;
-    border: none;
-    color: #9ca3af;
-    cursor: default;
-    padding: 6px;
-    border-radius: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-.alert-settings-content .overlay-settings-close:hover {
-    color: #f3f4f6;
-    background: rgba(255, 255, 255, 0.06);
-}
-.alert-settings-content .overlay-settings-close svg {
-    width: 16px;
-    height: 16px;
-    display: block;
-}
-.alert-settings-body {
-    padding: 14px 18px 10px;
-    overflow-y: auto;
-    font-size: 13px;
-    font-family: inherit;
-}
-.alert-field {
-    margin-bottom: 12px;
-}
-.alert-field label {
-    display: block;
-    margin-bottom: 6px;
-    font-size: 12px;
-    font-weight: 500;
-    color: #9ca3af;
-    letter-spacing: 0.01em;
-    text-transform: none;
-    font-family: inherit;
-}
-.alert-input,
-.alert-select {
-    width: 100%;
-    box-sizing: border-box;
-    padding: 8px 10px;
-    background: rgba(0, 0, 0, 0.35);
-    color: #e8eaef;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 6px;
-    font-size: 13px;
-    font-family: inherit;
-    outline: none;
-    transition: border-color 0.12s ease, box-shadow 0.12s ease;
-}
-.alert-input:focus,
-.alert-select:focus {
-    border-color: rgba(74, 106, 255, 0.65);
-    box-shadow: 0 0 0 1px rgba(74, 106, 255, 0.25);
-}
-.alert-input[readonly] {
-    opacity: 0.72;
-    cursor: default;
-}
-.alert-input::placeholder { color: #6b7280; }
-.alert-color-picker {
+[data-alert-win] [data-win-header] {
     display: flex;
     align-items: center;
     gap: 10px;
-    flex-wrap: wrap;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line, rgba(162, 161, 205, 0.22));
+    background: var(--surface, #0a0a0b);
+    flex-shrink: 0;
 }
-.alert-color-picker input[type="color"] {
-    width: 34px;
-    height: 34px;
-    padding: 0;
-    border: 1px solid rgba(255, 255, 255, 0.15);
+[data-alert-win] [data-win-icon] {
+    width: 32px;
+    height: 32px;
     border-radius: 6px;
-    cursor: default;
-    background: transparent;
-}
-.alert-color-presets { display: flex; gap: 6px; flex-wrap: wrap; }
-.alert-color-preset {
-    width: 22px;
-    height: 22px;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 4px;
-    cursor: default;
-    padding: 0;
-}
-.alert-color-preset:hover,
-.alert-color-preset.is-active {
-    border-color: rgba(255, 255, 255, 0.55);
-    transform: scale(1.06);
-}
-.alert-checkboxes {
-    display: flex;
-    gap: 18px;
-    flex-wrap: wrap;
-    margin-top: 4px;
-}
-.alert-checkbox-label {
-    display: inline-flex !important;
+    display: inline-flex;
     align-items: center;
-    gap: 8px;
-    font-size: 13px !important;
-    color: #d1d5db !important;
-    text-transform: none !important;
-    font-family: inherit !important;
+    justify-content: center;
+    background: var(--accent-quiet, rgba(48, 144, 255, 0.16));
+    color: var(--accent, #3090ff);
+    flex-shrink: 0;
+}
+[data-alert-win] [data-win-icon] svg { width: 16px; height: 16px; display: block; }
+[data-alert-win] [data-win-title-wrap] {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+[data-alert-win] [data-win-title] {
+    font-size: 14px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    color: var(--text, #f4f4f5);
+    line-height: 1.2;
+}
+[data-alert-win] [data-win-sub] {
+    font-size: 11px;
+    font-weight: 550;
+    color: var(--text-faint, rgba(244, 244, 245, 0.45));
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+[data-alert-win] [data-win-close] {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted, rgba(244, 244, 245, 0.64));
+    padding: 0;
+    flex-shrink: 0;
+}
+[data-alert-win] [data-win-close]:hover {
+    background: var(--surface-raised, #141416);
+    color: var(--text, #f4f4f5);
+}
+[data-alert-win] [data-win-close] svg { width: 14px; height: 14px; display: block; }
+[data-alert-win] [data-alert-body] {
+    padding: 14px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+[data-alert-win] [data-alert-row] {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+[data-alert-win] [data-alert-field] {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+[data-alert-win] [data-alert-field][data-span="2"] { grid-column: 1 / -1; }
+[data-alert-win] [data-alert-field] > label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-faint, rgba(244, 244, 245, 0.45));
+}
+[data-alert-win] [data-alert-input],
+[data-alert-win] [data-alert-select] {
+    width: 100%;
+    box-sizing: border-box;
+    height: 34px;
+    padding: 0 10px;
+    background: var(--surface-sunken, #050505);
+    color: var(--text, #f4f4f5);
+    border: 1px solid var(--line, rgba(162, 161, 205, 0.22));
+    border-radius: var(--radius-control, 6px);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 550;
+    outline: none;
+    appearance: none;
+    -webkit-appearance: none;
+}
+[data-alert-win] [data-alert-select] {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23a2a1cd' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 28px;
+}
+[data-alert-win] [data-alert-input]:focus,
+[data-alert-win] [data-alert-select]:focus {
+    border-color: color-mix(in oklab, var(--accent, #3090ff) 55%, var(--line, rgba(162,161,205,0.22)));
+    background: var(--surface-raised, #141416);
+}
+[data-alert-win] [data-alert-input][readonly] {
+    color: var(--text-muted, rgba(244, 244, 245, 0.64));
+    background: var(--surface, #0a0a0b);
+}
+[data-alert-win] [data-alert-input]::placeholder {
+    color: var(--text-faint, rgba(244, 244, 245, 0.4));
+}
+[data-alert-win] [data-alert-price] {
+    font-size: 16px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+}
+[data-alert-win] [data-alert-swatches] {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+[data-alert-win] [data-alert-swatch] {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    border: 1px solid var(--line, rgba(162, 161, 205, 0.22));
+    padding: 0;
+    background: var(--swatch, #ff9800);
+    flex-shrink: 0;
+}
+[data-alert-win] [data-alert-swatch]:hover {
+    border-color: var(--line-strong, rgba(162, 161, 205, 0.42));
+}
+[data-alert-win] [data-alert-swatch][data-on="1"] {
+    border-color: var(--text, #f4f4f5);
+    outline: 1px solid color-mix(in oklab, var(--text, #f4f4f5) 35%, transparent);
+    outline-offset: 1px;
+}
+[data-alert-win] [data-alert-swatch][data-custom] {
+    position: relative;
+    overflow: hidden;
+    background: var(--swatch, var(--surface-raised, #141416));
+}
+[data-alert-win] [data-alert-swatch][data-custom]::after {
+    content: "+";
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-muted, rgba(244,244,245,0.64));
+    pointer-events: none;
+}
+[data-alert-win] [data-alert-swatch][data-custom][data-on="1"]::after {
+    color: var(--text, #f4f4f5);
+}
+[data-alert-win] [data-alert-swatch][data-custom] input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+    padding: 0;
     cursor: default;
 }
-.alert-checkbox-label input[type="checkbox"] {
-    width: 15px;
-    height: 15px;
-    accent-color: #4a6aff;
-    margin: 0;
+[data-alert-win] [data-alert-togs] {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
 }
-.alert-settings-content .overlay-settings-footer {
-    padding: 12px 18px;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
-.alert-settings-content .overlay-btn-cancel,
-.alert-settings-content .overlay-btn-ok {
-    padding: 8px 14px;
+[data-alert-win] [data-alert-tog] {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 10px;
     border-radius: 6px;
+    border: 1px solid var(--line, rgba(162, 161, 205, 0.22));
+    background: var(--surface, #0a0a0b);
+    color: var(--text-muted, rgba(244, 244, 245, 0.64));
+    font: inherit;
     font-size: 12px;
     font-weight: 600;
-    cursor: default;
-    border: none;
-    font-family: inherit;
 }
-.alert-settings-content .overlay-btn-cancel {
-    background: rgba(255, 255, 255, 0.08);
-    color: #d1d5db;
+[data-alert-win] [data-alert-tog]:hover {
+    background: var(--surface-raised, #141416);
+    color: var(--text, #f4f4f5);
 }
-.alert-settings-content .overlay-btn-cancel:hover {
-    background: rgba(255, 255, 255, 0.12);
-    color: #f3f4f6;
+[data-alert-win] [data-alert-tog][data-on="1"] {
+    background: var(--accent-quiet, rgba(48, 144, 255, 0.16));
+    border-color: color-mix(in oklab, var(--accent, #3090ff) 35%, var(--line, rgba(162,161,205,0.22)));
+    color: var(--accent, #3090ff);
 }
-.alert-settings-content .overlay-btn-ok {
-    background: rgba(74, 106, 255, 0.45);
-    color: #fff;
+[data-alert-win] [data-alert-tog] i {
+    width: 14px;
+    height: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
-.alert-settings-content .overlay-btn-ok:hover {
-    background: rgba(74, 106, 255, 0.62);
+[data-alert-win] [data-alert-tog] i svg { width: 14px; height: 14px; display: block; }
+[data-alert-win] [data-win-foot] {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 14px;
+    border-top: 1px solid var(--line, rgba(162, 161, 205, 0.22));
+    background: var(--surface, #0a0a0b);
+    flex-shrink: 0;
 }
-body.light-mode .alert-settings-content {
-    background: #ffffff;
-    border-color: #d7dde8;
-    color: #111827;
+[data-alert-win] [data-alert-btn] {
+    height: 32px;
+    padding: 0 14px;
+    border-radius: var(--radius-cta, 6px);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    border: 1px solid transparent;
 }
-body.light-mode .alert-settings-content .overlay-settings-header {
-    background: #ffffff;
-    border-bottom-color: #d7dde8;
+[data-alert-win] [data-alert-btn="ghost"] {
+    background: transparent;
+    border-color: var(--line, rgba(162, 161, 205, 0.22));
+    color: var(--text-muted, rgba(244, 244, 245, 0.64));
 }
-body.light-mode .alert-settings-content .overlay-settings-title { color: #111827; }
-body.light-mode .alert-field label { color: #64748b; }
-body.light-mode .alert-input,
-body.light-mode .alert-select {
-    background: #f8fafc;
-    color: #111827;
-    border-color: #d7dde8;
+[data-alert-win] [data-alert-btn="ghost"]:hover {
+    background: var(--surface-raised, #141416);
+    color: var(--text, #f4f4f5);
 }
-body.light-mode .alert-checkbox-label { color: #334155 !important; }
+[data-alert-win] [data-alert-btn="primary"] {
+    background: var(--cta-bg, #ffffff);
+    color: var(--cta-fg, #000000);
+    border-color: var(--cta-bg, #ffffff);
+}
+[data-alert-win] [data-alert-btn="primary"]:hover {
+    background: var(--cta-hover, #ebe9fe);
+    border-color: var(--cta-hover, #ebe9fe);
+}
+/* Context menu + toast — same Obsidian surface */
 .alert-context-menu {
     position: fixed;
     min-width: 180px;
+    max-height: calc(100vh - 16px);
+    overflow-x: hidden;
+    overflow-y: auto;
     padding: 4px 0 6px;
-    background: #0A0C14;
-    border: 1px solid rgba(140, 160, 255, 0.12);
-    border-radius: 4px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.75);
+    background: var(--surface, #0a0a0b);
+    border: 1px solid var(--line, rgba(162, 161, 205, 0.22));
+    border-radius: 8px;
+    box-shadow: none;
     z-index: 100001;
-    font-family: 'Exo 2', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: var(--font-ui, "Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif);
     font-size: 12px;
-    overflow: hidden;
 }
-.alert-context-menu::before {
-    content: '';
-    display: block;
-    height: 2px;
-    margin: 0 0 4px;
-    background: linear-gradient(90deg, #2643F7, #4A6AFF, #2643F7);
-}
+.alert-context-menu::before { content: none; display: none; }
 .alert-context-item {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 7px 12px;
-    color: rgba(255, 255, 255, 0.92);
+    margin: 1px 4px;
+    padding: 7px 10px;
+    border-radius: 6px;
+    color: var(--text-muted, rgba(244, 244, 245, 0.64));
     cursor: default;
 }
 .alert-context-item:hover {
-    background: rgba(41, 98, 255, 0.12);
-    color: #fff;
+    background: var(--surface-raised, #141416);
+    color: var(--text, #f4f4f5);
 }
 .alert-notification {
     position: fixed;
     top: 20px;
     right: 70px;
     max-width: 320px;
-    background: #0f1119;
-    border: 1px solid rgba(140, 160, 255, 0.12);
-    border-left: 3px solid #f59e0b;
-    border-radius: 4px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.55);
+    background: var(--surface, #0a0a0b);
+    border: 1px solid var(--line, rgba(162, 161, 205, 0.22));
+    border-radius: 8px;
+    box-shadow: none;
     z-index: 100003;
     opacity: 0;
     transform: translateX(12px);
-    transition: all 0.25s ease;
+    transition: opacity 0.2s ease, transform 0.2s ease;
     box-sizing: border-box;
-    font-family: 'Exo 2', sans-serif;
+    font-family: var(--font-ui, "Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif);
+    overflow: hidden;
 }
 .alert-notification.show { opacity: 1; transform: translateX(0); }
 .alert-notification-header {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 8px 10px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    gap: 8px;
+    padding: 9px 10px;
+    border-bottom: 1px solid var(--line, rgba(162, 161, 205, 0.22));
 }
-.alert-notification-icon { font-size: 14px; }
-.alert-notification-symbol { flex: 1; font-weight: 600; color: #fff; font-size: 11px; }
+.alert-notification-icon { font-size: 14px; color: var(--warn, #e8b84a); }
+.alert-notification-symbol { flex: 1; font-weight: 700; color: var(--text, #f4f4f5); font-size: 12px; }
 .alert-notification-close {
-    width: 22px; height: 22px; border: none; background: transparent;
-    color: #9aa1b5; font-size: 16px; cursor: default;
+    width: 24px; height: 24px; border: none; background: transparent;
+    color: var(--text-faint, rgba(244,244,245,0.45)); font-size: 16px; cursor: default;
+    border-radius: 6px;
 }
-.alert-notification-body { padding: 8px 10px 10px; }
-.alert-notification-message { font-size: 12px; color: #d1d4dc; margin-bottom: 6px; }
-.alert-notification-price { font-size: 11px; color: #9aa1b5; }
-.alert-notification-price span:last-child { color: #f59e0b; font-weight: 600; }
+.alert-notification-close:hover {
+    background: var(--surface-raised, #141416);
+    color: var(--text, #f4f4f5);
+}
+.alert-notification-body { padding: 9px 10px 11px; }
+.alert-notification-message { font-size: 12px; color: var(--text-muted, rgba(244,244,245,0.64)); margin-bottom: 6px; }
+.alert-notification-price { font-size: 11px; color: var(--text-faint, rgba(244,244,245,0.45)); font-variant-numeric: tabular-nums; }
+.alert-notification-price span:last-child { color: var(--warn, #e8b84a); font-weight: 700; }
 `;
     document.head.appendChild(style);
 }
@@ -1690,165 +1790,289 @@ class AlertSystem {
     }
     
     /**
-     * Show alert modal (create/edit)
+     * Show alert modal (create/edit).
+     * Prefer V9 React window via `talaria-v9-open-alert`; DOM Obsidian markup is fallback only.
      */
     showAlertModal(options) {
-        document.querySelectorAll('.alert-settings-popup, .alert-modal-overlay').forEach(m => m.remove());
+        document.querySelectorAll(
+            '.talaria-alert-overlay, .alert-settings-popup, .alert-modal-overlay'
+        ).forEach((m) => m.remove());
 
         const symbol = this.getSymbolName();
         const priceVal = options.price != null && options.price !== ''
             ? this.formatPrice(options.price)
             : '';
+
+        try {
+            window.__TALARIA_V9_ALERT_MODAL_OPEN__ = false;
+            const ev = new CustomEvent('talaria-v9-open-alert', {
+                cancelable: true,
+                detail: {
+                    title: options.title || (options.isEdit ? 'Edit Alert' : 'Create Alert'),
+                    isEdit: !!options.isEdit,
+                    alertId: options.alertId,
+                    symbol,
+                    priceText: priceVal,
+                    condition: options.condition || 'crossing',
+                    expiration: options.expiration || 'every_time',
+                    message: options.message || '',
+                    color: options.color || '#ff9800',
+                    showPopup: options.showPopup !== false,
+                    playSound: options.playSound !== false,
+                },
+            });
+            window.dispatchEvent(ev);
+            if (ev.defaultPrevented || window.__TALARIA_V9_ALERT_MODAL_OPEN__) {
+                return;
+            }
+        } catch (_) {}
+
+        // Fallback when V9 React shell is not mounted (legacy chart hosts).
+        injectAlertSystemStyles();
+        const colorVal = String(options.color || '#ff9800').toLowerCase();
         const esc = (s) => String(s == null ? '' : s)
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/"/g, '&quot;');
+        const presets = [
+            ['#ff9800', 'Orange'],
+            ['#ffc107', 'Amber'],
+            ['#f44336', 'Red'],
+            ['#00d4a1', 'Green'],
+            ['#3090ff', 'Blue'],
+            ['#a78bfa', 'Purple'],
+        ];
+        const presetActive = presets.some(([c]) => c === colorVal);
+        const condLabel = {
+            crossing: 'Crossing',
+            crossing_up: 'Crossing up',
+            crossing_down: 'Crossing down',
+            greater_than: 'Greater than',
+            less_than: 'Less than',
+        };
+        const subBits = [
+            symbol || 'SYMBOL',
+            priceVal ? String(priceVal) : null,
+            condLabel[options.condition] || null,
+        ].filter(Boolean).join(' · ');
 
-        const modal = document.createElement('div');
-        modal.className = 'overlay-settings-popup alert-settings-popup open';
-        modal.innerHTML = `
-            <div class="overlay-settings-content alert-settings-content" role="dialog" aria-modal="true" aria-label="${esc(options.title)}">
-                <div class="overlay-settings-header">
-                    <span class="overlay-settings-title">${esc(options.title)}</span>
-                    <button type="button" class="overlay-settings-close alert-modal-close" aria-label="Close">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+        const overlay = document.createElement('div');
+        overlay.className = 'talaria-alert-overlay';
+        overlay.setAttribute('data-v9-chrome', '1');
+        overlay.innerHTML = `
+            <div data-alert-win="" data-chrome-win="alert" role="dialog" aria-modal="true" aria-label="${esc(options.title)}">
+                <div data-win-header="">
+                    <div data-win-icon="" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                        </svg>
+                    </div>
+                    <div data-win-title-wrap="">
+                        <div data-win-title="">${esc(options.title)}</div>
+                        <div data-win-sub="" data-alert-sub="">${esc(subBits)}</div>
+                    </div>
+                    <button type="button" data-win-close="" aria-label="Close">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
                             <line x1="18" y1="6" x2="6" y2="18"></line>
                             <line x1="6" y1="6" x2="18" y2="18"></line>
                         </svg>
                     </button>
                 </div>
-                <div class="overlay-settings-body alert-settings-body">
-                    <div class="alert-field">
-                        <label for="alertSymbol">Symbol</label>
-                        <input type="text" class="alert-input" id="alertSymbol" value="${esc(symbol)}" readonly>
-                    </div>
-                    <div class="alert-field">
-                        <label for="alertPrice">Price</label>
-                        <input type="number" step="any" class="alert-input" id="alertPrice" value="${esc(priceVal)}">
-                    </div>
-                    <div class="alert-field">
-                        <label for="alertCondition">Condition</label>
-                        <select class="alert-select" id="alertCondition">
-                            <option value="crossing" ${options.condition === 'crossing' ? 'selected' : ''}>Crossing</option>
-                            <option value="crossing_up" ${options.condition === 'crossing_up' ? 'selected' : ''}>Crossing up</option>
-                            <option value="crossing_down" ${options.condition === 'crossing_down' ? 'selected' : ''}>Crossing down</option>
-                            <option value="greater_than" ${options.condition === 'greater_than' ? 'selected' : ''}>Greater than</option>
-                            <option value="less_than" ${options.condition === 'less_than' ? 'selected' : ''}>Less than</option>
-                        </select>
-                    </div>
-                    <div class="alert-field">
-                        <label for="alertExpiration">Trigger</label>
-                        <select class="alert-select" id="alertExpiration">
-                            <option value="every_time" ${options.expiration === 'every_time' ? 'selected' : ''}>Every time</option>
-                            <option value="once" ${options.expiration === 'once' ? 'selected' : ''}>Only once</option>
-                            <option value="once_per_bar" ${options.expiration === 'once_per_bar' ? 'selected' : ''}>Once per bar</option>
-                        </select>
-                    </div>
-                    <div class="alert-field">
-                        <label for="alertMessage">Message</label>
-                        <input type="text" class="alert-input" id="alertMessage" value="${esc(options.message || '')}" placeholder="Optional alert message">
-                    </div>
-                    <div class="alert-field">
-                        <label>Line color</label>
-                        <div class="alert-color-picker">
-                            <input type="color" id="alertColor" value="${esc(options.color || '#ff9800')}">
-                            <div class="alert-color-presets">
-                                <button type="button" class="alert-color-preset${(options.color || '#ff9800') === '#ff9800' ? ' is-active' : ''}" data-color="#ff9800" style="background:#ff9800" aria-label="Orange"></button>
-                                <button type="button" class="alert-color-preset" data-color="#f44336" style="background:#f44336" aria-label="Red"></button>
-                                <button type="button" class="alert-color-preset" data-color="#4caf50" style="background:#4caf50" aria-label="Green"></button>
-                                <button type="button" class="alert-color-preset" data-color="#2196f3" style="background:#2196f3" aria-label="Blue"></button>
-                                <button type="button" class="alert-color-preset" data-color="#9c27b0" style="background:#9c27b0" aria-label="Purple"></button>
-                            </div>
+                <div data-alert-body="">
+                    <div data-alert-row="">
+                        <div data-alert-field="">
+                            <label for="alertSymbol">Symbol</label>
+                            <input data-alert-input="" type="text" id="alertSymbol" value="${esc(symbol)}" readonly tabindex="-1">
+                        </div>
+                        <div data-alert-field="">
+                            <label for="alertPrice">Price</label>
+                            <input data-alert-input="" data-alert-price="" type="number" step="any" id="alertPrice" value="${esc(priceVal)}" inputmode="decimal" autocomplete="off">
                         </div>
                     </div>
-                    <div class="alert-field alert-checkboxes">
-                        <label class="alert-checkbox-label">
-                            <input type="checkbox" id="alertShowPopup" ${options.showPopup ? 'checked' : ''}>
-                            Show popup
-                        </label>
-                        <label class="alert-checkbox-label">
-                            <input type="checkbox" id="alertPlaySound" ${options.playSound ? 'checked' : ''}>
-                            Play sound
-                        </label>
+                    <div data-alert-row="">
+                        <div data-alert-field="">
+                            <label for="alertCondition">Condition</label>
+                            <select data-alert-select="" id="alertCondition">
+                                <option value="crossing" ${options.condition === 'crossing' ? 'selected' : ''}>Crossing</option>
+                                <option value="crossing_up" ${options.condition === 'crossing_up' ? 'selected' : ''}>Crossing up</option>
+                                <option value="crossing_down" ${options.condition === 'crossing_down' ? 'selected' : ''}>Crossing down</option>
+                                <option value="greater_than" ${options.condition === 'greater_than' ? 'selected' : ''}>Greater than</option>
+                                <option value="less_than" ${options.condition === 'less_than' ? 'selected' : ''}>Less than</option>
+                            </select>
+                        </div>
+                        <div data-alert-field="">
+                            <label for="alertExpiration">Trigger</label>
+                            <select data-alert-select="" id="alertExpiration">
+                                <option value="every_time" ${options.expiration === 'every_time' ? 'selected' : ''}>Every time</option>
+                                <option value="once" ${options.expiration === 'once' ? 'selected' : ''}>Only once</option>
+                                <option value="once_per_bar" ${options.expiration === 'once_per_bar' ? 'selected' : ''}>Once per bar</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div data-alert-field="" data-span="2">
+                        <label for="alertMessage">Message</label>
+                        <input data-alert-input="" type="text" id="alertMessage" value="${esc(options.message || '')}" placeholder="Optional note for this alert">
+                    </div>
+                    <div data-alert-field="">
+                        <label>Line color</label>
+                        <div data-alert-swatches="">
+                            ${presets.map(([c, name]) => `
+                                <button type="button" data-alert-swatch="" data-color="${c}" data-on="${c === colorVal ? '1' : undefined}" style="--swatch:${c}" aria-label="${name}"></button>
+                            `).join('')}
+                            <label data-alert-swatch="" data-custom="" data-on="${presetActive ? undefined : '1'}" style="${presetActive ? '' : `--swatch:${esc(colorVal)}`}" aria-label="Custom color">
+                                <input type="color" id="alertColor" value="${esc(colorVal)}">
+                            </label>
+                        </div>
+                    </div>
+                    <div data-alert-field="">
+                        <label>Notify</label>
+                        <div data-alert-togs="">
+                            <button type="button" data-alert-tog="popup" data-on="${options.showPopup ? '1' : undefined}" aria-pressed="${options.showPopup ? 'true' : 'false'}">
+                                <i aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="5" width="16" height="12" rx="2"/><path d="M8 21h8"/></svg></i>
+                                Popup
+                            </button>
+                            <button type="button" data-alert-tog="sound" data-on="${options.playSound ? '1' : undefined}" aria-pressed="${options.playSound ? 'true' : 'false'}">
+                                <i aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a4 4 0 0 1 0 7"/><path d="M18 6a7 7 0 0 1 0 12"/></svg></i>
+                                Sound
+                            </button>
+                        </div>
                     </div>
                 </div>
-                <div class="overlay-settings-footer">
-                    <button type="button" class="overlay-btn-cancel alert-modal-btn cancel">Cancel</button>
-                    <button type="button" class="overlay-btn-ok alert-modal-btn primary">${options.isEdit ? 'Update' : 'Create'}</button>
+                <div data-win-foot="">
+                    <button type="button" data-alert-btn="ghost" data-alert-cancel="">Cancel</button>
+                    <button type="button" data-alert-btn="primary" data-alert-submit="">${options.isEdit ? 'Update' : 'Create'}</button>
                 </div>
             </div>
         `;
 
-        document.body.appendChild(modal);
+        // Clean undefined attrs from template
+        overlay.querySelectorAll('[data-on="undefined"]').forEach((el) => el.removeAttribute('data-on'));
 
-        const onKey = (e) => {
-            if (e.key === 'Escape') closeModal();
-        };
-        const closeModal = () => {
-            document.removeEventListener('keydown', onKey);
-            modal.remove();
-        };
-        document.addEventListener('keydown', onKey);
+        document.body.appendChild(overlay);
 
-        modal.querySelectorAll('.alert-color-preset').forEach(btn => {
+        const win = overlay.querySelector('[data-alert-win]');
+        const priceEl = overlay.querySelector('#alertPrice');
+        const condEl = overlay.querySelector('#alertCondition');
+        const subEl = overlay.querySelector('[data-alert-sub]');
+        const colorEl = overlay.querySelector('#alertColor');
+        const customSwatch = overlay.querySelector('[data-alert-swatch][data-custom]');
+
+        const syncSub = () => {
+            if (!subEl) return;
+            const p = priceEl?.value?.trim();
+            const c = condLabel[condEl?.value] || condEl?.value || '';
+            subEl.textContent = [symbol || 'SYMBOL', p || null, c || null].filter(Boolean).join(' · ');
+        };
+        priceEl?.addEventListener('input', syncSub);
+        condEl?.addEventListener('change', syncSub);
+
+        const setActiveSwatch = (hex) => {
+            const h = String(hex || '').toLowerCase();
+            overlay.querySelectorAll('[data-alert-swatch]').forEach((b) => {
+                const isCustom = b.hasAttribute('data-custom');
+                const match = isCustom
+                    ? !presets.some(([c]) => c === h)
+                    : String(b.getAttribute('data-color') || '').toLowerCase() === h;
+                if (match) b.setAttribute('data-on', '1');
+                else b.removeAttribute('data-on');
+            });
+            if (customSwatch && !presets.some(([c]) => c === h)) {
+                customSwatch.style.setProperty('--swatch', h);
+            }
+        };
+
+        overlay.querySelectorAll('[data-alert-swatch]:not([data-custom])').forEach((btn) => {
             btn.addEventListener('click', () => {
-                const colorInput = document.getElementById('alertColor');
-                if (colorInput) colorInput.value = btn.dataset.color;
-                modal.querySelectorAll('.alert-color-preset').forEach(b => b.classList.remove('is-active'));
-                btn.classList.add('is-active');
+                const c = btn.getAttribute('data-color');
+                if (colorEl) colorEl.value = c;
+                setActiveSwatch(c);
+            });
+        });
+        colorEl?.addEventListener('input', () => setActiveSwatch(colorEl.value));
+
+        overlay.querySelectorAll('[data-alert-tog]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const on = btn.getAttribute('data-on') === '1';
+                if (on) {
+                    btn.removeAttribute('data-on');
+                    btn.setAttribute('aria-pressed', 'false');
+                } else {
+                    btn.setAttribute('data-on', '1');
+                    btn.setAttribute('aria-pressed', 'true');
+                }
             });
         });
 
-        modal.querySelector('.alert-modal-close').addEventListener('click', closeModal);
-        modal.querySelector('.alert-modal-btn.cancel').addEventListener('click', closeModal);
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) closeModal();
-        });
+        const closeModal = () => {
+            document.removeEventListener('keydown', onKey);
+            overlay.remove();
+        };
+        const onKey = (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                closeModal();
+            } else if (e.key === 'Enter' && e.target && e.target.id !== 'alertMessage') {
+                if (e.target.tagName === 'TEXTAREA') return;
+                e.preventDefault();
+                submit();
+            }
+        };
+        document.addEventListener('keydown', onKey);
 
-        modal.querySelector('.alert-modal-btn.primary').addEventListener('click', () => {
-            const price = parseFloat(document.getElementById('alertPrice').value);
-            const condition = document.getElementById('alertCondition').value;
-            const expiration = document.getElementById('alertExpiration').value;
-            const message = document.getElementById('alertMessage').value;
-            const color = document.getElementById('alertColor').value;
-            const showPopup = document.getElementById('alertShowPopup').checked;
-            const playSound = document.getElementById('alertPlaySound').checked;
-            
-            if (isNaN(price)) {
+        overlay.querySelector('[data-win-close]')?.addEventListener('click', closeModal);
+        overlay.querySelector('[data-alert-cancel]')?.addEventListener('click', closeModal);
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) closeModal();
+        });
+        win?.addEventListener('click', (e) => e.stopPropagation());
+
+        const submit = () => {
+            const price = parseFloat(priceEl?.value);
+            const condition = condEl?.value;
+            const expiration = overlay.querySelector('#alertExpiration')?.value;
+            const message = overlay.querySelector('#alertMessage')?.value || '';
+            const color = colorEl?.value || '#ff9800';
+            const showPopup = overlay.querySelector('[data-alert-tog="popup"]')?.getAttribute('data-on') === '1';
+            const playSound = overlay.querySelector('[data-alert-tog="sound"]')?.getAttribute('data-on') === '1';
+
+            if (!Number.isFinite(price)) {
                 if (this.chart && typeof this.chart.showNotification === 'function') {
-                    this.chart.showNotification('Please enter a valid price');
+                    this.chart.showNotification('Enter a valid price');
                 }
+                priceEl?.focus();
                 return;
             }
 
             document.removeEventListener('keydown', onKey);
-            if (options.isEdit) {
-                this.updateAlert(options.alertId, {
-                    price,
-                    condition,
-                    expiration,
-                    message: message || `Price ${condition} ${price}`,
-                    color,
-                    showPopup,
-                    playSound
-                });
-            } else {
-                this.createAlert({
-                    price,
-                    condition,
-                    expiration,
-                    message: message || `Price ${condition} ${price}`,
-                    color,
-                    showPopup,
-                    playSound
-                });
+            const payload = {
+                price,
+                condition,
+                expiration,
+                message: message || `Price ${condition} ${price}`,
+                color,
+                showPopup,
+                playSound,
+            };
+            if (options.isEdit) this.updateAlert(options.alertId, payload);
+            else this.createAlert(payload);
+            overlay.remove();
+        };
+
+        overlay.querySelector('[data-alert-submit]')?.addEventListener('click', submit);
+
+        // Keep fully on-screen on short viewports.
+        try {
+            if (win && typeof window !== 'undefined') {
+                const maxH = Math.max(240, window.innerHeight - 32);
+                win.style.maxHeight = `${maxH}px`;
             }
-            
-            modal.remove();
-        });
-        
-        // Focus price input
-        setTimeout(() => document.getElementById('alertPrice').focus(), 100);
+        } catch (_) {}
+
+        setTimeout(() => {
+            priceEl?.focus();
+            priceEl?.select?.();
+        }, 40);
     }
     
     /**

@@ -2,7 +2,7 @@
 
 import React from "react";
 
-const F = "'Exo 2', sans-serif";
+const F = '"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif';
 
 const SHIMMER_STYLE = `
   @keyframes tlrDashSkeletonShimmer {
@@ -46,8 +46,8 @@ function SkeletonBlock({
         height,
         width,
         borderRadius: radius,
-        background: "rgba(255,255,255,0.045)",
-        border: "1px solid rgba(140,160,255,0.08)",
+        background: "var(--surface-raised)",
+        border: "1px solid var(--line)",
         boxSizing: "border-box",
         ...style,
       }}
@@ -198,7 +198,7 @@ export default function V16DashboardLoading({
         aria-busy="true"
         style={{
           ...(fullScreen
-            ? { position: "absolute", inset: 0, zIndex: 30, background: "#07080E" }
+            ? { position: "absolute", inset: 0, zIndex: 30, background: "var(--bg)" }
             : { position: "relative", minHeight: 200, background: "transparent" }),
           fontFamily: F,
           display: "flex",
@@ -214,9 +214,9 @@ export default function V16DashboardLoading({
             height: 48,
             borderRadius: "50%",
             border: "2px solid rgba(140,160,255,0.20)",
-            borderTopColor: "#4A6AFF",
+            borderTopColor: "#3090FF",
             borderRightColor: "rgba(0,212,161,0.75)",
-            boxShadow: "0 0 18px rgba(74,106,255,0.13)",
+            boxShadow: "0 0 18px rgba(48,144,255,0.13)",
             animation: "tlrLoadRotate 0.82s linear infinite",
           }}
         />
@@ -244,7 +244,7 @@ export default function V16DashboardLoading({
       aria-label={text}
       style={{
         ...(fullScreen
-          ? { position: "absolute", inset: 0, zIndex: 30, background: "#07080E" }
+          ? { position: "absolute", inset: 0, zIndex: 30, background: "var(--bg)" }
           : { position: "relative", minHeight: 200, background: "transparent" }),
         fontFamily: F,
         display: "flex",

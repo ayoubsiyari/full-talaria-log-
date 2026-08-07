@@ -76,7 +76,7 @@ export default function BacktestDesignDemoPage() {
   );
 
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col bg-[#07080E] m-0 p-0" dir="ltr" lang="en">
+    <div className="fixed inset-0 z-[100] flex flex-col bg-[#000000] m-0 p-0" dir="ltr" lang="en">
       
       <iframe
         title="Talaria V9 live chart"

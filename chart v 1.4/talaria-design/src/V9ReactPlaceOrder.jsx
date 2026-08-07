@@ -32,8 +32,8 @@ function clickId(id) {
 }
 
 /**
- * V9 "new" Place Order surface: visible React UI that forwards all actions to
- * the native `#orderPanel` inputs and buttons managed by `order-manager.js`.
+ * HeroUI-minimal Place Order surface — forwards actions to native `#orderPanel`.
+ * Uses chrome CSS variables so light/dark presets stay in sync.
  */
 export function V9ReactPlaceOrder({ c, F, symbol, currentSymbol, setOrderPanelOpen }) {
   const presetSelectRef = useRef(null);
@@ -52,16 +52,13 @@ export function V9ReactPlaceOrder({ c, F, symbol, currentSymbol, setOrderPanelOp
   const [rewardTxt, setRewardTxt] = useState("$0");
   const [riskSummaryTxt, setRiskSummaryTxt] = useState("$0");
   const [marginTxt, setMarginTxt] = useState("—");
-  const [placeLabel, setPlaceLabel] = useState("Make new order");
+  const [placeLabel, setPlaceLabel] = useState("Place order");
   const [costsLine, setCostsLine] = useState("");
   const [slDist, setSlDist] = useState("—");
   const [slQty, setSlQty] = useState("—");
   const [tpDist, setTpDist] = useState("—");
   const [tpProfitMeta, setTpProfitMeta] = useState("—");
   const [rrBar, setRrBar] = useState({ risk: "50%", reward: "50%" });
-  // The engine writes refusals into the native panel's #orderValidation, which is
-  // the hidden mount behind this rail — so a blocked order (an analysis-only
-  // symbol, for one) had no visible surface here at all.
   const [validationTxt, setValidationTxt] = useState("");
 
   useLayoutEffect(() => {
@@ -117,7 +114,7 @@ export function V9ReactPlaceOrder({ c, F, symbol, currentSymbol, setOrderPanelOp
       setRiskSummaryTxt($("riskAmount")?.textContent?.trim() || "$0");
       setMarginTxt($("marginLevelBadge")?.textContent?.trim() || "—");
       const pb = $("placeOrderButton");
-      setPlaceLabel(pb?.textContent?.trim() || "Make new order");
+      setPlaceLabel(pb?.textContent?.trim() || "Place order");
 
       const inst = $("orderPanelInstrumentCosts");
       if (inst && inst.style.display !== "none" && inst.textContent?.trim()) {
@@ -140,7 +137,7 @@ export function V9ReactPlaceOrder({ c, F, symbol, currentSymbol, setOrderPanelOp
       setValidationTxt(vErr ? (vbox.textContent || "").replace(/\s+/g, " ").trim() : "");
 
       syncPresetOptions();
-    }, 180);
+    }, 220);
     return () => clearInterval(t);
   }, [syncPresetOptions]);
 
@@ -184,65 +181,49 @@ export function V9ReactPlaceOrder({ c, F, symbol, currentSymbol, setOrderPanelOp
       ? currentSymbol.type.charAt(0).toUpperCase() + currentSymbol.type.slice(1)
       : "Forex";
 
-  const pairPill = symbol || "—";
-
-  const tabBtn = (active, colActive, onClick, label) => (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        flex: 1,
-        padding: "10px 8px",
-        fontSize: 12,
-        fontWeight: 700,
-        letterSpacing: "0.04em",
-        borderRadius: 6,
-        border: active ? `1px solid ${colActive}` : `1px solid rgba(140,160,255,0.2)`,
-        background: active ? "rgba(74,106,255,0.12)" : c.hv,
-        color: active ? colActive : c.ts,
-        cursor: "default",
-        fontFamily: F,
-      }}
-    >
-      {label}
-    </button>
-  );
-
-  const labelSm = { fontSize: 9, color: c.tm, letterSpacing: "0.08em", fontWeight: 700, marginBottom: 6 };
-  const inputStyle = {
+  const field = {
     width: "100%",
     boxSizing: "border-box",
-    background: c.hv,
-    border: "1px solid rgba(140,160,255,0.22)",
-    borderRadius: 6,
-    color: c.tx,
+    background: "var(--surface-sunken)",
+    border: "1px solid var(--line)",
+    borderRadius: 12,
+    color: "var(--text)",
     fontSize: 13,
     fontFamily: F,
-    padding: "8px 10px",
+    padding: "10px 12px",
     outline: "none",
+  };
+
+  const label = {
+    fontSize: 11,
+    fontWeight: 600,
+    color: "var(--text-faint)",
+    marginBottom: 6,
+    letterSpacing: "0.02em",
   };
 
   return (
     <div
       id="v9OrderPanelMount"
+      data-v9-chrome="1"
+      data-v9-order="1"
       style={{
         flex: 1,
         minHeight: 0,
-        position: "relative",
         width: "100%",
         display: "flex",
         flexDirection: "column",
-        background: c.sf,
+        background: "var(--surface)",
         fontFamily: F,
-        color: c.tx,
+        color: "var(--text)",
         overflow: "hidden",
       }}
     >
       <div
         style={{
           flexShrink: 0,
-          padding: "12px 12px 8px",
-          borderBottom: `1px solid rgba(140,160,255,0.15)`,
+          padding: "12px 14px",
+          borderBottom: "1px solid var(--line)",
           display: "flex",
           alignItems: "flex-start",
           justifyContent: "space-between",
@@ -250,70 +231,40 @@ export function V9ReactPlaceOrder({ c, F, symbol, currentSymbol, setOrderPanelOp
         }}
       >
         <div style={{ minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-            <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#C9A84C" strokeWidth="2">
-              <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
-              <polyline points="16 7 22 7 22 13" />
-            </svg>
-            <span style={{ fontSize: 15, fontWeight: 700 }}>Place order</span>
-          </div>
+          <div style={{ fontSize: 14, fontWeight: 650, letterSpacing: "-0.01em", marginBottom: 8 }}>Order</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
             <span
               style={{
-                fontSize: 11,
-                fontWeight: 600,
-                padding: "3px 8px",
-                borderRadius: 4,
-                background: "rgba(74,106,255,0.25)",
-                color: "#9CB4FF",
+                fontSize: 12,
+                fontWeight: 650,
+                padding: "4px 10px",
+                borderRadius: 999,
+                background: "var(--accent-quiet)",
+                color: "var(--accent)",
               }}
             >
-              {pairPill}
+              {symbol || "—"}
             </span>
-            <span
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                padding: "3px 8px",
-                borderRadius: 4,
-                background: "rgba(139,92,246,0.25)",
-                color: "#C4B5FD",
-              }}
-            >
-              {typeCaps}
-            </span>
+            <span style={{ fontSize: 11, color: "var(--text-faint)" }}>{typeCaps}</span>
           </div>
           {costsLine ? (
-            <div style={{ marginTop: 8, fontSize: 10, color: c.tm, lineHeight: 1.35 }}>{costsLine}</div>
-          ) : (
-            <div style={{ marginTop: 8, fontSize: 10, color: c.tm }}>Spread and commission load with the session instrument.</div>
-          )}
+            <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-faint)", lineHeight: 1.35 }}>{costsLine}</div>
+          ) : null}
         </div>
         <button
           type="button"
+          data-brand-icon="1"
           aria-label="Close"
           onClick={() => setOrderPanelOpen(false)}
-          style={{
-            flexShrink: 0,
-            width: 28,
-            height: 28,
-            border: "none",
-            borderRadius: 6,
-            background: "transparent",
-            color: c.ts,
-            fontSize: 20,
-            lineHeight: 1,
-            cursor: "default",
-            fontFamily: F,
-          }}
+          style={{ width: 32, height: 32, fontSize: 18, color: "var(--text-muted)" }}
         >
           ×
         </button>
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "10px 12px 14px" }}>
-        <div style={labelSm}>TEMPLATE PRESET</div>
-        <div style={{ display: "flex", gap: 8, alignItems: "stretch", marginBottom: 14, flexWrap: "wrap" }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "12px 14px 16px" }}>
+        <div style={label}>Template</div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
           <select
             ref={presetSelectRef}
             onMouseDown={syncPresetOptions}
@@ -324,54 +275,32 @@ export function V9ReactPlaceOrder({ c, F, symbol, currentSymbol, setOrderPanelOp
               src.value = e.target.value;
               src.dispatchEvent(new Event("change", { bubbles: true }));
             }}
-            style={{
-              flex: 1,
-              minWidth: 120,
-              padding: "8px 10px",
-              borderRadius: 6,
-              border: "1px solid rgba(140,160,255,0.22)",
-              background: c.hv,
-              color: c.tx,
-              fontSize: 12,
-              fontFamily: F,
-            }}
+            data-brand-field="1"
+            style={{ ...field, flex: 1, minWidth: 120 }}
           >
-            <option value="">— Select —</option>
+            <option value="">Select…</option>
           </select>
-          <div style={{ display: "flex", gap: 6 }}>
-            {[
-              ["Load", "orderPanelPresetLoadBtn"],
-              ["Save", "orderPanelPresetSaveBtn"],
-              ["Del", "orderPanelPresetDeleteBtn"],
-            ].map(([lbl, id]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => clickId(id)}
-                style={{
-                  padding: "8px 10px",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  borderRadius: 6,
-                  border: "1px solid rgba(140,160,255,0.25)",
-                  background: c.hv,
-                  color: c.tx,
-                  cursor: "default",
-                  fontFamily: F,
-                }}
-              >
-                {lbl}
-              </button>
-            ))}
-          </div>
+          {[
+            ["Load", "orderPanelPresetLoadBtn"],
+            ["Save", "orderPanelPresetSaveBtn"],
+            ["Del", "orderPanelPresetDeleteBtn"],
+          ].map(([lbl, id]) => (
+            <button key={id} type="button" data-brand-btn="ghost" onClick={() => clickId(id)} style={{ padding: "8px 10px", fontSize: 11, fontWeight: 600, fontFamily: F }}>
+              {lbl}
+            </button>
+          ))}
         </div>
 
-        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-          {tabBtn(side === "buy", "#34D399", () => onBuySell("buy"), "BUY")}
-          {tabBtn(side === "sell", "#FB7185", () => onBuySell("sell"), "SELL")}
+        <div data-brand-seg="1" style={{ display: "flex", gap: 4, marginBottom: 10 }}>
+          <button type="button" data-brand-btn="buy" data-active={side === "buy" ? "1" : undefined} onClick={() => onBuySell("buy")} style={{ flex: 1, height: 36, fontFamily: F }}>
+            BUY
+          </button>
+          <button type="button" data-brand-btn="sell" data-active={side === "sell" ? "1" : undefined} onClick={() => onBuySell("sell")} style={{ flex: 1, height: 36, fontFamily: F }}>
+            SELL
+          </button>
         </div>
 
-        <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+        <div data-brand-seg="1" style={{ display: "flex", gap: 2, marginBottom: 14 }}>
           {[
             ["market", "Market"],
             ["limit", "Limit"],
@@ -380,30 +309,19 @@ export function V9ReactPlaceOrder({ c, F, symbol, currentSymbol, setOrderPanelOp
             <button
               key={t}
               type="button"
+              data-brand-seg-item=""
+              data-active={orderType === t ? "1" : undefined}
+              aria-pressed={orderType === t}
               onClick={() => onOrderType(t)}
-              style={{
-                flex: 1,
-                padding: "8px 6px",
-                fontSize: 11,
-                fontWeight: 700,
-                borderRadius: 6,
-                border:
-                  orderType === t
-                    ? "1px solid #C9A84C"
-                    : "1px solid rgba(140,160,255,0.2)",
-                background: orderType === t ? "rgba(201,168,76,0.12)" : c.hv,
-                color: orderType === t ? "#E8D48B" : c.ts,
-                cursor: "default",
-                fontFamily: F,
-              }}
+              style={{ flex: 1, height: 30, fontSize: 11, fontWeight: 600, fontFamily: F, cursor: "default" }}
             >
               {lbl}
             </button>
           ))}
         </div>
 
-        <div style={labelSm}>SIZE</div>
-        <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+        <div style={label}>Size</div>
+        <div data-brand-seg="1" style={{ display: "inline-flex", gap: 2, marginBottom: 8 }}>
           {[
             ["usd", "$"],
             ["pct", "%"],
@@ -412,29 +330,16 @@ export function V9ReactPlaceOrder({ c, F, symbol, currentSymbol, setOrderPanelOp
             <button
               key={m}
               type="button"
+              data-brand-seg-item=""
+              data-active={posMode === m ? "1" : undefined}
               onClick={() => onPosMode(m)}
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 6,
-                border:
-                  posMode === m ? "1px solid rgba(74,106,255,0.8)" : "1px solid rgba(140,160,255,0.2)",
-                background: posMode === m ? "rgba(74,106,255,0.15)" : c.hv,
-                color: posMode === m ? c.acL : c.ts,
-                fontWeight: 700,
-                fontSize: 14,
-                cursor: "default",
-                fontFamily: F,
-              }}
+              style={{ width: 36, height: 32, fontWeight: 700, fontSize: 13, fontFamily: F, cursor: "default" }}
             >
               {sym}
             </button>
           ))}
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
-          <span style={{ color: c.ts, fontSize: 13, fontWeight: 600 }}>
-            {posMode === "usd" ? "$" : posMode === "pct" ? "%" : "#"}
-          </span>
           <input
             value={riskField}
             onChange={(e) => setRiskField(e.target.value)}
@@ -442,55 +347,16 @@ export function V9ReactPlaceOrder({ c, F, symbol, currentSymbol, setOrderPanelOp
             onKeyDown={(e) => {
               if (e.key === "Enter") commitRiskInput();
             }}
-            style={{ ...inputStyle, flex: 1 }}
+            style={{ ...field, flex: 1 }}
             inputMode="decimal"
           />
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <button
-              type="button"
-              onClick={() => stepRisk(-1)}
-              style={{
-                width: 32,
-                height: 26,
-                borderRadius: 4,
-                border: "1px solid rgba(140,160,255,0.2)",
-                background: c.hv,
-                color: c.tx,
-                cursor: "default",
-                fontFamily: F,
-                fontSize: 14,
-              }}
-            >
-              −
-            </button>
-            <button
-              type="button"
-              onClick={() => stepRisk(1)}
-              style={{
-                width: 32,
-                height: 26,
-                borderRadius: 4,
-                border: "1px solid rgba(140,160,255,0.2)",
-                background: c.hv,
-                color: c.tx,
-                cursor: "default",
-                fontFamily: F,
-                fontSize: 14,
-              }}
-            >
-              +
-            </button>
-          </div>
+          <button type="button" data-brand-btn="ghost" onClick={() => stepRisk(-1)} style={{ width: 36, height: 36, fontFamily: F }}>−</button>
+          <button type="button" data-brand-btn="ghost" onClick={() => stepRisk(1)} style={{ width: 36, height: 36, fontFamily: F }}>+</button>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
           <div>
-            <div style={{ ...labelSm, display: "flex", alignItems: "center", gap: 6 }}>
-              ENTRY
-              <span style={{ fontSize: 8, padding: "2px 5px", borderRadius: 3, background: c.hv, color: c.tm }}>
-                MULTI
-              </span>
-            </div>
+            <div style={label}>Entry</div>
             <input
               value={entry}
               onChange={(e) => {
@@ -498,14 +364,13 @@ export function V9ReactPlaceOrder({ c, F, symbol, currentSymbol, setOrderPanelOp
                 setEntry(v);
                 setInputValueAndNotify($("orderEntryPrice"), v);
               }}
-              style={inputStyle}
+              style={field}
               inputMode="decimal"
             />
           </div>
           <div>
-            <div style={{ ...labelSm, display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#FB7185" }} />
-              STOP LOSS
+            <div style={{ ...label, display: "flex", alignItems: "center", gap: 8 }}>
+              Stop loss
               <input
                 type="checkbox"
                 checked={slOn}
@@ -524,27 +389,26 @@ export function V9ReactPlaceOrder({ c, F, symbol, currentSymbol, setOrderPanelOp
                 setSl(v);
                 setInputValueAndNotify($("slPrice"), v);
               }}
-              style={inputStyle}
+              style={field}
               inputMode="decimal"
             />
-            <div style={{ fontSize: 10, color: c.tm, marginTop: 4 }}>
-              Dist {slDist} — Qty {slQty}
+            <div style={{ fontSize: 10, color: "var(--text-faint)", marginTop: 4 }}>
+              Dist {slDist} · Qty {slQty}
             </div>
           </div>
         </div>
 
         <div
           style={{
-            border: "1px solid rgba(52,211,153,0.45)",
-            borderRadius: 8,
-            padding: 10,
-            marginBottom: 12,
-            background: "rgba(52,211,153,0.04)",
+            border: "1px solid var(--line)",
+            borderRadius: 14,
+            padding: 12,
+            marginBottom: 14,
+            background: "var(--surface-sunken)",
           }}
         >
-          <div style={{ ...labelSm, display: "flex", alignItems: "center", gap: 8, marginBottom: 8, color: "#6EE7B7" }}>
-            <span style={{ width: 8, height: 8, borderRadius: 2, background: "#34D399" }} />
-            PROFIT TARGET
+          <div style={{ ...label, display: "flex", alignItems: "center", gap: 8, marginBottom: 8, color: "var(--text-muted)" }}>
+            Take profit
             <input
               type="checkbox"
               checked={tpOn}
@@ -553,15 +417,11 @@ export function V9ReactPlaceOrder({ c, F, symbol, currentSymbol, setOrderPanelOp
                 setTpOn(on);
                 setCheckboxAndNotify($("enableTP"), on);
               }}
-              style={{ marginLeft: 4 }}
             />
-            <span style={{ fontSize: 8, padding: "2px 5px", borderRadius: 3, background: "rgba(0,0,0,0.2)", color: c.tm }}>
-              MULTI
-            </span>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
             <div>
-              <div style={{ fontSize: 9, color: c.tm, marginBottom: 4 }}>PRICE</div>
+              <div style={{ fontSize: 10, color: "var(--text-faint)", marginBottom: 4 }}>Price</div>
               <input
                 value={tp}
                 onChange={(e) => {
@@ -569,12 +429,12 @@ export function V9ReactPlaceOrder({ c, F, symbol, currentSymbol, setOrderPanelOp
                   setTp(v);
                   setInputValueAndNotify($("tpPrice"), v);
                 }}
-                style={inputStyle}
+                style={field}
                 inputMode="decimal"
               />
             </div>
             <div>
-              <div style={{ fontSize: 9, color: c.tm, marginBottom: 4 }}>R:R</div>
+              <div style={{ fontSize: 10, color: "var(--text-faint)", marginBottom: 4 }}>R:R</div>
               <input
                 value={tpRR}
                 onChange={(e) => {
@@ -582,12 +442,12 @@ export function V9ReactPlaceOrder({ c, F, symbol, currentSymbol, setOrderPanelOp
                   setTpRR(v);
                   setInputValueAndNotify($("tpRRInput"), v);
                 }}
-                style={inputStyle}
+                style={field}
                 inputMode="decimal"
               />
             </div>
             <div>
-              <div style={{ fontSize: 9, color: c.tm, marginBottom: 4 }}>PROFIT</div>
+              <div style={{ fontSize: 10, color: "var(--text-faint)", marginBottom: 4 }}>Profit</div>
               <input
                 value={tpProfit}
                 onChange={(e) => {
@@ -595,46 +455,33 @@ export function V9ReactPlaceOrder({ c, F, symbol, currentSymbol, setOrderPanelOp
                   setTpProfit(v);
                   setInputValueAndNotify($("tpTargetProfitUSD"), v);
                 }}
-                style={inputStyle}
+                style={field}
                 inputMode="decimal"
               />
             </div>
           </div>
-          <div style={{ fontSize: 10, color: c.tm, marginTop: 8 }}>
-            Dist {tpDist} — Profit {tpProfitMeta}
+          <div style={{ fontSize: 10, color: "var(--text-faint)", marginTop: 8 }}>
+            Dist {tpDist} · Profit {tpProfitMeta}
           </div>
-          <div
-            style={{
-              display: "flex",
-              width: "100%",
-              height: 6,
-              borderRadius: 3,
-              overflow: "hidden",
-              marginTop: 10,
-            }}
-          >
-            <div style={{ flex: `0 0 ${rrBar.risk}`, background: "rgba(251,113,133,0.85)" }} />
-            <div style={{ flex: `0 0 ${rrBar.reward}`, background: "rgba(52,211,153,0.85)" }} />
+          <div style={{ display: "flex", width: "100%", height: 4, borderRadius: 999, overflow: "hidden", marginTop: 10, background: "var(--line)" }}>
+            <div style={{ flex: `0 0 ${rrBar.risk}`, background: "var(--down)" }} />
+            <div style={{ flex: `0 0 ${rrBar.reward}`, background: "var(--up)" }} />
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-          <span style={{ fontSize: 12, color: c.tx }}>Advanced order</span>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <span style={{ fontSize: 12, color: "var(--text)" }}>Advanced</span>
           <button
             type="button"
             role="switch"
             aria-checked={advanced}
-            onClick={() => {
-              const el = $("advancedOrderToggle");
-              if (!el) return;
-              el.click();
-            }}
+            onClick={() => $("advancedOrderToggle")?.click()}
             style={{
               width: 44,
-              height: 24,
-              borderRadius: 12,
-              border: "1px solid rgba(140,160,255,0.3)",
-              background: advanced ? c.acL : c.hv,
+              height: 26,
+              borderRadius: 999,
+              border: "1px solid var(--line)",
+              background: advanced ? "var(--accent)" : "var(--surface-sunken)",
               position: "relative",
               cursor: "default",
             }}
@@ -647,68 +494,35 @@ export function V9ReactPlaceOrder({ c, F, symbol, currentSymbol, setOrderPanelOp
                 width: 18,
                 height: 18,
                 borderRadius: "50%",
-                background: "#fff",
-                transition: "left 0.15s ease",
+                background: "var(--brand-white)",
+                transition: "left var(--motion)",
               }}
             />
           </button>
         </div>
 
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-            <span style={{ fontSize: 11, color: c.tm }}>Reward</span>
-            <span style={{ fontSize: 13, fontWeight: 600, color: "#34D399" }}>{rewardTxt}</span>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-            <span style={{ fontSize: 11, color: c.tm }}>Risk</span>
-            <span style={{ fontSize: 13, fontWeight: 600, color: "#FB7185" }}>{riskSummaryTxt}</span>
+        <div style={{ marginBottom: 14, display: "grid", gap: 6 }}>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 11, color: "var(--text-faint)" }}>Reward</span>
+            <span style={{ fontSize: 13, fontWeight: 650, color: "var(--up)", fontVariantNumeric: "tabular-nums" }}>{rewardTxt}</span>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span style={{ fontSize: 11, color: c.tm }}>Margin Level</span>
-            <span style={{ fontSize: 13, fontWeight: 600, color: c.ts }}>{marginTxt}</span>
+            <span style={{ fontSize: 11, color: "var(--text-faint)" }}>Risk</span>
+            <span style={{ fontSize: 13, fontWeight: 650, color: "var(--down)", fontVariantNumeric: "tabular-nums" }}>{riskSummaryTxt}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 11, color: "var(--text-faint)" }}>Margin</span>
+            <span style={{ fontSize: 13, fontWeight: 650, color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>{marginTxt}</span>
           </div>
         </div>
 
-        {validationTxt && (
-          <div
-            role="alert"
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              gap: 8,
-              marginBottom: 10,
-              padding: "9px 11px",
-              borderRadius: 8,
-              border: "1px solid rgba(251,113,133,0.45)",
-              background: "rgba(251,113,133,0.12)",
-              color: "#FDA4AF",
-              fontSize: 11,
-              lineHeight: "15px",
-              fontFamily: F,
-            }}
-          >
-            <span style={{ fontWeight: 700 }}>!</span>
-            <span>{validationTxt}</span>
+        {validationTxt ? (
+          <div role="alert" style={{ marginBottom: 10, padding: "9px 11px", borderRadius: 12, border: "1px solid color-mix(in oklab, var(--down) 40%, transparent)", background: "color-mix(in oklab, var(--down) 12%, transparent)", color: "var(--down)", fontSize: 11, lineHeight: 1.35, fontFamily: F }}>
+            {validationTxt}
           </div>
-        )}
+        ) : null}
 
-        <button
-          type="button"
-          onClick={() => clickId("placeOrderButton")}
-          style={{
-            width: "100%",
-            padding: "14px 16px",
-            borderRadius: 8,
-            border: "none",
-            background: "linear-gradient(180deg, rgba(74,106,255,0.95), rgba(56,80,200,0.98))",
-            color: "#fff",
-            fontSize: 14,
-            fontWeight: 700,
-            cursor: "default",
-            fontFamily: F,
-            boxShadow: "0 4px 16px rgba(45,67,255,0.35)",
-          }}
-        >
+        <button type="button" data-brand-btn="primary" onClick={() => clickId("placeOrderButton")} style={{ width: "100%", height: 42, fontSize: 13, fontWeight: 700, fontFamily: F, cursor: "default" }}>
           {placeLabel}
         </button>
       </div>

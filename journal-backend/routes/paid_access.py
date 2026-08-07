@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Blueprint before_request: JWT + subscription or admin-granted module access."""
 
 from flask import current_app, jsonify, request

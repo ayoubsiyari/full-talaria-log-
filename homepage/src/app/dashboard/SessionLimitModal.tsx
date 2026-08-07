@@ -14,18 +14,18 @@ import {
 } from "./sessionLimitGate";
 import { openBillingPortal, startPlanCheckout } from "./sessionLimitCheckout";
 
-const F = "'Exo 2', sans-serif";
+const F = '"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif';
 
 const c = {
-  ac: "#2643F7",
-  acL: "#4A6AFF",
-  acD: "rgba(38,67,247,0.08)",
-  acB: "rgba(38,67,247,0.22)",
-  acG: "rgba(74,106,255,0.35)",
+  ac: "#232CF4",
+  acL: "#3090FF",
+  acD: "rgba(48,144,255,0.08)",
+  acB: "rgba(48,144,255,0.22)",
+  acG: "transparent",
   gold: "#C9A84C",
-  bg: "#07080E",
-  sf: "#0A0C14",
-  el: "#0F1119",
+  bg: "#000000",
+  sf: "#0a0a0b",
+  el: "#141416",
   br: "rgba(140,160,255,0.05)",
   brH: "rgba(140,160,255,0.12)",
   tx: "rgba(255,255,255,0.92)",
@@ -374,8 +374,8 @@ export function SessionLimitModal({ open, data, onClose }: Props) {
                   letterSpacing: "0.08em",
                   textTransform: "uppercase",
                   color: "rgba(255,255,255,0.96)",
-                  background: "linear-gradient(135deg,#1e38e8,#4A6AFF)",
-                  boxShadow: "0 2px 10px rgba(38,67,247,0.35)",
+                  background: "#3090FF",
+                  boxShadow: "0 2px 10px rgba(48,144,255,0.35)",
                 }}
               >
                 {upgradeBusy ? (isArabic ? "جاري التوجيه…" : "Redirecting…") : upgradeLabel}

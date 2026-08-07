@@ -21,7 +21,7 @@ import { parseLiveJournalPropRules } from "@/lib/liveJournalPropRules";
 
 import { type SessionLimitGateData } from "./sessionLimitGate";
 
-const F = "'Exo 2', sans-serif";
+const F = '"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif';
 
 /** Prop Firm mode in New Session — turned off for now (set false to re-enable). */
 const PROP_FIRM_SESSION_MODE_DISABLED = true;
@@ -145,9 +145,9 @@ export type BacktestNewSessionModalProps = {
 export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, onSessionLimitReached }: BacktestNewSessionModalProps) {
   const router = useRouter();
   const c = {
-    ac: "#2643F7", acL: "#4A6AFF", acD: "rgba(38,67,247,0.08)", acB: "rgba(38,67,247,0.22)", acG: "rgba(74,106,255,0.35)",
+    ac: "#232CF4", acL: "#3090FF", acD: "rgba(48,144,255,0.08)", acB: "rgba(48,144,255,0.22)", acG: "transparent",
     gold: "#C9A84C",
-    bg: "#07080E", sf: "#0A0C14", el: "#0F1119", well: "#060710",
+    bg: "#000000", sf: "#0a0a0b", el: "#141416", well: "#050505",
     br: "rgba(140,160,255,0.05)", brH: "rgba(140,160,255,0.12)",
     tx: "rgba(255,255,255,0.92)", ts: "rgba(255,255,255,0.70)", tm: "rgba(255,255,255,0.50)",
     gn: "#00D4A1", rd: "#FF5068",
@@ -879,7 +879,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
 
   const TlChk = (on: boolean, hKey: string, label: string | null, toggle: any, accent?: string) => {
     const ac = accent || c.acL;
-    const acGhost = accent ? accent.replace(/[\d.]+\)$/,"0.35)") : "rgba(74,106,255,0.35)";
+    const acGhost = accent ? accent.replace(/[\d.]+\)$/,"0.35)") : "rgba(48,144,255,0.35)";
     const isH = hov === hKey;
     const bCol = on ? ac : isH ? c.tx : c.ts;
     const indicator = (
@@ -1507,7 +1507,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                             <div role="button" tabIndex={0} aria-label="Create new strategy"
                               onClick={(e) => { e.stopPropagation(); openNewStrategyLab(); }}
                               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); openNewStrategyLab(); } }}
-                              style={{flexShrink:0,height:27,width:110,justifyContent:"center",display:"flex",alignItems:"center",gap:5,background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.96)",letterSpacing:"0.05em",boxShadow:"0 2px 8px rgba(38,67,247,0.35)",fontFamily:F,whiteSpace:"nowrap",transition:"filter 0.12s"}}
+                              style={{flexShrink:0,height:27,width:110,justifyContent:"center",display:"flex",alignItems:"center",gap:5,background:"#3090FF",cursor:"default",fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.96)",letterSpacing:"0.05em",boxShadow:"none",fontFamily:F,whiteSpace:"nowrap",transition:"filter 0.12s"}}
                               onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.12)"}
                               onMouseLeave={e=>e.currentTarget.style.filter="brightness(1)"}>
                               <svg width={8} height={8} viewBox="0 0 12 12" fill="none"><line x1="6" y1="1" x2="6" y2="11" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
@@ -1547,9 +1547,9 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                           const pr=pairInfo(sym);const fw=Math.round(sz*15/11),fh=sz;
                           if(pr){return(<div style={{position:"relative",width:Math.round(sz*22/11),height:fh,flexShrink:0}}><div style={{position:"absolute",left:0,top:0,borderRadius:1,overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.7)",zIndex:2}}><FlagSvg code={pr.b} w={fw} h={fh}/></div><div style={{position:"absolute",left:Math.round(sz*7/11),top:0,borderRadius:1,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.5)",zIndex:1}}><FlagSvg code={pr.q} w={fw} h={fh}/></div></div>);}
                           const metalMap={XAUUSD:{bg:"#2B2200",fg:"#FFD700",label:"Au"},XAGUSD:{bg:"#1C2028",fg:"#C8D4E0",label:"Ag"},GC:{bg:"#2B2200",fg:"#FFD700",label:"Au"},SI:{bg:"#1C2028",fg:"#C8D4E0",label:"Ag"},CL:{bg:"#0D1A12",fg:"#4CAF50",label:"CL"},NG:{bg:"#0A1020",fg:"#64B5F6",label:"NG"}};
-                          if(metalMap[sym]){const m=metalMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:1,boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><rect width={fw} height={fh} fill={m.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={m.fg} fontSize={fh*0.52} fontWeight="800" fontFamily="'Exo 2',sans-serif">{m.label}</text></svg>);}
+                          if(metalMap[sym]){const m=metalMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:1,boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><rect width={fw} height={fh} fill={m.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={m.fg} fontSize={fh*0.52} fontWeight="800" fontFamily='"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif'>{m.label}</text></svg>);}
                           const cryptoMap={BTCUSD:{bg:"#E8820C",fg:"#fff",label:"₿"},ETHUSD:{bg:"#3D4FC4",fg:"#fff",label:"Ξ"},BNBUSD:{bg:"#C99800",fg:"#000",label:"B"},SOLUSD:{bg:"#7B3FBE",fg:"#fff",label:"S"},ADAUSD:{bg:"#0033AD",fg:"#fff",label:"A"}};
-                          if(cryptoMap[sym]){const cr=cryptoMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:Math.round(fh*0.35),boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><rect width={fw} height={fh} rx={Math.round(fh*0.35)} fill={cr.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={cr.fg} fontSize={fh*0.58} fontWeight="900" fontFamily="'Exo 2',sans-serif">{cr.label}</text></svg>);}
+                          if(cryptoMap[sym]){const cr=cryptoMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:Math.round(fh*0.35),boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><rect width={fw} height={fh} rx={Math.round(fh*0.35)} fill={cr.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={cr.fg} fontSize={fh*0.58} fontWeight="900" fontFamily='"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif'>{cr.label}</text></svg>);}
                           return(<div style={{borderRadius:1,overflow:"hidden",flexShrink:0,boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><FlagSvg code="US" w={fw} h={fh}/></div>);
                         };
                         const mkCell=(t,onDel)=>(<div key={t} style={{display:"flex",alignItems:"center",padding:"2px 4px 2px 3px",background:c.sf,border:`1px solid ${c.brH}`,gap:3,minWidth:0}}>{mkFlags(t,10)}<span style={{fontSize:10,fontWeight:700,color:c.tx,fontFamily:F,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t}</span><span onClick={onDel} style={{fontSize:13,lineHeight:1,color:c.tm,cursor:"default",flexShrink:0,marginLeft:5,transition:"color 0.1s"}} onMouseEnter={e=>e.currentTarget.style.color=c.rd} onMouseLeave={e=>e.currentTarget.style.color=c.tm}>×</span></div>);
@@ -1700,7 +1700,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                                   <div onClick={e=>{e.stopPropagation();if(newSessSymPickerOpen){setNewSessSymPickerOpen(false);}else{const r=e.currentTarget.getBoundingClientRect();setNewSessSymPickerPos({top:r.bottom/Z+2,left:r.left/Z});setNewSessSymPickerSearch("");setNewSessSymPickerOpen(true);setNewSessSupPickerOpen(false);}}}
                                     onMouseEnter={e=>{e.stopPropagation();setHov("symPickBtn");e.currentTarget.style.filter="brightness(1.12)";}}
                                     onMouseLeave={e=>{setHov(null);e.currentTarget.style.filter="brightness(1)";}}
-                                    style={{width:26,height:40,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",transition:"filter 0.12s",flexShrink:0,boxShadow:"0 2px 8px rgba(38,67,247,0.35)"}}>
+                                    style={{width:26,height:40,display:"flex",alignItems:"center",justifyContent:"center",background:"#3090FF",cursor:"default",transition:"filter 0.12s",flexShrink:0,boxShadow:"none"}}>
                                     <svg width={11} height={11} viewBox="0 0 12 12" fill="none">
                                       <line x1="6" y1="1" x2="6" y2="11" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
                                       <line x1="1" y1="6" x2="11" y2="6" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
@@ -1991,7 +1991,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                                     style={{height:27,padding:"0 10px",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
                                       fontSize:10,fontWeight:isA?700:600,letterSpacing:"0.03em",fontFamily:F,
                                       color:isA?c.acL:isH?c.tx:c.ts,
-                                      background:isA?"rgba(74,106,255,0.08)":isH?"rgba(255,255,255,0.05)":"transparent",
+                                      background:isA?"rgba(48,144,255,0.08)":isH?"rgba(255,255,255,0.05)":"transparent",
                                       cursor:"default",transition:"background 0.12s,color 0.12s"}}>
                                     {p.l}
                                     {isA&&<div style={{position:"absolute",bottom:0,left:"20%",right:"20%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
@@ -2313,7 +2313,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                                   style={{flex:1,padding:"6px 10px 8px",display:"flex",flexDirection:"column",gap:2,
                                     cursor:"default",transition:"all 0.15s",position:"relative",textAlign:"center",
                                     opacity:disabled?0.35:1,
-                                    background:isA?(isPropTab?"rgba(200,150,0,0.07)":"rgba(74,106,255,0.07)"):isH?"rgba(255,255,255,0.03)":"transparent"}}>
+                                    background:isA?(isPropTab?"rgba(200,150,0,0.07)":"rgba(48,144,255,0.07)"):isH?"rgba(255,255,255,0.03)":"transparent"}}>
                                   <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
                                     <span style={{fontSize:11,fontWeight:700,color:isA?acColor:isH?c.tx:c.ts,fontFamily:F,transition:"color 0.12s"}}>{l}</span>
                                     {isPropTab&&(
@@ -2373,7 +2373,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                               const isProp=sessTradingMode==="prop";
                               const chipAc=isProp?c.gold:c.acL;
                               const chipGlow=isProp?"rgba(200,150,0,0.4)":c.acG;
-                              const chipBg=isProp?"rgba(200,150,0,0.08)":"rgba(74,106,255,0.08)";
+                              const chipBg=isProp?"rgba(200,150,0,0.08)":"rgba(48,144,255,0.08)";
                               const futPresetsMap={"25000":{dl:"500",dd:"1000",pt:"1500"},"50000":{dl:"1000",dd:"2000",pt:"3000"},"100000":{dl:"1500",dd:"3000",pt:"6000"},"150000":{dl:"2250",dd:"4500",pt:"9000"}};
                               return chips.map(([label,val])=>{
                                 const isA=newSessCapital===val;const hk="bal_"+val;const isH=hov===hk;
@@ -2768,7 +2768,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                       </div>
                       <div onClick={isValid2 && !savingSession ? ()=>{void startNewSession();}:undefined}
                         onMouseEnter={()=>setHov("sessStart")} onMouseLeave={()=>setHov(null)}
-                        style={{height:27,padding:"0 16px",display:"flex",alignItems:"center",gap:6,background:isValid2?`linear-gradient(135deg,${c.ac},${c.acL})`:"rgba(38,67,247,0.15)",cursor:isValid2 && !savingSession?"default":"not-allowed",fontSize:10,fontWeight:700,color:isValid2?"#fff":"rgba(255,255,255,0.25)",letterSpacing:"0.05em",boxShadow:isValid2?"0 2px 10px rgba(38,67,247,0.35)":"none",filter:hov==="sessStart"&&isValid2?"brightness(1.12)":"brightness(1)",transition:"all 0.12s",flexShrink:0,fontFamily:F,opacity:savingSession?0.6:1}}>
+                        style={{height:27,padding:"0 16px",display:"flex",alignItems:"center",gap:6,background:isValid2?`linear-gradient(135deg,${c.ac},${c.acL})`:"rgba(48,144,255,0.15)",cursor:isValid2 && !savingSession?"default":"not-allowed",fontSize:10,fontWeight:700,color:isValid2?"#fff":"rgba(255,255,255,0.25)",letterSpacing:"0.05em",boxShadow:isValid2?"0 2px 10px rgba(48,144,255,0.35)":"none",filter:hov==="sessStart"&&isValid2?"brightness(1.12)":"brightness(1)",transition:"all 0.12s",flexShrink:0,fontFamily:F,opacity:savingSession?0.6:1}}>
                         <svg width={8} height={8} viewBox="0 0 12 12" fill="none"><polygon points="2,1 11,6 2,11" fill="currentColor"/></svg>
                         {savingSession ? "Starting…" : editSessId ? "Save & Start" : "Start Session"}
                       </div>

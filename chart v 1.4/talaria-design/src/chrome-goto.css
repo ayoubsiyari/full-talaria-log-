@@ -1,0 +1,915 @@
+/* Obsidian Go To — popover anchored to replay-bar button */
+
+[data-goto-v2="1"] {
+  width: 300px;
+  background: var(--surface) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: var(--radius-panel, 8px) !important;
+  box-shadow: none !important;
+  filter: none !important;
+  font-family: var(--font-ui) !important;
+  font-size: 12px;
+  color: var(--text);
+  overflow: hidden;
+}
+
+[data-goto-v2="1"] *,
+[data-goto-v2="1"] input,
+[data-goto-v2="1"] button {
+  font-family: var(--font-ui) !important;
+}
+
+[data-goto-v2="1"] [data-win-header] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px 8px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+  cursor: default !important;
+  background: var(--surface);
+}
+
+[data-goto-v2="1"] [data-win-icon] {
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-quiet);
+  flex-shrink: 0;
+}
+
+[data-goto-v2="1"] [data-win-title] {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+/* Flat ghost close — no filled chip / raised plate */
+[data-goto-v2="1"] [data-win-header] > button[aria-label="Close"],
+[data-goto-v2="1"] [data-win-header] > button[data-brand-icon="1"] {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border: none !important;
+  border-radius: 5px;
+  background: transparent !important;
+  box-shadow: none !important;
+  filter: none !important;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  cursor: default !important;
+}
+
+[data-goto-v2="1"] [data-win-header] > button[aria-label="Close"]:hover,
+[data-goto-v2="1"] [data-win-header] > button[data-brand-icon="1"]:hover {
+  background: var(--surface-raised) !important;
+  color: var(--text);
+}
+
+[data-goto-tabs] {
+  display: flex;
+  gap: 2px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--line);
+  border-bottom: none;
+  flex-shrink: 0;
+  background: var(--surface);
+}
+
+[data-goto-tabs] button {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+[data-goto-tabs] button:hover {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+[data-goto-tabs] button[data-active="1"] {
+  background: var(--surface-raised);
+  border-color: var(--line);
+  color: var(--text);
+  font-weight: 700;
+}
+
+[data-goto-tabs] button[data-active="1"] em {
+  background: var(--accent-quiet);
+  color: var(--accent);
+}
+
+[data-goto-tabs] button em {
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--surface-sunken);
+  opacity: 0.95;
+}
+
+[data-goto-search] {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 8px 0;
+  padding: 0 8px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-sunken);
+  flex-shrink: 0;
+}
+
+[data-goto-search]:focus-within {
+  border-color: color-mix(in oklab, var(--accent) 45%, var(--line));
+  background: var(--surface-raised);
+}
+
+[data-goto-search] input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px !important;
+  font-weight: 550 !important;
+  padding: 0;
+}
+
+[data-goto-search] input::placeholder {
+  color: var(--text-faint);
+}
+
+[data-goto-search] > button {
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+[data-goto-search] > button:hover {
+  color: var(--text);
+}
+
+[data-goto-body] {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 0;
+}
+
+[data-goto-empty] {
+  padding: 22px 14px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--text-faint);
+  line-height: 1.45;
+}
+
+[data-goto-empty] em {
+  display: block;
+  margin-top: 4px;
+  font-style: normal;
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+/* Row: [dot] title/badge … time  actions — click whole row to jump.
+   Meta + acts columns stay reserved so price rows (no time) don’t pull pins left. */
+[data-goto-row] {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) minmax(0, 4.75em) 48px;
+  align-items: center;
+  column-gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 5px 10px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  position: relative;
+  cursor: default;
+  box-sizing: border-box;
+}
+
+[data-goto-row]:hover {
+  background: var(--surface-raised);
+}
+
+[data-goto-row]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+[data-goto-dot] {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dot, var(--accent));
+  flex-shrink: 0;
+  justify-self: center;
+}
+
+[data-goto-row-main] {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+[data-goto-row-main] > strong {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.25;
+}
+
+[data-goto-row-main] > em {
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-faint);
+  line-height: 1.2;
+}
+
+[data-goto-row-main] > em[data-tone="repeat"] {
+  color: var(--accent);
+}
+
+[data-goto-meta] {
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  white-space: nowrap;
+  letter-spacing: -0.01em;
+  justify-self: end;
+  text-align: right;
+  min-width: 0;
+}
+
+[data-goto-meta]:empty {
+  visibility: hidden;
+}
+
+[data-goto-row-acts] {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0;
+  width: 48px;
+  justify-self: end;
+}
+
+[data-goto-row-acts] [data-gotoact] {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--text-faint);
+  opacity: 0;
+  transition: opacity var(--motion), color var(--motion), background var(--motion);
+}
+
+[data-goto-row]:hover [data-goto-row-acts] [data-gotoact],
+[data-goto-row-acts] [data-gotoact][data-pin="1"] {
+  opacity: 1;
+}
+
+[data-goto-row-acts] [data-gotoact]:hover {
+  background: var(--surface-sunken);
+  color: var(--text);
+}
+
+[data-goto-row-acts] [data-gotoact][data-pin="1"] {
+  color: var(--accent);
+}
+
+[data-goto-row-acts] [data-gotoact][data-danger]:hover {
+  color: var(--down);
+  background: color-mix(in oklab, var(--down) 12%, var(--surface));
+}
+
+[data-goto-foot-hint] {
+  margin: 0;
+  padding: 6px 10px;
+  border-top: 1px solid var(--line);
+  font-size: 10px;
+  font-weight: 550;
+  color: var(--text-faint);
+  flex-shrink: 0;
+  line-height: 1.3;
+}
+
+/* Tabs sit under the hint — drop the hint’s bottom border so the stack isn’t double-ruled */
+[data-goto-v2="1"] > [data-goto-foot-hint] + [data-goto-tabs] {
+  border-top-color: var(--line);
+}
+
+/* Create */
+[data-goto-create] {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+[data-goto-subtabs] {
+  display: flex;
+  gap: 2px;
+  padding: 8px 8px 0;
+}
+
+[data-goto-subtabs] button {
+  flex: 1;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+[data-goto-subtabs] button:hover {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+[data-goto-subtabs] button[data-active="1"] {
+  background: var(--accent-quiet);
+  border-color: color-mix(in oklab, var(--accent) 28%, var(--line));
+  color: var(--accent);
+  font-weight: 700;
+}
+
+[data-goto-form] {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+[data-goto-field] {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+[data-goto-field] > span {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+[data-goto-field] > span em {
+  font-style: normal;
+  font-weight: 550;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  opacity: 0.8;
+}
+
+[data-goto-field-row] {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+[data-goto-input-wrap] {
+  display: flex;
+  align-items: stretch;
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+
+[data-goto-input-wrap][data-open="1"] {
+  border-color: color-mix(in oklab, var(--accent) 50%, var(--line));
+  background: var(--surface-raised);
+}
+
+[data-goto-input-wrap] input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding: 0 8px;
+}
+
+[data-goto-input-wrap] input::placeholder {
+  color: var(--text-faint);
+  font-weight: 550;
+}
+
+[data-goto-input-wrap] [data-goto-clear],
+[data-goto-input-wrap] [data-goto-chev] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 7px;
+  border: none;
+  border-left: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-muted);
+  align-self: stretch;
+}
+
+[data-goto-input-wrap] [data-goto-clear]:hover,
+[data-goto-input-wrap] [data-goto-chev]:hover {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+[data-goto-name-row] {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+[data-goto-name-row] input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-sunken);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 550;
+  outline: none;
+}
+
+[data-goto-name-row] input:focus {
+  border-color: color-mix(in oklab, var(--accent) 50%, var(--line));
+  background: var(--surface-raised);
+}
+
+[data-goto-name-row] input::placeholder {
+  color: var(--text-faint);
+}
+
+[data-goto-hint] {
+  margin: -2px 0 0;
+  font-size: 10px;
+  font-weight: 550;
+  color: var(--text-faint);
+  line-height: 1.35;
+}
+
+[data-goto-chips] {
+  display: flex;
+  gap: 3px;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+}
+
+[data-goto-chips] button {
+  flex: 1;
+  height: 26px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+[data-goto-chips] button:hover {
+  color: var(--text);
+}
+
+[data-goto-chips] button[data-active="1"] {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-weight: 700;
+}
+
+[data-goto-actions] {
+  display: flex;
+  gap: 6px;
+}
+
+[data-goto-actions] button {
+  flex: 1;
+  height: 30px;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+[data-goto-actions] button[data-kind="add"] {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--text-muted);
+}
+
+[data-goto-actions] button[data-kind="add"]:hover {
+  background: var(--surface-raised);
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+
+[data-goto-actions] button[data-kind="go"] {
+  background: var(--cta-bg);
+  border: 1px solid var(--cta-bg);
+  color: var(--cta-fg);
+  box-shadow: none;
+}
+
+[data-goto-actions] button[data-kind="go"]:hover {
+  background: var(--cta-hover);
+  border-color: var(--cta-hover);
+}
+
+[data-goto-price-wrap] {
+  display: flex;
+  align-items: stretch;
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+
+[data-goto-price-wrap] input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  padding: 0 10px;
+}
+
+[data-goto-price-spin] {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--line);
+  width: 26px;
+}
+
+[data-goto-price-spin] button {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 8px;
+  padding: 0;
+}
+
+[data-goto-price-spin] button:hover {
+  color: var(--accent);
+  background: var(--surface-raised);
+}
+
+[data-goto-price-spin] i {
+  height: 1px;
+  background: var(--line);
+  display: block;
+}
+
+/* Calendar + time popovers */
+[data-goto-cal],
+[data-goto-time] {
+  background: var(--surface) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: var(--radius-panel, 8px) !important;
+  box-shadow: none !important;
+  filter: none !important;
+  font-family: var(--font-ui) !important;
+  color: var(--text);
+  overflow: hidden;
+}
+
+[data-goto-cal] {
+  width: 224px;
+}
+
+[data-goto-cal] [data-gcal-head],
+[data-goto-time] [data-gtime-head] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 10px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+[data-goto-cal] [data-gcal-head] > strong,
+[data-goto-time] [data-gtime-head] > strong {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+[data-goto-cal] [data-gcal-head] > button {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  padding: 0;
+}
+
+[data-goto-cal] [data-gcal-head] > button:hover {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+[data-goto-cal] [data-gcal-nav] {
+  display: flex;
+  align-items: center;
+  padding: 4px 4px;
+  border-bottom: 1px solid var(--line);
+  gap: 2px;
+}
+
+[data-goto-cal] [data-gcal-nav] > button {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+[data-goto-cal] [data-gcal-nav] > button:hover {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+[data-goto-cal] [data-gcal-nav-labels] {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+[data-goto-cal] [data-gcal-nav-labels] > button {
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+[data-goto-cal] [data-gcal-nav-labels] > button:hover {
+  background: var(--surface-raised);
+}
+
+[data-goto-cal] [data-gcal-nav-labels] > button[data-active="1"] {
+  background: var(--accent-quiet);
+  border-color: color-mix(in oklab, var(--accent) 28%, var(--line));
+  color: var(--accent);
+}
+
+[data-goto-cal] [data-gcal-dow] {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  padding: 6px 6px 2px;
+}
+
+[data-goto-cal] [data-gcal-dow] > span {
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-faint);
+}
+
+[data-goto-cal] [data-gcal-grid] {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  padding: 0 6px 8px;
+}
+
+[data-goto-cal] [data-gcal-grid] > button {
+  min-height: 28px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+}
+
+[data-goto-cal] [data-gcal-grid] > button:hover:not(:disabled) {
+  background: var(--surface-raised);
+}
+
+[data-goto-cal] [data-gcal-grid] > button[data-sel="1"] {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}
+
+[data-goto-cal] [data-gcal-grid] > button:disabled {
+  opacity: 0.28;
+  cursor: not-allowed;
+}
+
+[data-goto-cal] [data-gcal-months],
+[data-goto-cal] [data-gcal-years] {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3px;
+  padding: 8px;
+}
+
+[data-goto-cal] [data-gcal-months] > button,
+[data-goto-cal] [data-gcal-years] > button {
+  min-height: 32px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 550;
+}
+
+[data-goto-cal] [data-gcal-months] > button:hover,
+[data-goto-cal] [data-gcal-years] > button:hover {
+  background: var(--surface-raised);
+}
+
+[data-goto-cal] [data-gcal-months] > button[data-sel="1"],
+[data-goto-cal] [data-gcal-years] > button[data-sel="1"] {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}
+
+[data-goto-time] {
+  width: auto;
+  min-width: 100px;
+}
+
+[data-goto-time] [data-gtime-body] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 10px 10px 8px;
+}
+
+[data-goto-time] [data-gtime-spin] {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+[data-goto-time] [data-gtime-spin] > button {
+  width: 28px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 10px;
+  line-height: 1;
+}
+
+[data-goto-time] [data-gtime-spin] > button:hover {
+  background: var(--surface-raised);
+  color: var(--accent);
+}
+
+[data-goto-time] [data-gtime-spin] > strong {
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 22px;
+  text-align: center;
+  color: var(--text);
+}
+
+[data-goto-time] [data-gtime-sep] {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+[data-goto-time] [data-gtime-ampm] {
+  margin-left: 2px;
+  height: 26px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+[data-goto-time] [data-gtime-ampm]:hover {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+[data-goto-time] [data-gtime-ampm][data-active="1"] {
+  background: var(--accent-quiet);
+  border-color: color-mix(in oklab, var(--accent) 28%, var(--line));
+  color: var(--accent);
+}
+
+[data-goto-time] [data-gtime-done] {
+  display: block;
+  width: calc(100% - 16px);
+  margin: 0 8px 8px;
+  height: 28px;
+  border: 1px solid var(--cta-bg);
+  border-radius: 6px;
+  background: var(--cta-bg);
+  color: var(--cta-fg);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+[data-goto-time] [data-gtime-done]:hover {
+  background: var(--cta-hover);
+  border-color: var(--cta-hover);
+}

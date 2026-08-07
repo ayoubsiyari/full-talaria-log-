@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <script>window.__TALARIA_CHART_BUILD_ID='20260804b127';try{console.info('[Talaria] chart build',window.__TALARIA_CHART_BUILD_ID);}catch(_){}</script>
     <!-- PO attribution: visible badge + console one-liner window.__TALARIA_CHART_BUILD_ID -->
-    <style>#talaria-build-badge{position:fixed;bottom:4px;left:4px;z-index:99999;font:11px/1.2 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:rgba(232,234,237,.55);pointer-events:none;user-select:all;letter-spacing:.02em}</style>
+    <style>#talaria-build-badge{display:none!important}</style>
     <title>Talaria — V9 Live</title>
     <link rel="manifest" href="/chart/manifest.webmanifest?v=20260804b127" />
     <link rel="icon" type="image/png" sizes="32x32" href="/chart/pwa/icon-32.png?v=20260804b127" />
@@ -802,11 +802,11 @@
         }
         #chart-container #chartWrapper .nav-integrity-badge.enabled .nav-badge-icon,
         #panels-container .nav-integrity-badge.enabled .nav-badge-icon {
-            color: #f87171;
+            color: #22c55e;
         }
         #chart-container #chartWrapper .nav-integrity-badge.disabled .nav-badge-icon,
         #panels-container .nav-integrity-badge.disabled .nav-badge-icon {
-            color: #4ade80;
+            color: #ef4444;
         }
         /* Replay rollback hover — shell matches path hint / bottom toasts (Exo 2, #0F1119, left stripe). Bottom aligned via JS (__TalariaToastStack.anchorBottomPx) when present. */
         #chart-container #chartWrapper .nav-badge-tooltip,
@@ -1612,7 +1612,7 @@
     <script defer src="/chart/modules/chart-data-pipeline.js?v=20260804b127"></script>
 
     <!-- Bottom toast stack (shared showNotification + path hint); must load before chart.js. -->
-    <script defer src="/chart/modules/talaria-toast-stack.js?v=20260804b127"></script>
+    <script defer src="/chart/modules/talaria-toast-stack.js?v=20260806obsidian2"></script>
     <script defer src="/chart/modules/module-presence-runtime.js?v=20260804b127"></script>
     <!-- Session day/week boundaries (FX 17:00 NY). After registry + presence; before chart.js. -->
     <script defer src="/chart/modules/session-calendar.js?v=20260804b127"></script>
@@ -1655,7 +1655,8 @@
     <!-- Multi-panel manager removed — single-chart mode only. -->
     <!-- Economic calendar: Finnhub via /api + chart time-axis markers (__economicCalendarForChart). -->
     <script defer src="/chart/modules/economic-news-sidebar.js?v=20260804b127"></script>
-  <script type="module" crossorigin src="/chart/dist-v9/assets/talaria-v9-live.js?v=20260804b127"></script>
+  <script type="module" crossorigin src="/chart/dist-v9/assets/talaria-v9-live.js"></script>
+  <link rel="stylesheet" crossorigin href="/chart/dist-v9/assets/indexDF7sBcHY.css">
 </head>
 <body>
     <div id="talaria-build-badge" aria-label="chart build id"></div>

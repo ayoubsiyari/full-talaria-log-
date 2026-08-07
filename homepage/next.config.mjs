@@ -99,6 +99,10 @@ const nextConfig = {
     ];
     if (JOURNAL_BACKEND) {
       afterFiles.unshift(
+        /* Auth + journal must hit Flask — not the chart backend catch-all `/api/:path*`. */
+        { source: "/api/auth/:path*",       destination: `${JOURNAL_BACKEND}/api/auth/:path*` },
+        { source: "/api/notifications",     destination: `${JOURNAL_BACKEND}/api/notifications` },
+        { source: "/api/notifications/:path*", destination: `${JOURNAL_BACKEND}/api/notifications/:path*` },
         { source: "/journal/api/:path*",    destination: `${JOURNAL_BACKEND}/api/:path*` },
         { source: "/api/journal/:path*",    destination: `${JOURNAL_BACKEND}/api/journal/:path*` },
       );

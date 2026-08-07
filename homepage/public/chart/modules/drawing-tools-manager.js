@@ -8775,9 +8775,9 @@ class DrawingToolsManager {
                     if (self.chart?.canvas) self.chart.canvas.style.cursor = 'ew-resize';
                     if (self.chart?.svg?.node()) self.chart.svg.node().style.cursor = 'ew-resize';
                 } else if (isVolumeProfileLevelLineTarget) {
-                    drawing.group.style('cursor', 'pointer');
-                    if (self.chart?.canvas) self.chart.canvas.style.cursor = 'pointer';
-                    if (self.chart?.svg?.node()) self.chart.svg.node().style.cursor = 'pointer';
+                    drawing.group.style('cursor', 'default');
+                    if (self.chart?.canvas) self.chart.canvas.style.cursor = 'default';
+                    if (self.chart?.svg?.node()) self.chart.svg.node().style.cursor = 'default';
                 } else if (self.isVolumeProfileToolType(drawing.type)) {
                     const srcEvent = event && (event.sourceEvent || event);
                     let panBlockCursor = 'default';

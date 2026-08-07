@@ -2,7 +2,7 @@
 
 import React from "react";
 
-const F = "'Exo 2', sans-serif";
+const F = '"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif';
 
 export default function DashboardAccessSkeleton({ isArabic }: { isArabic: boolean }) {
   const label = isArabic ? "جارٍ التحقق من صلاحية الوصول…" : "Verifying your access…";
@@ -40,8 +40,8 @@ export default function DashboardAccessSkeleton({ isArabic }: { isArabic: boolea
         style={{
           width: 32,
           height: 32,
-          border: "2px solid rgba(74,106,255,0.2)",
-          borderTopColor: "#4A6AFF",
+          border: "2px solid rgba(48,144,255,0.2)",
+          borderTopColor: "#3090FF",
           borderRadius: "50%",
           animation: "db-spin 0.75s linear infinite",
         }}

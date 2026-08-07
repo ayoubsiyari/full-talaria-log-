@@ -1,5 +1,5 @@
 /**
- * Talaria bottom toast stack — same shell as path hint / V9 toolbar tips (Exo 2, #0F1119, left accent).
+ * Talaria bottom toast stack — Obsidian chrome (flat surface, thin border, no glow).
  * Items anchor just above the chart time axis and stack upward so nothing overlaps.
  *
  * API: window.__TalariaToastStack.show(message, opts), .pushElement(el, opts),
@@ -10,13 +10,69 @@
     const doc = root.document;
     if (!doc) return;
 
-    const GAP = 10;
+    const GAP = 8;
     const Z = 100060;
+    const CSS_ID = 'tlr-toast-obsidian-css';
 
     /** @type {Map<string, { el: HTMLElement }>} */
     const pinned = new Map();
     /** @type {{ el: HTMLElement, t: ReturnType<typeof setTimeout>|null, replaceKey?: string }[]} */
     const transient = [];
+
+    function ensureToastCss() {
+        // Always refresh — kill legacy left-rail glow / Exo toast skins.
+        const prev = doc.getElementById(CSS_ID);
+        if (prev) prev.remove();
+        const style = doc.createElement('style');
+        style.id = CSS_ID;
+        style.textContent = [
+            '.tlr-toast-stack-msg,',
+            '.chart-notification.tlr-toast-stack-msg,',
+            '.chart-toast-tooltip.tlr-toast-stack-msg{',
+            'display:inline-flex!important;',
+            'align-items:center!important;',
+            'gap:8px!important;',
+            'min-height:28px!important;',
+            'background:var(--surface-raised,#141416)!important;',
+            'border:1px solid var(--line,rgba(162,161,205,0.22))!important;',
+            'border-radius:6px!important;',
+            'box-shadow:none!important;',
+            'filter:none!important;',
+            'outline:none!important;',
+            'text-shadow:none!important;',
+            "font-family:var(--font-ui,\"Helvetica Now\",\"Helvetica Neue\",Helvetica,Arial,sans-serif)!important;",
+            'font-size:12px!important;',
+            'font-weight:600!important;',
+            'font-style:normal!important;',
+            'letter-spacing:0!important;',
+            'line-height:1.2!important;',
+            'color:var(--text-muted,rgba(244,244,245,0.72))!important;',
+            'padding:0 12px!important;',
+            'max-width:min(92vw,360px)!important;',
+            'box-sizing:border-box!important;',
+            '}',
+            '.tlr-toast-stack-msg::before,',
+            '.tlr-toast-stack-msg::after{',
+            'content:none!important;',
+            'display:none!important;',
+            '}',
+            'body.light-mode .tlr-toast-stack-msg{',
+            'background:#FFFFFF!important;',
+            'border-color:rgba(0,0,0,0.12)!important;',
+            'color:rgba(0,0,0,0.72)!important;',
+            '}',
+            /* Tone via text only — never a colored border rail */
+            '.tlr-toast-stack-msg[data-toast-type="success"]{color:var(--up,#00d4a1)!important;}',
+            '.tlr-toast-stack-msg[data-toast-type="error"]{color:var(--down,#e53935)!important;}',
+            '.tlr-toast-stack-msg[data-toast-type="warning"]{color:var(--warn,#F5A020)!important;}',
+            '.tlr-toast-stack-msg[data-toast-type="info"]{color:var(--text,rgba(244,244,245,0.92))!important;}',
+            'body.light-mode .tlr-toast-stack-msg[data-toast-type="success"]{color:#059669!important;}',
+            'body.light-mode .tlr-toast-stack-msg[data-toast-type="error"]{color:#DC2626!important;}',
+            'body.light-mode .tlr-toast-stack-msg[data-toast-type="warning"]{color:#D97706!important;}',
+            'body.light-mode .tlr-toast-stack-msg[data-toast-type="info"]{color:rgba(0,0,0,0.88)!important;}',
+        ].join('');
+        (doc.head || doc.documentElement).appendChild(style);
+    }
 
     function armTransientDismiss(row, duration) {
         if (!row || !row.el) return;
@@ -28,15 +84,22 @@
         row.t = setTimeout(() => {
             try {
                 el.style.opacity = '0';
-                el.style.transition = 'opacity 0.18s ease';
+                el.style.transition = 'opacity 0.16s ease';
             } catch (_) { /* ignore */ }
-            setTimeout(() => removeTransientEl(el), 200);
+            setTimeout(() => removeTransientEl(el), 180);
         }, duration);
+    }
+
+    function sanitizeToastMessage(message) {
+        return String(message != null ? message : '')
+            .replace(/\s*[✓✔❌]\s*$/u, '')
+            .replace(/^\s*[✓✔❌]\s*/u, '')
+            .trim();
     }
 
     function setToastMessage(el, message) {
         if (!el) return;
-        const text = String(message != null ? message : '');
+        const text = sanitizeToastMessage(message);
         for (let i = 0; i < el.childNodes.length; i++) {
             const n = el.childNodes[i];
             if (n && n.nodeType === 3) {
@@ -45,28 +108,6 @@
             }
         }
         el.appendChild(doc.createTextNode(text));
-    }
-
-    function theme() {
-        const light = doc.body && doc.body.classList.contains('light-mode');
-        return {
-            light,
-            bg: light ? '#E8EBF6' : '#0F1119',
-            brH: light ? 'rgba(0,5,40,0.26)' : 'rgba(140,160,255,0.12)',
-            tx: light ? 'rgba(0,0,0,0.92)' : 'rgba(255,255,255,0.92)',
-            acL: light ? '#2F55E8' : '#4A6AFF',
-        };
-    }
-
-    function accentForType(type, th) {
-        const t = type && ['success', 'error', 'warning', 'info'].includes(type) ? type : 'info';
-        const m = {
-            success: th.light ? '#059669' : '#22c55e',
-            error: '#ef4444',
-            warning: '#f59e0b',
-            info: th.acL,
-        };
-        return m[t];
     }
 
     function baseBottomPx() {
@@ -156,6 +197,7 @@
 
         setPinned(key, el) {
             if (!key || !el) return function () {};
+            ensureToastCss();
             const prev = pinned.get(key);
             if (prev && prev.el && prev.el !== el) {
                 try {
@@ -190,6 +232,7 @@
          * @returns {function} dismiss
          */
         pushElement(el, opts) {
+            ensureToastCss();
             const o = opts || {};
             const duration = Number.isFinite(Number(o.duration)) ? Number(o.duration) : 2400;
             const replaceKey = o.replaceKey != null && o.replaceKey !== '' ? String(o.replaceKey) : '';
@@ -220,21 +263,20 @@
         },
 
         show(message, opts) {
+            ensureToastCss();
             const o = opts || {};
-            const th = theme();
-            const type = o.type || 'info';
-            const stripeColor = accentForType(type, th);
+            const type = o.type && ['success', 'error', 'warning', 'info'].includes(o.type) ? o.type : 'info';
             const dur = Number.isFinite(Number(o.duration))
                 ? Number(o.duration)
                 : (Number.isFinite(Number(o.timeoutMs)) ? Number(o.timeoutMs) : 2200);
             const replaceKey = o.replaceKey != null && o.replaceKey !== '' ? String(o.replaceKey) : '';
 
-            // Holding Shift+Right (etc.) fires many identical toasts — keep one and refresh its timer.
             if (replaceKey) {
                 const existing = transient.find((x) => x && x.replaceKey === replaceKey && x.el);
                 if (existing) {
                     setToastMessage(existing.el, message);
                     try {
+                        existing.el.setAttribute('data-toast-type', type);
                         existing.el.style.opacity = '1';
                     } catch (_) { /* ignore */ }
                     armTransientDismiss(existing, dur);
@@ -252,43 +294,18 @@
             const wrap = doc.createElement('div');
             wrap.className = 'tlr-toast-stack-msg';
             wrap.setAttribute('role', 'status');
+            wrap.setAttribute('data-toast-type', type);
             if (replaceKey) wrap.setAttribute('data-toast-key', replaceKey);
 
-            Object.assign(wrap.style, {
-                background: th.bg,
-                border: '1px solid ' + th.brH,
-                color: th.tx,
-                fontFamily: "'Exo 2',sans-serif",
-                fontSize: '11px',
-                fontWeight: '600',
-                padding: '5px 11px 5px 14px',
-                boxShadow: '0 4px 16px rgba(0,0,0,0.55)',
-                maxWidth: 'min(92vw, 380px)',
-                whiteSpace: 'normal',
-                wordBreak: 'break-word',
-                textAlign: 'center',
-                boxSizing: 'border-box',
-                pointerEvents: typeof o.onClick === 'function' ? 'auto' : 'none',
-                lineHeight: '1.35',
-                position: 'relative',
-            });
+            wrap.style.whiteSpace = 'normal';
+            wrap.style.wordBreak = 'break-word';
+            wrap.style.textAlign = 'left';
+            wrap.style.pointerEvents = typeof o.onClick === 'function' ? 'auto' : 'none';
 
-            const stripe = doc.createElement('div');
-            Object.assign(stripe.style, {
-                position: 'absolute',
-                left: '0',
-                top: '0',
-                bottom: '0',
-                width: '3px',
-                pointerEvents: 'none',
-                background: 'linear-gradient(180deg,transparent,' + stripeColor + ',transparent)',
-            });
-            wrap.appendChild(stripe);
-            wrap.appendChild(doc.createTextNode(String(message != null ? message : '')));
+            wrap.appendChild(doc.createTextNode(sanitizeToastMessage(message)));
 
             if (typeof o.onClick === 'function') {
                 wrap.style.cursor = 'default';
-                if (o.title) wrap.title = String(o.title);
                 wrap.addEventListener('click', function () {
                     try {
                         o.onClick();
@@ -320,5 +337,6 @@
     root.addEventListener('resize', scheduleRelayout);
     root.addEventListener('scroll', scheduleRelayout, true);
 
+    ensureToastCss();
     root.__TalariaToastStack = api;
 })(typeof window !== 'undefined' ? window : globalThis);

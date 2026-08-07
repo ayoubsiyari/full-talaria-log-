@@ -1481,7 +1481,7 @@ export function SessionAnalyticsPanel({
   return (
     <div
       className={`${spaceMono.variable} bt-os-dashboard${variant === "compact" ? " bt-os-dashboard--compare-col" : ""}`}
-      style={{ fontFamily: "'Exo 2', sans-serif" }}
+      style={{ fontFamily: '"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif' }}
     >
 
       {whatIfError ? (

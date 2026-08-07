@@ -1,0 +1,382 @@
+/* HeroUI chrome kit — one geometry language for every chrome surface.
+   Loaded after chrome-tokens.css. Canvas paint paths are untouched. */
+
+/* ── Forced radii: kill 90° corners on chrome ── */
+[data-v9-chrome] button,
+[data-v9-chrome] [role="button"],
+[data-v9-chrome] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+[data-v9-chrome] select,
+[data-v9-chrome] textarea {
+  border-radius: var(--radius-control) !important;
+}
+
+[data-v9-chrome] [data-brand-btn="primary"] {
+  border-radius: var(--radius-cta) !important;
+}
+
+/* Windows, flyouts, floating bars — same panel radius */
+[data-chrome-win],
+[data-indicators-panel],
+[data-settings-panel],
+[data-profile-panel],
+[data-ind-sett],
+[data-tlbar],
+[data-pinnedbar],
+[data-v9-chrome][data-sdrop="1"],
+[data-v9-app] [data-sdrop="1"],
+.chart-context-menu[data-chrome-win] {
+  border-radius: var(--radius-panel) !important;
+  border: 1px solid var(--line) !important;
+  background: var(--surface) !important;
+  overflow: hidden;
+  box-shadow: none !important;
+}
+
+/* Rail tool hits — soft, never sharp 4px leftovers */
+[data-v9-rail] button {
+  border-radius: var(--radius-control) !important;
+}
+
+/* Floating quick-bar / pin-bar chips */
+[data-tlbar] [data-v9-tl-btn],
+[data-pinnedbar] [data-pin-chip] {
+  border-radius: var(--radius-control) !important;
+}
+
+/* Active chip: quiet fill, no glow underline */
+[data-tlbar] [data-v9-tl-btn][data-active="1"],
+[data-pinnedbar] [data-pin-chip][data-active="1"],
+[data-v9-rail] button[data-active="1"] {
+  background: var(--accent-quiet) !important;
+  color: var(--accent) !important;
+}
+
+/* Kill legacy blue borders / gold accent strips on bars */
+[data-tlbar] > [data-chrome-accent],
+[data-pinnedbar] > [data-chrome-accent] {
+  display: none !important;
+}
+
+/* Window chrome */
+[data-chrome-win] [data-win-header],
+[data-indicators-panel] [data-win-header],
+[data-ind-v2] [data-win-header],
+[data-tool-sett-v2] [data-win-header],
+[data-order-v2] [data-win-header],
+[data-settings-panel] [data-win-header],
+[data-profile-panel] [data-win-header],
+[data-ind-sett] [data-win-header] {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+  cursor: move !important;
+  user-select: none;
+  background: var(--surface);
+}
+
+[data-chrome-win] [data-win-icon],
+[data-indicators-panel] [data-win-icon],
+[data-ind-v2] [data-win-icon],
+[data-tool-sett-v2] [data-win-icon],
+[data-order-v2] [data-win-icon],
+[data-settings-panel] [data-win-icon] {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-quiet);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+[data-chrome-win] [data-win-title],
+[data-indicators-panel] [data-win-title],
+[data-ind-v2] [data-win-title],
+[data-tool-sett-v2] [data-win-title],
+[data-order-v2] [data-win-title],
+[data-settings-panel] [data-win-title] {
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+}
+
+[data-chrome-win] [data-win-foot],
+[data-indicators-panel] [data-win-foot],
+[data-ind-v2] [data-win-foot],
+[data-tool-sett-v2] [data-win-foot],
+[data-settings-panel] [data-win-foot] {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--line);
+  flex-shrink: 0;
+  background: var(--surface);
+}
+
+/* Menu rows — unified list grammar */
+[data-sdrop="1"] [data-menu-row],
+[data-v9-chrome] [data-menu-row] {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  margin: 2px 6px;
+  border-radius: 6px !important;
+  cursor: default;
+  color: var(--text-muted);
+  transition: background var(--motion), color var(--motion);
+}
+[data-sdrop="1"] [data-menu-row]:hover,
+[data-v9-chrome] [data-menu-row]:hover {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+[data-sdrop="1"] [data-menu-row][data-active="1"],
+[data-v9-chrome] [data-menu-row][data-active="1"] {
+  background: var(--accent-quiet);
+  color: var(--accent);
+}
+
+[data-sdrop="1"] [data-menu-head] {
+  padding: 10px 14px 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* ── Template control — shared icon trigger + menu (Indicators, tools, order) ── */
+[data-v9-chrome] [data-tpl-trigger],
+[data-v9-app] [data-tpl-trigger] {
+  position: relative;
+  width: var(--icon-hit, 32px);
+  height: var(--icon-hit, 32px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--radius-control, 6px);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: default;
+  transition: background var(--motion), color var(--motion);
+}
+[data-v9-chrome] [data-tpl-trigger]:hover,
+[data-v9-app] [data-tpl-trigger]:hover {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+[data-v9-chrome] [data-tpl-trigger][data-open="1"],
+[data-v9-chrome] [data-tpl-trigger][aria-expanded="true"],
+[data-v9-app] [data-tpl-trigger][data-open="1"],
+[data-v9-app] [data-tpl-trigger][aria-expanded="true"] {
+  background: var(--accent-quiet);
+  color: var(--accent);
+}
+[data-v9-chrome] [data-tpl-trigger] [data-tpl-dot],
+[data-v9-app] [data-tpl-trigger] [data-tpl-dot] {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  pointer-events: none;
+}
+[data-tpl-menu] {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 12000;
+  width: 232px;
+  padding: 6px 0 8px;
+  box-sizing: border-box;
+  background: var(--surface) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: var(--radius-panel, 8px) !important;
+  box-shadow: none !important;
+  font-family: var(--font-ui);
+  overflow: hidden;
+  cursor: default;
+}
+[data-tpl-menu] [data-tpl-head] {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 14px 8px;
+}
+[data-tpl-menu] [data-tpl-head] strong {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.01em;
+}
+[data-tpl-menu] [data-tpl-head] em {
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+}
+[data-tpl-menu] [data-tpl-rule] {
+  height: 1px;
+  margin: 4px 10px;
+  background: var(--line);
+}
+[data-tpl-menu] [data-tpl-empty] {
+  padding: 14px 14px 12px;
+  text-align: left;
+}
+[data-tpl-menu] [data-tpl-empty] strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+[data-tpl-menu] [data-tpl-empty] em {
+  display: block;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--text-faint);
+}
+[data-tpl-menu] [data-tpl-save] {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+}
+[data-tpl-menu] [data-tpl-save] input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+[data-tpl-menu] [data-tpl-row-meta] {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+[data-tpl-menu] [data-tpl-row-meta] strong {
+  font-size: 12px;
+  font-weight: 600;
+  color: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-tpl-menu] [data-tpl-row-meta] em {
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 500;
+  color: var(--text-faint);
+}
+[data-tpl-menu] [data-menu-row] [data-tpl-ico] {
+  width: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: inherit;
+  opacity: 0.85;
+}
+
+/* Segment tabs inside windows */
+[data-win-tabs] {
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  margin: 10px 12px 0;
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+[data-win-tabs]::-webkit-scrollbar { display: none; }
+[data-win-tabs] [data-win-tab] {
+  flex: 0 0 auto;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid transparent !important;
+  border-radius: 5px !important;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: default;
+  white-space: nowrap;
+  transition: background var(--motion), color var(--motion), border-color var(--motion);
+}
+[data-win-tabs] [data-win-tab][data-active="1"] {
+  background: var(--surface) !important;
+  border-color: var(--line-strong) !important;
+  color: var(--text) !important;
+}
+
+/* Search field inside windows */
+[data-win-search] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 12px;
+  padding: 0 12px;
+  height: 36px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  cursor: text;
+}
+[data-win-search] input {
+  flex: 1;
+  border: none !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+  cursor: text !important;
+}
+
+/* Hide legacy top gradient strip inside windows */
+[data-indicators-panel] > div:first-child[style*="height: 2px"],
+[data-settings-panel] > div:first-child[style*="height: 2px"],
+[data-profile-panel] > div:first-child[style*="height: 2px"] {
+  display: none !important;
+}
+
+/* Drag/resize capture layers must stay invisible — never inherit panel surface rules. */
+[data-v9-drag-layer],
+[data-v9-resize-layer] {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  overflow: visible !important;
+}
+
+/* Icon stroke consistency */
+[data-v9-chrome] svg[data-chrome-icon="1"] {
+  display: block;
+  flex-shrink: 0;
+}

@@ -1,3 +1,4 @@
+from __future__ import annotations
 # routes/journal/brokers.py
 """
 Broker connection management: connect, list, delete, sync.

@@ -1,0 +1,179 @@
+/* Obsidian product bridge — dashboard / sessions / trades / journal / profile.
+   Loaded after chrome-tokens.css + chrome-kit.css under [data-v9-app]. */
+
+[data-v9-app] {
+  font-family: var(--font-ui);
+  color: var(--text);
+  background: var(--bg);
+  min-height: 100%;
+  color-scheme: dark;
+}
+
+[data-v9-app][data-chrome-theme="light"],
+[data-v9-app][data-chrome-theme="light-soft"] {
+  color-scheme: light;
+}
+
+/* Bridge shadcn / Tailwind HSL tokens used by dashboard siblings */
+[data-v9-app] {
+  --background: 0 0% 0%;
+  --foreground: 240 5% 96%;
+  --card: 240 6% 4%;
+  --card-foreground: 240 5% 96%;
+  --popover: 240 6% 4%;
+  --popover-foreground: 240 5% 96%;
+  --primary: 214 100% 59%; /* #3090FF */
+  --primary-foreground: 0 0% 0%;
+  --secondary: 210 48% 33%; /* slate-ish */
+  --secondary-foreground: 0 0% 100%;
+  --muted: 240 5% 8%;
+  --muted-foreground: 240 6% 62%;
+  --accent: 214 100% 59%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 8 100% 66%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 240 20% 18%;
+  --input: 240 20% 18%;
+  --ring: 214 100% 59%;
+  --radius: 6px;
+}
+
+[data-v9-app][data-chrome-theme="light"] {
+  --background: 248 100% 98%;
+  --foreground: 240 6% 4%;
+  --card: 0 0% 100%;
+  --card-foreground: 240 6% 4%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 6% 4%;
+  --primary: 214 80% 51%;
+  --primary-foreground: 0 0% 100%;
+  --muted: 248 40% 94%;
+  --muted-foreground: 215 20% 35%;
+  --border: 220 20% 88%;
+  --input: 220 20% 88%;
+}
+
+/* Shell class remaps (dashboard-shell.css) */
+[data-v9-app] .db-layout {
+  background: var(--bg) !important;
+  color: var(--text) !important;
+  font-family: var(--font-ui) !important;
+}
+[data-v9-app] .db-topbar,
+[data-v9-app] .db-brand-mark {
+  background: var(--surface-raised) !important;
+  border-color: var(--line) !important;
+  box-shadow: none !important;
+}
+[data-v9-app] .db-brand-mark {
+  background: var(--accent-quiet) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 6px !important;
+}
+[data-v9-app] .db-nav-link {
+  border-color: var(--line) !important;
+  border-radius: 6px !important;
+  color: var(--text-faint) !important;
+}
+[data-v9-app] .db-nav-link:hover {
+  color: var(--text) !important;
+  border-color: var(--line-strong) !important;
+  background: var(--surface-raised) !important;
+}
+[data-v9-app] .db-nav-link--active {
+  color: var(--accent) !important;
+  border-color: color-mix(in oklab, var(--accent) 40%, transparent) !important;
+  background: var(--accent-quiet) !important;
+}
+
+/* Profile page tokens */
+[data-v9-app] .prof-settings {
+  --prof-bg: var(--bg);
+  --prof-el: var(--surface-raised);
+  --prof-card: var(--surface);
+  --prof-br: var(--line);
+  --prof-br-hi: var(--line-strong);
+  --prof-tx: var(--text);
+  --prof-ts: var(--text-muted);
+  --prof-tm: var(--text-faint);
+  --prof-ac: var(--accent);
+  --prof-ac-d: var(--accent-quiet);
+  --prof-gn: var(--up);
+  --prof-rd: var(--down);
+  font-family: var(--font-ui) !important;
+  background: var(--bg) !important;
+}
+
+/* Analytics / journal OS */
+[data-v9-app] .bt-os-dashboard {
+  --bt-bg: var(--bg);
+  --bt-bg-elevated: var(--surface-raised);
+  --bt-bg-panel: var(--surface);
+  --bt-bg-input: var(--surface-sunken);
+  --bt-border: var(--line);
+  --bt-border-strong: var(--line-strong);
+  --bt-ring: var(--accent-quiet);
+  --bt-text: var(--text);
+  --bt-text-secondary: var(--text-muted);
+  --bt-text-dim: var(--text-faint);
+  --bt-accent: var(--accent);
+  --bt-accent-soft: var(--accent-quiet);
+  --bt-accent-strong: var(--accent-hover);
+  --bt-green: var(--up);
+  --bt-red: var(--down);
+  --bt-quant-blue: var(--accent);
+  --bt-sans: var(--font-ui);
+  --bt-mono: var(--font-mono);
+  --bt-radius-sm: 10px;
+  --bt-radius-md: 12px;
+  --bt-radius-lg: 14px;
+  font-family: var(--font-ui);
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Flat CTAs + no chrome glow (product) */
+[data-v9-app][data-v9-chrome] button[style*="linear-gradient(135deg"],
+[data-v9-app][data-v9-chrome] [style*="linear-gradient(135deg,#3090FF"],
+[data-v9-app][data-v9-chrome] [style*="linear-gradient(135deg,#3090FF"] {
+  background: var(--cta-bg) !important;
+  color: var(--cta-fg) !important;
+  box-shadow: none !important;
+  filter: none !important;
+}
+
+[data-v9-app] .tlr-trades-sort-header::after,
+[data-v9-app] .tlr-dashboard-radar-toggle-active:after {
+  box-shadow: none !important;
+  background: var(--accent) !important;
+  opacity: 0.85;
+}
+
+/* Soft corners on dense product cards */
+[data-v9-app] .prof-settings__card,
+[data-v9-app] .bt-os-card,
+[data-v9-app] .db-card {
+  border-radius: 6px !important;
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+  box-shadow: none !important;
+}
+
+
+/* Sessions dashboard + COT */
+[data-v9-app] .sd-root,
+[data-v9-app] .cot-page-bg {
+  background: var(--bg) !important;
+  color: var(--text) !important;
+  font-family: var(--font-ui) !important;
+}
+[data-v9-app] .sd-topbar,
+[data-v9-app] .cot-page-header {
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+}
+[data-v9-app] .sd-logo-mark {
+  background: var(--accent-quiet) !important;
+  border-color: transparent !important;
+  border-radius: 6px !important;
+}

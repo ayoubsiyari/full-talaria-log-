@@ -227,7 +227,7 @@ function TalariaV16DashboardReady({
             padding: 24,
             background: "rgba(7,8,14,0.92)",
             color: "#ff8a9a",
-            fontFamily: "'Exo 2', sans-serif",
+            fontFamily: '"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif',
             fontSize: 13,
             textAlign: "center",
           }}

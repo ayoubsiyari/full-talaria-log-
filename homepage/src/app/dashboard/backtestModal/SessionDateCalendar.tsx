@@ -136,7 +136,7 @@ export function SessionDateCalendar({
     borderRadius: 2,
     opacity: disabled ? 0.22 : 1,
     pointerEvents: disabled ? ("none" as const) : ("auto" as const),
-    background: isSel ? "rgba(74,106,255,0.22)" : isH && !disabled ? "rgba(255,255,255,0.06)" : "transparent",
+    background: isSel ? "rgba(48,144,255,0.22)" : isH && !disabled ? "rgba(255,255,255,0.06)" : "transparent",
     color: isSel ? c.acL : isH && !disabled ? c.tx : c.ts,
     transition: "background 0.1s, color 0.1s",
   });
@@ -190,7 +190,7 @@ export function SessionDateCalendar({
             <IconClose s={14} cl={hov === "cal-x" ? c.rd : c.ts} />
           </div>
         </div>
-        <div style={{ height: 2, background: `linear-gradient(90deg,transparent,${c.acB || "rgba(38,67,247,0.22)"},rgba(74,106,255,0.4),${c.acB || "rgba(38,67,247,0.22)"},transparent)` }} />
+        <div style={{ height: 2, background: `linear-gradient(90deg,transparent,${c.acB || "rgba(48,144,255,0.22)"},rgba(48,144,255,0.4),${c.acB || "rgba(48,144,255,0.22)"},transparent)` }} />
 
         <div style={{ display: "flex", alignItems: "center", padding: "5px 4px", borderBottom: `1px solid ${c.br}` }}>
           {mode === "days" && canPrevMonth && (
@@ -221,7 +221,7 @@ export function SessionDateCalendar({
                   color: mode === "months" ? c.acL : c.tx,
                   cursor: "default",
                   padding: "2px 4px",
-                  background: mode === "months" ? "rgba(74,106,255,0.12)" : "transparent",
+                  background: mode === "months" ? "rgba(48,144,255,0.12)" : "transparent",
                 }}
               >
                 {MON_SHORT[viewM]}
@@ -243,7 +243,7 @@ export function SessionDateCalendar({
                 color: mode === "years" ? c.acL : c.tx,
                 cursor: "default",
                 padding: "2px 4px",
-                background: mode === "years" ? "rgba(74,106,255,0.12)" : "transparent",
+                background: mode === "years" ? "rgba(48,144,255,0.12)" : "transparent",
               }}
             >
               {mode === "years" ? `${yearBase} – ${yearBase + 11}` : viewY}

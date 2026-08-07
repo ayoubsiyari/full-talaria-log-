@@ -254,7 +254,46 @@
     </script>
     <script>
     (function () {
+        // Multichart panel iframes must NEVER bounce window.top to /login.
+        // Parent live/index.html already skips that gate on localhost; an
+        // embed 401 (or network blip while N panels boot) used to hijack the
+        // whole app the moment the user picked a multi-panel layout.
+        var host = '';
+        try { host = String(window.location.hostname || ''); } catch (e) {}
+        var isLocalDev = host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+        var qs = null;
+        try { qs = new URLSearchParams(window.location.search || ''); } catch (e) { qs = null; }
+        var isMultichartEmbed = !!(qs && qs.get('multichart') === '1');
+        var chromePreview = !!(qs && qs.get('chromePreview') === '1');
+        var skipLoginRedirect = isLocalDev || chromePreview || isMultichartEmbed;
+
+        function inheritParentUid() {
+            try {
+                if (window.parent && window.parent !== window.self) {
+                    var pid = window.parent.__talariaUserId;
+                    if (pid) {
+                        window.__talariaUserId = pid;
+                        try { localStorage.setItem('_uid', String(pid)); } catch (e) {}
+                        return true;
+                    }
+                }
+            } catch (e) { /* cross-origin */ }
+            try {
+                var cached = localStorage.getItem('_uid');
+                if (cached) { window.__talariaUserId = cached; return true; }
+            } catch (e) {}
+            return false;
+        }
+
         function redirectToLogin() {
+            if (skipLoginRedirect) {
+                inheritParentUid();
+                try {
+                    console.warn('[Talaria embed] auth soft-fail — not redirecting top to /login',
+                        { local: isLocalDev, multichart: isMultichartEmbed });
+                } catch (e) {}
+                return;
+            }
             var next = window.location.pathname + window.location.search;
             var loginUrl = '/login/?next=' + encodeURIComponent(next);
             try {
@@ -268,6 +307,8 @@
                 if (data && data.user && data.user.id) {
                     window.__talariaUserId = data.user.id;
                     try { localStorage.setItem('_uid', String(data.user.id)); } catch (e) {}
+                } else if (skipLoginRedirect) {
+                    inheritParentUid();
                 }
             })
             .catch(function () { redirectToLogin(); });

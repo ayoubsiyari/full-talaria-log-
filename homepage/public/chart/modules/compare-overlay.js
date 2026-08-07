@@ -3075,10 +3075,13 @@ class CompareOverlay {
             return;
         }
 
-        // Max one compare overlay per chart: a newly picked symbol replaces the
-        // existing overlay instead of stacking a second one.
-        if (this.overlays.length > 0) {
-            this.overlays.slice().forEach(o => this.removeOverlay(o.id));
+        // Primary chart symbol + up to 4 compare overlays on the same pane.
+        const MAX_COMPARE_OVERLAYS = 4;
+        if (this.overlays.length >= MAX_COMPARE_OVERLAYS) {
+            if (typeof this.chart?.showNotification === 'function') {
+                this.chart.showNotification(`Maximum ${MAX_COMPARE_OVERLAYS} compare symbols`);
+            }
+            return;
         }
 
         try {

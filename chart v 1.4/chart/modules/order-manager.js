@@ -613,13 +613,33 @@ function _oiCreateProvisionalEditState() {
     };
 }
 
+
+/** Obsidian order-level palette — chart lines (preview / pending / open / filled). */
+const OM_V9_LINE = Object.freeze({
+    buy: '#3090FF',
+    sell: '#E53935',
+    sl: '#E53935',
+    tp: '#00D4A1',
+    avg: '#C9A84C',
+    be: '#F5A020',
+    filledWin: '#00D4A1',
+    filledLoss: '#E53935',
+    pendingDash: '8 4',
+    previewOpacity: 0.48,
+    openOpacity: 1,
+    pendingOpacity: 0.92,
+});
+function _omLineColor(role) {
+    return OM_V9_LINE[role] || OM_V9_LINE.buy;
+}
+
 /** @param {string} side @param {string} [legOrderType] */
 function _resolvePreviewEntryColor(side, legOrderType = 'limit') {
     if (!_orderEntryPreviewColorFixEnabled()) {
         const ot = String(legOrderType || '').toLowerCase();
-        if (ot === 'stop') return '#f23645';
+        if (ot === 'stop') return _omLineColor('sell');
     }
-    return String(side || 'BUY').toUpperCase() === 'BUY' ? '#2962ff' : '#f23645';
+    return String(side || 'BUY').toUpperCase() === 'BUY' ? _omLineColor('buy') : _omLineColor('sell');
 }
 
 /** @param {string} side @param {number[]} entryPrices */
@@ -24361,7 +24381,7 @@ class OrderManager {
             // Default 0-price targets to stacked levels beyond the current TP band (not entry badges)
             this._ensureUnsetMultiTPPreviewPrices(tpPrice);
             // Draw full lines for targets that have a price set
-            const tpColors = ['#089981', '#089981', '#089981', '#089981', '#089981'];
+            const tpColors = [_omLineColor('tp'), _omLineColor('tp'), _omLineColor('tp'), _omLineColor('tp'), _omLineColor('tp')];
             const previewTpRank = this._tpRankMapForTargets(this.tpTargets, this.orderSide);
             this.tpTargets.forEach((target, index) => {
                 if (target.price > 0) {
@@ -24410,25 +24430,25 @@ class OrderManager {
             // Multi-entry: always draw full SL/TP lines at their prices when set (badges on avg entry are easy to miss).
             if (slEnabled) {
                 if (this._shouldRenderSltpPrice(slPrice) && (this._isSltpRenderFixEnabled() || this.slManuallyPositioned || this.isMultiEntryMode)) {
-                    this.previewLines.sl = this.drawPreviewLine(slPrice, '#f23645', 'SL', null, true);
+                    this.previewLines.sl = this.drawPreviewLine(slPrice, _omLineColor('sl'), 'SL', null, true);
                     if (this.previewLines.sl) {
                         this.previewLines.sl.targetPrice = slPrice;
                     }
                 } else {
                     if (!(slPrice > 0)) this.slManuallyPositioned = false;
-                    this.previewLines.sl = this.drawPreviewBadge(tpSlBadgeAnchor, '#f23645', 'SL', slPrice);
+                    this.previewLines.sl = this.drawPreviewBadge(tpSlBadgeAnchor, _omLineColor('sl'), 'SL', slPrice);
                 }
             }
 
             if (tpEnabled) {
                 if (this._shouldRenderSltpPrice(tpPrice) && (this._isSltpRenderFixEnabled() || this.tpManuallyPositioned || this.isMultiEntryMode)) {
-                    this.previewLines.tp = this.drawPreviewLine(tpPrice, '#089981', 'TP', null, true);
+                    this.previewLines.tp = this.drawPreviewLine(tpPrice, _omLineColor('tp'), 'TP', null, true);
                     if (this.previewLines.tp) {
                         this.previewLines.tp.targetPrice = tpPrice;
                     }
                 } else {
                     if (!(tpPrice > 0)) this.tpManuallyPositioned = false;
-                    this.previewLines.tp = this.drawPreviewBadge(tpSlBadgeAnchor, '#089981', 'TP', tpPrice);
+                    this.previewLines.tp = this.drawPreviewBadge(tpSlBadgeAnchor, _omLineColor('tp'), 'TP', tpPrice);
                 }
             }
         }
@@ -24437,13 +24457,13 @@ class OrderManager {
         if (tpEnabled && multipleTPEnabled && this.tpTargets && this.tpTargets.length > 0) {
             if (slEnabled) {
                 if (this._shouldRenderSltpPrice(slPrice) && (this._isSltpRenderFixEnabled() || this.slManuallyPositioned)) {
-                    this.previewLines.sl = this.drawPreviewLine(slPrice, '#f23645', 'SL', null, true);
+                    this.previewLines.sl = this.drawPreviewLine(slPrice, _omLineColor('sl'), 'SL', null, true);
                     if (this.previewLines.sl) {
                         this.previewLines.sl.targetPrice = slPrice;
                     }
                 } else {
                     if (!(slPrice > 0)) this.slManuallyPositioned = false;
-                    this.previewLines.sl = this.drawPreviewBadge(tpSlBadgeAnchor, '#f23645', 'SL', slPrice);
+                    this.previewLines.sl = this.drawPreviewBadge(tpSlBadgeAnchor, _omLineColor('sl'), 'SL', slPrice);
                 }
             }
         }
@@ -37531,7 +37551,7 @@ class OrderManager {
                     document.removeEventListener('mouseup', onMouseUp);
                     return;
                 }
-                const color = dragType === 'tp' ? '#089981' : '#f23645';
+                const color = dragType === 'tp' ? _omLineColor('tp') : _omLineColor('sl');
                 const pnlFill = dragType === 'tp' ? 'rgba(8,153,129,0.15)' : 'rgba(242,54,69,0.15)';
                 previewLine = ctx.svg.append('line')
                     .attr('stroke', color).attr('stroke-width', 1.5)
@@ -37742,7 +37762,7 @@ class OrderManager {
                     document.removeEventListener('mouseup', onMouseUp);
                     return;
                 }
-                const color = dragType === 'tp' ? '#089981' : '#f23645';
+                const color = dragType === 'tp' ? _omLineColor('tp') : _omLineColor('sl');
                 const pnlFill = dragType === 'tp' ? 'rgba(8,153,129,0.15)' : 'rgba(242,54,69,0.15)';
                 previewLine = ctx.svg.append('line')
                     .attr('stroke', color)
@@ -38351,14 +38371,14 @@ class OrderManager {
             g.append('rect')
                 .attr('width', bW).attr('height', bH).attr('rx', bR)
                 .attr('fill', isSet ? 'rgba(8,153,129,0.25)' : 'rgba(8,153,129,0.10)')
-                .attr('stroke', '#089981')
+                .attr('stroke', _omLineColor('tp'))
                 .attr('stroke-width', 1)
                 .attr('stroke-dasharray', isSet ? null : '3 2')
                 .style('pointer-events', 'all');
 
             g.append('text')
                 .attr('x', bW / 2).attr('y', bH / 2)
-                .attr('fill', '#089981')
+                .attr('fill', _omLineColor('tp'))
                 .attr('font-size', fontSize).attr('font-weight', '700')
                 .attr('dy', '0.35em').attr('text-anchor', 'middle')
                 .attr('opacity', isSet ? 1 : 0.7)
@@ -38566,8 +38586,8 @@ class OrderManager {
         chart.svg.selectAll(`.order-${order.id}`).remove();
         chart.svg.selectAll(`.pending-${order.id}`).remove();
 
-        const color = order.type === 'BUY' ? '#2962ff' : '#f23645';
-        const lineColor = order.type === 'BUY' ? '#2962ff' : '#f23645';
+        const color = order.type === 'BUY' ? _omLineColor('buy') : _omLineColor('sell');
+        const lineColor = color;
 
         const line = chart.svg.append('line')
             .attr('class', `order-line order-${order.id}`)
@@ -38671,11 +38691,11 @@ class OrderManager {
         slBadgeGroup.append('rect')
             .attr('height', badgeH).attr('rx', badgeR)
             .attr('fill', 'rgba(242,54,69,0.12)')
-            .attr('stroke', '#f23645').attr('stroke-width', 1)
+            .attr('stroke', _omLineColor('sl')).attr('stroke-width', 1)
             .attr('stroke-dasharray', '3 2')
             .style('pointer-events', 'all');
         slBadgeGroup.append('text')
-            .attr('fill', '#f23645')
+            .attr('fill', _omLineColor('sl'))
             .attr('font-size', badgeFontSize).attr('font-weight', '700')
             .attr('dy', '0.35em').attr('text-anchor', 'middle')
             .attr('opacity', 0.8)
@@ -38699,11 +38719,11 @@ class OrderManager {
         tpBadgeGroup.append('rect')
             .attr('height', badgeH).attr('rx', badgeR)
             .attr('fill', 'rgba(8,153,129,0.12)')
-            .attr('stroke', '#089981').attr('stroke-width', 1)
+            .attr('stroke', _omLineColor('tp')).attr('stroke-width', 1)
             .attr('stroke-dasharray', '3 2')
             .style('pointer-events', 'all');
         tpBadgeGroup.append('text')
-            .attr('fill', '#089981')
+            .attr('fill', _omLineColor('tp'))
             .attr('font-size', badgeFontSize).attr('font-weight', '700')
             .attr('dy', '0.35em').attr('text-anchor', 'middle')
             .attr('opacity', 0.8)
@@ -40090,7 +40110,7 @@ class OrderManager {
         if (alreadyDrawn) return;
 
         // TradingView-like visual styling for pending lines.
-        const lineColor = pendingOrder.direction === 'BUY' ? '#2962ff' : '#f23645';
+        const lineColor = pendingOrder.direction === 'BUY' ? _omLineColor('buy') : _omLineColor('sell');
         
         const line = chart.svg.append('line')
             .attr('class', `pending-order-line pending-${pendingOrder.id}`)
@@ -40358,12 +40378,12 @@ class OrderManager {
             .attr('class', 'order-overlay-sublayer')
             .attr('height', badgeH).attr('rx', badgeR)
             .attr('fill', 'rgba(242,54,69,0.12)')
-            .attr('stroke', '#f23645').attr('stroke-width', 1)
+            .attr('stroke', _omLineColor('sl')).attr('stroke-width', 1)
             .attr('stroke-dasharray', '3 2')
             .style('pointer-events', 'all');
         slBadgeGroup.append('text')
             .attr('class', 'order-overlay-sublayer')
-            .attr('fill', '#f23645')
+            .attr('fill', _omLineColor('sl'))
             .attr('font-size', badgeFontSize).attr('font-weight', '700')
             .attr('dy', '0.35em').attr('text-anchor', 'middle')
             .attr('opacity', 0.8)
@@ -40388,12 +40408,12 @@ class OrderManager {
             .attr('class', 'order-overlay-sublayer')
             .attr('height', badgeH).attr('rx', badgeR)
             .attr('fill', 'rgba(8,153,129,0.12)')
-            .attr('stroke', '#089981').attr('stroke-width', 1)
+            .attr('stroke', _omLineColor('tp')).attr('stroke-width', 1)
             .attr('stroke-dasharray', '3 2')
             .style('pointer-events', 'all');
         tpBadgeGroup.append('text')
             .attr('class', 'order-overlay-sublayer')
-            .attr('fill', '#089981')
+            .attr('fill', _omLineColor('tp'))
             .attr('font-size', badgeFontSize).attr('font-weight', '700')
             .attr('dy', '0.35em').attr('text-anchor', 'middle')
             .attr('opacity', 0.8)
@@ -40567,7 +40587,7 @@ class OrderManager {
         
         const createLine = (price, type, labelText = null, pnl = null, targetId = null, percentage = null, tpIndex = 0) => {
             if (!price) return null;
-            const color = type === 'TP' ? '#089981' : type === 'SL' ? '#f23645' : '#f59e0b';
+            const color = type === 'TP' ? _omLineColor('tp') : type === 'SL' ? _omLineColor('sl') : _omLineColor('be');
             const isDraggable = (type === 'TP' || type === 'SL' || type === 'BE');
             
             const line = chart.svg.append('line')
@@ -40817,8 +40837,8 @@ class OrderManager {
                         try { target.priceHighlight.remove(); } catch (_) {}
                         target.priceHighlight = null;
                     }
-                    const bgColor = target.type === 'TP' ? '#089981'
-                        : target.type === 'SL' ? '#f23645'
+                    const bgColor = target.type === 'TP' ? _omLineColor('tp')
+                        : target.type === 'SL' ? _omLineColor('sl')
                         : '#f59e0b';
                     target.priceHighlight = this.drawYAxisPriceHighlight(
                         target.price, bgColor, `pending-${target.type.toLowerCase()}`, 0, ch
@@ -40828,11 +40848,11 @@ class OrderManager {
 
                 labelGroup.selectAll('*').remove();
 
-                const accent = target.type === 'TP' ? (this._tradeMarkerToastTheme().light ? '#059669' : '#22c55e')
-                    : target.type === 'SL' ? '#ef4444'
-                    : '#f59e0b';
-                const bgColor = target.type === 'TP' ? '#089981'
-                    : target.type === 'SL' ? '#f23645'
+                const accent = target.type === 'TP' ? _omLineColor('tp')
+                    : target.type === 'SL' ? _omLineColor('sl')
+                    : _omLineColor('be');
+                const bgColor = target.type === 'TP' ? _omLineColor('tp')
+                    : target.type === 'SL' ? _omLineColor('sl')
                     : '#f59e0b';
 
                 let displayLabel = '';
@@ -41235,7 +41255,7 @@ class OrderManager {
                     target.priceHighlight.remove();
                     target.priceHighlight = null;
                 }
-                const hlColor = target.type === 'TP' ? '#22c55e' : target.type === 'SL' ? '#f23645' : '#f59e0b';
+                const hlColor = target.type === 'TP' ? _omLineColor('tp') : target.type === 'SL' ? _omLineColor('sl') : _omLineColor('be');
                 target.priceHighlight = self.drawYAxisPriceHighlight(newPrice, hlColor, `pending-${target.type.toLowerCase()}`, 0, ch);
                 
                 target.price = newPrice;
@@ -43330,7 +43350,7 @@ class OrderManager {
             if (!svg || !m.marker || typeof m.marker.select !== 'function') return;
             const arrowEl = m.marker.select('[data-role="entry-arrow"]');
             if (arrowEl.empty()) return;
-            const c = arrowEl.attr('fill') || '#2962ff';
+            const c = arrowEl.attr('fill') || _omLineColor('buy');
             const glowId = `entry-glow-${orderId}`;
             this._ensureMarkerGlowFilter(svg, glowId, c);
             if (active) {
@@ -43349,7 +43369,7 @@ class OrderManager {
         if (g.empty()) return;
         const arrowEl = g.select('[data-role="entry-arrow"]');
         if (arrowEl.empty()) return;
-        const c = arrowEl.attr('fill') || '#2962ff';
+        const c = arrowEl.attr('fill') || _omLineColor('buy');
         const glowId = `entry-glow-${orderId}`;
         this._ensureMarkerGlowFilter(svg, glowId, c);
         if (active) {
@@ -44813,7 +44833,7 @@ class OrderManager {
     _styleOpenSlProfitProtectionVisuals(order, line, els) {
         if (!order) return;
         const accent = '#ef4444';
-        const red = '#f23645';
+        const red = _omLineColor('sl');
         const profit = this._isOpenSlProfitProtection(order, order.stopLoss);
         line?.attr('stroke', red);
         this._styleLegacyOrderLevelToastChrome(
@@ -44829,7 +44849,7 @@ class OrderManager {
         );
         if (els.pnlText) {
             const pnlStr = typeof els.pnlText.text === 'function' ? els.pnlText.text() : '';
-            els.pnlText.attr('fill', profit ? '#089981' : this._orderLevelDetailColor(pnlStr, accent));
+            els.pnlText.attr('fill', profit ? _omLineColor('tp') : this._orderLevelDetailColor(pnlStr, accent));
         }
         els.priceBox?.attr('fill', red).attr('stroke', red);
         els.priceText?.attr('fill', '#ffffff');
@@ -45014,7 +45034,7 @@ class OrderManager {
             
             const slLine = chart.svg.append('line')
                 .attr('class', `sl-line sl-${order.id}`)
-                .attr('stroke', '#f23645')
+                .attr('stroke', _omLineColor('sl'))
                 .attr('stroke-width', 1)
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
@@ -45063,7 +45083,7 @@ class OrderManager {
             const slCloseBtn = this._createCloseCircleButton(
                 chart.svg,
                 `sl-close-btn sl-${order.id}`,
-                '#f23645',
+                _omLineColor('sl'),
                 () => {
                     this._confirmInChart({
                         title: 'Remove stop loss',
@@ -45078,7 +45098,7 @@ class OrderManager {
             // Right side price box
             const slPriceBox = chart.svg.append('rect')
                 .attr('class', `sl-price-box sl-${order.id}`)
-                .attr('fill', '#f23645')
+                .attr('fill', _omLineColor('sl'))
                 .attr('rx', 2)
                 .style('pointer-events', 'none');
             
@@ -45152,7 +45172,7 @@ class OrderManager {
                     const { pnl: tpPnL } = this._multiTpTargetChartMetrics(order, target, index, 'open');
                     const tpKey = this._tpCanonicalTargetId(target, index);
                     
-                    const color = '#089981';
+                    const color = _omLineColor('tp');
                     
                     const tpLine = chart.svg.append('line')
                         .attr('class', `tp-line tp-${order.id} tp-target-${tpKey}`)
@@ -45314,7 +45334,7 @@ class OrderManager {
             
             const tpLine = chart.svg.append('line')
                 .attr('class', `tp-line tp-${order.id}`)
-                .attr('stroke', '#089981')
+                .attr('stroke', _omLineColor('tp'))
                 .attr('stroke-width', 1)
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
@@ -45365,7 +45385,7 @@ class OrderManager {
             const tpCloseBtn = this._createCloseCircleButton(
                 chart.svg,
                 `tp-close-btn tp-${order.id}`,
-                '#089981',
+                _omLineColor('tp'),
                 () => {
                     this._confirmInChart({
                         title: 'Remove take profit',
@@ -45383,7 +45403,7 @@ class OrderManager {
                 tpSplitBtn = this._createSplitPlusButton(
                 chart.svg,
                 `tp-split-btn tp-${order.id}`,
-                '#089981',
+                _omLineColor('tp'),
                 () => {
                     const entry = order.openPrice;
                     const tp = order.takeProfit;
@@ -45397,7 +45417,7 @@ class OrderManager {
             // Right side price box (green)
             const tpPriceBox = chart.svg.append('rect')
                 .attr('class', `tp-price-box tp-${order.id}`)
-                .attr('fill', '#089981')
+                .attr('fill', _omLineColor('tp'))
                 .attr('rx', 2)
                 .style('pointer-events', 'none');
             
@@ -46377,7 +46397,7 @@ class OrderManager {
             yAxisHighlightPrices.sl.forEach((slPrice) => {
                 const slY = ch.scales.yScale(slPrice);
                 if (this._isOrderYInMainPlot(ch, slY)) {
-                    this.drawYAxisPriceHighlight(slPrice, '#f23645', 'sl', 0, ch);
+                    this.drawYAxisPriceHighlight(slPrice, _omLineColor('sl'), 'sl', 0, ch);
                 }
             });
         }
@@ -46776,7 +46796,7 @@ class OrderManager {
             yAxisHighlightPrices.tp.forEach((tpPrice) => {
                 const tpY = ch.scales.yScale(tpPrice);
                 if (this._isOrderYInMainPlot(ch, tpY)) {
-                    this.drawYAxisPriceHighlight(tpPrice, '#089981', 'tp', 0, ch);
+                    this.drawYAxisPriceHighlight(tpPrice, _omLineColor('tp'), 'tp', 0, ch);
                 }
             });
         }
@@ -47377,10 +47397,10 @@ class OrderManager {
                         const livePnl = unrealizedPnl + realizedPartials;
                         const sign = livePnl >= 0 ? '+' : '';
                         const pnlStr = `${sign}${livePnl.toFixed(2)}`;
-                        pnlText.text(pnlStr).attr('fill', this._orderLevelDetailColor(pnlStr, orderData.type === 'BUY' ? '#2962ff' : '#f23645'));
+                        pnlText.text(pnlStr).attr('fill', this._orderLevelDetailColor(pnlStr, orderData.type === 'BUY' ? _omLineColor('buy') : _omLineColor('sell')));
                         this._styleLegacyOrderLevelToastChrome(
                             { labelBox, labelText, pnlBox, pnlText, labelAccent: olEntry.labelAccent },
-                            orderData.type === 'BUY' ? '#2962ff' : '#f23645',
+                            orderData.type === 'BUY' ? _omLineColor('buy') : _omLineColor('sell'),
                             { isPreview: false }
                         );
                     }
@@ -47457,8 +47477,8 @@ class OrderManager {
                     }
 
                     const entryAccent = isPending
-                        ? (orderData.direction === 'BUY' ? '#2962ff' : '#f23645')
-                        : (orderData.type === 'BUY' ? '#2962ff' : '#f23645');
+                        ? (orderData.direction === 'BUY' ? _omLineColor('buy') : _omLineColor('sell'))
+                        : (orderData.type === 'BUY' ? _omLineColor('buy') : _omLineColor('sell'));
                     this._styleLegacyOrderLevelToastChrome(
                         { labelBox, labelText, pnlBox, pnlText, labelAccent: olEntry.labelAccent },
                         entryAccent,
@@ -47557,8 +47577,8 @@ class OrderManager {
                 }
 
                 const highlightColor = isPending
-                    ? (orderData.direction === 'BUY' ? '#2962ff' : '#f23645')
-                    : '#2962ff';
+                    ? (orderData.direction === 'BUY' ? _omLineColor('buy') : _omLineColor('sell'))
+                    : _omLineColor('buy');
                 if (this._isOrderYInMainPlot(ch, y)) {
                     this.drawYAxisPriceHighlight(price, highlightColor, isPending ? 'pending' : 'entry', 0, ch);
                 }
@@ -48006,7 +48026,7 @@ class OrderManager {
         const marginR = ch?.margin?.r || 70;
         const marginL = ch?.margin?.l || 60;
         const plotRight = w > 0 ? w - marginR : w;
-        const orderAccentFills = new Set(['#2962ff', '#f23645', '#26a69a', '#22c55e', '#eab308', '#089981', '#ca8a04', '#ef4444']);
+        const orderAccentFills = new Set(['#2962ff', '#3090FF', '#f23645', '#E53935', '#26a69a', '#22c55e', '#00D4A1', '#eab308', '#089981', '#ca8a04', '#ef4444', '#C9A84C', '#F5A020']);
         svg.selectAll('rect').each(function () {
             const el = this;
             if (!el?.getAttribute) return;
@@ -48077,7 +48097,7 @@ class OrderManager {
     _isConnectorStrokeColor(stroke) {
         const s = String(stroke || '').toLowerCase().replace(/\s+/g, '');
         if (!s) return false;
-        const known = new Set(['#26a69a', '#f23645', '#2962ff', '#ef4444', '#22c55e', '#eab308', '#089981', '#ca8a04']);
+        const known = new Set(['#26a69a', '#f23645', '#E53935', '#2962ff', '#3090FF', '#ef4444', '#22c55e', '#00D4A1', '#eab308', '#089981', '#ca8a04']);
         if (known.has(s)) return true;
         if (s.startsWith('rgb(41,98,255)') || s.startsWith('rgba(41,98,255')) return true;
         if (s.startsWith('rgb(242,54,69)') || s.startsWith('rgba(242,54,69')) return true;
@@ -48125,7 +48145,7 @@ class OrderManager {
             if (!this._isConnectorStrokeColor(stroke)) return;
             try { el.remove(); } catch (_) { /* ignore */ }
         }.bind(this));
-        const dotFills = new Set(['#26a69a', '#f23645', '#2962ff', '#eab308', '#089981']);
+        const dotFills = new Set(['#26a69a', '#f23645', '#E53935', '#2962ff', '#3090FF', '#eab308', '#089981', '#00D4A1']);
         svg.selectAll('circle').each(function () {
             const el = this;
             if (!el?.getAttribute || isConnectorHost(el.parentNode)) return;
@@ -51379,11 +51399,12 @@ class OrderManager {
         const light = typeof document !== 'undefined' && document.body?.classList.contains('light-mode');
         return {
             light,
-            bg: light ? '#E8EBF6' : '#0F1119',
-            border: light ? 'rgba(0,5,40,0.26)' : 'rgba(140,160,255,0.12)',
-            text: light ? 'rgba(0,0,0,0.92)' : 'rgba(255,255,255,0.92)',
-            muted: light ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.58)',
-            accentDefault: light ? '#2F55E8' : '#4A6AFF',
+            bg: light ? '#FFFFFF' : '#0a0a0b',
+            border: light ? 'rgba(44,83,122,0.22)' : 'rgba(162,161,205,0.22)',
+            text: light ? '#0a0a0b' : '#f4f4f5',
+            muted: light ? 'rgba(10,10,11,0.62)' : 'rgba(244,244,245,0.64)',
+            accentDefault: light ? '#1f7ae6' : '#3090FF',
+            radius: 6,
         };
     }
 
@@ -51424,26 +51445,26 @@ class OrderManager {
             .style('visibility', 'visible');
     }
 
-    /** Pending (unfilled) levels stay dashed. Executed/open levels are solid 1px. Preview is solid @ 60%. */
-    _ORDER_LEVEL_PENDING_DASH = '6 3';
+    /** Pending (unfilled) levels stay dashed. Executed/open levels are solid. Preview is quieter solid. */
+    _ORDER_LEVEL_PENDING_DASH = OM_V9_LINE.pendingDash;
     /** @deprecated use _ORDER_LEVEL_PENDING_DASH */
-    _ORDER_LEVEL_ACTIVE_DASH = '6 3';
+    _ORDER_LEVEL_ACTIVE_DASH = OM_V9_LINE.pendingDash;
 
     /**
      * @param {boolean|'preview'|'pending'|'executed'} kind
-     *   true / 'preview' → draft preview (solid @ 60%)
-     *   'pending' → limit/stop waiting to fill (dashed @ 100%)
-     *   false / 'executed' → open filled position (solid 1px @ 100%)
+     *   true / 'preview' → draft preview (solid @ quieter opacity)
+     *   'pending' → limit/stop waiting to fill (dashed)
+     *   false / 'executed' → open filled position (solid)
      */
     _orderLevelLineStyle(kind) {
         if (kind === true || kind === 'preview') {
-            return { opacity: 0.6, dasharray: null };
+            return { opacity: OM_V9_LINE.previewOpacity, dasharray: null, strokeWidth: 1 };
         }
         if (kind === 'pending') {
-            return { opacity: 1, dasharray: this._ORDER_LEVEL_PENDING_DASH };
+            return { opacity: OM_V9_LINE.pendingOpacity, dasharray: this._ORDER_LEVEL_PENDING_DASH, strokeWidth: 1.15 };
         }
-        // Executed / open position: solid (create paths already use stroke-width 1)
-        return { opacity: 1, dasharray: null };
+        // Executed / open position: solid, slightly stronger than pending
+        return { opacity: OM_V9_LINE.openOpacity, dasharray: null, strokeWidth: 1.35 };
     }
 
     _applyOrderLevelLineStyle(lineSel, kind, overrides) {
@@ -51454,9 +51475,10 @@ class OrderManager {
         lineSel
             .attr('stroke-dasharray', dash == null ? null : dash)
             .attr('opacity', o.opacity !== undefined ? o.opacity : s.opacity);
-        // Optional stroke-width override only — do not force every frame (drag uses 1.6 highlight).
-        if (o.strokeWidth !== undefined) {
-            lineSel.attr('stroke-width', o.strokeWidth);
+        // Prefer explicit override; otherwise use kind default width (skip if drag highlight active).
+        const sw = o.strokeWidth !== undefined ? o.strokeWidth : s.strokeWidth;
+        if (sw !== undefined && !o.skipStrokeWidth) {
+            lineSel.attr('stroke-width', sw);
         }
     }
 
@@ -51694,7 +51716,7 @@ class OrderManager {
         }
         const label = o.label != null ? String(o.label) : '';
         const price = Number.isFinite(o.price) ? o.price : 0;
-        const color = o.color || '#2962ff';
+        const color = o.color || _omLineColor('buy');
         const direction = o.direction || this.orderSide || 'BUY';
         const segments = this.composePreviewLabelSegments(label, price, color, direction);
         const tagSeg = segments[0] || { text: label, minWidth: 72 };
@@ -51729,12 +51751,13 @@ class OrderManager {
         const font = this._orderLevelLabelFontFamily();
         const stripeW = 3;
 
-        labelBox?.attr('fill', th.bg).attr('stroke', th.border).attr('stroke-width', 1).attr('rx', 0).style('opacity', op);
+        const rx = th.radius != null ? th.radius : 6;
+        labelBox?.attr('fill', th.bg).attr('stroke', th.border).attr('stroke-width', 1).attr('rx', rx).style('opacity', op);
         labelText?.attr('fill', accent).attr('font-family', font).attr('font-size', this._orderLevelLabelFontSize()).attr('font-weight', '700');
         labelAccent?.attr('fill', accent).attr('width', stripeW).style('opacity', op);
 
         if (pnlBox && pnlText) {
-            pnlBox.attr('fill', th.bg).attr('stroke', th.border).attr('stroke-width', 1).attr('rx', 0).style('opacity', op);
+            pnlBox.attr('fill', th.bg).attr('stroke', th.border).attr('stroke-width', 1).attr('rx', rx).style('opacity', op);
             pnlText.attr('font-family', font).attr('font-size', this._orderLevelLabelFontSize()).attr('font-weight', '600');
             pnlAccent?.attr('fill', accent).attr('width', stripeW).style('opacity', op);
         }
@@ -51753,11 +51776,12 @@ class OrderManager {
     /** Shared circle-badge spec for × / + / − / ✓ controls on order levels. */
     _orderLevelBadgeKindSpec(kind) {
         const th = this._tradeMarkerToastTheme();
-        const green = th.light ? '#059669' : '#22c55e';
+        const green = _omLineColor('tp');
+        const red = _omLineColor('sl');
         const map = {
-            close: { glyph: '×', accent: '#787b86', hoverAccent: '#ef4444' },
+            close: { glyph: '×', accent: '#787b86', hoverAccent: red },
             plus: { glyph: '+', accent: green, hoverAccent: green },
-            minus: { glyph: '−', accent: '#ef4444', hoverAccent: '#ef4444' },
+            minus: { glyph: '−', accent: red, hoverAccent: red },
             check: { glyph: '✓', accent: green, hoverAccent: green },
         };
         return map[kind] || map.close;
@@ -52172,7 +52196,7 @@ class OrderManager {
         const stripeW = 3;
         const closeBtnR = 9;
         const closeBtnGap = 6;
-        const lineColor = pendingOrder.direction === 'BUY' ? '#2962ff' : '#f23645';
+        const lineColor = pendingOrder.direction === 'BUY' ? _omLineColor('buy') : _omLineColor('sell');
 
         line.attr('x1', 0).attr('x2', chart.w).attr('y1', y).attr('y2', y);
         if (dragHitLine) dragHitLine.attr('y1', y).attr('y2', y);

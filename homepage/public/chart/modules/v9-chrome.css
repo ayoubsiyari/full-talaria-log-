@@ -558,19 +558,20 @@ html, body, #chart-container, .container, .chart-wrapper, #panels-container {
     -webkit-backdrop-filter: blur(4px);
 }
 
-/* ---------- TOOLTIPS ---------- */
+/* ---------- TOOLTIPS (Obsidian — flat, no left rail / glow) ---------- */
 [data-tooltip]::after {
-    background: var(--v9-el) !important;
-    border: 1px solid var(--v9-brH) !important;
-    border-left: 2px solid var(--v9-acL) !important;
-    color: var(--v9-tx) !important;
-    font-family: var(--v9-font) !important;
-    font-size: 10px !important;
+    background: var(--surface-raised, var(--v9-el)) !important;
+    border: 1px solid var(--line, var(--v9-brH)) !important;
+    border-left: 1px solid var(--line, var(--v9-brH)) !important;
+    color: var(--text, var(--v9-tx)) !important;
+    font-family: var(--font-ui, var(--v9-font)) !important;
+    font-size: 11px !important;
     font-weight: 600 !important;
-    letter-spacing: 0.02em !important;
-    border-radius: 2px !important;
-    padding: 4px 8px !important;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    letter-spacing: 0.01em !important;
+    border-radius: 6px !important;
+    padding: 5px 9px !important;
+    box-shadow: none !important;
+    filter: none !important;
     pointer-events: none;
 }
 

@@ -35471,39 +35471,51 @@ class DrawingContextMenu {
 
         
 
-        // Position menu (ensure it stays within viewport)
+        // Keep fully on-screen; scroll if taller than the viewport (never crop items).
+
+        const pad = 8;
+
+        const vw = window.innerWidth;
+
+        const vh = window.innerHeight;
+
+        const maxW = Math.max(80, vw - pad * 2);
+
+        const maxH = Math.max(120, vh - pad * 2);
+
+        this.menu.style.boxSizing = 'border-box';
+
+        this.menu.style.maxWidth = `${maxW}px`;
+
+        this.menu.style.maxHeight = `${maxH}px`;
+
+        this.menu.style.overflowX = 'hidden';
+
+        this.menu.style.overflowY = 'auto';
+
+        void this.menu.offsetHeight;
 
         const menuRect = this.menu.getBoundingClientRect();
-
-        const viewportWidth = window.innerWidth;
-
-        const viewportHeight = window.innerHeight;
-
-        
 
         let menuX = x;
 
         let menuY = y;
 
-        
+        const w = Math.min(menuRect.width || 0, maxW);
 
-        if (x + menuRect.width > viewportWidth) {
+        const h = Math.min(menuRect.height || 0, maxH);
 
-            menuX = viewportWidth - menuRect.width - 10;
+        if (menuX + w > vw - pad) menuX = vw - pad - w;
 
-        }
+        if (menuY + h > vh - pad) menuY = vh - pad - h;
 
-        if (y + menuRect.height > viewportHeight) {
+        if (menuX < pad) menuX = pad;
 
-            menuY = viewportHeight - menuRect.height - 10;
+        if (menuY < pad) menuY = pad;
 
-        }
+        this.menu.style.left = `${Math.round(menuX)}px`;
 
-        
-
-        this.menu.style.left = `${menuX}px`;
-
-        this.menu.style.top = `${menuY}px`;
+        this.menu.style.top = `${Math.round(menuY)}px`;
 
 
 

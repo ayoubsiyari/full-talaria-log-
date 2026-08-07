@@ -1,21 +1,21 @@
-/* Settings shell — Talaria dashboard tokens (Exo 2, #07080E, #4A6AFF) */
+/* Settings shell — Talaria dashboard tokens (Exo 2, #000000, #3090FF) */
 
 .prof-settings {
-  --prof-bg: #07080e;
-  --prof-el: #0f1119;
-  --prof-card: #0a0c14;
+  --prof-bg: var(--bg);
+  --prof-el: var(--surface-raised);
+  --prof-card: var(--surface);
   --prof-br: rgba(140, 160, 255, 0.1);
   --prof-br-hi: rgba(140, 160, 255, 0.18);
   --prof-tx: rgba(255, 255, 255, 0.92);
   --prof-ts: rgba(255, 255, 255, 0.55);
   --prof-tm: rgba(255, 255, 255, 0.38);
-  --prof-ac: #4a6aff;
+  --prof-ac: var(--accent);
   --prof-ac-d: rgba(38, 67, 247, 0.12);
   --prof-gn: #00d4a1;
   --prof-rd: #ff5068;
   min-height: 100%;
   background: var(--prof-bg);
-  font-family: "Exo 2", sans-serif;
+  font-family: var(--font-ui);
   color: var(--prof-tx);
   box-sizing: border-box;
 }
@@ -101,7 +101,7 @@
     height: 34px;
     margin: 0;
     padding: 0 12px;
-    border-radius: 8px;
+    border-radius: 6px;
     font-size: 12px;
     white-space: nowrap;
   }
@@ -125,7 +125,7 @@
 
   .prof-settings--v16-embed .prof-card {
     padding: 18px 16px;
-    border-radius: 12px;
+    border-radius: 6px;
   }
 
   .prof-settings--v16-embed .prof-profile-layout,
@@ -165,7 +165,7 @@
   text-decoration: none;
   margin-bottom: 24px;
   padding: 4px 8px;
-  border-radius: 8px;
+  border-radius: 6px;
   transition: background 0.12s, color 0.12s;
 }
 
@@ -197,7 +197,7 @@
   padding: 10px 12px;
   margin-bottom: 2px;
   border: none;
-  border-radius: 10px;
+  border-radius: 6px;
   background: transparent;
   color: var(--prof-ts);
   font-size: 13px;
@@ -244,7 +244,7 @@
 .prof-card {
   background: var(--prof-card);
   border: 1px solid var(--prof-br-hi);
-  border-radius: 14px;
+  border-radius: 8px;
   padding: 22px 24px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
 }
@@ -359,7 +359,7 @@
 .prof-field textarea {
   width: 100%;
   padding: 11px 14px;
-  border-radius: 10px;
+  border-radius: 6px;
   border: 1px solid var(--prof-br-hi);
   background: var(--prof-el);
   color: var(--prof-tx);
@@ -452,7 +452,7 @@
 
 .prof-kv-mini {
   padding: 12px 14px;
-  border-radius: 10px;
+  border-radius: 6px;
   background: var(--prof-el);
   border: 1px solid var(--prof-br);
 }
@@ -504,12 +504,12 @@
   display: block;
   height: 100%;
   border-radius: 3px;
-  background: linear-gradient(90deg, #1e38e8, var(--prof-ac));
+  background: linear-gradient(90deg, #3090FF, var(--prof-ac));
 }
 
 .prof-plan-card {
   border: 1px solid var(--prof-br-hi);
-  border-radius: 12px;
+  border-radius: 6px;
   padding: 18px;
   background: var(--prof-el);
 }
@@ -563,7 +563,7 @@
 
 .prof-btn {
   padding: 11px 22px;
-  border-radius: 10px;
+  border-radius: 6px;
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.05em;
@@ -579,7 +579,7 @@
 }
 
 .prof-btn--primary {
-  background: linear-gradient(135deg, #1e38e8, #4a6aff);
+  background: linear-gradient(135deg, #3090FF, #3090FF);
   color: #fff;
   box-shadow: 0 4px 14px rgba(38, 67, 247, 0.35);
 }
@@ -600,7 +600,7 @@
   background: transparent;
   color: var(--prof-ac);
   border: 1px solid rgba(74, 106, 255, 0.3);
-  border-radius: 10px;
+  border-radius: 6px;
   font-weight: 700;
   cursor: pointer;
   font-family: inherit;
@@ -637,7 +637,7 @@
 .prof-msg {
   font-size: 13px;
   padding: 10px 14px;
-  border-radius: 10px;
+  border-radius: 6px;
   margin-bottom: 14px;
 }
 

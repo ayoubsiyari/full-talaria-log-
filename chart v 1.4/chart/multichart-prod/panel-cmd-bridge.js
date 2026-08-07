@@ -3624,6 +3624,23 @@
                     return Promise.resolve(ch.compareOverlay.addSymbolWithMode(cmpFid, cmpSym, cmpMode))
                         .then(function () { return { ok: true }; });
                 }
+                case 'removeCompareSymbol': {
+                    var rmFid = args.fileId;
+                    if (rmFid === undefined || rmFid === null || rmFid === '') {
+                        throw new Error('removeCompareSymbol: missing args.fileId');
+                    }
+                    if (!ch.compareOverlay || typeof ch.compareOverlay.removeOverlay !== 'function') {
+                        throw new Error('chart.compareOverlay is not available');
+                    }
+                    var rmKey = String(rmFid);
+                    var rmList = Array.isArray(ch.compareOverlay.overlays) ? ch.compareOverlay.overlays : [];
+                    var rmHit = rmList.find(function (o) { return String(o && o.fileId) === rmKey; });
+                    if (!rmHit || rmHit.id == null) {
+                        return { ok: true, removed: false };
+                    }
+                    ch.compareOverlay.removeOverlay(rmHit.id);
+                    return { ok: true, removed: true };
+                }
                 case 'removeIndicator': {
                     var indId = args.chartId;
                     if (indId === undefined || indId === null || indId === '') {

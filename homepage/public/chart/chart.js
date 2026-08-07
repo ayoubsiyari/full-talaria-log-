@@ -238,27 +238,32 @@ function applyChartContextMenuThemeVars() {
     if (typeof document === 'undefined') return;
     const t = (typeof window !== 'undefined' && window.__talariaV9UiTheme) || null;
     const light = document.body && document.body.classList.contains('light-mode');
+    // Match settings window / chrome-tokens Obsidian grammar (no glow tokens).
     const defaults = light ? {
-        sf: '#DFE3F0',
-        br: 'rgba(0,5,40,0.26)',
-        tx: 'rgba(0,0,0,0.92)',
-        ts: 'rgba(0,0,0,0.88)',
-        tm: 'rgba(0,0,0,0.72)',
-        ac: '#2643F7',
-        acL: '#2F55E8',
-        acG: 'rgba(38,67,247,0.14)',
-        hv: 'rgba(38,67,247,0.12)',
+        sf: '#ffffff',
+        br: 'rgba(44,83,122,0.22)',
+        tx: '#0a0a0b',
+        ts: 'rgba(10,10,11,0.72)',
+        tm: 'rgba(10,10,11,0.55)',
+        ac: '#1f7ae6',
+        acL: '#3090ff',
+        acG: 'transparent',
+        hv: '#f0effa',
+        raised: '#f0effa',
+        quiet: 'rgba(48,144,255,0.14)',
         font: "'Exo 2',sans-serif",
     } : {
-        sf: '#0A0C14',
-        br: 'rgba(140,160,255,0.12)',
-        tx: 'rgba(255,255,255,0.92)',
-        ts: 'rgba(255,255,255,0.70)',
-        tm: 'rgba(255,255,255,0.50)',
-        ac: '#2643F7',
-        acL: '#4A6AFF',
-        acG: 'rgba(38,67,247,0.12)',
-        hv: 'rgba(74,106,255,0.14)',
+        sf: '#0a0a0b',
+        br: 'rgba(162,161,205,0.22)',
+        tx: '#f4f4f5',
+        ts: 'rgba(244,244,245,0.72)',
+        tm: 'rgba(244,244,245,0.45)',
+        ac: '#3090ff',
+        acL: '#3090ff',
+        acG: 'transparent',
+        hv: '#141416',
+        raised: '#141416',
+        quiet: 'rgba(48,144,255,0.16)',
         font: "'Exo 2',sans-serif",
     };
     const pick = (key) => (t && t[key] != null ? t[key] : defaults[key]);
@@ -270,8 +275,9 @@ function applyChartContextMenuThemeVars() {
     root.style.setProperty('--tlr-cm-tm', pick('tm'));
     root.style.setProperty('--tlr-cm-ac', pick('ac'));
     root.style.setProperty('--tlr-cm-acL', pick('acL'));
-    root.style.setProperty('--tlr-cm-acG', pick('acG'));
-    root.style.setProperty('--tlr-cm-hv', pick('hv') || defaults.hv);
+    root.style.setProperty('--tlr-cm-acG', 'transparent');
+    root.style.setProperty('--tlr-cm-hv', pick('raised') || pick('hv') || defaults.hv);
+    root.style.setProperty('--tlr-cm-quiet', pick('quiet') || defaults.quiet);
     root.style.setProperty('--tlr-cm-font', (t && t.font) || defaults.font);
 }
 
@@ -299,46 +305,133 @@ function formatChartContextMenuShortcut(parts) {
     return parts.map(sym).join('+');
 }
 
+/**
+ * Keep a position:fixed popup fully inside the viewport.
+ * Caps height/width and scrolls when content is taller than the screen —
+ * never crop actions off the bottom edge.
+ */
+function clampFixedElementToViewport(el, opts = {}) {
+    if (!el || typeof window === 'undefined') return null;
+    const pad = Number.isFinite(opts.pad) ? opts.pad : 8;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const maxW = Math.max(80, vw - pad * 2);
+    const maxH = Math.max(120, vh - pad * 2);
+    el.style.boxSizing = 'border-box';
+    el.style.maxWidth = `${maxW}px`;
+    el.style.maxHeight = `${maxH}px`;
+    el.style.overflowX = 'hidden';
+    el.style.overflowY = 'auto';
+    let x = Number.isFinite(opts.preferredX) ? opts.preferredX : (parseFloat(el.style.left) || 0);
+    let y = Number.isFinite(opts.preferredY) ? opts.preferredY : (parseFloat(el.style.top) || 0);
+    // Force layout so getBoundingClientRect reflects max-height.
+    void el.offsetHeight;
+    const rect = el.getBoundingClientRect();
+    const w = Math.min(rect.width || el.offsetWidth || 0, maxW);
+    const h = Math.min(rect.height || el.offsetHeight || 0, maxH);
+    if (x + w > vw - pad) x = vw - pad - w;
+    if (y + h > vh - pad) y = vh - pad - h;
+    if (x < pad) x = pad;
+    if (y < pad) y = pad;
+    el.style.left = `${Math.round(x)}px`;
+    el.style.top = `${Math.round(y)}px`;
+    return { x, y, w, h, maxW, maxH };
+}
+
 let _chartContextMenuStylesInstalled = false;
 function installChartContextMenuStyles() {
-    if (_chartContextMenuStylesInstalled || typeof document === 'undefined') return;
+    if (typeof document === 'undefined') return;
+    // Always refresh — kill legacy glow bars / v9–v10 tags so settings-matched chrome wins.
+    document.querySelectorAll(
+        'style#chart-context-menu-v9-styles, style#chart-context-menu-v10-styles, style#chart-context-menu-v11-styles, style#chart-context-menu-v12-styles, style#chart-context-menu-v13-styles'
+    ).forEach((el) => el.remove());
     _chartContextMenuStylesInstalled = true;
-    if (document.getElementById('chart-context-menu-v9-styles')) return;
     const style = document.createElement('style');
-    style.id = 'chart-context-menu-v9-styles';
+    style.id = 'chart-context-menu-v13-styles';
     style.textContent = `
         @keyframes tlrChartCmIn {
-            from { opacity: 0; transform: translateY(-4px) scale(0.99); }
-            to { opacity: 1; transform: translateY(0) scale(1); }
+            from { opacity: 0; transform: translateY(-3px); }
+            to { opacity: 1; transform: translateY(0); }
         }
         .chart-context-menu {
             position: fixed;
             display: none;
-            width: 330px;
-            min-width: 330px;
-            max-width: 330px;
+            width: 248px;
+            min-width: 248px;
+            max-width: min(248px, calc(100vw - 16px));
+            max-height: calc(100vh - 16px);
             box-sizing: border-box;
-            padding: 4px 0 6px;
+            padding: 0 0 4px;
             margin: 0;
-            overflow: hidden;
+            overflow-x: hidden;
+            overflow-y: auto;
             z-index: 10000;
             font-family: var(--tlr-cm-font, 'Exo 2', sans-serif);
             font-size: 12px;
             font-weight: 500;
-            color: var(--tlr-cm-tx, rgba(255,255,255,0.92));
-            background: var(--tlr-cm-sf, #0A0C14);
-            border: 1px solid var(--tlr-cm-br, rgba(140,160,255,0.12));
-            border-radius: 4px;
-            box-shadow: 0 12px 40px rgba(0,0,0,0.75), 0 0 16px var(--tlr-cm-acG, rgba(38,67,247,0.12));
+            color: var(--text, var(--tlr-cm-tx, #f4f4f5));
+            background: var(--surface, var(--tlr-cm-sf, #0a0a0b)) !important;
+            border: 1px solid var(--line, var(--tlr-cm-br, rgba(162,161,205,0.22))) !important;
+            border-radius: 8px !important;
+            box-shadow: none !important;
+            filter: none !important;
             user-select: none;
-            animation: tlrChartCmIn 0.15s ease;
+            animation: tlrChartCmIn 0.12s ease;
         }
-        .chart-context-menu::before {
-            content: '';
-            display: block;
-            height: 2px;
-            margin: 0 0 4px;
-            background: linear-gradient(90deg, var(--tlr-cm-ac, #2643F7), var(--tlr-cm-acL, #4A6AFF), var(--tlr-cm-ac, #2643F7));
+        .chart-context-menu::before,
+        .chart-context-menu::after {
+            content: none !important;
+            display: none !important;
+        }
+        .chart-context-menu .chart-cm-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--line, var(--tlr-cm-br, rgba(162,161,205,0.22)));
+            background: var(--surface, var(--tlr-cm-sf, #0a0a0b));
+            flex-shrink: 0;
+        }
+        .chart-context-menu .chart-cm-header-mark {
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--accent-quiet, var(--tlr-cm-quiet, rgba(48,144,255,0.16)));
+            border: none;
+            color: var(--accent, var(--tlr-cm-ac, #3090ff));
+        }
+        .chart-context-menu .chart-cm-header-mark svg {
+            width: 15px;
+            height: 15px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 1.5;
+        }
+        .chart-context-menu .chart-cm-header-title {
+            font-size: 13px;
+            font-weight: 650;
+            letter-spacing: -0.01em;
+            color: var(--text, var(--tlr-cm-tx, #f4f4f5));
+            line-height: 1.2;
+        }
+        .chart-context-menu .chart-cm-header-sub {
+            font-size: 10px;
+            font-weight: 500;
+            color: var(--text-muted, var(--tlr-cm-tm, rgba(244,244,245,0.55)));
+            margin-top: 1px;
+            font-variant-numeric: tabular-nums;
+        }
+        .chart-context-menu .chart-cm-section {
+            padding: 6px 10px 2px;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: var(--text-faint, var(--tlr-cm-tm, rgba(244,244,245,0.45)));
         }
         .chart-context-menu .context-menu-item {
             padding: 0;
@@ -348,24 +441,33 @@ function installChartContextMenuStyles() {
             position: relative;
             display: block;
             padding: 0;
-            margin: 0;
+            margin: 1px 4px;
             cursor: default;
-            border-radius: 0;
-            transition: background 0.1s ease;
+            border-radius: 6px;
+            border-left: none !important;
+            background: transparent;
+            transition: background 0.1s ease, color 0.1s ease;
+        }
+        .chart-context-menu .tv-context-menu-item::before,
+        .chart-context-menu .tv-context-menu-item::after {
+            content: none !important;
+            display: none !important;
+            box-shadow: none !important;
         }
         .chart-context-menu .chart-cm-row {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 12px;
-            padding: 7px 10px 7px 12px;
-            min-height: 28px;
+            gap: 8px;
+            padding: 0 8px;
+            min-height: 30px;
+            height: 30px;
             box-sizing: border-box;
         }
         .chart-context-menu .chart-cm-left {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
             min-width: 0;
             flex: 1;
         }
@@ -374,9 +476,9 @@ function installChartContextMenuStyles() {
             text-overflow: ellipsis;
             white-space: nowrap;
             font-size: 12px;
-            font-weight: 500;
-            line-height: 1.35;
-            color: var(--tlr-cm-tx, rgba(255,255,255,0.92));
+            font-weight: 550;
+            line-height: 1;
+            color: var(--text-muted, var(--tlr-cm-ts, rgba(244,244,245,0.72)));
         }
         .chart-context-menu .chart-cm-icon {
             width: 16px;
@@ -385,49 +487,64 @@ function installChartContextMenuStyles() {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            color: var(--tlr-cm-acL, #4A6AFF);
-            opacity: 0.9;
+            color: var(--text-muted, var(--tlr-cm-tm, rgba(244,244,245,0.55)));
         }
         .chart-context-menu .chart-cm-icon svg {
-            width: 14px;
-            height: 14px;
-            stroke-width: 1.6;
+            width: 15px;
+            height: 15px;
+            stroke-width: 1.5;
         }
+        .chart-context-menu .chart-cm-meta,
         .chart-context-menu .chart-cm-shortcut {
             flex-shrink: 0;
-            min-width: 56px;
+            max-width: 46%;
             text-align: right;
             font-size: 10px;
             font-weight: 500;
             letter-spacing: 0.02em;
-            color: var(--tlr-cm-tm, rgba(255,255,255,0.5));
-            font-family: var(--tlr-cm-font, 'Exo 2', sans-serif);
+            color: var(--text-faint, var(--tlr-cm-tm, rgba(244,244,245,0.45)));
             white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-variant-numeric: tabular-nums;
         }
         .chart-context-menu .tv-context-menu-item:hover {
-            background: var(--tlr-cm-hv, rgba(74,106,255,0.14));
+            background: var(--surface-raised, var(--tlr-cm-hv, #141416)) !important;
+            box-shadow: none !important;
+            filter: none !important;
         }
         .chart-context-menu .tv-context-menu-item:hover .chart-cm-label {
-            color: var(--tlr-cm-acL, #4A6AFF);
+            color: var(--text, var(--tlr-cm-tx, #f4f4f5));
         }
-        .chart-context-menu .tv-context-menu-item:hover::before {
-            content: '';
-            position: absolute;
-            left: 0;
-            top: 12%;
-            bottom: 12%;
-            width: 2px;
-            background: linear-gradient(180deg, transparent, var(--tlr-cm-acL, #4A6AFF), transparent);
-            box-shadow: 0 0 6px var(--tlr-cm-acG, rgba(38,67,247,0.12));
-            pointer-events: none;
+        .chart-context-menu .tv-context-menu-item:hover .chart-cm-icon {
+            color: var(--accent, var(--tlr-cm-ac, #3090ff));
         }
         .chart-context-menu .chart-cm-divider {
             height: 1px;
-            margin: 4px 10px;
-            background: linear-gradient(90deg, transparent, var(--tlr-cm-br, rgba(140,160,255,0.12)), transparent);
+            margin: 3px 8px;
+            background: var(--line, var(--tlr-cm-br, rgba(162,161,205,0.22)));
+            border: none;
+            box-shadow: none;
         }
-        body.light-mode .chart-context-menu {
-            box-shadow: 0 12px 40px rgba(0,0,0,0.2), 0 0 16px var(--tlr-cm-acG, rgba(38,67,247,0.14));
+        /* Section labels already separate groups — hide hairlines between labeled blocks */
+        .chart-context-menu .chart-cm-divider + .chart-cm-section {
+            margin-top: 0;
+        }
+        .chart-context-menu .chart-cm-section + .chart-cm-divider,
+        .chart-context-menu .chart-cm-divider:has(+ .chart-cm-section) {
+            display: none;
+        }
+        .chart-context-menu .tv-context-menu-item[data-cm-accent="buy"] .chart-cm-label {
+            color: var(--up, #00d4a1);
+        }
+        .chart-context-menu .tv-context-menu-item[data-cm-accent="sell"] .chart-cm-label {
+            color: var(--down, #e53935);
+        }
+        .chart-context-menu .tv-context-menu-item[data-cm-accent="buy"]:hover .chart-cm-label {
+            color: var(--up, #00d4a1);
+        }
+        .chart-context-menu .tv-context-menu-item[data-cm-accent="sell"]:hover .chart-cm-label {
+            color: var(--down, #e53935);
         }
     `;
     document.head.appendChild(style);
@@ -442,7 +559,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260804b127';
+const CHART_ENGINE_BUILD = '20260807b135';
 
 /**
  * CB-01 mount/symbol diagnostic signature logger.
@@ -1220,6 +1337,8 @@ class Chart {
         this.contextMenu = d3.select('body')
             .append('div')
             .attr('class', 'chart-context-menu')
+            .attr('data-v9-chrome', '1')
+            .attr('data-chrome-win', '1')
             .attr('id', menuId)
             .style('display', 'none')
             .style('visibility', 'hidden')
@@ -1728,8 +1847,15 @@ class Chart {
             
             this.setupChartClickToCloseMenus();
             
-            // Initialize OHLC panel with default values
-            this.updateChartOHLCSymbol('CHART');
+            // Seed OHLC legend from live symbol when known — avoid "CHART" placeholder sticky state.
+            if (this.currentSymbol) {
+                this.updateChartOHLCSymbol(this.currentSymbol);
+            } else {
+                const tfEl = document.getElementById('chartTimeframe');
+                if (tfEl && this.currentTimeframe) {
+                    tfEl.textContent = this.currentTimeframe;
+                }
+            }
             
             this.loadAvailableFiles();
             
@@ -16010,40 +16136,48 @@ class Chart {
     }
     
     showNotification(message, type, duration) {
+        const clean = String(message != null ? message : '')
+            .replace(/\s*[✓✔❌]\s*$/u, '')
+            .replace(/^\s*[✓✔❌]\s*/u, '')
+            .trim();
         if (typeof window !== 'undefined' && window.__TalariaToastStack) {
             const t = type && ['success', 'error', 'warning', 'info'].includes(type) ? type : 'info';
             const d = Number.isFinite(Number(duration)) ? Number(duration) : 2200;
-            window.__TalariaToastStack.show(String(message != null ? message : ''), { type: t, duration: d });
+            window.__TalariaToastStack.show(clean, { type: t, duration: d });
             return;
         }
         const el = document.createElement('div');
-        el.className = 'chart-notification chart-toast-tooltip';
+        el.className = 'chart-notification chart-toast-tooltip tlr-toast-stack-msg';
+        el.setAttribute('data-toast-type', type && ['success', 'error', 'warning', 'info'].includes(type) ? type : 'info');
         el.style.cssText = [
             'position:fixed',
             'bottom:80px',
             'left:50%',
             'transform:translateX(-50%) translateY(6px)',
-            'padding:6px 10px',
-            'border-radius:4px',
-            'font-size:11px',
-            'line-height:14px',
+            'display:inline-flex',
+            'align-items:center',
+            'min-height:28px',
+            'padding:0 12px',
+            'border-radius:6px',
+            'font-size:12px',
+            'line-height:1.2',
             'font-weight:600',
-            'font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif',
-            'color:#ffffff',
-            'background:rgba(42,46,57,0.95)',
-            'border:1px solid #363a45',
-            'box-shadow:0 4px 12px rgba(0,0,0,0.35)',
+            'font-family:var(--font-ui),"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif',
+            'color:var(--text,rgba(244,244,245,0.92))',
+            'background:var(--surface-raised,#141416)',
+            'border:1px solid var(--line,rgba(162,161,205,0.22))',
+            'box-shadow:none',
+            'filter:none',
+            'text-shadow:none',
             'z-index:2147483647',
             'opacity:0',
-            'transition:opacity 0.18s ease,transform 0.18s ease',
+            'transition:opacity 0.16s ease,transform 0.16s ease',
             'pointer-events:none',
-            'max-width:320px',
-            'white-space:normal',
-            'word-break:break-word',
-            'text-align:center',
+            'max-width:min(92vw,360px)',
+            'white-space:nowrap',
             'box-sizing:border-box'
         ].join(';');
-        el.textContent = message;
+        el.appendChild(document.createTextNode(clean));
         document.body.appendChild(el);
         requestAnimationFrame(() => requestAnimationFrame(() => {
             el.style.opacity = '1';
@@ -21524,7 +21658,7 @@ class Chart {
                     // Opaque mask matching the chart background so the last
                     // time-axis label never bleeds into the price/time corner.
                     background: this._scaleResetCornerBg || '#131722',
-                    cursor: 'pointer',
+                    cursor: 'default',
                     zIndex: '14',
                     pointerEvents: 'auto',
                     opacity: '1',
@@ -42090,34 +42224,33 @@ class Chart {
         const symbolName = (overrides && overrides.symbolName)
             || this.getContextMenuSymbolName();
         
-        // Position menu using client coordinates (for fixed positioning)
-        const menuWidth = 330;
-        const menuHeight = 520;
-        const viewport = {
-            width: window.innerWidth,
-            height: window.innerHeight
-        };
-        
-        let menuX = clientX;
-        let menuY = clientY;
-        
-        if (clientX + menuWidth > viewport.width) {
-            menuX = clientX - menuWidth;
-        }
-        if (clientY + menuHeight > viewport.height) {
-            menuY = viewport.height - menuHeight;
-        }
-        
+        // Position at cursor first; after content is built we measure + clamp to viewport.
+        const menuWidth = 248;
         const menu = this.contextMenu
             .style('display', 'block')
             .style('visibility', 'visible')
-            .style('left', menuX + 'px')
-            .style('top', menuY + 'px')
+            .style('left', clientX + 'px')
+            .style('top', clientY + 'px')
             .style('opacity', '1')
             .style('width', menuWidth + 'px')
             .style('min-width', menuWidth + 'px')
             .style('max-width', menuWidth + 'px')
+            .style('max-height', null)
+            .style('overflow-y', null)
             .html('');
+
+        // Header — symbol + price at cursor
+        if (symbolName || priceText) {
+            const header = menu.append('div').attr('class', 'chart-cm-header');
+            header.append('div').attr('class', 'chart-cm-header-mark').html(
+                '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4 V20" stroke-linecap="round"/><path d="M17 6 V20" stroke-linecap="round"/><rect x="5" y="8" width="4" height="8" rx="1"/><rect x="15" y="10" width="4" height="7" rx="1"/></svg>'
+            );
+            const headText = header.append('div');
+            headText.append('div').attr('class', 'chart-cm-header-title').text(symbolName || 'Chart');
+            headText.append('div').attr('class', 'chart-cm-header-sub').text(
+                priceText ? `Price ${priceText}` : 'Cursor actions'
+            );
+        }
 
         // ── 1. Buy / Sell / Add Order ──────────────────────────────
         if (priceAtCursor && priceText && this.orderManager) {
@@ -42130,10 +42263,15 @@ class Chart {
                 ? 'stop' : 'limit';
             const sellOrderType = (Number.isFinite(currentPrice) && priceAtCursor < currentPrice)
                 ? 'stop' : 'limit';
+            const titleOrder = (t) => (t ? `${t.charAt(0).toUpperCase()}${t.slice(1)}` : '');
+
+            menu.append('div').attr('class', 'chart-cm-section').text('Trade');
 
             this.addTradingViewContextMenuItem(menu, {
                 icon: 'buy',
-                label: `Buy 1 ${symbolName} @ ${priceText} ${buyOrderType}`,
+                label: 'Buy 1',
+                hint: `${titleOrder(buyOrderType)} · ${priceText}`,
+                accent: 'buy',
                 onClick: () => {
                     this.openOrderPanelFromContext({ side: 'BUY', orderType: buyOrderType, entryPrice: priceAtCursor });
                     this.hideContextMenu();
@@ -42142,7 +42280,9 @@ class Chart {
 
             this.addTradingViewContextMenuItem(menu, {
                 icon: 'sell',
-                label: `Sell 1 ${symbolName} @ ${priceText} ${sellOrderType}`,
+                label: 'Sell 1',
+                hint: `${titleOrder(sellOrderType)} · ${priceText}`,
+                accent: 'sell',
                 onClick: () => {
                     this.openOrderPanelFromContext({ side: 'SELL', orderType: sellOrderType, entryPrice: priceAtCursor });
                     this.hideContextMenu();
@@ -42151,21 +42291,22 @@ class Chart {
 
             this.addTradingViewContextMenuItem(menu, {
                 icon: 'order',
-                label: `Add order on ${symbolName} at ${priceText}...`,
+                label: 'Add order…',
+                hint: priceText,
                 onClick: () => {
                     this.openOrderPanelFromContext({ entryPrice: priceAtCursor });
                     this.hideContextMenu();
                 }
             });
-
-            this.addTradingViewContextMenuDivider(menu);
         }
 
         // ── 2. Add Alert ────────────────────────────────────────────
         if (priceAtCursor && priceText) {
+            menu.append('div').attr('class', 'chart-cm-section').text('Alert');
             this.addTradingViewContextMenuItem(menu, {
                 icon: 'alert',
-                label: `Add alert on ${symbolName} at ${priceText}...`,
+                label: 'Create alert…',
+                hint: priceText,
                 onClick: () => {
                     if (window.alertSystem) {
                         window.alertSystem.createAlertAtPrice(priceAtCursor);
@@ -42175,14 +42316,15 @@ class Chart {
                     this.hideContextMenu();
                 }
             });
-
-            this.addTradingViewContextMenuDivider(menu);
         }
 
         // ── 3. Copy price ───────────────────────────────────────────
+        menu.append('div').attr('class', 'chart-cm-section').text('Clipboard');
         if (priceAtCursor && priceText) {
             this.addTradingViewContextMenuItem(menu, {
-                label: `Copy price ${priceText}`,
+                icon: 'copy',
+                label: 'Copy price',
+                hint: priceText,
                 onClick: async () => {
                     const copied = await this.writeTextToClipboard(priceText);
                     this.showNotification(copied ? `Price ${priceText} copied ✓` : 'Clipboard blocked. Copy failed.');
@@ -42193,6 +42335,7 @@ class Chart {
 
         // ── 4. Paste ────────────────────────────────────────────────
         this.addTradingViewContextMenuItem(menu, {
+            icon: 'paste',
             label: 'Paste',
             shortcut: formatChartContextMenuShortcut(['mod', 'v']),
             onClick: async () => {
@@ -42221,16 +42364,16 @@ class Chart {
             }
         });
 
-        this.addTradingViewContextMenuDivider(menu);
-
         // ── 5. Show marks on bars ───────────────────────────────────
+        menu.append('div').attr('class', 'chart-cm-section').text('Display');
         const marksText = this.chartSettings.showMarks ? 'Hide marks on bars' : 'Show marks on bars';
         this.addTradingViewContextMenuItem(menu, {
+            icon: 'marks',
             label: marksText,
             onClick: () => {
                 this.chartSettings.showMarks = !this.chartSettings.showMarks;
                 this.scheduleRender();
-                this.showNotification(this.chartSettings.showMarks ? 'Marks shown ✓' : 'Marks hidden ✓');
+                this.showNotification(this.chartSettings.showMarks ? 'Marks shown' : 'Marks hidden');
                 this.hideContextMenu();
             }
         });
@@ -42239,13 +42382,14 @@ class Chart {
         const showTradeMarkers = this.chartSettings.showTradeMarkers !== false;
         const tradeMarkersText = showTradeMarkers ? 'Hide trade markers' : 'Show trade markers';
         this.addTradingViewContextMenuItem(menu, {
+            icon: 'hide',
             label: tradeMarkersText,
             onClick: () => {
                 this.chartSettings.showTradeMarkers = !showTradeMarkers;
                 if (this.orderManager && typeof this.orderManager.toggleTradeMarkers === 'function') {
                     this.orderManager.toggleTradeMarkers(this.chartSettings.showTradeMarkers);
                 }
-                this.showNotification(this.chartSettings.showTradeMarkers ? 'Trade markers shown ✓' : 'Trade markers hidden ✓');
+                this.showNotification(this.chartSettings.showTradeMarkers ? 'Trade markers shown' : 'Trade markers hidden');
                 this.hideContextMenu();
             }
         });
@@ -42261,6 +42405,12 @@ class Chart {
                 this.hideContextMenu();
             }
         });
+
+        // Re-measure real height after items render — never leave actions below the fold.
+        try {
+            const node = typeof menu.node === 'function' ? menu.node() : null;
+            clampFixedElementToViewport(node, { pad: 8, preferredX: clientX, preferredY: clientY });
+        } catch (_) {}
 
         this._armHostContextMenuOutsideDismiss();
     }
@@ -42480,12 +42630,16 @@ class Chart {
 
     getTradingViewContextMenuIcon(iconKey = '') {
         const icons = {
-            reset: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.64-6.36" stroke-linecap="round" stroke-linejoin="round"></path><polyline points="3 4 3 10 9 10" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>',
-            alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M15 17h5l-1.4-1.4a2 2 0 0 1-.6-1.4V11a6 6 0 0 0-5-5.9V4a1 1 0 0 0-2 0v1.1A6 6 0 0 0 6 11v3.2a2 2 0 0 1-.6 1.4L4 17h5" stroke-linecap="round" stroke-linejoin="round"></path><path d="M9.5 17a2.5 2.5 0 0 0 5 0" stroke-linecap="round"></path></svg>',
-            buy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M7 17L17 7" stroke-linecap="round"></path><polyline points="10 7 17 7 17 14" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>',
-            sell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M7 7l10 10" stroke-linecap="round"></path><polyline points="10 17 17 17 17 10" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>',
-            order: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M8 3h6l4 4v14H8z" stroke-linejoin="round"></path><path d="M14 3v4h4" stroke-linecap="round" stroke-linejoin="round"></path><line x1="10" y1="12" x2="16" y2="12" stroke-linecap="round"></line><line x1="10" y1="16" x2="15" y2="16" stroke-linecap="round"></line></svg>',
-            settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke-linecap="round" stroke-linejoin="round"></path></svg>'
+            reset: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M8 8 H5 V5" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 8 C7 4.5 11 3 15 4.2 A7 7 0 1 1 7.5 18" stroke-linecap="round"/></svg>',
+            alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M6 16 H18 L16.5 13.5 V10 A4.5 4.5 0 0 0 7.5 10 V13.5 Z" stroke-linejoin="round"/><path d="M10 18 A2 2 0 0 0 14 18" stroke-linecap="round"/></svg>',
+            buy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M7 14 L12 7 L17 14" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 7 V19" stroke-linecap="round"/></svg>',
+            sell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M7 10 L12 17 L17 10" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 17 V5" stroke-linecap="round"/></svg>',
+            order: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><rect x="5" y="4" width="14" height="16" rx="2"/><path d="M8 9 H16 M8 13 H14" stroke-linecap="round"/></svg>',
+            copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M6 15 V6 A2 2 0 0 1 8 4 H15" stroke-linecap="round"/></svg>',
+            paste: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><rect x="8" y="5" width="10" height="14" rx="2"/><path d="M10 3.5 H16 V6 H10 Z" stroke-linejoin="round"/><path d="M11 11 H15 M11 14 H14" stroke-linecap="round"/></svg>',
+            marks: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M4 18 V8 L8 12 L12 6 L16 14 L20 10 V18" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+            hide: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M2.5 12 C5 7.5 8.5 5 12 5 S19 7.5 21.5 12 C19 16.5 15.5 19 12 19 S5 16.5 2.5 12 Z"/><circle cx="12" cy="12" r="2.4"/></svg>',
+            settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.36.3.8.48 1.26.48H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke-linejoin="round"/></svg>'
         };
 
         return icons[iconKey] || '';
@@ -42495,14 +42649,19 @@ class Chart {
         const {
             icon = '',
             label = '',
+            hint = '',
             shortcut = '',
             hasSubmenu = false,
+            accent = '',
             onClick = null
         } = options;
 
         const item = menu.append('div')
             .attr('class', 'context-menu-item tv-context-menu-item');
+        if (accent) item.attr('data-cm-accent', accent);
 
+        // Single-row grammar: icon + label | meta (price / type / shortcut).
+        // Never stack a second line under the label — that made each item look like two options.
         const row = item.append('div').attr('class', 'chart-cm-row');
         const left = row.append('div').attr('class', 'chart-cm-left');
 
@@ -42520,6 +42679,8 @@ class Chart {
 
         if (shortcut) {
             row.append('span').attr('class', 'chart-cm-shortcut').text(shortcut);
+        } else if (hint) {
+            row.append('span').attr('class', 'chart-cm-meta').text(hint);
         } else if (hasSubmenu) {
             row.append('span').attr('class', 'chart-cm-shortcut').text('›');
         }

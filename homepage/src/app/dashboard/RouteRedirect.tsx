@@ -27,7 +27,7 @@ function RouteRedirectInner({ to }: { to: string }) {
         padding: 24,
         fontFamily: "'Exo 2', system-ui, sans-serif",
         color: "rgba(255,255,255,0.6)",
-        background: "#07080e",
+        background: "#000000",
         minHeight: "100vh",
       }}
     >
@@ -44,7 +44,7 @@ export default function RouteRedirect({ to }: { to: string }) {
           style={{
             padding: 24,
             color: "rgba(255,255,255,0.6)",
-            background: "#07080e",
+            background: "#000000",
             minHeight: "100vh",
           }}
         >

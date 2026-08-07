@@ -1386,7 +1386,7 @@ const ColorPickerPopup = ({ pos, h, s, v, a, hexStr, c, F, onSVChange, onHChange
   const hueColor = `hsl(${h},100%,50%)`;
   const outColor = cpBuildColor(rgb.r, rgb.g, rgb.b, a);
   return (
-    <div className="tlr-cp tlr-gloss" data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",top:pos.top,left:pos.left,zIndex:9200,width:210,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 20px 56px rgba(0,0,0,0.92), 0 0 20px rgba(38,67,247,0.1)`,fontFamily:F,animation:animation||"tlrPopIn 0.15s ease"}}>
+    <div className="tlr-cp tlr-gloss" data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",top:pos.top,left:pos.left,zIndex:9200,width:210,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 20px 56px rgba(0,0,0,0.92), 0 0 20px rgba(48,144,255,0.1)`,fontFamily:F,animation:animation||"tlrPopIn 0.15s ease"}}>
       <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
       <div style={{padding:10}}>
         {/* SV square */}
@@ -1462,7 +1462,7 @@ const SYMBOLS_DATA = [
     {id:"EUR/GBP",name:"Euro / Pound",type:"forex",base:"EUR",quote:"GBP"},
   ]},
   { cat:"FUTURES", items:[
-    {id:"ES",name:"S&P 500 Futures",type:"futures",col:"#5B8CFF",bg:"rgba(74,106,255,0.28)"},
+    {id:"ES",name:"S&P 500 Futures",type:"futures",col:"#5B8CFF",bg:"rgba(48,144,255,0.28)"},
     {id:"NQ",name:"Nasdaq 100 Futures",type:"futures",col:"#26C6DA",bg:"rgba(38,198,218,0.22)"},
     {id:"GC",name:"Gold Futures",type:"futures",col:"#FFD54F",bg:"rgba(255,213,79,0.22)"},
   ]},
@@ -1539,7 +1539,7 @@ const SymBadge = ({ sym, w=18, h=12 }) => {
       {/* gold bar shape */}
       <path d={`M${cx-w*0.3},${h*0.28} L${cx+w*0.3},${h*0.28} L${cx+w*0.38},${h*0.72} L${cx-w*0.38},${h*0.72} Z`} fill={`url(#bar-${uid})`}/>
       <line x1={cx-w*0.22} y1={h*0.45} x2={cx+w*0.22} y2={h*0.45} stroke="rgba(0,0,0,0.25)" strokeWidth={0.6}/>
-      <text x={cx} y={h*0.64} textAnchor="middle" fill="rgba(0,0,0,0.55)" fontSize={h*0.28} fontWeight="800" fontFamily="'Exo 2',sans-serif">{sym.id==="XAUUSD"?"XAU":"GC"}</text>
+      <text x={cx} y={h*0.64} textAnchor="middle" fill="rgba(0,0,0,0.55)" fontSize={h*0.28} fontWeight="800" fontFamily='"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif'>{sym.id==="XAUUSD"?"XAU":"GC"}</text>
     </svg>
   );
   /* ── ES — S&P 500 mini bar chart ── */
@@ -1550,7 +1550,7 @@ const SymBadge = ({ sym, w=18, h=12 }) => {
       {[[w*0.18,h*0.72,h*0.48],[w*0.32,h*0.72,h*0.32],[w*0.46,h*0.72,h*0.55],[w*0.60,h*0.72,h*0.22],[w*0.74,h*0.72,h*0.38]].map(([x,bot,ht],i)=>(
         <rect key={i} x={x-w*0.05} y={bot-ht} width={w*0.09} height={ht} rx={1} fill={i===3||i===1?"#FF5068":"#5B8CFF"} opacity={0.9}/>
       ))}
-      <text x={w*0.86} y={h*0.42} textAnchor="middle" fill="#5B8CFF" fontSize={h*0.28} fontWeight="900" fontFamily="'Exo 2',sans-serif">ES</text>
+      <text x={w*0.86} y={h*0.42} textAnchor="middle" fill="#5B8CFF" fontSize={h*0.28} fontWeight="900" fontFamily='"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif'>ES</text>
     </svg>
   );
   /* ── NQ — Nasdaq mini chart ── */
@@ -1560,7 +1560,7 @@ const SymBadge = ({ sym, w=18, h=12 }) => {
       <rect width={w} height={h} rx={2} fill={`url(#bg-${uid})`}/>
       <polyline points={`${w*0.1},${h*0.72} ${w*0.28},${h*0.55} ${w*0.44},${h*0.62} ${w*0.6},${h*0.35} ${w*0.76},${h*0.28} ${w*0.9},${h*0.22}`}
         fill="none" stroke="#26C6DA" strokeWidth={1.1} strokeLinejoin="round" strokeLinecap="round"/>
-      <text x={w*0.5} y={h*0.88} textAnchor="middle" fill="#26C6DA" fontSize={h*0.26} fontWeight="900" fontFamily="'Exo 2',sans-serif">NQ</text>
+      <text x={w*0.5} y={h*0.88} textAnchor="middle" fill="#26C6DA" fontSize={h*0.26} fontWeight="900" fontFamily='"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif'>NQ</text>
     </svg>
   );
   /* ── default fallback ── */
@@ -1569,7 +1569,7 @@ const SymBadge = ({ sym, w=18, h=12 }) => {
   return (
     <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{display:"block",flexShrink:0}}>
       <rect width={w} height={h} rx={2} fill={sym.bg||"rgba(255,255,255,0.10)"}/>
-      <text x={cx} y={cy+fs*0.38} textAnchor="middle" fill={sym.col||"#fff"} fontSize={fs} fontWeight="800" fontFamily="'Exo 2',sans-serif" letterSpacing="-0.3">{label}</text>
+      <text x={cx} y={cy+fs*0.38} textAnchor="middle" fill={sym.col||"#fff"} fontSize={fs} fontWeight="800" fontFamily='"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif' letterSpacing="-0.3">{label}</text>
     </svg>
   );
 };
@@ -1964,7 +1964,7 @@ const SectionNode = ({ id, data }) => {
   const GOLD = '#C9A84C';
 
   return (
-    <div className={`${data.deleting?' tlc-sec-deleting':''}`} style={{fontFamily:"'Exo 2',sans-serif",width:'100%',height:'100%',border:'none',boxShadow:'none',background:'transparent',display:'flex',overflow:'visible',position:'relative'}}>
+    <div className={`${data.deleting?' tlc-sec-deleting':''}`} style={{fontFamily:'"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif',width:'100%',height:'100%',border:'none',boxShadow:'none',background:'transparent',display:'flex',overflow:'visible',position:'relative'}}>
 
       {/* Left gold accent bar */}
       <div style={{position:'absolute',top:0,left:0,bottom:0,width:4,background:GOLD,zIndex:2,pointerEvents:'none'}}/>
@@ -1981,7 +1981,7 @@ const SectionNode = ({ id, data }) => {
           border:'1px solid var(--tlc-brh)',
           borderTop:'none',
           boxShadow:'4px 12px 32px rgba(0,0,0,0.55)',
-          fontFamily:"'Exo 2',sans-serif",
+          fontFamily:'"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif',
           opacity:descOpen?1:0,
           transform:descOpen?'translateY(0)':'translateY(-10px)',
           pointerEvents:descOpen?'auto':'none',
@@ -2053,7 +2053,7 @@ const SectionNode = ({ id, data }) => {
           className="tlr-scroll"
           style={{
             flexShrink:0, height:190, background:'transparent', border:'none', outline:'none',
-            color:descEditing?'var(--tlc-ts)':'var(--tlc-tm)', fontSize:21, fontFamily:"'Exo 2',sans-serif",
+            color:descEditing?'var(--tlc-ts)':'var(--tlc-tm)', fontSize:21, fontFamily:'"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif',
             lineHeight:1.7, padding:'14px 18px', resize:'none',
             caretColor:GOLD, overflowY:'auto', cursor:descEditing?'text':'default',
           }}
@@ -2307,7 +2307,7 @@ const SectionNode = ({ id, data }) => {
               width: btnW, height: btnH,
               zIndex: 5,
               display:'flex', alignItems:'center', justifyContent:'center', boxSizing:'border-box',
-              fontFamily:"'Exo 2',sans-serif",
+              fontFamily:'"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif',
               fontSize:16, fontWeight:700, letterSpacing:'0.04em',
               userSelect:'none', WebkitFontSmoothing:'antialiased',
               transform: connTransform(isPress),
@@ -2366,7 +2366,7 @@ const SectionNode = ({ id, data }) => {
       {lightbox!==null && screenshots[lightbox]?.src && createPortal(
         <div data-nodrag="1" onClick={e=>{e.stopPropagation(); setLightbox(null);}}
           style={{position:'fixed', inset:0, zIndex:100001, background:'rgba(4,5,15,0.80)',
-            '--tlc-bg':'#07080E', '--tlc-sf':'#0A0C14', '--tlc-el':'#0F1119',
+            '--tlc-bg':'var(--bg)', '--tlc-sf':'var(--surface)', '--tlc-el':'var(--surface-raised)',
             '--tlc-tx':'rgba(255,255,255,0.92)', '--tlc-ts':'rgba(255,255,255,0.70)', '--tlc-tm':'rgba(255,255,255,0.50)',
             '--tlc-brh':'rgba(140,160,255,0.12)',
             '--tlc-rd':'#FF5068', '--tlc-ac':'#C9A84C',
@@ -2375,7 +2375,7 @@ const SectionNode = ({ id, data }) => {
             style={{width:'min(1200px,86vw)', height:'min(820px,88vh)', background:'var(--tlc-bg)',
               border:'1px solid var(--tlc-brh)',
               boxShadow:'0 32px 96px rgba(0,0,0,0.9), 0 0 0 1px rgba(140,160,255,0.13)',
-              display:'flex', flexDirection:'column', overflow:'hidden', fontFamily:"'Exo 2',sans-serif"}}>
+              display:'flex', flexDirection:'column', overflow:'hidden', fontFamily:'"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif'}}>
             <div style={{height:2, background:`linear-gradient(90deg,#C9A84C,#DAB85F,#C9A84C)`, flexShrink:0}}/>
             <div style={{height:44, flexShrink:0, display:'flex', alignItems:'center',
               padding:'0 10px 0 18px', borderBottom:'1px solid var(--tlc-brh)', background:'var(--tlc-bg)'}}>
@@ -2452,7 +2452,7 @@ const SectionNode = ({ id, data }) => {
                 style={{display:'flex', alignItems:'center', justifyContent:'center', gap:7, padding:'0 14px', height:30, minWidth:90, boxSizing:'border-box',
                   background: lbPReplace ? '#C9A84C' : lbHReplace ? 'linear-gradient(135deg,#DAB85F,#E6C870)' : 'linear-gradient(135deg,#C9A84C,#DAB85F)',
                   border: `1px solid ${lbHReplace || lbPReplace ? '#DAB85F' : 'rgba(218,184,95,0.5)'}`,
-                  color:'#fff', fontSize:12, fontWeight:700, fontFamily:"'Exo 2',sans-serif", letterSpacing:'0.02em',
+                  color:'#fff', fontSize:12, fontWeight:700, fontFamily:'"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif', letterSpacing:'0.02em',
                   cursor:'default',
                   boxShadow: lbHReplace ? '0 1px 4px rgba(201,168,76,0.18)' : 'none',
                   transform: lbPReplace ? 'scale(0.96)' : 'scale(1)',
@@ -2471,7 +2471,7 @@ const SectionNode = ({ id, data }) => {
                 style={{display:'flex', alignItems:'center', justifyContent:'center', gap:7, padding:'0 14px', height:30, minWidth:90, boxSizing:'border-box',
                   background: lbPDelete ? '#FF5068' : lbHDelete ? 'linear-gradient(135deg,#FF6B7F,#FF8A99)' : 'linear-gradient(135deg,#FF5068,#FF6B7F)',
                   border: `1px solid ${lbHDelete || lbPDelete ? '#FF6B7F' : 'rgba(255,107,127,0.5)'}`,
-                  color:'#fff', fontSize:12, fontWeight:700, fontFamily:"'Exo 2',sans-serif", letterSpacing:'0.02em',
+                  color:'#fff', fontSize:12, fontWeight:700, fontFamily:'"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif', letterSpacing:'0.02em',
                   cursor:'default',
                   boxShadow: lbHDelete ? '0 1px 4px rgba(255,80,104,0.18)' : 'none',
                   transform: lbPDelete ? 'scale(0.96)' : 'scale(1)',
@@ -2745,7 +2745,7 @@ const ConditionCard = ({ id, data, selected }) => {
   };
 
   const status = data.status || (data.mandatory === false ? 'optional' : 'mandatory');
-  const cardColor = status === 'mandatory' ? '#2643F7' : status === 'optional' ? '#7C3AED' : '#EF4444';
+  const cardColor = status === 'mandatory' ? '#232CF4' : status === 'optional' ? '#7C3AED' : '#EF4444';
   return (
     <div style={{
       fontFamily:'inherit', width:'100%', height:'100%', borderRadius:0, overflow:(descOpen||statusOpen)?'visible':'hidden',
@@ -2760,7 +2760,7 @@ const ConditionCard = ({ id, data, selected }) => {
           position:'absolute', left:0, top:descFlipUp?'auto':40, bottom:descFlipUp?40:'auto', width:440,
           background:'var(--tlc-sf)', display:'flex', flexDirection:'column',
           zIndex:20, border:'1px solid var(--tlc-brh)', borderTop:'none',
-          boxShadow:'4px 16px 40px rgba(0,0,0,0.60)', fontFamily:"'Exo 2',sans-serif",
+          boxShadow:'4px 16px 40px rgba(0,0,0,0.60)', fontFamily:'"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif',
           opacity:descOpen?1:0, transform:descOpen?'translateY(0)':'translateY(-10px)',
           pointerEvents:descOpen?'auto':'none', transition:'opacity 0.18s ease, transform 0.18s ease',
         }}>
@@ -2773,10 +2773,10 @@ const ConditionCard = ({ id, data, selected }) => {
             <div onClick={e=>{e.stopPropagation();setDescEditing(o=>!o);}}
               onMouseEnter={()=>setHDescEdit(true)} onMouseLeave={()=>setHDescEdit(false)}
               style={{display:'flex', alignItems:'center', justifyContent:'center', padding:9, borderRadius:7, cursor:'default',
-                background:descEditing?'rgba(38,67,247,0.20)':hDescEdit?'rgba(255,255,255,0.08)':'transparent', transition:'background 0.15s'}}>
+                background:descEditing?'rgba(48,144,255,0.20)':hDescEdit?'rgba(255,255,255,0.08)':'transparent', transition:'background 0.15s'}}>
               {descEditing ? (
                 <svg width={24} height={24} viewBox="0 0 24 24" fill="none">
-                  <polyline points="4 13 9 18 20 7" stroke="#2643F7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  <polyline points="4 13 9 18 20 7" stroke="#232CF4" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               ) : (
                 <svg width={24} height={24} viewBox="0 0 24 24" fill="none">
@@ -2804,7 +2804,7 @@ const ConditionCard = ({ id, data, selected }) => {
           placeholder="Click the edit button to add notes…"
           className="tlr-scroll"
           style={{flexShrink:0, height:190, background:'transparent', border:'none', outline:'none',
-            color:descEditing?'var(--tlc-ts)':'var(--tlc-tm)', fontSize:21, fontFamily:"'Exo 2',sans-serif",
+            color:descEditing?'var(--tlc-ts)':'var(--tlc-tm)', fontSize:21, fontFamily:'"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif',
             lineHeight:1.7, padding:'14px 18px', resize:'none', caretColor:'#C9A84C',
             overflowY:'auto', cursor:descEditing?'text':'default'}}
         />
@@ -2930,12 +2930,12 @@ const ConditionCard = ({ id, data, selected }) => {
         {statusOpen && createPortal(
           <div ref={statusMenuRef} onClick={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
             style={{position:'fixed', top:statusMenuPos.top, left:statusMenuPos.left, width:140,
-              background:'#0A0C14', border:'1px solid rgba(140,160,255,0.22)',
+              background:'#0a0a0b', border:'1px solid rgba(140,160,255,0.22)',
               boxShadow:'0 8px 28px rgba(0,0,0,0.7)',
-              zIndex:100020, fontFamily:"'Exo 2',sans-serif"}}>
-            <div style={{height:2, background:'linear-gradient(90deg,#2643F7,#4A6AFF,#2643F7)'}}/>
+              zIndex:100020, fontFamily:'"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif'}}>
+            <div style={{height:2, background:'linear-gradient(90deg,#232CF4,#3090FF,#232CF4)'}}/>
             {[
-              {key:'mandatory', label:'Mandatory', color:'#2643F7'},
+              {key:'mandatory', label:'Mandatory', color:'#232CF4'},
               {key:'optional', label:'Optional', color:'#7C3AED'},
               {key:'invalidate', label:'Invalidate', color:'#EF4444'},
             ].map(opt => {
@@ -2949,12 +2949,12 @@ const ConditionCard = ({ id, data, selected }) => {
                     flushSync(() => { _cvCb.updateCondition && _cvCb.updateCondition(id, {status: opt.key}); });
                     setStatusOpen(false);
                   }}
-                  onMouseEnter={e=>{e.currentTarget.style.background = selected ? 'rgba(38,67,247,0.06)' : 'rgba(255,255,255,0.04)';}}
-                  onMouseLeave={e=>{e.currentTarget.style.background = selected ? 'rgba(38,67,247,0.06)' : 'transparent';}}
+                  onMouseEnter={e=>{e.currentTarget.style.background = selected ? 'rgba(48,144,255,0.06)' : 'rgba(255,255,255,0.04)';}}
+                  onMouseLeave={e=>{e.currentTarget.style.background = selected ? 'rgba(48,144,255,0.06)' : 'transparent';}}
                   style={{position:'relative', display:'flex', alignItems:'center', gap:7, padding:'4px 9px', cursor:'default',
-                    background: selected ? 'rgba(38,67,247,0.06)' : 'transparent',
+                    background: selected ? 'rgba(48,144,255,0.06)' : 'transparent',
                     transition:'background 0.08s'}}>
-                  {selected && <div style={{position:'absolute',left:0,top:'15%',bottom:'15%',width:2,background:'linear-gradient(180deg,transparent,#4A6AFF,transparent)',boxShadow:'0 0 6px rgba(38,67,247,0.12)'}}/>}
+                  {selected && <div style={{position:'absolute',left:0,top:'15%',bottom:'15%',width:2,background:'linear-gradient(180deg,transparent,#3090FF,transparent)',boxShadow:'0 0 6px rgba(48,144,255,0.12)'}}/>}
                   <svg width={13} height={13} viewBox="0 0 24 24" fill="none" style={{flexShrink:0}}>
                     {opt.key === 'invalidate' ? (
                       <>
@@ -2965,7 +2965,7 @@ const ConditionCard = ({ id, data, selected }) => {
                       <path d="M12 2l2.6 6.6L22 9l-5.5 4.6L18 21l-6-3.6L6 21l1.5-7.4L2 9l7.4-.4L12 2z" fill={opt.color}/>
                     )}
                   </svg>
-                  <span style={{fontSize:12, fontWeight:selected?700:600, color:selected?'#4A6AFF':'rgba(255,255,255,0.85)', letterSpacing:0.2}}>{opt.label}</span>
+                  <span style={{fontSize:12, fontWeight:selected?700:600, color:selected?'#3090FF':'rgba(255,255,255,0.85)', letterSpacing:0.2}}>{opt.label}</span>
                 </div>
               );
             })}
@@ -3053,7 +3053,7 @@ const ConditionCard = ({ id, data, selected }) => {
       {lightbox!==null && screenshots[lightbox]?.src && createPortal(
         <div data-nodrag="1" onClick={e=>{e.stopPropagation(); setLightbox(null);}}
           style={{position:'fixed', inset:0, zIndex:100001, background:'rgba(4,5,15,0.80)',
-            '--tlc-bg':'#07080E', '--tlc-sf':'#0A0C14', '--tlc-el':'#0F1119',
+            '--tlc-bg':'var(--bg)', '--tlc-sf':'var(--surface)', '--tlc-el':'var(--surface-raised)',
             '--tlc-tx':'rgba(255,255,255,0.92)', '--tlc-ts':'rgba(255,255,255,0.70)', '--tlc-tm':'rgba(255,255,255,0.50)',
             '--tlc-brh':'rgba(140,160,255,0.12)',
             '--tlc-rd':'#FF5068', '--tlc-ac':'#C9A84C',
@@ -3062,9 +3062,9 @@ const ConditionCard = ({ id, data, selected }) => {
             style={{width:'min(1200px,86vw)', height:'min(820px,88vh)', background:'var(--tlc-bg)',
               border:'1px solid var(--tlc-brh)',
               boxShadow:'0 32px 96px rgba(0,0,0,0.9), 0 0 0 1px rgba(140,160,255,0.13)',
-              display:'flex', flexDirection:'column', overflow:'hidden', fontFamily:"'Exo 2',sans-serif"}}>
+              display:'flex', flexDirection:'column', overflow:'hidden', fontFamily:'"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif'}}>
             {/* Blue accent */}
-            <div style={{height:2, background:`linear-gradient(90deg,#2643F7,#5C7BFF,#2643F7)`, flexShrink:0}}/>
+            <div style={{height:2, background:`linear-gradient(90deg,#232CF4,#4AA0FF,#232CF4)`, flexShrink:0}}/>
             {/* Title bar */}
             <div style={{height:44, flexShrink:0, display:'flex', alignItems:'center',
               padding:'0 10px 0 18px', borderBottom:'1px solid var(--tlc-brh)', background:'var(--tlc-bg)'}}>
@@ -3144,7 +3144,7 @@ const ConditionCard = ({ id, data, selected }) => {
                 style={{display:'flex', alignItems:'center', justifyContent:'center', gap:7, padding:'0 14px', height:30, minWidth:90, boxSizing:'border-box',
                   background: lbPReplace ? '#C9A84C' : lbHReplace ? 'linear-gradient(135deg,#DAB85F,#E6C870)' : 'linear-gradient(135deg,#C9A84C,#DAB85F)',
                   border: `1px solid ${lbHReplace || lbPReplace ? '#DAB85F' : 'rgba(218,184,95,0.5)'}`,
-                  color:'#fff', fontSize:12, fontWeight:700, fontFamily:"'Exo 2',sans-serif", letterSpacing:'0.02em',
+                  color:'#fff', fontSize:12, fontWeight:700, fontFamily:'"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif', letterSpacing:'0.02em',
                   cursor:'default',
                   boxShadow: lbHReplace ? '0 1px 4px rgba(201,168,76,0.18)' : 'none',
                   transform: lbPReplace ? 'scale(0.96)' : 'scale(1)',
@@ -3163,7 +3163,7 @@ const ConditionCard = ({ id, data, selected }) => {
                 style={{display:'flex', alignItems:'center', justifyContent:'center', gap:7, padding:'0 14px', height:30, minWidth:90, boxSizing:'border-box',
                   background: lbPDelete ? '#FF5068' : lbHDelete ? 'linear-gradient(135deg,#FF6B7F,#FF8A99)' : 'linear-gradient(135deg,#FF5068,#FF6B7F)',
                   border: `1px solid ${lbHDelete || lbPDelete ? '#FF6B7F' : 'rgba(255,107,127,0.5)'}`,
-                  color:'#fff', fontSize:12, fontWeight:700, fontFamily:"'Exo 2',sans-serif", letterSpacing:'0.02em',
+                  color:'#fff', fontSize:12, fontWeight:700, fontFamily:'"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif', letterSpacing:'0.02em',
                   cursor:'default',
                   boxShadow: lbHDelete ? '0 1px 4px rgba(255,80,104,0.18)' : 'none',
                   transform: lbPDelete ? 'scale(0.96)' : 'scale(1)',
@@ -3206,12 +3206,12 @@ const CANVAS_NODE_TYPES = { section:SectionNode, condition:ConditionCard };
 const CANVAS_EDGE_TYPES = { talEdge:TalEdge };
 
 const SECTION_DEFS = [
-  { label:'TREND',       ac:'rgba(38,67,247,0.9)',  bd:'rgba(38,67,247,0.25)',  bg:'rgba(38,67,247,0.035)', hdr:'rgba(38,67,247,0.07)' },
+  { label:'TREND',       ac:'rgba(48,144,255,0.9)',  bd:'rgba(48,144,255,0.25)',  bg:'rgba(48,144,255,0.035)', hdr:'rgba(48,144,255,0.07)' },
   { label:'LEVELS',      ac:'rgba(6,182,212,0.9)',  bd:'rgba(6,182,212,0.25)',  bg:'rgba(6,182,212,0.035)', hdr:'rgba(6,182,212,0.07)' },
   { label:'ENTRY MODEL', ac:'rgba(34,197,94,0.9)',  bd:'rgba(34,197,94,0.25)',  bg:'rgba(34,197,94,0.035)', hdr:'rgba(34,197,94,0.07)' },
 ];
 const SECTION_COLOR_CYCLE = [
-  { ac:'rgba(38,67,247,0.9)',  bd:'rgba(38,67,247,0.25)',  bg:'rgba(38,67,247,0.035)', hdr:'rgba(38,67,247,0.07)' },
+  { ac:'rgba(48,144,255,0.9)',  bd:'rgba(48,144,255,0.25)',  bg:'rgba(48,144,255,0.035)', hdr:'rgba(48,144,255,0.07)' },
   { ac:'rgba(6,182,212,0.9)',  bd:'rgba(6,182,212,0.25)',  bg:'rgba(6,182,212,0.035)', hdr:'rgba(6,182,212,0.07)' },
   { ac:'rgba(34,197,94,0.9)',  bd:'rgba(34,197,94,0.25)',  bg:'rgba(34,197,94,0.035)', hdr:'rgba(34,197,94,0.07)' },
   { ac:'rgba(201,168,76,0.9)', bd:'rgba(201,168,76,0.25)', bg:'rgba(201,168,76,0.035)',hdr:'rgba(201,168,76,0.07)' },
@@ -3455,7 +3455,7 @@ function countStrategyFlowGroups(nodes = []) {
 }
 
 /* ── Strategy Templates ── */
-const templateDemoImage = (title, subtitle, color = '#2643F7') => ({
+const templateDemoImage = (title, subtitle, color = '#232CF4') => ({
   name: `${title}.svg`,
   src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`
     <svg xmlns="http://www.w3.org/2000/svg" width="720" height="360" viewBox="0 0 720 360">
@@ -3496,8 +3496,8 @@ const STRATEGY_TEMPLATES = [
     markets: ['forex','crypto','stocks'],
     timeframes: ['1h','4h'],
     groups: [
-      { name:'TREND', description:'This group defines the directional environment. Before looking for any entry, the higher timeframe must show that institutions are already marking price in one direction. The 4H chart should have a visible slope, price should respect dynamic support or resistance, and the most recent swings should not look compressed or random. If this section is unclear, the rest of the setup is skipped because pullback entries have poor expectancy inside sideways chop.', images:[templateDemoImage('4H Trend Context','Trend filter, slope, and market structure', '#2643F7')], conditions:[
-        { status:'mandatory', label:'Price above 200 EMA on 4H', description:'For long setups, price must be trading above the 200 EMA on the 4H chart and the average should be flat-to-rising or clearly rising. The 200 EMA is used as a regime filter, not as an entry level. If price is repeatedly crossing above and below it, the market is not trending enough for this template. For short setups, mirror the rule and require price below a flat-to-falling or falling 200 EMA.', images:[templateDemoImage('200 EMA Regime Filter','Only trade with the dominant 4H trend', '#2643F7')] },
+      { name:'TREND', description:'This group defines the directional environment. Before looking for any entry, the higher timeframe must show that institutions are already marking price in one direction. The 4H chart should have a visible slope, price should respect dynamic support or resistance, and the most recent swings should not look compressed or random. If this section is unclear, the rest of the setup is skipped because pullback entries have poor expectancy inside sideways chop.', images:[templateDemoImage('4H Trend Context','Trend filter, slope, and market structure', '#232CF4')], conditions:[
+        { status:'mandatory', label:'Price above 200 EMA on 4H', description:'For long setups, price must be trading above the 200 EMA on the 4H chart and the average should be flat-to-rising or clearly rising. The 200 EMA is used as a regime filter, not as an entry level. If price is repeatedly crossing above and below it, the market is not trending enough for this template. For short setups, mirror the rule and require price below a flat-to-falling or falling 200 EMA.', images:[templateDemoImage('200 EMA Regime Filter','Only trade with the dominant 4H trend', '#232CF4')] },
         { status:'mandatory', label:'ADX > 25 on 4H', description:'ADX should be above 25 to confirm that the move has directional strength rather than random drift. The exact value is less important than the message: momentum must be expanding or already established. If ADX is below 20, pullbacks often fail because there is no dominant force to resume the move. If ADX is extremely extended, wait for a controlled pullback rather than entering after exhaustion.', images:[templateDemoImage('ADX Trend Strength','Avoid weak or range-bound conditions', '#22C55E')] },
         { status:'optional',  label:'Higher highs and higher lows on 4H', description:'This is optional but strongly preferred. A clean sequence of higher highs and higher lows confirms that buyers are defending progressively higher prices. The cleanest long setups occur when the pullback forms a higher low near dynamic support before continuation. For shorts, look for lower highs and lower lows. If swing structure is messy, reduce size or require stronger confirmation from the entry group.', images:[templateDemoImage('Swing Structure','Higher highs and higher lows confirm trend quality', '#7C3AED')] },
       ], connectors:['AND','AND','OFF','OFF','OFF'] },
@@ -3506,8 +3506,8 @@ const STRATEGY_TEMPLATES = [
         { status:'mandatory',  label:'RSI between 35-55 on 1H', description:'RSI should cool into the middle band, showing that momentum has reset without fully reversing the trend. For longs, 35-55 is ideal because it indicates a pullback but not deep bearish control. For shorts, use the mirrored 45-65 area. If RSI is still very high after a long impulse, the trade is probably late. If RSI collapses below the zone, the pullback may be turning into a trend change.', images:[templateDemoImage('Momentum Reset','RSI cools while trend structure remains intact', '#22C55E')] },
         { status:'invalidate', label:'Price moved more than 1.5R from pullback low', description:'If price has already launched more than 1.5R away from the pullback low before entry, the setup is considered missed. Chasing after the move expands creates poor stop placement and reduces the probability of reaching a clean 2R or 3R target. The correct response is to wait for another pullback or a new structure to form, not to force an entry because the direction was correct.', images:[templateDemoImage('Do Not Chase','Late entries destroy reward-to-risk', '#EF4444')] },
       ], connectors:['AND','AND','OFF','OFF','OFF'] },
-      { name:'ENTRY', description:'This group defines the exact trigger. A pullback into value is not enough by itself; price must show that the trend is likely resuming. The entry should happen only after a clear rejection or continuation candle closes in the trend direction. This prevents entering while the pullback is still active. News risk is treated as a hard filter because trendline and EMA pullbacks can be invalidated instantly by high-impact releases.', images:[templateDemoImage('Entry Confirmation','Wait for rejection and continuation from value', '#2643F7')], conditions:[
-        { status:'mandatory',  label:'Bullish engulfing or pin bar (1H)', description:'At the pullback zone, the execution candle should show rejection of lower prices for longs, such as a bullish engulfing candle, a strong pin bar, or a clean rejection wick that closes back toward the highs. This candle is the first proof that buyers are defending the pullback. For shorts, use bearish engulfing or rejection from above. Weak inside candles, dojis in the middle of the range, or candles without location do not qualify.', images:[templateDemoImage('Reversal Candle','Confirmation must occur at the pullback zone', '#2643F7')] },
+      { name:'ENTRY', description:'This group defines the exact trigger. A pullback into value is not enough by itself; price must show that the trend is likely resuming. The entry should happen only after a clear rejection or continuation candle closes in the trend direction. This prevents entering while the pullback is still active. News risk is treated as a hard filter because trendline and EMA pullbacks can be invalidated instantly by high-impact releases.', images:[templateDemoImage('Entry Confirmation','Wait for rejection and continuation from value', '#232CF4')], conditions:[
+        { status:'mandatory',  label:'Bullish engulfing or pin bar (1H)', description:'At the pullback zone, the execution candle should show rejection of lower prices for longs, such as a bullish engulfing candle, a strong pin bar, or a clean rejection wick that closes back toward the highs. This candle is the first proof that buyers are defending the pullback. For shorts, use bearish engulfing or rejection from above. Weak inside candles, dojis in the middle of the range, or candles without location do not qualify.', images:[templateDemoImage('Reversal Candle','Confirmation must occur at the pullback zone', '#232CF4')] },
         { status:'mandatory',  label:'Close above prior candle high', description:'The confirmation candle should close above the prior candle high for long setups, proving that momentum is returning rather than merely pausing. This close also provides a clear buy-stop reference above the candle. For short setups, require a close below the prior candle low. If price wicks through the level but closes back inside the prior candle, wait for another signal instead of anticipating.', images:[templateDemoImage('Confirmation Close','Momentum closes beyond the prior candle', '#22C55E')] },
         { status:'invalidate', label:'Major news in next 30 minutes', description:'Do not enter if high-impact news for the instrument, base currency, sector, or index is scheduled within the next 30 minutes. The setup can look perfect technically and still fail from a liquidity shock. If the trade is already open before news, manage according to the risk plan. If not yet entered, stand aside and reassess after spreads and volatility normalize.', images:[templateDemoImage('News Filter','Avoid entering before high-impact releases', '#EF4444')] },
       ], connectors:['AND','AND','OFF','OFF','OFF'] },
@@ -4162,8 +4162,8 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups, 
     );
     if (isBlank) {
       const blankBg = selected
-        ? `linear-gradient(135deg,${c.ac},${c.acL})`
-        : hov ? `linear-gradient(135deg,${c.acL},#6A8AFF)` : `linear-gradient(135deg,${c.ac},${c.acL})`;
+        ? '#FFFFFF'
+        : hov ? '#FFFFFF' : '#FFFFFF';
       return (
         <div
           onClick={()=>selectTemplate(tpl.id)}
@@ -4171,10 +4171,10 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups, 
           onMouseEnter={()=>setHovered(tpl.id)} onMouseLeave={()=>setHovered(null)}
           style={{
             position:'relative', height:54, padding:'0 18px',
-            background:blankBg, border:`1px solid ${selected||hov?c.acL:'rgba(74,106,255,0.5)'}`,
+            background:blankBg, border:`1px solid ${selected||hov?c.acL:'rgba(48,144,255,0.5)'}`,
             cursor:'default', userSelect:'none',
             display:'flex', alignItems:'center', justifyContent:'center', gap:9,
-            boxShadow: hov ? '0 2px 14px rgba(38,67,247,0.5)' : '0 2px 8px rgba(38,67,247,0.25)',
+            boxShadow: hov ? '0 2px 14px rgba(48,144,255,0.5)' : '0 2px 8px rgba(48,144,255,0.25)',
             transition:'background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease',
           }}>
           <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
@@ -4195,10 +4195,10 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups, 
         onMouseEnter={()=>setHovered(tpl.id)} onMouseLeave={()=>setHovered(null)}
         style={{
           position:'relative', minHeight:isCompact?236:316, padding:0, overflow:'hidden',
-          background:selected?'rgba(38,67,247,0.07)':hov?'rgba(140,160,255,0.045)':c.sf,
+          background:selected?'rgba(48,144,255,0.07)':hov?'rgba(140,160,255,0.045)':c.sf,
           border:`1px solid ${selected?c.acL:hov?c.brH:c.br}`,
           cursor:'default', userSelect:'none',
-          boxShadow:selected?`0 0 0 1px ${c.acB}, 0 0 18px rgba(38,67,247,0.18)`:hov?'0 8px 22px rgba(0,0,0,0.32)':'none',
+          boxShadow:selected?`0 0 0 1px ${c.acB}, 0 0 18px rgba(48,144,255,0.18)`:hov?'0 8px 22px rgba(0,0,0,0.32)':'none',
           transition:'background 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease',
           display:'flex', flexDirection:'column',
         }}>
@@ -4301,10 +4301,10 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups, 
             </button>
             <button onClick={()=>commit('__blank')}
               style={{display:'inline-flex',alignItems:'center',justifyContent:'center',gap:7,padding:'0 14px',height:32,minWidth:isCompact?0:136,flex:isCompact?'1 1 0':undefined,boxSizing:'border-box',
-                background:actionHov==='tpl-create'?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,
-                border:`1px solid rgba(74,106,255,0.5)`,color:'#fff',
+                background:actionHov==='tpl-create'?'#FFFFFF':'#FFFFFF',
+                border:`1px solid rgba(48,144,255,0.5)`,color:'#fff',
                 fontSize:11,fontWeight:800,fontFamily:F,letterSpacing:'0.05em',textTransform:'uppercase',
-                cursor:'default',boxShadow:actionHov==='tpl-create'?'0 2px 14px rgba(38,67,247,0.5)':'0 2px 8px rgba(38,67,247,0.25)',
+                cursor:'default',boxShadow:actionHov==='tpl-create'?'0 2px 14px rgba(48,144,255,0.5)':'0 2px 8px rgba(48,144,255,0.25)',
                 transform:actionPress==='tpl-create'?'scale(0.97)':'scale(1)',
                 transition:'background 0.12s, box-shadow 0.12s, transform 0.08s'}}
               onMouseEnter={()=>setActionHov('tpl-create')}
@@ -4319,14 +4319,14 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups, 
             </button>
             <button onClick={()=>commit()} disabled={!selectedId}
               style={{padding:'0 16px',height:32,minWidth:isCompact?0:120,flex:isCompact?'1 1 0':undefined,boxSizing:'border-box',
-                background:selectedId?`linear-gradient(135deg,${c.ac},${c.acL})`:'rgba(140,160,255,0.10)',
-                border:`1px solid ${selectedId?'rgba(74,106,255,0.5)':'rgba(140,160,255,0.18)'}`,
+                background:selectedId?'#FFFFFF':'rgba(140,160,255,0.10)',
+                border:`1px solid ${selectedId?'rgba(48,144,255,0.5)':'rgba(140,160,255,0.18)'}`,
                 color:selectedId?'#fff':c.tm,fontSize:11,fontWeight:800,fontFamily:F,letterSpacing:'0.06em',textTransform:'uppercase',
                 cursor:'default',opacity:selectedId?1:0.55,
-                boxShadow:selectedId?'0 2px 8px rgba(38,67,247,0.25)':'none',
+                boxShadow:selectedId?'0 2px 8px rgba(48,144,255,0.25)':'none',
                 transition:'background 0.12s, box-shadow 0.12s, filter 0.12s, transform 0.08s'}}
-              onMouseEnter={e=>{if(selectedId){e.currentTarget.style.background=`linear-gradient(135deg,${c.acL},#6A8AFF)`;e.currentTarget.style.boxShadow='0 2px 14px rgba(38,67,247,0.5)';}}}
-              onMouseLeave={e=>{if(selectedId){e.currentTarget.style.background=`linear-gradient(135deg,${c.ac},${c.acL})`;e.currentTarget.style.boxShadow='0 2px 8px rgba(38,67,247,0.25)';e.currentTarget.style.filter='brightness(1)';e.currentTarget.style.transform='scale(1)';}}}
+              onMouseEnter={e=>{if(selectedId){e.currentTarget.style.background='#FFFFFF';e.currentTarget.style.boxShadow='none';}}}
+              onMouseLeave={e=>{if(selectedId){e.currentTarget.style.background='#FFFFFF';e.currentTarget.style.boxShadow='none';e.currentTarget.style.filter='brightness(1)';e.currentTarget.style.transform='scale(1)';}}}
               onMouseDown={e=>{if(selectedId){e.currentTarget.style.filter='brightness(0.9)';e.currentTarget.style.transform='scale(0.97)';}}}
               onMouseUp={e=>{if(selectedId){e.currentTarget.style.filter='brightness(1)';e.currentTarget.style.transform='scale(1)';}}}>
               {hasExistingGroups && confirmReplace ? t('Replace', 'استبدال') : selectedId === '__blank' ? t('Create Your Own', 'أنشئ استراتيجيتك') : t('Use Template', 'استخدام القالب')}
@@ -5291,11 +5291,11 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
   };
   const outlineFocusStyle = (e) => {
     const edgeColor = e.currentTarget.dataset.edgeColor;
-    e.currentTarget.style.borderColor = edgeColor || '#2643F7';
+    e.currentTarget.style.borderColor = edgeColor || '#232CF4';
     e.currentTarget.style.background = '#FFFFFF';
     e.currentTarget.style.boxShadow = edgeColor
-      ? `inset 3px 0 0 ${edgeColor}, 0 0 0 3px rgba(38,67,247,0.12), inset 0 -2px 0 rgba(38,67,247,0.35)`
-      : '0 0 0 3px rgba(38,67,247,0.12), inset 0 -2px 0 rgba(38,67,247,0.35)';
+      ? `inset 3px 0 0 ${edgeColor}, 0 0 0 3px rgba(48,144,255,0.12), inset 0 -2px 0 rgba(48,144,255,0.35)`
+      : '0 0 0 3px rgba(48,144,255,0.12), inset 0 -2px 0 rgba(48,144,255,0.35)';
   };
   const outlineBlurStyle = (e) => {
     const edgeColor = e.currentTarget.dataset.edgeColor;
@@ -5317,7 +5317,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
   ];
   const outlineFlowColors = {
     group:'#C9A84C',
-    mandatory:'#2643F7',
+    mandatory:'#232CF4',
     optional:'#7C3AED',
     invalidate:'#EF4444',
   };
@@ -5436,7 +5436,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
       : '';
     const baseTag = baseHref ? `<base href="${escPrint(baseHref)}">` : '';
     printWindow.document.open();
-    printWindow.document.write(`<!doctype html><html><head>${baseTag}<title>${escPrint(stratBName || 'Strategy Flow')}</title><style>@page{size:A4;margin:16mm}*{box-sizing:border-box}body{margin:0;background:#fff;color:#101828;font-family:${escPrint(F)},sans-serif;font-size:11pt;line-height:1.5}.doc{max-width:178mm;margin:0 auto;position:relative;isolation:isolate}.watermark{position:fixed;left:50%;top:50%;width:118mm;height:118mm;object-fit:contain;opacity:.035;transform:translate(-50%,-50%);pointer-events:none;z-index:0}.doc>*:not(.watermark){position:relative;z-index:1}.doc-head{border-bottom:3px solid #C9A84C;padding-bottom:14px;margin-bottom:18px;display:flex;align-items:flex-start;justify-content:space-between;gap:20px}.head-main{display:flex;align-items:flex-start;gap:10px;min-width:0}.head-logo{width:40px;height:40px;object-fit:contain;flex:0 0 auto;margin-top:1px}.brand{font-size:10pt;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:#2643F7}.title{margin:7px 0 0;font-size:24pt;line-height:1.1;color:#101828}.meta{font-size:9pt;color:#667085;text-align:right}.group{break-inside:auto;border-top:1px solid rgba(201,168,76,.55);padding-top:14px;margin-top:18px}.doc-head+.group{margin-top:0}.group-kicker{font-size:12pt;font-weight:900;letter-spacing:.04em;text-transform:uppercase;color:#C9A84C}.group h2{margin:5px 0 8px;font-size:16pt;color:#101828;text-transform:uppercase}.group p,.condition p{margin:0 0 10px;color:#344054}.condition{break-inside:avoid;margin-top:13px;padding:10px 0 0 14px;border-left:3px solid #2643F7}.condition-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}.condition h3{margin:0 0 6px;font-size:12pt;color:#101828;text-transform:uppercase}.condition span{font-size:8pt;font-weight:900;text-transform:uppercase;white-space:nowrap}.cond-type{padding:2px 8px;flex:0 0 auto}.cond-joiner{display:flex;justify-content:center;margin:8px 0 4px}.cond-joiner span{font-size:8pt;font-weight:900;letter-spacing:.08em;text-transform:uppercase;padding:2px 12px}.image-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:7px 0 9px}figure{margin:0;border:1px solid #D6DCE8;padding:5px;break-inside:avoid}img{width:100%;height:110px;object-fit:cover;display:block}figcaption{margin-top:4px;font-size:7.5pt;color:#667085;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}@media screen{body{padding:16px 0}}@media print{body{padding:0}.doc{max-width:none}}</style></head><body><main class="doc"><img class="watermark" src="/LOGO-07.png" alt="">${docHeader}${htmlGroups}</main><script>(function(){var done=false;function fire(){if(done)return;done=true;try{window.focus();}catch(e){}setTimeout(function(){try{window.print();}catch(e){}},80);}function ready(){var imgs=Array.prototype.slice.call(document.images||[]);var pending=imgs.filter(function(im){return !im.complete;});if(!pending.length){fire();return;}var left=pending.length;var settle=function(){if(--left<=0)fire();};pending.forEach(function(im){im.addEventListener('load',settle);im.addEventListener('error',settle);});setTimeout(fire,6000);}if(document.readyState==='complete')ready();else window.addEventListener('load',ready);})();<\/script></body></html>`);
+    printWindow.document.write(`<!doctype html><html><head>${baseTag}<title>${escPrint(stratBName || 'Strategy Flow')}</title><style>@page{size:A4;margin:16mm}*{box-sizing:border-box}body{margin:0;background:#fff;color:#101828;font-family:${escPrint(F)},sans-serif;font-size:11pt;line-height:1.5}.doc{max-width:178mm;margin:0 auto;position:relative;isolation:isolate}.watermark{position:fixed;left:50%;top:50%;width:118mm;height:118mm;object-fit:contain;opacity:.035;transform:translate(-50%,-50%);pointer-events:none;z-index:0}.doc>*:not(.watermark){position:relative;z-index:1}.doc-head{border-bottom:3px solid #C9A84C;padding-bottom:14px;margin-bottom:18px;display:flex;align-items:flex-start;justify-content:space-between;gap:20px}.head-main{display:flex;align-items:flex-start;gap:10px;min-width:0}.head-logo{width:40px;height:40px;object-fit:contain;flex:0 0 auto;margin-top:1px}.brand{font-size:10pt;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:#232CF4}.title{margin:7px 0 0;font-size:24pt;line-height:1.1;color:#101828}.meta{font-size:9pt;color:#667085;text-align:right}.group{break-inside:auto;border-top:1px solid rgba(201,168,76,.55);padding-top:14px;margin-top:18px}.doc-head+.group{margin-top:0}.group-kicker{font-size:12pt;font-weight:900;letter-spacing:.04em;text-transform:uppercase;color:#C9A84C}.group h2{margin:5px 0 8px;font-size:16pt;color:#101828;text-transform:uppercase}.group p,.condition p{margin:0 0 10px;color:#344054}.condition{break-inside:avoid;margin-top:13px;padding:10px 0 0 14px;border-left:3px solid #232CF4}.condition-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}.condition h3{margin:0 0 6px;font-size:12pt;color:#101828;text-transform:uppercase}.condition span{font-size:8pt;font-weight:900;text-transform:uppercase;white-space:nowrap}.cond-type{padding:2px 8px;flex:0 0 auto}.cond-joiner{display:flex;justify-content:center;margin:8px 0 4px}.cond-joiner span{font-size:8pt;font-weight:900;letter-spacing:.08em;text-transform:uppercase;padding:2px 12px}.image-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:7px 0 9px}figure{margin:0;border:1px solid #D6DCE8;padding:5px;break-inside:avoid}img{width:100%;height:110px;object-fit:cover;display:block}figcaption{margin-top:4px;font-size:7.5pt;color:#667085;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}@media screen{body{padding:16px 0}}@media print{body{padding:0}.doc{max-width:none}}</style></head><body><main class="doc"><img class="watermark" src="/LOGO-07.png" alt="">${docHeader}${htmlGroups}</main><script>(function(){var done=false;function fire(){if(done)return;done=true;try{window.focus();}catch(e){}setTimeout(function(){try{window.print();}catch(e){}},80);}function ready(){var imgs=Array.prototype.slice.call(document.images||[]);var pending=imgs.filter(function(im){return !im.complete;});if(!pending.length){fire();return;}var left=pending.length;var settle=function(){if(--left<=0)fire();};pending.forEach(function(im){im.addEventListener('load',settle);im.addEventListener('error',settle);});setTimeout(fire,6000);}if(document.readyState==='complete')ready();else window.addEventListener('load',ready);})();<\/script></body></html>`);
     printWindow.document.close();
   };
   const handlePrintPdf = async () => {
@@ -5556,7 +5556,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
     background:'transparent',
     color:btnHov===key?'#FFFFFF':'rgba(255,255,255,0.78)',
     cursor:'default',transform:outlinePress===key?'translateY(1px) scale(0.96)':'translateY(0) scale(1)',
-    filter:btnHov===key?'drop-shadow(0 0 7px rgba(74,106,255,0.7))':'none',
+    filter:btnHov===key?'drop-shadow(0 0 7px rgba(48,144,255,0.7))':'none',
     transition:'color 0.12s, filter 0.12s, transform 0.08s'
   });
   const zoomButtonHandlers = (key, action) => ({
@@ -5592,7 +5592,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
                   background:'transparent',
                   borderRight:'none',
                   color:active?'var(--tlc-tx)':btnHov===`flow-mode-${mode}`?'var(--tlc-tx)':'var(--tlc-ts)',
-                  filter:btnHov===`flow-mode-${mode}`?'drop-shadow(0 0 7px rgba(74,106,255,0.65))':'none',
+                  filter:btnHov===`flow-mode-${mode}`?'drop-shadow(0 0 7px rgba(48,144,255,0.65))':'none',
                   transform:active?'translateY(0)':'translateY(0)',transition:'color 0.12s, filter 0.12s'}}>
                 {mode === 'board' ? (
                   <svg width={16} height={16} viewBox="0 0 24 24" fill="none">
@@ -5608,7 +5608,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
                     <circle cx="3" cy="19" r="1.4" fill="currentColor"/>
                   </svg>
                 )}
-                {active&&<div style={{position:'absolute',bottom:-2,left:'10%',right:'10%',height:1.5,background:`linear-gradient(90deg,transparent,var(--tlc-ac),transparent)`,boxShadow:'0 0 5px rgba(74,106,255,0.45)'}}/>}
+                {active&&<div style={{position:'absolute',bottom:-2,left:'10%',right:'10%',height:1.5,background:`linear-gradient(90deg,transparent,var(--tlc-ac),transparent)`,boxShadow:'0 0 5px rgba(48,144,255,0.45)'}}/>}
               </button>
             );
           })}
@@ -5672,7 +5672,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
         )}
         {flowNotice && (
           <div role="status" aria-live="polite"
-            style={{position:'absolute',top:10,left:'50%',transform:'translateX(-50%)',zIndex:119,maxWidth:'min(92%,560px)',display:'flex',alignItems:'flex-start',gap:10,padding:'10px 12px',background:'rgba(38,67,247,0.14)',border:'1px solid rgba(74,106,255,0.50)',boxShadow:'0 10px 28px rgba(0,0,0,0.42)',fontFamily:F}}>
+            style={{position:'absolute',top:10,left:'50%',transform:'translateX(-50%)',zIndex:119,maxWidth:'min(92%,560px)',display:'flex',alignItems:'flex-start',gap:10,padding:'10px 12px',background:'rgba(48,144,255,0.14)',border:'1px solid rgba(48,144,255,0.50)',boxShadow:'0 10px 28px rgba(0,0,0,0.42)',fontFamily:F}}>
             <svg width={14} height={14} viewBox="0 0 24 24" fill="none" style={{flexShrink:0,marginTop:1}}>
               <circle cx="12" cy="12" r="9" stroke="#7A95FF" strokeWidth="2"/>
               <path d="M12 11.5v5" stroke="#7A95FF" strokeWidth="2" strokeLinecap="round"/>
@@ -5786,7 +5786,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
               <div style={{display:'flex',alignItems:'center',gap:14,minWidth:0}}>
                 <img src="/LOGO-07.png" alt="Talaria" style={{height:54,width:'auto',objectFit:'contain',flexShrink:0}}/>
                 <div style={{minWidth:0}}>
-                  <div style={{fontSize:11,color:'#2643F7',fontWeight:900,letterSpacing:'0.14em',textTransform:'uppercase'}}>Talaria Strategy Builder</div>
+                  <div style={{fontSize:11,color:'#232CF4',fontWeight:900,letterSpacing:'0.14em',textTransform:'uppercase'}}>Talaria Strategy Builder</div>
                   <div style={{marginTop:8,fontSize:30,lineHeight:1.1,color:'#101828',fontWeight:900,letterSpacing:0,textTransform:'uppercase'}}>{stratBName || 'Strategy Flow'}</div>
                 </div>
               </div>
@@ -5899,7 +5899,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
                                   <div
                                     data-outline-status-menu-root="1"
                                     onClick={e=>e.stopPropagation()}
-                                    style={{position:'absolute',top:38,right:0,width:158,zIndex:40,background:'#FFFFFF',border:'1px solid #D6DCE8',boxShadow:'0 14px 34px rgba(16,24,40,0.18), 0 0 0 1px rgba(38,67,247,0.05)',padding:'4px 0'}}
+                                    style={{position:'absolute',top:38,right:0,width:158,zIndex:40,background:'#FFFFFF',border:'1px solid #D6DCE8',boxShadow:'0 14px 34px rgba(16,24,40,0.18), 0 0 0 1px rgba(48,144,255,0.05)',padding:'4px 0'}}
                                   >
                                     <div style={{height:2,background:`linear-gradient(90deg,transparent,${condMeta.color},transparent)`,marginBottom:3}}/>
                                     {outlineStatusOptions.map(([value,label]) => {
@@ -5971,7 +5971,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
 
       {outlineTip && createPortal(
         <div style={{position:'fixed',left:outlineTip.left,top:outlineTip.top,transform:'translate(-50%,0)',zIndex:100080,pointerEvents:'none',whiteSpace:'nowrap',background:'#000000',border:'1px solid rgba(140,160,255,0.22)',fontSize:11,fontWeight:500,color:'#FFFFFF',fontFamily:F,padding:'4px 9px 4px 12px',boxShadow:'0 4px 14px rgba(0,0,0,0.65)',textShadow:'0 1px 2px rgba(0,0,0,0.9)',letterSpacing:'0.02em'}}>
-          <div style={{position:'absolute',left:0,top:0,bottom:0,width:2,background:'linear-gradient(180deg,transparent,var(--tlc-ac),transparent)',boxShadow:'0 0 8px rgba(74,106,255,0.9)'}}/>
+          <div style={{position:'absolute',left:0,top:0,bottom:0,width:2,background:'linear-gradient(180deg,transparent,var(--tlc-ac),transparent)',boxShadow:'0 0 8px rgba(48,144,255,0.9)'}}/>
           {outlineTip.text}
         </div>,
         document.body
@@ -6220,9 +6220,9 @@ const cycleTableSort = (currentKey, currentDir, nextKey, defaultDir = "asc") => 
   return { key: null, dir: null };
 };
 
-const TABLE_SORT_GLYPH_STYLE = { fontSize: 8.5, fontWeight: 900, lineHeight: 1, display: "inline-flex", alignItems: "center", flexShrink: 0, fontFamily: "'Exo 2', sans-serif" };
+const TABLE_SORT_GLYPH_STYLE = { fontSize: 8.5, fontWeight: 900, lineHeight: 1, display: "inline-flex", alignItems: "center", flexShrink: 0, fontFamily: '"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif' };
 
-function TableSortGlyphs({ active, dir, hover, accent = "#4A6AFF", muted = "rgba(255,255,255,0.28)" }) {
+function TableSortGlyphs({ active, dir, hover, accent = "#3090FF", muted = "rgba(255,255,255,0.28)" }) {
   if (active && dir === "asc") return <span style={{ ...TABLE_SORT_GLYPH_STYLE, color: accent }} aria-hidden="true">▲</span>;
   if (active && dir === "desc") return <span style={{ ...TABLE_SORT_GLYPH_STYLE, color: accent }} aria-hidden="true">▼</span>;
   if (hover) {
@@ -6235,7 +6235,7 @@ function TableSortGlyphs({ active, dir, hover, accent = "#4A6AFF", muted = "rgba
   return null;
 }
 
-function TableSortDefaultGlyphs({ active, accent = "#4A6AFF", muted = "rgba(255,255,255,0.28)", fontSize = 8.4 }) {
+function TableSortDefaultGlyphs({ active, accent = "#3090FF", muted = "rgba(255,255,255,0.28)", fontSize = 8.4 }) {
   return (
     <span style={{ letterSpacing: "-0.06em", color: active ? accent : muted, fontSize: fontSize - 0.2, fontWeight: 950, flexShrink: 0 }} aria-hidden="true">
       <span style={{ opacity: active ? 1 : 0.72 }}>▲</span><span style={{ opacity: active ? 1 : 0.72 }}>▼</span>
@@ -6254,7 +6254,7 @@ function TableSortDirButtons({ ascActive, descActive, onAsc, onDesc, accent, mut
         height: 22,
         display: "grid",
         placeItems: "center",
-        background: active ? "rgba(38,67,247,0.18)" : "transparent",
+        background: active ? "rgba(48,144,255,0.18)" : "transparent",
         border: "none",
         color: active ? accent : muted,
         fontSize: 10,
@@ -6829,15 +6829,15 @@ function GeneralInfoStepContent({ c, F,
   const tbtn = active => ({
     display:'inline-flex',alignItems:'center',justifyContent:'center',padding:'7px 16px',fontSize:12,fontWeight:active?600:500,fontFamily:F,cursor:'default',
     border:'1px solid '+(active?c.acL:c.brH),color:active?c.acL:c.tx,
-    background:active?'rgba(38,67,247,0.18)':c.sf,transition:'all 0.12s',
-    boxShadow:active?'0 0 12px rgba(38,67,247,0.22)':undefined,
+    background:active?'rgba(48,144,255,0.18)':c.sf,transition:'all 0.12s',
+    boxShadow:active?'0 0 12px rgba(48,144,255,0.22)':undefined,
   });
   const selectBtn = (active, width) => ({
     display:'inline-flex',alignItems:'center',justifyContent:'center',padding:'7px 28px 7px 16px',
     height:34,width,boxSizing:'border-box',fontSize:12,fontWeight:active?600:500,fontFamily:F,cursor:'default',
     border:'1px solid '+(active?c.acL:c.brH),color:active?c.acL:c.tx,
-    background:active?'rgba(38,67,247,0.18)':c.sf,transition:'all 0.12s',
-    boxShadow:active?'0 0 12px rgba(38,67,247,0.22)':undefined,
+    background:active?'rgba(48,144,255,0.18)':c.sf,transition:'all 0.12s',
+    boxShadow:active?'0 0 12px rgba(48,144,255,0.22)':undefined,
     userSelect:'none',position:'relative',
   });
 
@@ -7167,7 +7167,7 @@ function GeneralInfoStepContent({ c, F,
                     onMouseEnter={()=>setSingleSelectHov(hovKey)}
                     onMouseLeave={()=>setSingleSelectHov(null)}
                     style={{position:'relative',display:'flex',alignItems:'center',padding:'7px 10px',cursor:'default',
-                      background:active?'rgba(38,67,247,0.10)':isH?'rgba(255,255,255,0.04)':'transparent',
+                      background:active?'rgba(48,144,255,0.10)':isH?'rgba(255,255,255,0.04)':'transparent',
                       color:active?c.acL:isH?c.tx:c.ts,fontSize:12,fontWeight:active?700:500,transition:'background 0.08s,color 0.08s'}}>
                     {active&&<div style={{position:'absolute',left:0,top:'15%',bottom:'15%',width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
                     {o.label}
@@ -7317,7 +7317,7 @@ function GeneralInfoStepContent({ c, F,
                           onMouseEnter={()=>setTagHov(t)} onMouseLeave={()=>setTagHov(null)}
                           style={{position:'relative',display:'flex',alignItems:'center',padding:'5px 10px',gap:8,cursor:'default',
                             opacity: disabled ? 0.4 : 1, pointerEvents: disabled ? 'none' : 'auto',
-                            background:checked?'rgba(38,67,247,0.06)':isH?'rgba(255,255,255,0.04)':'transparent',transition:'background 0.08s, opacity 0.12s'}}>
+                            background:checked?'rgba(48,144,255,0.06)':isH?'rgba(255,255,255,0.04)':'transparent',transition:'background 0.08s, opacity 0.12s'}}>
                           {checked && <div style={{position:'absolute',left:0,top:'15%',bottom:'15%',width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
                           <svg width={10} height={10} viewBox="0 0 10 10" style={{display:'block',overflow:'visible',flexShrink:0}}>
                             <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={checked?c.acL:isH?c.tx:c.ts} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
@@ -7345,7 +7345,7 @@ function GeneralInfoStepContent({ c, F,
                         style={{flex:1,background:'transparent',border:'none',outline:'none',color:c.tx,fontSize:10,fontFamily:F,minWidth:0}}/>
                     </div>
                     <div onClick={()=>{if(tagInput.trim()&&!tagAtMax){addTag(tagInput);setTagInput('');}}}
-                      style={{display:'inline-flex',alignItems:'center',gap:3,padding:'0 10px',height:24,background:tagInput.trim()&&!tagAtMax?`linear-gradient(135deg,${c.ac},${c.acL})`:'rgba(140,160,255,0.10)',border:`1px solid ${tagInput.trim()&&!tagAtMax?'rgba(74,106,255,0.5)':'rgba(140,160,255,0.18)'}`,fontSize:9,fontWeight:700,color:tagInput.trim()&&!tagAtMax?'#fff':c.tm,letterSpacing:'0.04em',cursor:'default',opacity:tagInput.trim()&&!tagAtMax?1:0.55,transition:'background 0.12s',textTransform:'uppercase'}}>
+                      style={{display:'inline-flex',alignItems:'center',gap:3,padding:'0 10px',height:24,background:tagInput.trim()&&!tagAtMax?'#FFFFFF':'rgba(140,160,255,0.10)',border:`1px solid ${tagInput.trim()&&!tagAtMax?'rgba(48,144,255,0.5)':'rgba(140,160,255,0.18)'}`,fontSize:9,fontWeight:700,color:tagInput.trim()&&!tagAtMax?'#fff':c.tm,letterSpacing:'0.04em',cursor:'default',opacity:tagInput.trim()&&!tagAtMax?1:0.55,transition:'background 0.12s',textTransform:'uppercase'}}>
                       <svg width={9} height={9} viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"/></svg>
                       Add
                     </div>
@@ -7398,7 +7398,7 @@ function GeneralInfoStepContent({ c, F,
                     <div key={o.id} onClick={e=>{e.stopPropagation();toggleMkt(o.id);}}
                       onMouseEnter={()=>setMktHov(o.id)} onMouseLeave={()=>setMktHov(null)}
                       style={{position:'relative',display:'flex',alignItems:'center',padding:'5px 10px',gap:8,cursor:'default',
-                        background:checked?'rgba(38,67,247,0.06)':isH?'rgba(255,255,255,0.04)':'transparent',transition:'background 0.08s'}}>
+                        background:checked?'rgba(48,144,255,0.06)':isH?'rgba(255,255,255,0.04)':'transparent',transition:'background 0.08s'}}>
                       {checked&&<div style={{position:'absolute',left:0,top:'15%',bottom:'15%',width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
                       <svg width={10} height={10} viewBox="0 0 10 10" style={{display:'block',overflow:'visible',flexShrink:0}}>
                         <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={checked?c.acL:isH?c.tx:c.ts} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
@@ -7443,7 +7443,7 @@ function GeneralInfoStepContent({ c, F,
               <div
                 onClick={e=>{e.stopPropagation();if(trdPickOpen){setTrdPickOpen(false);}else{const pos=symbolPickerPos(trdWrapRef);if(pos)setTrdPickPos(pos);setTrdPickSearch('');setTrdPickCat(null);setTrdPickOpen(true);setSupPickOpen(false);}}}
 
-                style={{width:26,height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#1e38e8,#4A6AFF)',cursor:'default',transition:'filter 0.12s',boxShadow:'0 2px 8px rgba(38,67,247,0.35)'}}
+                style={{width:26,height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:'#3090FF',cursor:'default',transition:'filter 0.12s',boxShadow:'0 2px 8px rgba(48,144,255,0.35)'}}
                 onMouseEnter={e=>e.currentTarget.style.filter='brightness(1.12)'}
                 onMouseLeave={e=>e.currentTarget.style.filter='brightness(1)'}>
                 <svg width={11} height={11} viewBox="0 0 12 12" fill="none">
@@ -7473,7 +7473,7 @@ function GeneralInfoStepContent({ c, F,
                     onMouseEnter={()=>setTrdPickHov('t_'+opt.id)} onMouseLeave={()=>setTrdPickHov(null)}
                     style={{position:'relative',display:'flex',alignItems:'center',padding:'5px 10px',gap:8,cursor:'default',
                       opacity:isDisabled?0.35:1,
-                      background:isH&&!isChk?'rgba(255,255,255,0.04)':isChk?'rgba(38,67,247,0.06)':'transparent',transition:'background 0.08s'}}>
+                      background:isH&&!isChk?'rgba(255,255,255,0.04)':isChk?'rgba(48,144,255,0.06)':'transparent',transition:'background 0.08s'}}>
                     {isChk&&<div style={{position:'absolute',left:0,top:'15%',bottom:'15%',width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
                     <svg width={10} height={10} style={{display:'block',overflow:'visible',flexShrink:0}}>
                       <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={isChk?c.acL:isH?c.tx:c.ts} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
@@ -7700,7 +7700,7 @@ function GeneralInfoStepContent({ c, F,
           <div style={{display:'flex',alignItems:'flex-start',gap:5,flexWrap:'wrap'}}>
             <div ref={tfPickWrapRef} style={{position:'relative',flexShrink:0}}>
               <div onClick={e=>{e.stopPropagation();if(tfPickOpen){setTfPickOpen(false);setTfUnitOpen(false);}else{const pos=dropPosViewport(tfPickWrapRef,200,220,360,true);if(pos)setTfPickPos(pos);setTfPickOpen(true);}}}
-                style={{width:26,height:26,display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#1e38e8,#4A6AFF)',cursor:'default',transition:'filter 0.12s',boxShadow:'0 2px 8px rgba(38,67,247,0.35)'}}
+                style={{width:26,height:26,display:'flex',alignItems:'center',justifyContent:'center',background:'#3090FF',cursor:'default',transition:'filter 0.12s',boxShadow:'0 2px 8px rgba(48,144,255,0.35)'}}
                 onMouseEnter={e=>e.currentTarget.style.filter='brightness(1.12)'}
                 onMouseLeave={e=>e.currentTarget.style.filter='brightness(1)'}>
                 <svg width={11} height={11} viewBox="0 0 12 12" fill="none">
@@ -7806,8 +7806,8 @@ function GeneralInfoStepContent({ c, F,
                     <div onClick={()=>{if(customTfReady)addCustomTf();}}
                       onMouseEnter={()=>{if(customTfReady&&!tfAtMax)setTfPickHov('tf-add');}} onMouseLeave={()=>setTfPickHov(null)}
                       style={{width:22,height:22,position:'relative',boxSizing:'border-box',cursor:'default',padding:0,flexShrink:0,opacity:customTfReady&&!tfAtMax?1:0.35,
-                        background:tfPickHov==='tf-add'?'rgba(74,106,255,0.12)':'transparent',
-                        border:`1px solid ${tfPickHov==='tf-add'?'rgba(74,106,255,0.55)':'rgba(140,160,255,0.28)'}`,
+                        background:tfPickHov==='tf-add'?'rgba(48,144,255,0.12)':'transparent',
+                        border:`1px solid ${tfPickHov==='tf-add'?'rgba(48,144,255,0.55)':'rgba(140,160,255,0.28)'}`,
                         transition:'background 0.12s,border-color 0.12s,opacity 0.12s'}}>
                       <svg width={7} height={7} viewBox="0 0 10 10" fill="none"
                         stroke={tfPickHov==='tf-add'?c.acL:'rgba(140,160,255,0.55)'}
@@ -7924,7 +7924,7 @@ function GeneralInfoStepContent({ c, F,
           <div key={opt.id} onClick={onClick}
             onMouseEnter={()=>setTrdPickHov('t_'+opt.id)} onMouseLeave={()=>setTrdPickHov(null)}
             style={{position:'relative',display:'flex',alignItems:'center',padding:'5px 10px',gap:8,cursor:'default',
-              background:isH&&!isChk?'rgba(255,255,255,0.04)':isChk?'rgba(38,67,247,0.06)':'transparent',transition:'background 0.08s'}}>
+              background:isH&&!isChk?'rgba(255,255,255,0.04)':isChk?'rgba(48,144,255,0.06)':'transparent',transition:'background 0.08s'}}>
             {isChk&&<div style={{position:'absolute',left:0,top:'15%',bottom:'15%',width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
             <svg width={10} height={10} style={{display:'block',overflow:'visible',flexShrink:0}}>
               <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={isChk?c.acL:isH?c.tx:c.ts} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
@@ -8227,14 +8227,14 @@ function VariablesStepContent({ c, F, stratBVariables, setStratBVariables }) {
           )}
           <button type="button" onClick={()=>setEditingTagId(editingTagId===v.id?null:v.id)}
             style={{width:30,height:34,display:'flex',alignItems:'center',justifyContent:'center',padding:0,border:'none',borderRadius:0,cursor:'default',
-              color:c.tm,background:editingTagId===v.id?'rgba(38,67,247,0.20)':'transparent',transition:'background 0.15s,color 0.15s,transform 0.12s ease'}}
-            onMouseEnter={e=>{e.currentTarget.style.background=editingTagId===v.id?'rgba(38,67,247,0.24)':'rgba(255,255,255,0.08)';e.currentTarget.style.color=c.tx;e.currentTarget.style.transform='translateY(-1px)';}}
-            onMouseLeave={e=>{e.currentTarget.style.background=editingTagId===v.id?'rgba(38,67,247,0.20)':'transparent';e.currentTarget.style.color=c.tm;e.currentTarget.style.transform='translateY(0)';}}
+              color:c.tm,background:editingTagId===v.id?'rgba(48,144,255,0.20)':'transparent',transition:'background 0.15s,color 0.15s,transform 0.12s ease'}}
+            onMouseEnter={e=>{e.currentTarget.style.background=editingTagId===v.id?'rgba(48,144,255,0.24)':'rgba(255,255,255,0.08)';e.currentTarget.style.color=c.tx;e.currentTarget.style.transform='translateY(-1px)';}}
+            onMouseLeave={e=>{e.currentTarget.style.background=editingTagId===v.id?'rgba(48,144,255,0.20)':'transparent';e.currentTarget.style.color=c.tm;e.currentTarget.style.transform='translateY(0)';}}
             onMouseDown={e=>{e.currentTarget.style.transform='translateY(0) scale(0.96)';}}
             onMouseUp={e=>{e.currentTarget.style.transform='translateY(-1px) scale(1)';}}>
             {editingTagId===v.id ? (
               <svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-                <polyline points="4 13 9 18 20 7" stroke="#2643F7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <polyline points="4 13 9 18 20 7" stroke="#232CF4" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             ) : (
               <svg width={18} height={18} viewBox="0 0 24 24" fill="none">
@@ -8546,7 +8546,7 @@ function ReviewStepContent({ c, F, stratBName, stratBDesc, stratBMarkets, stratB
                   const col = progressColor(sess);
                   const pnlCol = sess.pnl==null ? c.tm : (sess.pnl>=0?c.gn:c.rd);
                   return (
-                    <div key={sess.id||`${sess.name}-${i}`} style={{display:'grid',gridTemplateColumns:'minmax(220px,1.4fr) repeat(4,minmax(86px,0.7fr))',gap:12,alignItems:'center',padding:'10px 0 11px',borderTop:i===0?'none':`1px solid ${c.br}`,boxShadow:i===0?'none':`inset 0 1px 0 rgba(74,106,255,0.04)`}}>
+                    <div key={sess.id||`${sess.name}-${i}`} style={{display:'grid',gridTemplateColumns:'minmax(220px,1.4fr) repeat(4,minmax(86px,0.7fr))',gap:12,alignItems:'center',padding:'10px 0 11px',borderTop:i===0?'none':`1px solid ${c.br}`,boxShadow:i===0?'none':`inset 0 1px 0 rgba(48,144,255,0.04)`}}>
                       <div style={{minWidth:0}}>
                         <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
                           <div style={{fontSize:12,fontWeight:850,color:c.tx,fontFamily:F,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{sess.name||'Untitled Session'}</div>
@@ -8586,7 +8586,7 @@ function ReviewStepContent({ c, F, stratBName, stratBDesc, stratBMarkets, stratB
             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(250px,1fr))',gap:12}}>
               <div>
                 <div style={{...sectionLbl,marginBottom:8}}>{t('Strategy Tags','وسوم الاستراتيجية')}</div>
-                {coerceStringArray(stratBTags).length ? chipList(coerceStringArray(stratBTags),c.acL,'rgba(38,67,247,0.10)') : <div style={emptyText}>{t('No strategy tags selected.','لم يتم اختيار وسوم.')}</div>}
+                {coerceStringArray(stratBTags).length ? chipList(coerceStringArray(stratBTags),c.acL,'rgba(48,144,255,0.10)') : <div style={emptyText}>{t('No strategy tags selected.','لم يتم اختيار وسوم.')}</div>}
               </div>
               <div>
                 <div style={{...sectionLbl,marginBottom:8}}>{t('Images','الصور')}</div>
@@ -8885,9 +8885,9 @@ function StrategyBuilderModal(props) {
     height:32,minWidth:86,padding:'0 16px',display:'inline-flex',alignItems:'center',justifyContent:'center',gap:6,
     fontSize:11,fontWeight:800,letterSpacing:'0.06em',fontFamily:F,borderRadius:0,textTransform:'uppercase',
     color:enabled?'rgba(255,255,255,0.96)':c.tm,
-    background:enabled?`linear-gradient(135deg,${c.ac},${c.acL})`:'rgba(140,160,255,0.10)',
-    border:`1px solid ${enabled?'rgba(74,106,255,0.55)':'rgba(140,160,255,0.18)'}`,
-    boxShadow:enabled?'0 2px 8px rgba(38,67,247,0.25)':'none',
+    background:enabled?'#FFFFFF':'rgba(140,160,255,0.10)',
+    border:`1px solid ${enabled?'rgba(48,144,255,0.55)':'rgba(140,160,255,0.18)'}`,
+    boxShadow:enabled?'0 2px 8px rgba(48,144,255,0.25)':'none',
     cursor:'default',opacity:enabled?1:0.55,appearance:'none',boxSizing:'border-box',lineHeight:1,outline:'none',
     userSelect:'none',
     transition:'background 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease, transform 0.08s ease'
@@ -8896,8 +8896,8 @@ function StrategyBuilderModal(props) {
   const onSecondaryLeave = e => { e.currentTarget.style.background='rgba(140,160,255,0.04)'; e.currentTarget.style.borderColor='rgba(140,160,255,0.22)'; e.currentTarget.style.color=c.ts; e.currentTarget.style.transform='scale(1)'; };
   const onSecondaryDown = e => { e.currentTarget.style.transform='scale(0.97)'; };
   const onSecondaryUp = e => { e.currentTarget.style.transform='scale(1)'; };
-  const onPrimaryEnter = (e, enabled=true) => { if(enabled){ e.currentTarget.style.background=`linear-gradient(135deg,${c.acL},#6A8AFF)`; e.currentTarget.style.boxShadow='0 2px 14px rgba(38,67,247,0.5)'; } };
-  const onPrimaryLeave = (e, enabled=true) => { if(enabled){ e.currentTarget.style.background=`linear-gradient(135deg,${c.ac},${c.acL})`; e.currentTarget.style.boxShadow='0 2px 8px rgba(38,67,247,0.25)'; e.currentTarget.style.filter='brightness(1)'; e.currentTarget.style.transform='scale(1)'; } };
+  const onPrimaryEnter = (e, enabled=true) => { if(enabled){ e.currentTarget.style.background='#FFFFFF'; e.currentTarget.style.color='#000000'; e.currentTarget.style.boxShadow='none'; } };
+  const onPrimaryLeave = (e, enabled=true) => { if(enabled){ e.currentTarget.style.background='#FFFFFF'; e.currentTarget.style.color='#000000'; e.currentTarget.style.boxShadow='none'; e.currentTarget.style.filter='brightness(1)'; e.currentTarget.style.transform='scale(1)'; } };
   const onPrimaryDown = (e, enabled=true) => { if(enabled){ e.currentTarget.style.filter='brightness(0.9)'; e.currentTarget.style.transform='scale(0.97)'; } };
   const onPrimaryUp = (e, enabled=true) => { if(enabled){ e.currentTarget.style.filter='brightness(1)'; e.currentTarget.style.transform='scale(1)'; } };
 
@@ -11309,7 +11309,7 @@ const SnapshotPnlCalendar = ({c, F, monthIso, dailyRows, formatValue, onMonthCha
     const hasValue = Boolean(cell.tradeCount);
     const visibleAlpha = hovered && hasValue ? Math.min(0.34, tone.alpha + 0.095) : tone.alpha;
     const bg = selected
-      ? `linear-gradient(180deg, rgba(74,106,255,0.17), rgba(74,106,255,0.095))`
+      ? `linear-gradient(180deg, rgba(48,144,255,0.17), rgba(48,144,255,0.095))`
       : `linear-gradient(180deg, rgba(${tone.rgb.r},${tone.rgb.g},${tone.rgb.b},${visibleAlpha}), rgba(${tone.rgb.r},${tone.rgb.g},${tone.rgb.b},${visibleAlpha * 0.62}))`;
     const borderColor = selected ? c.acL : hasValue ? `${tone.color}${hovered ? "78" : "3c"}` : hovered ? `${c.ts}55` : c.br;
     return (
@@ -11480,7 +11480,7 @@ const BtGaugeRing = ({ value=0, size=76, c, color, label, sub, stroke=8 }) => {
   const circ = 2 * Math.PI * r;
   const col = color || (v >= 71 ? c.gn : v >= 41 ? c.gold : c.rd);
   return (
-    <div style={{width:size,display:"flex",flexDirection:"column",alignItems:"center",gap:4,fontFamily:"'Exo 2',sans-serif"}}>
+    <div style={{width:size,display:"flex",flexDirection:"column",alignItems:"center",gap:4,fontFamily:'"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif'}}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={c.brH} strokeWidth={stroke}/>
         <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={col} strokeWidth={stroke} strokeLinecap="butt" strokeDasharray={`${circ * v / 100} ${circ}`} transform={`rotate(-90 ${size/2} ${size/2})`}/>
@@ -13192,7 +13192,7 @@ const TalariaV8b = () => {
   const [gotoNewRepeat, setGotoNewRepeat] = useState("none");
   const [gotoNewPrice, setGotoNewPrice] = useState("");
   const [gotoNewName, setGotoNewName] = useState("");
-  const [gotoNewColor, setGotoNewColor] = useState("#4A6AFF");
+  const [gotoNewColor, setGotoNewColor] = useState("#3090FF");
   const [gotoCalOpen, setGotoCalOpen] = useState(false);
   const [gotoCalPos,  setGotoCalPos]  = useState({top:0,left:0});
   const [gotoTimeOpen, setGotoTimeOpen] = useState(false);
@@ -13204,7 +13204,7 @@ const TalariaV8b = () => {
   const [gotoDateInput, setGotoDateInput] = useState("09-Jan-2009");
   const [gotoTimeInput, setGotoTimeInput] = useState("07:00");
   const [gotoPresets, setGotoPresets] = useState([
-    {id:"ny",  label:"New York Open",  time:"13:30 UTC", color:"#4A6AFF"},
+    {id:"ny",  label:"New York Open",  time:"13:30 UTC", color:"#3090FF"},
     {id:"lon", label:"London Open",    time:"08:00 UTC", color:"#00D4A1"},
     {id:"tok", label:"Tokyo Open",     time:"00:00 UTC", color:"#FF8C42"},
     {id:"syd", label:"Sydney Open",    time:"22:00 UTC", color:"#B06AFF"},
@@ -13531,7 +13531,7 @@ const TalariaV8b = () => {
   const [tlNewTplName, setTlNewTplName] = useState("");
   const [tlSettTplDrop, setTlSettTplDrop] = useState(false);
   const [tlStyle, setTlStyle] = useState({
-    lineColor: "#8C8C8C", bgColor: "rgba(74,106,255,0.15)", lineType: "solid", lineWidth: "2", ep1: "normal", ep2: "normal",
+    lineColor: "#8C8C8C", bgColor: "rgba(48,144,255,0.15)", lineType: "solid", lineWidth: "2", ep1: "normal", ep2: "normal",
     extendLeft: false, extendRight: false, priceLabels: true, timeLabels: true, flatChPrices: true,
     rangeType: "Date & Price", showInfo: false, showInfoTypes: ["Price range"],
     showBorder: true, borderColor: "#8C8C8C", borderType: "dashed", borderWidth: "1",
@@ -13558,7 +13558,7 @@ const TalariaV8b = () => {
       { on: true, label: "Upper Line", color: "#2962FF", type: "dashed", width: "1" },
       { on: true, label: "Lower Line", color: "#2962FF", type: "dashed", width: "1" },
     ],
-    regUpperBg: "rgba(74,106,255,0.15)", regLowerBg: "rgba(255,82,82,0.15)",
+    regUpperBg: "rgba(48,144,255,0.15)", regLowerBg: "rgba(255,82,82,0.15)",
     source: "Close", regressionType: "Linear",
     fibTzLevels: [
       { on: true, value: "1",  color: "#787B86", type: "solid",  width: "1" },
@@ -13671,7 +13671,7 @@ const TalariaV8b = () => {
     priceNotePt1Price: "0.00000", priceNotePt1Bar: "0", priceNotePt2Price: "0.00000", priceNotePt2Bar: "0",
     calloutPt1Price: "0.00000", calloutPt1Bar: "0", calloutPt2Price: "0.00000", calloutPt2Bar: "0",
     commentPt1Price: "0.00000", commentPt1Bar: "0",
-    pinLabelColor: "#4A6AFF", pinPt1Price: "0.00000", pinPt1Bar: "0",
+    pinLabelColor: "#3090FF", pinPt1Price: "0.00000", pinPt1Bar: "0",
     priceLabelPt1Price: "0.00000", priceLabelPt1Bar: "0",
     signpostPt1Price: "0.00000", signpostPt1Bar: "0",
     flagPt1Price: "0.00000", flagPt1Bar: "0",
@@ -13796,7 +13796,7 @@ const TalariaV8b = () => {
       {icon:"hray",name:"Horizontal Ray"},{icon:"polyline",name:"Polyline"},
     ];
     const t=types[i%types.length];
-    return {id:`l${i+1}`,icon:t.icon,name:`${t.name} ${i+1}`,color:"#4A6AFF"};
+    return {id:`l${i+1}`,icon:t.icon,name:`${t.name} ${i+1}`,color:"#3090FF"};
   }));
   const [layersVis, setLayersVis] = useState({});
   const [layersSearch, setLayersSearch] = useState("");
@@ -13824,7 +13824,7 @@ const TalariaV8b = () => {
   const [settDropPos, setSettDropPos] = useState({ top: 0, left: 0, w: 0 });
   const V16_DEFAULT_CHART_SETTINGS = {
     theme: "Talaria Dark", chartType: "candlestick", precision: "0.00000", timezone: "UTC",
-    textColor: "#8CA0FF", background: "#07080E", gridColor: "rgba(140,160,255,0.15)", crosshairColor: "rgba(255,255,255,0.4)",
+    textColor: "#8CA0FF", background: "#000000", gridColor: "rgba(140,160,255,0.15)", crosshairColor: "rgba(255,255,255,0.4)",
     priceLine: true, priceLineColor: "#FF5068",
     scaleTextColor: "rgba(255,255,255,0.25)", scaleLineColor: "rgba(140,160,255,0.12)",
     bullBody: "#00D4A1", bullBorder: "#00D4A1", bullWick: "#00D4A1",
@@ -13949,30 +13949,30 @@ const TalariaV8b = () => {
   };
 
   const c = darkMode ? {
-    ac: "#2643F7", acL: "#4A6AFF", acD: "rgba(38,67,247,0.08)", acB: "rgba(38,67,247,0.22)", acG: "rgba(38,67,247,0.12)",
-    gold: "#C9A84C", goldD: "rgba(201,168,76,0.07)",
-    bg: "#07080E", sf: "#0A0C14", el: "#0F1119", well: "#060710",
-    br: "rgba(140,160,255,0.05)", brL: "rgba(140,160,255,0.08)", brH: "rgba(140,160,255,0.12)",
-    tx: "rgba(255,255,255,0.92)", ts: "rgba(255,255,255,0.70)", tm: "rgba(255,255,255,0.50)",
-    gn: "#00D4A1", gnD: "rgba(0,212,161,0.07)", gnB: "rgba(0,212,161,0.18)",
-    rd: "#FF5068", rdD: "rgba(255,80,104,0.07)", rdB: "rgba(255,80,104,0.18)",
-    axTx: "rgba(255,255,255,0.45)", grid: "rgba(140,160,255,0.04)",
-    hv: "rgba(255,255,255,0.05)", hv2: "rgba(255,255,255,0.03)", trk: "rgba(255,255,255,0.18)", hvLn: "rgba(255,255,255,0.15)",
+    ac: "#3090FF", acL: "#4AA0FF", acD: "rgba(48,144,255,0.16)", acB: "rgba(48,144,255,0.28)", acG: "transparent",
+    gold: "#C9A84C", goldD: "rgba(201,168,76,0.10)",
+    bg: "#000000", sf: "#0a0a0b", el: "#141416", well: "#050505",
+    br: "rgba(162,161,205,0.22)", brL: "rgba(162,161,205,0.28)", brH: "rgba(162,161,205,0.42)",
+    tx: "#f4f4f5", ts: "rgba(244,244,245,0.70)", tm: "rgba(244,244,245,0.45)",
+    gn: "#2DD4A0", gnD: "rgba(45,212,160,0.10)", gnB: "rgba(45,212,160,0.18)",
+    rd: "#FF5068", rdD: "rgba(255,80,104,0.10)", rdB: "rgba(255,80,104,0.18)",
+    axTx: "rgba(244,244,245,0.50)", grid: "rgba(162,161,205,0.12)",
+    hv: "#141416", hv2: "rgba(48,144,255,0.12)", trk: "rgba(162,161,205,0.42)", hvLn: "rgba(162,161,205,0.42)",
     inputScheme: "dark",
   } : {
-    ac: "#2643F7", acL: "#2F55E8", acD: "rgba(38,67,247,0.10)", acB: "rgba(38,67,247,0.30)", acG: "rgba(38,67,247,0.14)",
-    gold: "#9A7218", goldD: "rgba(154,114,24,0.08)",
-    bg: "#D8DCE9", sf: "#DFE3F0", el: "#E8EBF6", well: "#CDD1E0",
-    br: "rgba(0,5,40,0.12)", brL: "rgba(0,5,40,0.18)", brH: "rgba(0,5,40,0.26)",
-    tx: "rgba(0,0,0,0.92)", ts: "rgba(0,0,0,0.88)", tm: "rgba(0,0,0,0.72)",
-    gn: "#006B4F", gnD: "rgba(0,107,79,0.10)", gnB: "rgba(0,107,79,0.22)",
-    rd: "#C42030", rdD: "rgba(196,32,48,0.10)", rdB: "rgba(196,32,48,0.22)",
-    axTx: "rgba(0,0,0,0.78)", grid: "rgba(0,5,40,0.07)",
-    hv: "rgba(0,0,0,0.05)", hv2: "rgba(0,0,0,0.032)", trk: "rgba(0,0,0,0.16)", hvLn: "rgba(0,0,0,0.22)",
+    ac: "#1F7AE6", acL: "#3090FF", acD: "rgba(48,144,255,0.14)", acB: "rgba(48,144,255,0.30)", acG: "transparent",
+    gold: "#9A7218", goldD: "rgba(154,114,24,0.10)",
+    bg: "#f7f6ff", sf: "#ffffff", el: "#f0effa", well: "#ebe9fe",
+    br: "rgba(44,83,122,0.18)", brL: "rgba(44,83,122,0.24)", brH: "rgba(44,83,122,0.34)",
+    tx: "#0a0a0b", ts: "rgba(10,10,11,0.72)", tm: "rgba(10,10,11,0.48)",
+    gn: "#0A8F6C", gnD: "rgba(10,143,108,0.10)", gnB: "rgba(10,143,108,0.20)",
+    rd: "#C42030", rdD: "rgba(196,32,48,0.10)", rdB: "rgba(196,32,48,0.20)",
+    axTx: "rgba(10,10,11,0.55)", grid: "rgba(44,83,122,0.12)",
+    hv: "#f0effa", hv2: "rgba(48,144,255,0.10)", trk: "rgba(44,83,122,0.30)", hvLn: "rgba(44,83,122,0.30)",
     inputScheme: "light",
   };
-  const chromeBr = darkMode ? "rgba(140,160,255,0.22)" : "rgba(0,5,40,0.32)";
-  const F = "'Exo 2',sans-serif";
+  const chromeBr = darkMode ? "rgba(162,161,205,0.42)" : "rgba(44,83,122,0.34)";
+  const F = '"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif';
 
   useLayoutEffect(() => {
     const reconcileRows = (root, activeKeys) => {
@@ -14200,52 +14200,52 @@ const TalariaV8b = () => {
       const libTreeHover = darkMode ? "rgba(255,255,255,0.055)" : "rgba(0,5,40,0.055)";
       style.textContent = `:root{--tc-br:${tcBr};--tc-hov:${tcHov};--tc-lbl:${tcLbl}}`
         + `*{user-select:none!important;-webkit-user-select:none!important;cursor:default}input,textarea{user-select:text!important;-webkit-user-select:text!important;cursor:text}.react-flow__pane{cursor:default!important}.react-flow__node{cursor:default!important}.react-flow__renderer{cursor:default!important}.react-flow__node-section{pointer-events:all!important;overflow:visible!important}.react-flow__node-condition{pointer-events:all!important}.tlc-drag-grip,.tlc-drag-grip *{cursor:move!important}.tlc-dragging,.tlc-dragging *{cursor:move!important}.tlc-edit{cursor:text!important;user-select:text!important;-webkit-user-select:text!important;caret-color:rgba(201,168,76,0.9)}.tlr-scroll::-webkit-scrollbar{width:3px;height:3px}.tlr-scroll::-webkit-scrollbar-track{background:transparent}.tlr-scroll::-webkit-scrollbar-thumb{background:${sbC};border-radius:2px}.tlr-scroll::-webkit-scrollbar-thumb:hover{background:${sbH}}.tlr-scroll{scrollbar-width:thin;scrollbar-color:${sbC} transparent}.tlr-dashboard-action{transition:background-color 0.16s ease,color 0.16s ease,border-color 0.16s ease,box-shadow 0.16s ease,filter 0.16s ease,transform 0.13s ease}.tlr-dashboard-action:hover{filter:brightness(1.035)}.tlr-dashboard-action:active,.tlr-dashboard-segment:active{transform:translateY(1px)}.tlr-dashboard-segment:not(.tlr-dashboard-segment-active):hover{background:rgba(255,255,255,0.055)!important;color:${tcHov}!important}.tlr-library-tree-row{transition:none!important;will-change:background-color}.tlr-library-tree-row:not(.tlr-library-tree-row-active):hover{background:${libTreeHover}!important}.tlr-library-tree-row:not(.tlr-library-tree-row-active):active,.tlr-library-content-row:not(.tlr-library-content-row-active):not(.tlr-library-immediate-active):active,.tlr-library-strategy-row:not(.tlr-library-strategy-row-active):not(.tlr-library-immediate-active):active{background:var(--tlr-lib-hover-bg,rgba(255,255,255,0.055))!important}.tlr-library-tree-row:not(.tlr-library-tree-row-active):hover .tlr-library-tree-text,.tlr-library-tree-row:not(.tlr-library-tree-row-active):hover .tlr-library-tree-chevron{color:${tcHov}!important}.tlr-library-status-tab{transition:none!important;will-change:background-color,color,transform}.tlr-library-status-tab:not(.tlr-library-status-tab-active):hover{background:var(--tlr-status-hover-bg)!important;color:${tcHov}!important}.tlr-library-status-tab:not(.tlr-library-status-tab-active):hover .tlr-library-status-count{background:rgba(255,255,255,0.10)!important;color:${tcHov}!important}.tlr-library-status-tab:not(.tlr-library-status-tab-active):active{transform:translateY(1px);background:var(--tlr-status-hover-bg,rgba(255,255,255,0.055))!important}.tlr-library-title-action:active,.tlr-library-action:active{transform:translateY(1px)}.tlr-library-title-action{transition:background-color 0.14s ease,color 0.14s ease,transform 0.12s ease!important}.tlr-library-title-action:hover{background:rgba(255,255,255,0.055)!important;color:${tcHov}!important}.tlr-library-action{transition:filter 0.16s ease,background-color 0.16s ease,color 0.16s ease,border-color 0.16s ease,box-shadow 0.16s ease,transform 0.13s ease}.tlr-library-action:hover{filter:brightness(1.035)}.tlr-library-content-row,.tlr-library-strategy-row{transition:none!important;will-change:background-color,border-color,box-shadow}.tlr-library-content-row:not(.tlr-library-content-row-active):not(.tlr-library-immediate-active):not(.tlr-library-immediate-checked):not([aria-pressed="true"]):hover,.tlr-library-strategy-row:not(.tlr-library-strategy-row-active):not(.tlr-library-immediate-active):not(.tlr-library-immediate-checked):not([aria-pressed="true"]):hover{background:var(--tlr-lib-hover-bg)!important;border-color:var(--tlr-lib-hover-border)!important;box-shadow:none!important}.tlr-library-content-row:not(.tlr-library-content-row-active):not(.tlr-library-immediate-active):not(.tlr-library-immediate-checked):not([aria-pressed="true"]):hover::before,.tlr-library-strategy-row:not(.tlr-library-strategy-row-active):not(.tlr-library-immediate-active):not(.tlr-library-immediate-checked):not([aria-pressed="true"]):hover::before{content:"";position:absolute;left:0;top:22%;bottom:22%;width:1px;background:linear-gradient(180deg,transparent,rgba(255,255,255,0.42),transparent);box-shadow:none;pointer-events:none}.tlr-library-content-row-active::before,.tlr-library-strategy-row-active::before{content:"";position:absolute;left:0;top:16%;bottom:16%;width:2px;background:linear-gradient(180deg,transparent,var(--tlr-lib-color),transparent);box-shadow:0 0 6px var(--tlr-lib-color);pointer-events:none}.tlr-library-content-row:not(.tlr-library-content-row-active):not(.tlr-library-immediate-active):not(.tlr-library-immediate-checked):not([aria-pressed="true"]):hover .tlr-library-content-title,.tlr-library-strategy-row:not(.tlr-library-strategy-row-active):not(.tlr-library-immediate-active):not(.tlr-library-immediate-checked):not([aria-pressed="true"]):hover .tlr-library-strategy-title{color:${tcHov}!important}.tlr-library-strategy-row:not(.tlr-library-strategy-row-active):not(.tlr-library-immediate-active):not(.tlr-library-immediate-checked):not([aria-pressed="true"]):hover .tlr-library-strategy-chevron{color:${tcHov}!important}.tlr-library-content-row:hover .tlr-library-multi-check,.tlr-library-strategy-row:hover .tlr-library-multi-check,.tlr-library-multi-check-on{opacity:1!important}.tlr-library-tree-row:focus-visible,.tlr-library-status-tab:focus-visible,.tlr-library-content-row:focus-visible,.tlr-library-strategy-row:focus-visible,.tlr-library-title-action:focus-visible,.tlr-library-action:focus-visible,.tlr-dashboard-action:focus-visible,.tlr-dashboard-segment:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}@keyframes tlrCpIn{from{opacity:0;transform:translateY(-5px) scale(0.98)}to{opacity:1;transform:translateY(0) scale(1)}}.tlr-cp{animation:tlrCpIn 0.15s cubic-bezier(0.16,1,0.3,1)}@keyframes tlrSoftOpen{from{opacity:0;transform:translateY(-2px)}to{opacity:1;transform:translateY(0)}}@keyframes tlcCondIn{from{opacity:0;transform:scale(0.97)}to{opacity:1;transform:scale(1)}}@keyframes tlcSecOut{from{opacity:1;transform:scaleY(1) translateY(0)}to{opacity:0;transform:scaleY(0.65) translateY(-14px)}}.tlc-sec-deleting{animation:tlcSecOut 0.28s cubic-bezier(0.4,0,1,1) forwards;transform-origin:top center;pointer-events:none}.tlc-sliding .react-flow__node-section,.tlc-sliding .react-flow__node-condition{transition:transform 0.3s cubic-bezier(0.25,0.46,0.45,0.94)!important}`;
-      style.textContent += `.tlr-dashboard-action{transition:background-color 0.04s linear,color 0.04s linear,border-color 0.04s linear,box-shadow 0.04s linear,filter 0.04s linear,transform 0.04s linear!important}.tlr-dashboard-action:not(.tlr-dashboard-action-disabled):hover{background:rgba(255,255,255,0.07)!important;color:${tcHov}!important;filter:none!important}.tlr-dashboard-action:active,.tlr-dashboard-segment:active,.tlr-dashboard-source-switch:active{transform:translateY(1px)!important}.tlr-dashboard-source-switch{transition:background-color 0.04s linear,color 0.04s linear,border-color 0.04s linear,box-shadow 0.04s linear!important}.tlr-dashboard-source-switch:hover{background:rgba(255,255,255,0.06)!important;border-color:var(--tlr-source-accent)!important;box-shadow:inset 0 -1px 0 var(--tlr-source-accent)!important}.tlr-dashboard-source-switch:active{background:rgba(74,106,255,0.16)!important}.tlr-dashboard-source-switch:hover svg{opacity:1!important}.tlr-dashboard-source-switch:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
+      style.textContent += `.tlr-dashboard-action{transition:background-color 0.04s linear,color 0.04s linear,border-color 0.04s linear,box-shadow 0.04s linear,filter 0.04s linear,transform 0.04s linear!important}.tlr-dashboard-action:not(.tlr-dashboard-action-disabled):hover{background:rgba(255,255,255,0.07)!important;color:${tcHov}!important;filter:none!important}.tlr-dashboard-action:active,.tlr-dashboard-segment:active,.tlr-dashboard-source-switch:active{transform:translateY(1px)!important}.tlr-dashboard-source-switch{transition:background-color 0.04s linear,color 0.04s linear,border-color 0.04s linear,box-shadow 0.04s linear!important}.tlr-dashboard-source-switch:hover{background:rgba(255,255,255,0.06)!important;border-color:var(--tlr-source-accent)!important;box-shadow:inset 0 -1px 0 var(--tlr-source-accent)!important}.tlr-dashboard-source-switch:active{background:rgba(48,144,255,0.16)!important}.tlr-dashboard-source-switch:hover svg{opacity:1!important}.tlr-dashboard-source-switch:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
       style.textContent += `.tlr-trades-view-remove{transition:background-color 0.04s linear,color 0.04s linear,box-shadow 0.04s linear,transform 0.04s linear!important}.tlr-trades-view-remove:hover{background:rgba(255,80,104,0.12)!important;color:${c.rd}!important;box-shadow:0 0 0 1px rgba(255,80,104,0.45),0 0 10px rgba(255,80,104,0.16)!important}.tlr-trades-view-remove:active{background:rgba(255,80,104,0.18)!important;color:#fff!important;transform:translateY(1px)!important}.tlr-trades-view-remove:focus-visible{outline:1px solid rgba(255,80,104,0.62);outline-offset:1px}`;
-      style.textContent += `.tlr-trades-sort-header{transition:color 0.04s linear,background-color 0.04s linear,box-shadow 0.04s linear,transform 0.04s linear!important}.tlr-trades-sort-header::after{content:"";position:absolute;left:14%;right:14%;bottom:3px;height:1px;background:linear-gradient(90deg,transparent,${c.acL},transparent);box-shadow:0 0 7px rgba(74,106,255,0.62);opacity:0;pointer-events:none}.tlr-trades-sort-header:hover{background:rgba(38,67,247,0.10)!important;color:${c.acL}!important}.tlr-trades-sort-header:hover::after,.tlr-trades-sort-header-active::after{opacity:1}.tlr-trades-sort-header-active{background:rgba(38,67,247,0.13)!important;color:${c.acL}!important}.tlr-trades-sort-header:active{transform:translateY(1px)!important;background:rgba(38,67,247,0.18)!important}.tlr-trades-sort-header:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-trades-sort-arrows{opacity:0;color:${tcLbl};transition:opacity 0.04s linear,color 0.04s linear!important}.tlr-trades-sort-header:hover .tlr-trades-sort-arrows,.tlr-trades-sort-header-active .tlr-trades-sort-arrows{opacity:1}.tlr-trades-sort-header:hover .tlr-trades-sort-arrow-muted{color:${tcHov}!important;opacity:.82!important}.tlr-trades-sort-arrow-active{color:${c.acL}!important;opacity:1!important}.tlr-trades-sort-arrow-muted{color:${tcLbl}!important;opacity:.58!important}`;
-      style.textContent += `.tlr-session-nav-item{transition:none!important;will-change:background-color,color;touch-action:manipulation}.tlr-session-nav-item:hover{background:rgba(255,255,255,0.075)!important;color:${tcHov}!important}.tlr-session-nav-item:active{background:rgba(74,106,255,0.14)!important;color:${tcHov}!important;transform:translateY(1px)!important}.tlr-session-nav-item-active,.tlr-session-nav-item-active:hover,.tlr-session-nav-item-active:active{background:${c.acD}!important;color:${c.acL}!important;transform:none!important}.tlr-session-nav-item:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
-      style.textContent += `.tlr-phase-nav-group,.tlr-phase-nav-item{transition:none!important;will-change:background-color,color;touch-action:manipulation}.tlr-phase-nav-group:not(.tlr-phase-nav-group-active):not(.tlr-phase-nav-group-disabled):hover,.tlr-phase-nav-item:not(.tlr-phase-nav-item-active):hover{background:rgba(255,255,255,0.055)!important;color:${tcHov}!important}.tlr-phase-nav-group:not(.tlr-phase-nav-group-active):not(.tlr-phase-nav-group-disabled):active,.tlr-phase-nav-item:not(.tlr-phase-nav-item-active):active{background:rgba(74,106,255,0.13)!important;color:${tcHov}!important;transform:translateY(1px)!important}.tlr-phase-nav-group-active,.tlr-phase-nav-group-active:hover,.tlr-phase-nav-item-active,.tlr-phase-nav-item-active:hover{background:${c.acD}!important;color:${c.acL}!important}.tlr-phase-nav-group:focus-visible,.tlr-phase-nav-item:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
-      style.textContent += `.tlr-dashboard-source-switch-redesign,.tlr-dashboard-value-select{text-rendering:geometricPrecision;-webkit-font-smoothing:antialiased;font-synthesis:none}.tlr-dashboard-source-switch-redesign span,.tlr-dashboard-source-switch-redesign div,.tlr-dashboard-value-select span{text-shadow:none!important}.tlr-dashboard-source-switch-redesign:hover{background:rgba(255,255,255,0.055)!important;border-color:var(--tlr-source-accent)!important;box-shadow:0 0 14px -12px var(--tlr-source-accent)!important}.tlr-dashboard-source-switch-redesign:active{background:rgba(74,106,255,0.13)!important;transform:translateY(1px)!important}.tlr-dashboard-source-switch-redesign:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-source-switch-redesign [data-tlr-upper-accent],.tlr-dashboard-source-switch-redesign [data-tlr-upper-icon]{transition:color 0.04s linear}.tlr-dashboard-source-switch-redesign:hover [data-tlr-upper-accent],.tlr-dashboard-source-switch-redesign:hover [data-tlr-upper-icon],.tlr-dashboard-source-switch-redesign.tlr-dashboard-source-switch-open [data-tlr-upper-accent],.tlr-dashboard-source-switch-redesign.tlr-dashboard-source-switch-open [data-tlr-upper-icon]{color:var(--tlr-source-accent)!important}.tlr-dashboard-page-menu-item:hover{background:rgba(255,255,255,0.055)!important;color:${tcHov}!important}.tlr-dashboard-page-menu-item:active{background:rgba(74,106,255,0.13)!important;color:${tcHov}!important;transform:translateY(1px)!important}.tlr-dashboard-page-menu-item-active,.tlr-dashboard-page-menu-item-active:hover,.tlr-dashboard-page-menu-item-active:active{background:${c.acD}!important;color:${c.acL}!important;transform:none!important}.tlr-dashboard-page-menu-item:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-summary-card{transition:none!important}.tlr-dashboard-summary-card:hover{border-color:${c.br}!important;box-shadow:inset 0 1px 3px rgba(0,0,0,0.3)!important}.tlr-dashboard-summary-card:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-info-target{transition:none!important}.tlr-dashboard-info-target:hover,.tlr-dashboard-info-target:focus-visible{filter:none!important;outline:none!important;box-shadow:none!important}.tlr-dashboard-shape-hover{transition:filter 90ms ease!important;cursor:default}.tlr-dashboard-score-arrow:hover,.tlr-dashboard-card-info:hover{color:${c.acL}!important;filter:drop-shadow(0 0 3px rgba(74,106,255,0.28))!important}.tlr-dashboard-score-arrow:active,.tlr-dashboard-card-info:active{transform:translateY(1px)!important}.tlr-dashboard-score-footer:hover{border-color:${c.brL}!important;color:${c.tx}!important;background:${c.well}!important}.tlr-dashboard-score-footer:active{transform:translateY(1px)!important;color:#fff!important}.tlr-dashboard-view-breakdown:hover{color:${tcHov}!important}.tlr-dashboard-view-breakdown:active{color:#fff!important;transform:translateY(1px)!important}@keyframes tlrScoreSlideInRight{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:translateX(0)}}@keyframes tlrScoreSlideInLeft{from{opacity:0;transform:translateX(-18px)}to{opacity:1;transform:translateX(0)}}`;
+      style.textContent += `.tlr-trades-sort-header{transition:color 0.04s linear,background-color 0.04s linear,box-shadow 0.04s linear,transform 0.04s linear!important}.tlr-trades-sort-header::after{content:"";position:absolute;left:14%;right:14%;bottom:3px;height:1px;background:linear-gradient(90deg,transparent,${c.acL},transparent);box-shadow:none;opacity:0;pointer-events:none}.tlr-trades-sort-header:hover{background:rgba(48,144,255,0.10)!important;color:${c.acL}!important}.tlr-trades-sort-header:hover::after,.tlr-trades-sort-header-active::after{opacity:1}.tlr-trades-sort-header-active{background:rgba(48,144,255,0.13)!important;color:${c.acL}!important}.tlr-trades-sort-header:active{transform:translateY(1px)!important;background:rgba(48,144,255,0.18)!important}.tlr-trades-sort-header:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-trades-sort-arrows{opacity:0;color:${tcLbl};transition:opacity 0.04s linear,color 0.04s linear!important}.tlr-trades-sort-header:hover .tlr-trades-sort-arrows,.tlr-trades-sort-header-active .tlr-trades-sort-arrows{opacity:1}.tlr-trades-sort-header:hover .tlr-trades-sort-arrow-muted{color:${tcHov}!important;opacity:.82!important}.tlr-trades-sort-arrow-active{color:${c.acL}!important;opacity:1!important}.tlr-trades-sort-arrow-muted{color:${tcLbl}!important;opacity:.58!important}`;
+      style.textContent += `.tlr-session-nav-item{transition:none!important;will-change:background-color,color;touch-action:manipulation}.tlr-session-nav-item:hover{background:rgba(255,255,255,0.075)!important;color:${tcHov}!important}.tlr-session-nav-item:active{background:rgba(48,144,255,0.14)!important;color:${tcHov}!important;transform:translateY(1px)!important}.tlr-session-nav-item-active,.tlr-session-nav-item-active:hover,.tlr-session-nav-item-active:active{background:${c.acD}!important;color:${c.acL}!important;transform:none!important}.tlr-session-nav-item:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
+      style.textContent += `.tlr-phase-nav-group,.tlr-phase-nav-item{transition:none!important;will-change:background-color,color;touch-action:manipulation}.tlr-phase-nav-group:not(.tlr-phase-nav-group-active):not(.tlr-phase-nav-group-disabled):hover,.tlr-phase-nav-item:not(.tlr-phase-nav-item-active):hover{background:rgba(255,255,255,0.055)!important;color:${tcHov}!important}.tlr-phase-nav-group:not(.tlr-phase-nav-group-active):not(.tlr-phase-nav-group-disabled):active,.tlr-phase-nav-item:not(.tlr-phase-nav-item-active):active{background:rgba(48,144,255,0.13)!important;color:${tcHov}!important;transform:translateY(1px)!important}.tlr-phase-nav-group-active,.tlr-phase-nav-group-active:hover,.tlr-phase-nav-item-active,.tlr-phase-nav-item-active:hover{background:${c.acD}!important;color:${c.acL}!important}.tlr-phase-nav-group:focus-visible,.tlr-phase-nav-item:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
+      style.textContent += `.tlr-dashboard-source-switch-redesign,.tlr-dashboard-value-select{text-rendering:geometricPrecision;-webkit-font-smoothing:antialiased;font-synthesis:none}.tlr-dashboard-source-switch-redesign span,.tlr-dashboard-source-switch-redesign div,.tlr-dashboard-value-select span{text-shadow:none!important}.tlr-dashboard-source-switch-redesign:hover{background:rgba(255,255,255,0.055)!important;border-color:var(--tlr-source-accent)!important;box-shadow:0 0 14px -12px var(--tlr-source-accent)!important}.tlr-dashboard-source-switch-redesign:active{background:rgba(48,144,255,0.13)!important;transform:translateY(1px)!important}.tlr-dashboard-source-switch-redesign:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-source-switch-redesign [data-tlr-upper-accent],.tlr-dashboard-source-switch-redesign [data-tlr-upper-icon]{transition:color 0.04s linear}.tlr-dashboard-source-switch-redesign:hover [data-tlr-upper-accent],.tlr-dashboard-source-switch-redesign:hover [data-tlr-upper-icon],.tlr-dashboard-source-switch-redesign.tlr-dashboard-source-switch-open [data-tlr-upper-accent],.tlr-dashboard-source-switch-redesign.tlr-dashboard-source-switch-open [data-tlr-upper-icon]{color:var(--tlr-source-accent)!important}.tlr-dashboard-page-menu-item:hover{background:rgba(255,255,255,0.055)!important;color:${tcHov}!important}.tlr-dashboard-page-menu-item:active{background:rgba(48,144,255,0.13)!important;color:${tcHov}!important;transform:translateY(1px)!important}.tlr-dashboard-page-menu-item-active,.tlr-dashboard-page-menu-item-active:hover,.tlr-dashboard-page-menu-item-active:active{background:${c.acD}!important;color:${c.acL}!important;transform:none!important}.tlr-dashboard-page-menu-item:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-summary-card{transition:none!important}.tlr-dashboard-summary-card:hover{border-color:${c.br}!important;box-shadow:inset 0 1px 3px rgba(0,0,0,0.3)!important}.tlr-dashboard-summary-card:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-info-target{transition:none!important}.tlr-dashboard-info-target:hover,.tlr-dashboard-info-target:focus-visible{filter:none!important;outline:none!important;box-shadow:none!important}.tlr-dashboard-shape-hover{transition:filter 90ms ease!important;cursor:default}.tlr-dashboard-score-arrow:hover,.tlr-dashboard-card-info:hover{color:${c.acL}!important;filter:drop-shadow(0 0 3px rgba(48,144,255,0.28))!important}.tlr-dashboard-score-arrow:active,.tlr-dashboard-card-info:active{transform:translateY(1px)!important}.tlr-dashboard-score-footer:hover{border-color:${c.brL}!important;color:${c.tx}!important;background:${c.well}!important}.tlr-dashboard-score-footer:active{transform:translateY(1px)!important;color:#fff!important}.tlr-dashboard-view-breakdown:hover{color:${tcHov}!important}.tlr-dashboard-view-breakdown:active{color:#fff!important;transform:translateY(1px)!important}@keyframes tlrScoreSlideInRight{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:translateX(0)}}@keyframes tlrScoreSlideInLeft{from{opacity:0;transform:translateX(-18px)}to{opacity:1;transform:translateX(0)}}`;
       style.textContent += `.tlr-return-period-control:focus-within{border-color:rgba(76,105,255,0.72)!important;background:rgba(20,27,49,0.98)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,0.045),0 0 12px -9px rgba(76,105,255,0.9)!important}.tlr-return-period-step{cursor:default!important;transition:color 90ms ease,transform 90ms ease}.tlr-return-period-step:hover{background:transparent!important;color:var(--tlr-step-accent)!important}.tlr-return-period-step:active{transform:scale(0.88);background:transparent!important;color:#fff!important}`;
-      style.textContent += `.tlr-dashboard-score-row:hover{background:rgba(255,255,255,0.045)!important}.tlr-dashboard-score-row:active{background:rgba(74,106,255,0.10)!important;transform:translateY(1px)!important}.tlr-dashboard-score-row:focus-visible,.tlr-dashboard-radar-toggle:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-radar-toggle:hover{color:${tcHov}!important;background:rgba(255,255,255,0.052)!important}.tlr-dashboard-radar-toggle:active{transform:translateY(1px)!important;background:rgba(74,106,255,0.12)!important}.tlr-dashboard-radar-toggle-active,.tlr-dashboard-radar-toggle-active:hover{color:${c.acL}!important;background:transparent!important}.tlr-dashboard-radar-toggle-active:after{content:"";position:absolute;left:4px;right:4px;bottom:0;height:1px;background:linear-gradient(90deg,transparent,${c.acL},transparent);box-shadow:0 0 7px ${c.acG};pointer-events:none}`;
+      style.textContent += `.tlr-dashboard-score-row:hover{background:rgba(255,255,255,0.045)!important}.tlr-dashboard-score-row:active{background:rgba(48,144,255,0.10)!important;transform:translateY(1px)!important}.tlr-dashboard-score-row:focus-visible,.tlr-dashboard-radar-toggle:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-radar-toggle:hover{color:${tcHov}!important;background:rgba(255,255,255,0.052)!important}.tlr-dashboard-radar-toggle:active{transform:translateY(1px)!important;background:rgba(48,144,255,0.12)!important}.tlr-dashboard-radar-toggle-active,.tlr-dashboard-radar-toggle-active:hover{color:${c.acL}!important;background:transparent!important}.tlr-dashboard-radar-toggle-active:after{content:"";position:absolute;left:4px;right:4px;bottom:0;height:1px;background:linear-gradient(90deg,transparent,${c.acL},transparent);box-shadow:none;pointer-events:none}`;
       style.textContent += `@keyframes tlrDashSkeletonShimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}.tlr-dash-skeleton-shimmer{animation:tlrDashSkeletonShimmer 1.35s ease-in-out infinite}.tlr-snapshot-page-loading .tlr-snapshot-basic-card,.tlr-snapshot-page-loading .tlr-snapshot-adv-kpi-card,.tlr-snapshot-page-loading .tlr-snapshot-equity-area-build,.tlr-snapshot-page-loading .tlr-snapshot-equity-dd-build,.tlr-snapshot-page-loading .tlr-snapshot-equity-seg-build,.tlr-snapshot-page-loading .tlr-snapshot-equity-dot-build{animation:none!important}@keyframes tlrSnapshotTopBasicIn{0%{opacity:.92;transform:translateX(-14px) scale(.996)}100%{opacity:1;transform:translateX(0) scale(1)}}@keyframes tlrSnapshotTopAdvancedIn{0%{opacity:.92;transform:translateX(14px) scale(.996)}100%{opacity:1;transform:translateX(0) scale(1)}}.tlr-snapshot-top-mode-panel{transform-origin:50% 22px;will-change:opacity,transform}.tlr-snapshot-top-mode-basic:not(.tlr-snapshot-top-mode-settled){animation:tlrSnapshotTopBasicIn 360ms cubic-bezier(.18,.82,.18,1) both}.tlr-snapshot-top-mode-advanced:not(.tlr-snapshot-top-mode-settled){animation:tlrSnapshotTopAdvancedIn 360ms cubic-bezier(.18,.82,.18,1) both}.tlr-snapshot-top-mode-settled{animation:none!important;opacity:1!important;transform:none!important;will-change:auto!important}@keyframes tlrKpiPageSlideInRight{0%{opacity:.9;transform:translateX(18px)}100%{opacity:1;transform:translateX(0)}}@keyframes tlrKpiPageSlideInLeft{0%{opacity:.9;transform:translateX(-18px)}100%{opacity:1;transform:translateX(0)}}.tlr-dashboard-kpi-page-shell{overflow:hidden;flex:1;min-height:0;display:flex;flex-direction:column}.tlr-dashboard-kpi-page-slide-right{animation:tlrKpiPageSlideInRight 340ms cubic-bezier(.18,.82,.18,1) both}.tlr-dashboard-kpi-page-slide-left{animation:tlrKpiPageSlideInLeft 340ms cubic-bezier(.18,.82,.18,1) both}@keyframes tlrSnapshotBasicCardIn{0%{opacity:.94;transform:translateY(8px) translateX(-8px)}100%{opacity:1;transform:translateY(0) translateX(0)}}.tlr-snapshot-basic-card:not(.tlr-snapshot-card-settled){animation:tlrSnapshotBasicCardIn 380ms cubic-bezier(.18,.82,.18,1) both;animation-delay:var(--tlr-card-delay,0ms)!important}.tlr-snapshot-adv-kpi-card:not(.tlr-snapshot-card-settled){animation:tlrSnapshotAdvKpiIn 360ms cubic-bezier(.18,.82,.18,1) both;animation-delay:var(--tlr-card-delay,0ms)!important}@keyframes tlrSnapshotAdvKpiIn{0%{opacity:.94;transform:translateX(10px) scale(.992)}100%{opacity:1;transform:translateX(0) scale(1)}}.tlr-snapshot-card-settled{animation:none!important;opacity:1!important;transform:none!important;filter:none!important;will-change:auto!important}@keyframes tlrSnapshotEquityAreaBuild{0%{clip-path:inset(0 100% 0 0);opacity:.55}100%{clip-path:inset(0 0 0 0);opacity:1}}@keyframes tlrSnapshotEquityDrawBuild{0%{stroke-dashoffset:var(--tlr-eq-len,120);opacity:.55}100%{stroke-dashoffset:0;opacity:1}}.tlr-snapshot-equity-area-build{animation:tlrSnapshotEquityAreaBuild 760ms cubic-bezier(.22,.82,.22,1) both}.tlr-snapshot-equity-dd-build{animation:tlrSnapshotEquityAreaBuild 760ms cubic-bezier(.22,.82,.22,1) both;animation-delay:120ms!important}.tlr-snapshot-equity-seg-build{stroke-dasharray:var(--tlr-eq-len,120);stroke-dashoffset:var(--tlr-eq-len,120);animation:tlrSnapshotEquityDrawBuild 560ms cubic-bezier(.22,.82,.22,1) forwards;animation-delay:calc(var(--tlr-eq-i,0)*7ms)!important}@keyframes tlrSnapshotEquityDotIn{0%{opacity:.55;transform:scale(.82)}100%{opacity:1;transform:scale(1)}}.tlr-snapshot-equity-dot-build{transform-box:fill-box;transform-origin:center;animation:tlrSnapshotEquityDotIn 280ms cubic-bezier(.18,.82,.18,1) both;animation-delay:calc(420ms + var(--tlr-eq-i,0)*7ms)!important}@media (prefers-reduced-motion:reduce){.tlr-snapshot-top-mode-basic,.tlr-snapshot-top-mode-advanced,.tlr-dashboard-kpi-page-slide-right,.tlr-dashboard-kpi-page-slide-left,.tlr-snapshot-basic-card,.tlr-snapshot-adv-kpi-card,.tlr-snapshot-equity-area-build,.tlr-snapshot-equity-dd-build,.tlr-snapshot-equity-seg-build,.tlr-snapshot-equity-dot-build{animation:none!important}.tlr-snapshot-equity-seg-build{stroke-dashoffset:0!important;opacity:1!important}}`;
-      style.textContent += `.tlr-snapshot-calendar-panel{animation:none!important;will-change:auto!important}.tlr-snapshot-calendar-cell{transition:background 140ms ease,border-color 140ms ease,box-shadow 140ms ease,color 140ms ease!important}.tlr-snapshot-calendar-title-btn{transition:background-color 130ms ease,color 130ms ease,transform 90ms ease!important}.tlr-snapshot-calendar-title-btn:hover{background:rgba(74,106,255,0.11)!important;color:${c.acL}!important}.tlr-snapshot-calendar-title-btn:active{background:rgba(74,106,255,0.18)!important;color:#fff!important;transform:translateY(1px)!important}.tlr-snapshot-calendar-cell:active{filter:brightness(1.08)!important}.tlr-snapshot-calendar-cell-selected{transition:background 150ms ease,border-color 150ms ease,box-shadow 150ms ease,color 150ms ease!important}@keyframes tlrSnapshotCalendarSwitch{0%{opacity:.88;transform:translateY(5px) scale(.993)}100%{opacity:1;transform:translateY(0) scale(1)}}.tlr-snapshot-calendar-panel-animate{animation:tlrSnapshotCalendarSwitch 190ms cubic-bezier(.2,.72,.18,1) both!important;will-change:opacity,transform!important;transform-origin:50% 42%}@media (prefers-reduced-motion:reduce){.tlr-snapshot-calendar-panel-animate{animation:none!important}.tlr-snapshot-calendar-cell,.tlr-snapshot-calendar-title-btn{transition:none!important}}`;
-      style.textContent += `.tlr-snapshot-page,.tlr-snapshot-page *{text-rendering:geometricPrecision;-webkit-font-smoothing:antialiased;font-synthesis:none}.tlr-snapshot-page .tlr-dashboard-summary-card{contain:layout paint;transform:none!important}.tlr-snapshot-page .tlr-dashboard-summary-card:hover{transform:none!important;filter:none!important}.tlr-snapshot-page .tlr-dashboard-summary-card span,.tlr-snapshot-page .tlr-dashboard-summary-card div{min-width:0}.tlr-snapshot-calendar-cell{transform:none!important;will-change:background,border-color,box-shadow}.tlr-snapshot-calendar-cell:hover{transform:none!important;filter:none!important}.tlr-snapshot-calendar-cell:active{transform:none!important;filter:brightness(1.04)!important}.tlr-snapshot-calendar-title-btn{border:0!important;box-shadow:none!important}.tlr-snapshot-calendar-title-btn:hover{background:rgba(74,106,255,0.10)!important;color:${c.acL}!important}.tlr-snapshot-calendar-title-btn:active{background:rgba(74,106,255,0.17)!important;color:#fff!important}.tlr-snapshot-trade-preview-shell{pointer-events:none}.tlr-snapshot-trade-preview-card{background:rgb(7,10,20)!important;border:1px solid rgba(116,126,150,0.50)!important;box-shadow:0 18px 44px rgba(0,0,0,0.58),inset 0 1px 0 rgba(255,255,255,0.035)!important}.tlr-snapshot-trade-preview-card::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:linear-gradient(90deg,transparent,${c.acL},transparent);box-shadow:0 0 8px ${c.acG};pointer-events:none}.tlr-snapshot-trade-id-button{display:inline-flex!important;align-items:center!important;gap:5px!important;line-height:1.05!important;vertical-align:middle!important}.tlr-snapshot-trade-id-button::after{left:0!important;right:13px!important;bottom:1px!important;height:1px!important;background:linear-gradient(90deg,transparent,${c.acL},transparent)!important;box-shadow:0 0 7px ${c.acG}!important}.tlr-snapshot-trade-id-button:hover,.tlr-snapshot-trade-id-button[aria-pressed="true"]{color:${c.acL}!important}.tlr-snapshot-trade-id-button:hover::after,.tlr-snapshot-trade-id-button[aria-pressed="true"]::after{opacity:1!important}.tlr-snapshot-trade-preview-close{border:0!important;background:transparent!important;box-shadow:none!important}.tlr-snapshot-trade-preview-close:hover{background:transparent!important;color:${c.rd}!important;filter:drop-shadow(0 0 5px rgba(255,80,104,.58))!important}.tlr-snapshot-trade-preview-close:active{background:transparent!important;color:#fff!important;transform:translateY(1px) scale(.94)!important}.tlr-snapshot-bestworst-grid{grid-template-columns:minmax(182px,1fr) minmax(42px,52px) minmax(62px,74px)!important;column-gap:8px!important}.tlr-snapshot-bestworst-id{font-size:7.85px!important;letter-spacing:-.01em!important;overflow:visible!important;text-overflow:clip!important}.tlr-snapshot-bestworst-line{width:58px!important;max-width:58px!important}.tlr-snapshot-chip-row:hover{transform:none!important;filter:none!important}.tlr-snapshot-basic-card-title-line{height:1px;background:linear-gradient(90deg,transparent,${c.acL},transparent);box-shadow:0 0 7px ${c.acG}}`;
+      style.textContent += `.tlr-snapshot-calendar-panel{animation:none!important;will-change:auto!important}.tlr-snapshot-calendar-cell{transition:background 140ms ease,border-color 140ms ease,box-shadow 140ms ease,color 140ms ease!important}.tlr-snapshot-calendar-title-btn{transition:background-color 130ms ease,color 130ms ease,transform 90ms ease!important}.tlr-snapshot-calendar-title-btn:hover{background:rgba(48,144,255,0.11)!important;color:${c.acL}!important}.tlr-snapshot-calendar-title-btn:active{background:rgba(48,144,255,0.18)!important;color:#fff!important;transform:translateY(1px)!important}.tlr-snapshot-calendar-cell:active{filter:brightness(1.08)!important}.tlr-snapshot-calendar-cell-selected{transition:background 150ms ease,border-color 150ms ease,box-shadow 150ms ease,color 150ms ease!important}@keyframes tlrSnapshotCalendarSwitch{0%{opacity:.88;transform:translateY(5px) scale(.993)}100%{opacity:1;transform:translateY(0) scale(1)}}.tlr-snapshot-calendar-panel-animate{animation:tlrSnapshotCalendarSwitch 190ms cubic-bezier(.2,.72,.18,1) both!important;will-change:opacity,transform!important;transform-origin:50% 42%}@media (prefers-reduced-motion:reduce){.tlr-snapshot-calendar-panel-animate{animation:none!important}.tlr-snapshot-calendar-cell,.tlr-snapshot-calendar-title-btn{transition:none!important}}`;
+      style.textContent += `.tlr-snapshot-page,.tlr-snapshot-page *{text-rendering:geometricPrecision;-webkit-font-smoothing:antialiased;font-synthesis:none}.tlr-snapshot-page .tlr-dashboard-summary-card{contain:layout paint;transform:none!important}.tlr-snapshot-page .tlr-dashboard-summary-card:hover{transform:none!important;filter:none!important}.tlr-snapshot-page .tlr-dashboard-summary-card span,.tlr-snapshot-page .tlr-dashboard-summary-card div{min-width:0}.tlr-snapshot-calendar-cell{transform:none!important;will-change:background,border-color,box-shadow}.tlr-snapshot-calendar-cell:hover{transform:none!important;filter:none!important}.tlr-snapshot-calendar-cell:active{transform:none!important;filter:brightness(1.04)!important}.tlr-snapshot-calendar-title-btn{border:0!important;box-shadow:none!important}.tlr-snapshot-calendar-title-btn:hover{background:rgba(48,144,255,0.10)!important;color:${c.acL}!important}.tlr-snapshot-calendar-title-btn:active{background:rgba(48,144,255,0.17)!important;color:#fff!important}.tlr-snapshot-trade-preview-shell{pointer-events:none}.tlr-snapshot-trade-preview-card{background:rgb(7,10,20)!important;border:1px solid rgba(116,126,150,0.50)!important;box-shadow:0 18px 44px rgba(0,0,0,0.58),inset 0 1px 0 rgba(255,255,255,0.035)!important}.tlr-snapshot-trade-preview-card::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:linear-gradient(90deg,transparent,${c.acL},transparent);box-shadow:0 0 8px ${c.acG};pointer-events:none}.tlr-snapshot-trade-id-button{display:inline-flex!important;align-items:center!important;gap:5px!important;line-height:1.05!important;vertical-align:middle!important}.tlr-snapshot-trade-id-button::after{left:0!important;right:13px!important;bottom:1px!important;height:1px!important;background:linear-gradient(90deg,transparent,${c.acL},transparent)!important;box-shadow:none!important}.tlr-snapshot-trade-id-button:hover,.tlr-snapshot-trade-id-button[aria-pressed="true"]{color:${c.acL}!important}.tlr-snapshot-trade-id-button:hover::after,.tlr-snapshot-trade-id-button[aria-pressed="true"]::after{opacity:1!important}.tlr-snapshot-trade-preview-close{border:0!important;background:transparent!important;box-shadow:none!important}.tlr-snapshot-trade-preview-close:hover{background:transparent!important;color:${c.rd}!important;filter:drop-shadow(0 0 5px rgba(255,80,104,.58))!important}.tlr-snapshot-trade-preview-close:active{background:transparent!important;color:#fff!important;transform:translateY(1px) scale(.94)!important}.tlr-snapshot-bestworst-grid{grid-template-columns:minmax(182px,1fr) minmax(42px,52px) minmax(62px,74px)!important;column-gap:8px!important}.tlr-snapshot-bestworst-id{font-size:7.85px!important;letter-spacing:-.01em!important;overflow:visible!important;text-overflow:clip!important}.tlr-snapshot-bestworst-line{width:58px!important;max-width:58px!important}.tlr-snapshot-chip-row:hover{transform:none!important;filter:none!important}.tlr-snapshot-basic-card-title-line{height:1px;background:linear-gradient(90deg,transparent,${c.acL},transparent);box-shadow:none}`;
       style.textContent += `.tlr-snapshot-page .tlr-dashboard-summary-card{contain:layout!important}.tlr-snapshot-page .tlr-dashboard-summary-card:hover{box-shadow:inherit}.tlr-snapshot-page .tlr-snapshot-bestworst-grid>*{min-width:0}.tlr-snapshot-page .tlr-snapshot-bestworst-id>span{overflow:visible!important;text-overflow:clip!important}.tlr-snapshot-page .tlr-snapshot-trade-preview-card{backdrop-filter:none!important}.tlr-snapshot-page .tlr-snapshot-calendar-title-btn,.tlr-snapshot-page .tlr-snapshot-trade-id-button,.tlr-snapshot-page .tlr-dashboard-score-arrow{cursor:pointer!important}.tlr-snapshot-page .tlr-dashboard-score-arrow:hover{color:${c.acL}!important;filter:drop-shadow(0 0 5px ${c.acG})!important}.tlr-snapshot-page .tlr-dashboard-score-arrow:active{color:#fff!important;transform:translateY(1px) scale(.94)!important}.tlr-snapshot-page .tlr-snapshot-trade-id-button:hover span,.tlr-snapshot-page .tlr-snapshot-trade-id-button:active span{color:${c.acL}!important}`;
       style.textContent += `@media (max-width:899px){.tlr-dash-chrome-toolbar{flex-wrap:wrap!important;height:auto!important;min-height:64px;padding-top:8px;padding-bottom:8px;align-items:flex-start!important}.tlr-dash-chrome-brand{display:none!important}.tlr-dash-chrome-controls{flex:1 1 100%!important;max-width:none!important;margin-left:0!important;flex-wrap:wrap!important;row-gap:8px!important}.tlr-dash-chrome-actions{flex:1 1 100%!important;justify-content:flex-end!important;padding:0 12px 4px!important;margin-left:0!important}.tlr-dash-balance-field{width:auto!important;flex:1 1 180px!important;min-width:0!important}.tlr-dash-unit-toggle{width:auto!important;flex:0 1 118px!important;min-width:104px!important}.tlr-snapshot-page-header{flex-direction:column!important;align-items:flex-start!important}.tlr-snapshot-page-header-sub{white-space:normal!important}}@media (max-width:639px){.tlr-session-nav-rail{width:100%!important;height:58px!important;flex-direction:row!important;align-self:auto!important;flex-shrink:0!important;padding:0 4px!important;box-shadow:0 -2px 18px rgba(0,0,0,0.45)!important;order:2}.tlr-session-nav-rail .tlr-session-nav-item{flex:1 1 0!important;height:52px!important;max-width:72px}.tlr-session-nav-rail .tlr-session-nav-spacer{display:none!important}.tlr-dash-body-stack{flex-direction:column!important}.tlr-dash-main-content{order:1!important;min-height:0!important}.tlr-dash-content-scroll{padding:12px!important}.tlr-snapshot-basic-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}.tlr-snapshot-pair-grid{grid-template-columns:1fr!important}}@media (max-width:479px){.tlr-snapshot-basic-grid{grid-template-columns:1fr!important}.tlr-dash-chrome-actions{justify-content:stretch!important}.tlr-dash-chrome-actions .tlr-dashboard-add-trade{flex:1 1 auto!important;justify-content:center!important}}@media (min-width:900px){.tlr-snapshot-basic-grid{grid-template-columns:repeat(6,minmax(0,1fr))!important}}`;
-      style.textContent += `.tlr-dashboard-score-compare-wrap-open{z-index:420!important;position:relative!important;isolation:isolate!important}.tlr-dashboard-score-compare-menu{background:rgb(7,10,20)!important;pointer-events:auto!important}.tlr-dashboard-score-compare-menu button:hover{background:rgba(255,255,255,0.045)!important}.tlr-dashboard-score-compare-menu button:active{background:rgba(74,106,255,0.14)!important}`;
-      style.textContent += `.tlr-dashboard-compare-chip{position:relative}.tlr-dashboard-compare-chip:hover{background:rgba(255,255,255,0.055)!important;border-color:rgba(74,106,255,0.34)!important;color:#4A6AFF!important;box-shadow:0 0 12px -11px #4A6AFF!important}.tlr-dashboard-compare-chip:active{background:rgba(74,106,255,0.12)!important;color:#4A6AFF!important;transform:translateY(1px)!important}.tlr-dashboard-compare-chip-active{background:transparent!important;color:#4A6AFF!important}.tlr-dashboard-compare-chip-active:hover{background:rgba(255,255,255,0.055)!important;color:#4A6AFF!important}.tlr-dashboard-compare-chip-active:after{content:"";position:absolute;left:16px;right:16px;bottom:2px;height:1px;background:linear-gradient(90deg,transparent,#4A6AFF,transparent);box-shadow:0 0 8px rgba(74,106,255,0.82);pointer-events:none}.tlr-dashboard-compare-chip:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
+      style.textContent += `.tlr-dashboard-score-compare-wrap-open{z-index:420!important;position:relative!important;isolation:isolate!important}.tlr-dashboard-score-compare-menu{background:rgb(7,10,20)!important;pointer-events:auto!important}.tlr-dashboard-score-compare-menu button:hover{background:rgba(255,255,255,0.045)!important}.tlr-dashboard-score-compare-menu button:active{background:rgba(48,144,255,0.14)!important}`;
+      style.textContent += `.tlr-dashboard-compare-chip{position:relative}.tlr-dashboard-compare-chip:hover{background:rgba(255,255,255,0.055)!important;border-color:rgba(48,144,255,0.34)!important;color:#3090FF!important;box-shadow:0 0 12px -11px #3090FF!important}.tlr-dashboard-compare-chip:active{background:rgba(48,144,255,0.12)!important;color:#3090FF!important;transform:translateY(1px)!important}.tlr-dashboard-compare-chip-active{background:transparent!important;color:#3090FF!important}.tlr-dashboard-compare-chip-active:hover{background:rgba(255,255,255,0.055)!important;color:#3090FF!important}.tlr-dashboard-compare-chip-active:after{content:"";position:absolute;left:16px;right:16px;bottom:2px;height:1px;background:linear-gradient(90deg,transparent,#3090FF,transparent);box-shadow:0 0 8px rgba(48,144,255,0.82);pointer-events:none}.tlr-dashboard-compare-chip:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
       style.textContent += `.tlr-dashboard-compare-exit:hover{background:rgba(255,80,104,0.055)!important;color:#FF5068!important}.tlr-dashboard-compare-exit:active{background:rgba(255,80,104,0.12)!important;color:#fff!important;transform:translateY(1px)!important}`;
       style.textContent += `.tlr-dashboard-compare-clear:hover{background:rgba(255,80,104,0.055)!important;border-color:rgba(255,80,104,0.22)!important;color:#FF5068!important}.tlr-dashboard-compare-clear:active{background:rgba(255,80,104,0.12)!important;color:#fff!important;transform:translateY(1px)!important}.tlr-dashboard-compare-clear:focus-visible{outline:1px solid rgba(255,80,104,0.55);outline-offset:-1px}`;
       style.textContent += `.tlr-dashboard-filter-clear-bin:hover{background:rgba(255,80,104,0.055)!important;color:#FF5068!important;filter:drop-shadow(0 0 4px rgba(255,80,104,0.26))}.tlr-dashboard-filter-clear-bin:active{background:rgba(255,80,104,0.12)!important;color:#fff!important;transform:translateY(1px)!important}.tlr-dashboard-filter-clear-bin:focus-visible{outline:1px solid rgba(255,80,104,0.48);outline-offset:-1px}`;
-      style.textContent += `.tlr-dashboard-value-select:hover{background:rgba(18,22,40,0.98)!important;border-color:rgba(74,106,255,0.46)!important;color:${tcHov}!important;box-shadow:inset 0 1px 0 rgba(255,255,255,0.055),0 0 14px -11px #4A6AFF!important}.tlr-dashboard-value-select:active{background:rgba(24,30,56,0.98)!important;transform:translateY(1px)!important}.tlr-dashboard-value-option:hover{background:rgba(255,255,255,0.06)!important;color:${tcHov}!important}.tlr-dashboard-value-option:active{background:rgba(74,106,255,0.16)!important}.tlr-dashboard-value-option-active{background:rgba(38,67,247,0.16)!important;color:#4A6AFF!important}.tlr-dashboard-value-option-active:hover{background:rgba(38,67,247,0.16)!important;color:#4A6AFF!important}.tlr-dashboard-value-option-active::before{content:"";position:absolute;left:0;top:22%;bottom:22%;width:1px;background:linear-gradient(180deg,transparent,#4A6AFF,transparent);box-shadow:0 0 6px #4A6AFF}.tlr-dashboard-value-select:focus-visible,.tlr-dashboard-value-option:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
-      style.textContent += `.tlr-dashboard-balance-field{transition:none!important}.tlr-dashboard-balance-field:hover,.tlr-dashboard-balance-field:focus-within{border-color:rgba(140,160,255,0.20)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,0.05)!important;background:linear-gradient(180deg,rgba(17,21,37,0.98),rgba(9,12,24,0.96))!important}.tlr-dashboard-balance-field:hover .tlr-dashboard-balance-label{color:${c.tm}!important}.tlr-dashboard-balance-mode-icon{transition:none!important}.tlr-dashboard-balance-mode-icon:hover{background:var(--tlr-balance-icon-hover-bg,rgba(74,106,255,0.12))!important;color:var(--tlr-balance-icon-accent,#4A6AFF)!important;box-shadow:0 0 10px -8px var(--tlr-balance-icon-accent,#4A6AFF)!important}.tlr-dashboard-balance-mode-icon:active{background:var(--tlr-balance-icon-active-bg,rgba(74,106,255,0.20))!important;color:var(--tlr-balance-icon-accent,#fff)!important;transform:translateY(1px)!important}.tlr-dashboard-balance-mode-icon:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-balance-value-line{background:linear-gradient(90deg,transparent,${c.gn},transparent);box-shadow:0 0 7px rgba(0,212,161,0.62)}`;
-      style.textContent += `.tlr-dashboard-filter-chip:hover{background:rgba(18,22,40,0.98)!important;border-color:rgba(74,106,255,0.46)!important;color:${tcHov}!important;box-shadow:inset 0 1px 0 rgba(255,255,255,0.055),0 0 14px -11px #4A6AFF!important}.tlr-dashboard-filter-chip:active{background:rgba(24,30,56,0.98)!important;transform:translateY(1px)!important}.tlr-dashboard-filter-option:hover{background:rgba(255,255,255,0.06)!important;color:${tcHov}!important}.tlr-dashboard-filter-option:active{background:rgba(74,106,255,0.14)!important}.tlr-dashboard-filter-option-active{background:rgba(38,67,247,0.14)!important;color:#4A6AFF!important}.tlr-dashboard-filter-option-active:hover{background:rgba(38,67,247,0.14)!important;color:#4A6AFF!important}.tlr-dashboard-filter-token:hover{background:rgba(255,255,255,0.052)!important;color:${tcHov}!important}.tlr-dashboard-filter-token:active{background:rgba(74,106,255,0.10)!important;transform:translateY(1px)!important}.tlr-dashboard-filter-token-active,.tlr-dashboard-filter-token-active:hover{background:transparent!important;color:var(--tlr-filter-token-active,#4A6AFF)!important}.tlr-dashboard-filter-token-active::after{content:"";position:absolute;left:3px;right:3px;bottom:1px;height:1px;background:linear-gradient(90deg,transparent,var(--tlr-filter-token-active,#4A6AFF),transparent);box-shadow:0 0 6px var(--tlr-filter-token-glow,rgba(74,106,255,0.72));pointer-events:none}.tlr-dashboard-filter-token-no-line::after{display:none!important}.tlr-dashboard-filter-chip:focus-visible,.tlr-dashboard-filter-option:focus-visible,.tlr-dashboard-filter-token:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-filter-clear,.tlr-dashboard-filter-clear *{cursor:default!important}.tlr-dashboard-filter-clear:not([aria-disabled="true"]):hover{background:transparent!important;color:#4A6AFF!important}.tlr-dashboard-filter-clear:not([aria-disabled="true"]):active{background:transparent!important;color:#fff!important;transform:translateY(1px)!important}`;
-      style.textContent += `.tlr-dashboard-filter-source-row:hover{background:var(--tlr-lib-hover-bg,rgba(255,255,255,0.045))!important;border-color:var(--tlr-lib-hover-border,rgba(255,255,255,0.12))!important}.tlr-dashboard-filter-source-row:active{background:var(--tlr-lib-active-press,rgba(74,106,255,0.10))!important;transform:translateY(1px)!important}.tlr-dashboard-filter-source-row:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
-      style.textContent += `.tlr-dashboard-trade-row{transition:background-color 180ms ease,border-color 180ms ease,box-shadow 180ms ease!important;will-change:background-color,border-color}.tlr-dashboard-trade-row:not(.tlr-dashboard-trade-row-selected):hover{background:rgba(12,16,29,0.98)!important;border-color:rgba(140,160,255,0.18)!important}.tlr-dashboard-trade-row-selected:hover{background:rgba(17,24,54,0.94)!important;border-color:rgba(74,106,255,0.34)!important}.tlr-dashboard-trade-row:active{background:rgba(74,106,255,0.10)!important}.tlr-dashboard-trade-row-selected:active{background:rgba(17,24,54,0.94)!important}.tlr-dashboard-trade-row:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-trade-block{display:flex;flex-direction:column;min-width:0;overflow-anchor:none}.tlr-dashboard-trade-detail-shell{display:grid;grid-template-rows:0fr;transition:grid-template-rows 320ms cubic-bezier(0.22,1,0.36,1)}.tlr-dashboard-trade-detail-shell-open{grid-template-rows:1fr}.tlr-dashboard-trade-detail-clip{overflow:hidden;min-height:0}.tlr-dashboard-trade-detail{overflow-anchor:none;flex:0 0 auto;opacity:0;transform:translateY(-8px);animation:tlrTradeDetailReveal 300ms cubic-bezier(0.22,1,0.36,1) 70ms forwards;transform-origin:top center}.tlr-trades-body-scroll{overflow-anchor:none;scrollbar-width:none!important}.tlr-trades-body-scroll::-webkit-scrollbar{height:0!important}@keyframes tlrTradeDetailReveal{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}@media (prefers-reduced-motion:reduce){.tlr-dashboard-trade-detail-shell{transition:none!important}.tlr-dashboard-trade-detail{animation:none!important;opacity:1!important;transform:none!important}}`;
-      style.textContent += `.tlr-trades-id-toggle{position:relative;transition:color 55ms linear,transform 45ms linear!important}.tlr-trades-id-toggle::after{content:"";position:absolute;left:7px;right:7px;bottom:1px;height:1px;background:linear-gradient(90deg,transparent,#4A6AFF,transparent);box-shadow:0 0 7px rgba(74,106,255,0.72);opacity:.38;pointer-events:none;transition:opacity 55ms linear}.tlr-trades-id-toggle:hover,.tlr-trades-id-toggle-active{color:#4A6AFF!important}.tlr-trades-id-toggle:hover::after,.tlr-trades-id-toggle-active::after{opacity:1}.tlr-trades-id-toggle:active{transform:translateY(1px)!important}.tlr-trades-id-toggle:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:1px}.tlr-trades-id-toggle svg{color:rgba(255,255,255,0.48);transition:color 55ms linear,transform 220ms cubic-bezier(0.22,1,0.36,1)}.tlr-trades-id-toggle:hover svg,.tlr-trades-id-toggle-active svg{color:#4A6AFF!important}.tlr-trades-id-toggle-active svg{transform:rotate(180deg)}`;
+      style.textContent += `.tlr-dashboard-value-select:hover{background:rgba(18,22,40,0.98)!important;border-color:rgba(48,144,255,0.46)!important;color:${tcHov}!important;box-shadow:inset 0 1px 0 rgba(255,255,255,0.055),0 0 14px -11px #3090FF!important}.tlr-dashboard-value-select:active{background:rgba(24,30,56,0.98)!important;transform:translateY(1px)!important}.tlr-dashboard-value-option:hover{background:rgba(255,255,255,0.06)!important;color:${tcHov}!important}.tlr-dashboard-value-option:active{background:rgba(48,144,255,0.16)!important}.tlr-dashboard-value-option-active{background:rgba(48,144,255,0.16)!important;color:#3090FF!important}.tlr-dashboard-value-option-active:hover{background:rgba(48,144,255,0.16)!important;color:#3090FF!important}.tlr-dashboard-value-option-active::before{content:"";position:absolute;left:0;top:22%;bottom:22%;width:1px;background:linear-gradient(180deg,transparent,#3090FF,transparent);box-shadow:0 0 6px #3090FF}.tlr-dashboard-value-select:focus-visible,.tlr-dashboard-value-option:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
+      style.textContent += `.tlr-dashboard-balance-field{transition:none!important}.tlr-dashboard-balance-field:hover,.tlr-dashboard-balance-field:focus-within{border-color:rgba(140,160,255,0.20)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,0.05)!important;background:linear-gradient(180deg,rgba(17,21,37,0.98),rgba(9,12,24,0.96))!important}.tlr-dashboard-balance-field:hover .tlr-dashboard-balance-label{color:${c.tm}!important}.tlr-dashboard-balance-mode-icon{transition:none!important}.tlr-dashboard-balance-mode-icon:hover{background:var(--tlr-balance-icon-hover-bg,rgba(48,144,255,0.12))!important;color:var(--tlr-balance-icon-accent,#3090FF)!important;box-shadow:0 0 10px -8px var(--tlr-balance-icon-accent,#3090FF)!important}.tlr-dashboard-balance-mode-icon:active{background:var(--tlr-balance-icon-active-bg,rgba(48,144,255,0.20))!important;color:var(--tlr-balance-icon-accent,#fff)!important;transform:translateY(1px)!important}.tlr-dashboard-balance-mode-icon:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-balance-value-line{background:linear-gradient(90deg,transparent,${c.gn},transparent);box-shadow:0 0 7px rgba(0,212,161,0.62)}`;
+      style.textContent += `.tlr-dashboard-filter-chip:hover{background:rgba(18,22,40,0.98)!important;border-color:rgba(48,144,255,0.46)!important;color:${tcHov}!important;box-shadow:inset 0 1px 0 rgba(255,255,255,0.055),0 0 14px -11px #3090FF!important}.tlr-dashboard-filter-chip:active{background:rgba(24,30,56,0.98)!important;transform:translateY(1px)!important}.tlr-dashboard-filter-option:hover{background:rgba(255,255,255,0.06)!important;color:${tcHov}!important}.tlr-dashboard-filter-option:active{background:rgba(48,144,255,0.14)!important}.tlr-dashboard-filter-option-active{background:rgba(48,144,255,0.14)!important;color:#3090FF!important}.tlr-dashboard-filter-option-active:hover{background:rgba(48,144,255,0.14)!important;color:#3090FF!important}.tlr-dashboard-filter-token:hover{background:rgba(255,255,255,0.052)!important;color:${tcHov}!important}.tlr-dashboard-filter-token:active{background:rgba(48,144,255,0.10)!important;transform:translateY(1px)!important}.tlr-dashboard-filter-token-active,.tlr-dashboard-filter-token-active:hover{background:transparent!important;color:var(--tlr-filter-token-active,#3090FF)!important}.tlr-dashboard-filter-token-active::after{content:"";position:absolute;left:3px;right:3px;bottom:1px;height:1px;background:linear-gradient(90deg,transparent,var(--tlr-filter-token-active,#3090FF),transparent);box-shadow:0 0 6px var(--tlr-filter-token-glow,rgba(48,144,255,0.72));pointer-events:none}.tlr-dashboard-filter-token-no-line::after{display:none!important}.tlr-dashboard-filter-chip:focus-visible,.tlr-dashboard-filter-option:focus-visible,.tlr-dashboard-filter-token:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-filter-clear,.tlr-dashboard-filter-clear *{cursor:default!important}.tlr-dashboard-filter-clear:not([aria-disabled="true"]):hover{background:transparent!important;color:#3090FF!important}.tlr-dashboard-filter-clear:not([aria-disabled="true"]):active{background:transparent!important;color:#fff!important;transform:translateY(1px)!important}`;
+      style.textContent += `.tlr-dashboard-filter-source-row:hover{background:var(--tlr-lib-hover-bg,rgba(255,255,255,0.045))!important;border-color:var(--tlr-lib-hover-border,rgba(255,255,255,0.12))!important}.tlr-dashboard-filter-source-row:active{background:var(--tlr-lib-active-press,rgba(48,144,255,0.10))!important;transform:translateY(1px)!important}.tlr-dashboard-filter-source-row:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
+      style.textContent += `.tlr-dashboard-trade-row{transition:background-color 180ms ease,border-color 180ms ease,box-shadow 180ms ease!important;will-change:background-color,border-color}.tlr-dashboard-trade-row:not(.tlr-dashboard-trade-row-selected):hover{background:rgba(12,16,29,0.98)!important;border-color:rgba(140,160,255,0.18)!important}.tlr-dashboard-trade-row-selected:hover{background:rgba(17,24,54,0.94)!important;border-color:rgba(48,144,255,0.34)!important}.tlr-dashboard-trade-row:active{background:rgba(48,144,255,0.10)!important}.tlr-dashboard-trade-row-selected:active{background:rgba(17,24,54,0.94)!important}.tlr-dashboard-trade-row:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-trade-block{display:flex;flex-direction:column;min-width:0;overflow-anchor:none}.tlr-dashboard-trade-detail-shell{display:grid;grid-template-rows:0fr;transition:grid-template-rows 320ms cubic-bezier(0.22,1,0.36,1)}.tlr-dashboard-trade-detail-shell-open{grid-template-rows:1fr}.tlr-dashboard-trade-detail-clip{overflow:hidden;min-height:0}.tlr-dashboard-trade-detail{overflow-anchor:none;flex:0 0 auto;opacity:0;transform:translateY(-8px);animation:tlrTradeDetailReveal 300ms cubic-bezier(0.22,1,0.36,1) 70ms forwards;transform-origin:top center}.tlr-trades-body-scroll{overflow-anchor:none;scrollbar-width:none!important}.tlr-trades-body-scroll::-webkit-scrollbar{height:0!important}@keyframes tlrTradeDetailReveal{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}@media (prefers-reduced-motion:reduce){.tlr-dashboard-trade-detail-shell{transition:none!important}.tlr-dashboard-trade-detail{animation:none!important;opacity:1!important;transform:none!important}}`;
+      style.textContent += `.tlr-trades-id-toggle{position:relative;transition:color 55ms linear,transform 45ms linear!important}.tlr-trades-id-toggle::after{content:"";position:absolute;left:7px;right:7px;bottom:1px;height:1px;background:linear-gradient(90deg,transparent,#3090FF,transparent);box-shadow:0 0 7px rgba(48,144,255,0.72);opacity:.38;pointer-events:none;transition:opacity 55ms linear}.tlr-trades-id-toggle:hover,.tlr-trades-id-toggle-active{color:#3090FF!important}.tlr-trades-id-toggle:hover::after,.tlr-trades-id-toggle-active::after{opacity:1}.tlr-trades-id-toggle:active{transform:translateY(1px)!important}.tlr-trades-id-toggle:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:1px}.tlr-trades-id-toggle svg{color:rgba(255,255,255,0.48);transition:color 55ms linear,transform 220ms cubic-bezier(0.22,1,0.36,1)}.tlr-trades-id-toggle:hover svg,.tlr-trades-id-toggle-active svg{color:#3090FF!important}.tlr-trades-id-toggle-active svg{transform:rotate(180deg)}`;
       style.textContent += `.tlr-add-trade-time-column{scrollbar-width:thin!important;scrollbar-color:rgba(140,160,255,0.34) transparent!important}.tlr-add-trade-time-column::-webkit-scrollbar{width:1px!important;height:1px!important}.tlr-add-trade-time-column::-webkit-scrollbar-track{background:transparent!important}.tlr-add-trade-time-column::-webkit-scrollbar-thumb{background:rgba(140,160,255,0.42)!important;border-radius:0!important}.tlr-add-trade-time-column::-webkit-scrollbar-thumb:hover{background:rgba(140,160,255,0.7)!important}.tlr-add-trade-time-column::-webkit-scrollbar-corner{background:transparent!important}`;
-      style.textContent += `.tlr-add-trade-soft-action{transition:background-color 65ms linear,color 65ms linear,border-color 65ms linear,box-shadow 65ms linear,transform 45ms linear!important;will-change:background-color,color,border-color,box-shadow,transform}.tlr-add-trade-soft-action:not([aria-disabled="true"]):hover{background:var(--tlr-add-hover-bg,rgba(255,255,255,0.055))!important;color:var(--tlr-add-hover-color,${tcHov})!important;border-color:var(--tlr-add-hover-border,rgba(140,160,255,0.32))!important;box-shadow:var(--tlr-add-hover-shadow,0 0 12px rgba(74,106,255,0.14))!important;filter:none!important}.tlr-add-trade-soft-action:not([aria-disabled="true"]):active{background:var(--tlr-add-active-bg,rgba(74,106,255,0.14))!important;color:var(--tlr-add-active-color,var(--tlr-add-hover-color,${tcHov}))!important;border-color:var(--tlr-add-active-border,var(--tlr-add-hover-border,rgba(140,160,255,0.42)))!important;box-shadow:var(--tlr-add-active-shadow,0 0 8px rgba(74,106,255,0.20))!important;transform:translateY(1px)!important;filter:none!important}.tlr-add-trade-soft-action:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}@keyframes tlrAddTradePageSlideIn{from{opacity:.82;transform:translateX(14px)}to{opacity:1;transform:translateX(0)}}.tlr-add-trade-page-slide{animation:tlrAddTradePageSlideIn 155ms cubic-bezier(.2,.7,.2,1)}`;
-      style.textContent += `.tlr-dashboard-section-check:hover{background:transparent!important;color:var(--tlr-section-check-accent,#4A6AFF)!important}.tlr-dashboard-section-check:hover .tlr-dashboard-section-check-edge,.tlr-dashboard-section-check-row:hover .tlr-dashboard-section-check-edge{stroke:var(--tlr-section-check-accent,#4A6AFF)!important;opacity:1!important}.tlr-dashboard-section-check-row:hover{opacity:1!important}.tlr-dashboard-section-check-row:hover .tlr-dashboard-section-check{color:var(--tlr-section-check-accent,#4A6AFF)!important;filter:drop-shadow(0 0 3px var(--tlr-section-check-glow,rgba(74,106,255,0.45)))}.tlr-dashboard-section-check-row:hover .tlr-dashboard-section-check-label{color:var(--tlr-section-check-label-accent,#4A6AFF)!important}.tlr-dashboard-section-check:active,.tlr-dashboard-section-check-row:active{background:transparent!important;transform:translateY(1px)!important}.tlr-dashboard-section-check:focus-visible,.tlr-dashboard-section-check-row:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:2px}`;
-      style.textContent += `.tlr-dashboard-range-row{transition:none!important;will-change:auto}.tlr-dashboard-range-row:hover,.tlr-dashboard-range-row:focus-within{background:transparent!important}.tlr-dashboard-range-remove,.tlr-dashboard-range-unit,.tlr-dashboard-range-add{transition:none!important;will-change:background-color,color,transform}.tlr-dashboard-range-remove:not(.tlr-dashboard-range-remove-disabled):hover{background:rgba(255,255,255,0.07)!important;color:${tcHov}!important}.tlr-dashboard-range-remove:not(.tlr-dashboard-range-remove-disabled):active,.tlr-dashboard-range-unit:active,.tlr-dashboard-range-add:active{background:rgba(74,106,255,0.14)!important;transform:translateY(1px)!important}.tlr-dashboard-range-remove-disabled:hover{background:transparent!important;color:rgba(255,255,255,0.16)!important}.tlr-dashboard-range-unit:not(.tlr-dashboard-range-unit-active):hover{background:rgba(255,255,255,0.06)!important;color:${tcHov}!important}.tlr-dashboard-range-unit-active,.tlr-dashboard-range-unit-active:hover{background:rgba(38,67,247,0.16)!important;color:#4A6AFF!important}.tlr-dashboard-range-add:hover{background:rgba(255,255,255,0.052)!important;color:${tcHov}!important}.tlr-dashboard-range-add:focus-visible,.tlr-dashboard-range-remove:focus-visible,.tlr-dashboard-range-unit:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
-      style.textContent += `.tlr-dashboard-range-unit,.tlr-dashboard-range-unit *{transition:none!important}.tlr-dashboard-range-row .tlr-dashboard-range-unit:not(.tlr-dashboard-range-unit-active):hover{border-color:rgba(140,160,255,0.42)!important;background:rgba(255,255,255,0.05)!important;color:${tcHov}!important;box-shadow:0 0 10px rgba(74,106,255,0.10)!important}.tlr-dashboard-range-unit-active,.tlr-dashboard-range-unit-active:hover{border-color:rgba(74,106,255,0.58)!important;background:rgba(38,67,247,0.14)!important;color:#4A6AFF!important;box-shadow:0 0 12px rgba(74,106,255,0.18)!important}`;
-      style.textContent += `.tlr-dashboard-range-add:hover,.tlr-dashboard-range-add:active{background:transparent!important;box-shadow:none!important;color:#4A6AFF!important}`;
+      style.textContent += `.tlr-add-trade-soft-action{transition:background-color 65ms linear,color 65ms linear,border-color 65ms linear,box-shadow 65ms linear,transform 45ms linear!important;will-change:background-color,color,border-color,box-shadow,transform}.tlr-add-trade-soft-action:not([aria-disabled="true"]):hover{background:var(--tlr-add-hover-bg,rgba(255,255,255,0.055))!important;color:var(--tlr-add-hover-color,${tcHov})!important;border-color:var(--tlr-add-hover-border,rgba(140,160,255,0.32))!important;box-shadow:var(--tlr-add-hover-shadow,0 0 12px rgba(48,144,255,0.14))!important;filter:none!important}.tlr-add-trade-soft-action:not([aria-disabled="true"]):active{background:var(--tlr-add-active-bg,rgba(48,144,255,0.14))!important;color:var(--tlr-add-active-color,var(--tlr-add-hover-color,${tcHov}))!important;border-color:var(--tlr-add-active-border,var(--tlr-add-hover-border,rgba(140,160,255,0.42)))!important;box-shadow:var(--tlr-add-active-shadow,0 0 8px rgba(48,144,255,0.20))!important;transform:translateY(1px)!important;filter:none!important}.tlr-add-trade-soft-action:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}@keyframes tlrAddTradePageSlideIn{from{opacity:.82;transform:translateX(14px)}to{opacity:1;transform:translateX(0)}}.tlr-add-trade-page-slide{animation:tlrAddTradePageSlideIn 155ms cubic-bezier(.2,.7,.2,1)}`;
+      style.textContent += `.tlr-dashboard-section-check:hover{background:transparent!important;color:var(--tlr-section-check-accent,#3090FF)!important}.tlr-dashboard-section-check:hover .tlr-dashboard-section-check-edge,.tlr-dashboard-section-check-row:hover .tlr-dashboard-section-check-edge{stroke:var(--tlr-section-check-accent,#3090FF)!important;opacity:1!important}.tlr-dashboard-section-check-row:hover{opacity:1!important}.tlr-dashboard-section-check-row:hover .tlr-dashboard-section-check{color:var(--tlr-section-check-accent,#3090FF)!important;filter:drop-shadow(0 0 3px var(--tlr-section-check-glow,rgba(48,144,255,0.45)))}.tlr-dashboard-section-check-row:hover .tlr-dashboard-section-check-label{color:var(--tlr-section-check-label-accent,#3090FF)!important}.tlr-dashboard-section-check:active,.tlr-dashboard-section-check-row:active{background:transparent!important;transform:translateY(1px)!important}.tlr-dashboard-section-check:focus-visible,.tlr-dashboard-section-check-row:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:2px}`;
+      style.textContent += `.tlr-dashboard-range-row{transition:none!important;will-change:auto}.tlr-dashboard-range-row:hover,.tlr-dashboard-range-row:focus-within{background:transparent!important}.tlr-dashboard-range-remove,.tlr-dashboard-range-unit,.tlr-dashboard-range-add{transition:none!important;will-change:background-color,color,transform}.tlr-dashboard-range-remove:not(.tlr-dashboard-range-remove-disabled):hover{background:rgba(255,255,255,0.07)!important;color:${tcHov}!important}.tlr-dashboard-range-remove:not(.tlr-dashboard-range-remove-disabled):active,.tlr-dashboard-range-unit:active,.tlr-dashboard-range-add:active{background:rgba(48,144,255,0.14)!important;transform:translateY(1px)!important}.tlr-dashboard-range-remove-disabled:hover{background:transparent!important;color:rgba(255,255,255,0.16)!important}.tlr-dashboard-range-unit:not(.tlr-dashboard-range-unit-active):hover{background:rgba(255,255,255,0.06)!important;color:${tcHov}!important}.tlr-dashboard-range-unit-active,.tlr-dashboard-range-unit-active:hover{background:rgba(48,144,255,0.16)!important;color:#3090FF!important}.tlr-dashboard-range-add:hover{background:rgba(255,255,255,0.052)!important;color:${tcHov}!important}.tlr-dashboard-range-add:focus-visible,.tlr-dashboard-range-remove:focus-visible,.tlr-dashboard-range-unit:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
+      style.textContent += `.tlr-dashboard-range-unit,.tlr-dashboard-range-unit *{transition:none!important}.tlr-dashboard-range-row .tlr-dashboard-range-unit:not(.tlr-dashboard-range-unit-active):hover{border-color:rgba(140,160,255,0.42)!important;background:rgba(255,255,255,0.05)!important;color:${tcHov}!important;box-shadow:0 0 10px rgba(48,144,255,0.10)!important}.tlr-dashboard-range-unit-active,.tlr-dashboard-range-unit-active:hover{border-color:rgba(48,144,255,0.58)!important;background:rgba(48,144,255,0.14)!important;color:#3090FF!important;box-shadow:0 0 12px rgba(48,144,255,0.18)!important}`;
+      style.textContent += `.tlr-dashboard-range-add:hover,.tlr-dashboard-range-add:active{background:transparent!important;box-shadow:none!important;color:#3090FF!important}`;
       style.textContent += `.tlr-dashboard-range-remove:not(.tlr-dashboard-range-remove-disabled):hover,.tlr-dashboard-range-remove:not(.tlr-dashboard-range-remove-disabled):active{background:transparent!important;color:#FF5068!important;box-shadow:none!important}`;
-      style.textContent += `.tlr-dashboard-date-input::selection{background:rgba(160,160,170,0.46);color:#fff}.tlr-dashboard-date-clear{transition:none!important}.tlr-dashboard-date-clear:hover{background:transparent!important;color:#4A6AFF!important}.tlr-dashboard-date-clear:active{background:transparent!important;color:#fff!important;transform:translateY(1px)!important}.tlr-dashboard-action.tlr-dashboard-date-ok{transition:none!important}.tlr-dashboard-action.tlr-dashboard-date-ok:hover{background:${c.acL}!important;border-color:${c.acL}!important;color:#fff!important;box-shadow:0 0 10px rgba(74,106,255,0.34)!important;filter:brightness(1.05)!important}.tlr-dashboard-action.tlr-dashboard-date-ok:active{background:${c.ac}!important;border-color:${c.ac}!important;color:#fff!important;box-shadow:0 0 6px rgba(74,106,255,0.24)!important;filter:brightness(0.96)!important;transform:translateY(1px)!important}`;
-      style.textContent += `.tlr-dashboard-calendar-cell{transition:none!important;will-change:background-color,color}.tlr-dashboard-calendar-cell:not(.tlr-dashboard-calendar-cell-selected):not(.tlr-dashboard-calendar-cell-disabled):hover{background:rgba(140,160,255,0.2)!important;color:#4A6AFF!important}.tlr-dashboard-calendar-cell:not(.tlr-dashboard-calendar-cell-selected):not(.tlr-dashboard-calendar-cell-disabled):active{background:rgba(74,106,255,0.24)!important;color:#fff!important}.tlr-dashboard-calendar-cell-selected:hover{background:#4A6AFF!important;color:#fff!important}.tlr-dashboard-calendar-cell-disabled:hover{background:transparent!important;color:rgba(255,255,255,0.18)!important}.tlr-dashboard-calendar-nav:hover,.tlr-dashboard-calendar-title-btn:hover{background:rgba(255,255,255,0.06)!important;color:${tcHov}!important;box-shadow:none!important}.tlr-dashboard-calendar-nav:active,.tlr-dashboard-calendar-title-btn:active{background:rgba(74,106,255,0.15)!important;color:#fff!important;transform:translateY(1px)!important;box-shadow:none!important}`;
-      style.textContent += `.tlr-dashboard-add-trade{transition:background-color 0.04s linear,color 0.04s linear,box-shadow 0.04s linear,filter 0.04s linear,transform 0.04s linear!important}.tlr-dashboard-add-trade:hover{background:linear-gradient(135deg,#2948ff,#5b78ff)!important;box-shadow:0 2px 12px rgba(38,67,247,0.42)!important;filter:brightness(1.05)!important}.tlr-dashboard-add-trade:active{transform:translateY(1px)!important;background:linear-gradient(135deg,#1e38e8,#405fff)!important;filter:brightness(0.98)!important}.tlr-dashboard-add-trade:focus-visible{outline:1px solid rgba(140,160,255,0.86);outline-offset:-1px}`;
+      style.textContent += `.tlr-dashboard-date-input::selection{background:rgba(160,160,170,0.46);color:#fff}.tlr-dashboard-date-clear{transition:none!important}.tlr-dashboard-date-clear:hover{background:transparent!important;color:#3090FF!important}.tlr-dashboard-date-clear:active{background:transparent!important;color:#fff!important;transform:translateY(1px)!important}.tlr-dashboard-action.tlr-dashboard-date-ok{transition:none!important}.tlr-dashboard-action.tlr-dashboard-date-ok:hover{background:${c.acL}!important;border-color:${c.acL}!important;color:#fff!important;box-shadow:0 0 10px rgba(48,144,255,0.34)!important;filter:brightness(1.05)!important}.tlr-dashboard-action.tlr-dashboard-date-ok:active{background:${c.ac}!important;border-color:${c.ac}!important;color:#fff!important;box-shadow:0 0 6px rgba(48,144,255,0.24)!important;filter:brightness(0.96)!important;transform:translateY(1px)!important}`;
+      style.textContent += `.tlr-dashboard-calendar-cell{transition:none!important;will-change:background-color,color}.tlr-dashboard-calendar-cell:not(.tlr-dashboard-calendar-cell-selected):not(.tlr-dashboard-calendar-cell-disabled):hover{background:rgba(140,160,255,0.2)!important;color:#3090FF!important}.tlr-dashboard-calendar-cell:not(.tlr-dashboard-calendar-cell-selected):not(.tlr-dashboard-calendar-cell-disabled):active{background:rgba(48,144,255,0.24)!important;color:#fff!important}.tlr-dashboard-calendar-cell-selected:hover{background:#3090FF!important;color:#fff!important}.tlr-dashboard-calendar-cell-disabled:hover{background:transparent!important;color:rgba(255,255,255,0.18)!important}.tlr-dashboard-calendar-nav:hover,.tlr-dashboard-calendar-title-btn:hover{background:rgba(255,255,255,0.06)!important;color:${tcHov}!important;box-shadow:none!important}.tlr-dashboard-calendar-nav:active,.tlr-dashboard-calendar-title-btn:active{background:rgba(48,144,255,0.15)!important;color:#fff!important;transform:translateY(1px)!important;box-shadow:none!important}`;
+      style.textContent += `.tlr-dashboard-add-trade{transition:background-color 0.04s linear,color 0.04s linear,box-shadow 0.04s linear,filter 0.04s linear,transform 0.04s linear!important}.tlr-dashboard-add-trade:hover{background:linear-gradient(135deg,#2948ff,#5b78ff)!important;box-shadow:0 2px 12px rgba(48,144,255,0.42)!important;filter:brightness(1.05)!important}.tlr-dashboard-add-trade:active{transform:translateY(1px)!important;background:linear-gradient(135deg,#3090FF,#405fff)!important;filter:brightness(0.98)!important}.tlr-dashboard-add-trade:focus-visible{outline:1px solid rgba(140,160,255,0.86);outline-offset:-1px}`;
       style.textContent += `.tlr-library-child-source-row{background:rgba(7,9,18,0.92)!important}.tlr-library-child-source-row::after{content:"";display:block!important;position:absolute;left:0;top:18%;bottom:18%;width:1px;background:linear-gradient(180deg,transparent,var(--tlr-lib-color),transparent);box-shadow:0 0 7px var(--tlr-lib-color);opacity:.78;pointer-events:none}.tlr-library-content-row.tlr-library-child-source-row:hover,.tlr-library-content-row.tlr-library-child-source-row:active{background:rgba(7,9,18,0.92)!important;border-color:rgba(255,255,255,0.045)!important;box-shadow:none!important;transform:none!important}.tlr-library-content-row.tlr-library-child-source-row:hover::after,.tlr-library-content-row.tlr-library-child-source-row:active::after{top:18%;bottom:18%;opacity:.78;box-shadow:0 0 7px var(--tlr-lib-color)}`;
       style.textContent += `.tlr-library-action{transition:background-color 0.04s linear,color 0.04s linear,border-color 0.04s linear,box-shadow 0.04s linear,filter 0.04s linear,transform 0.04s linear!important}.tlr-library-action:hover{filter:brightness(1.04)!important}`;
-      style.textContent += `.tlr-library-strategy-toggle{transition:background-color 0.04s linear,color 0.04s linear,box-shadow 0.04s linear,transform 0.04s linear}.tlr-library-strategy-toggle:hover{background:rgba(74,106,255,0.13)!important;color:var(--tlr-lib-color)!important;box-shadow:0 0 10px var(--tlr-lib-color-soft)}.tlr-library-strategy-toggle:active{background:rgba(74,106,255,0.22)!important;transform:translateY(1px)}.tlr-library-strategy-toggle:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
-      style.textContent += `body :is(button,[role="button"],[role="checkbox"],[role="tab"],[tabindex="0"],.tlr-dashboard-action,.tlr-dashboard-segment,.tlr-dashboard-source-switch,.tlr-dashboard-add-trade,.tlr-library-action,.tlr-library-title-action,.tlr-library-strategy-toggle,.tlr-library-tree-row,.tlr-library-content-row,.tlr-library-strategy-row,.tlr-library-status-tab),body :is(button,[role="button"],[role="checkbox"],[role="tab"],[tabindex="0"],.tlr-dashboard-action,.tlr-dashboard-segment,.tlr-dashboard-source-switch,.tlr-dashboard-add-trade,.tlr-library-action,.tlr-library-title-action,.tlr-library-strategy-toggle,.tlr-library-tree-row,.tlr-library-content-row,.tlr-library-strategy-row,.tlr-library-status-tab) *{transition-duration:0ms!important;transition-delay:0ms!important;animation-delay:0ms!important}.tlr-library-multi-check{transition:none!important}.tlr-library-shell:not(.tlr-library-multiple-on):not(.tlr-library-multiple-preview-on) .tlr-library-multi-check{display:none!important}.tlr-library-shell.tlr-library-multiple-preview-on .tlr-library-multi-check{display:block!important}.tlr-library-content-row:active,.tlr-library-strategy-row:active,.tlr-library-tree-row:active,[role="button"]:active,[role="checkbox"]:active,button:active{transition:none!important}.tlr-library-content-row.tlr-library-immediate-active,.tlr-library-strategy-row.tlr-library-immediate-active{background:var(--tlr-lib-active-bg,rgba(38,67,247,0.16))!important;border-color:var(--tlr-lib-color-border)!important;box-shadow:inset 2px 0 0 var(--tlr-lib-color),0 0 0 1px var(--tlr-lib-color-soft)!important}.tlr-library-tree-row.tlr-library-immediate-active,.tlr-library-status-tab.tlr-library-immediate-active{background:var(--tlr-lib-active-bg,rgba(255,255,255,0.055))!important;color:var(--tlr-lib-color,#4A6AFF)!important}.tlr-library-check-fill{opacity:0}.tlr-library-check-on .tlr-library-check-fill,.tlr-library-immediate-checked .tlr-library-check-fill,.tlr-library-toggle-preview-on .tlr-library-check-fill{opacity:1!important}.tlr-library-immediate-unchecked .tlr-library-check-fill,.tlr-library-toggle-preview-off .tlr-library-check-fill{opacity:0!important}.tlr-library-multiple-toggle{position:relative}`;
+      style.textContent += `.tlr-library-strategy-toggle{transition:background-color 0.04s linear,color 0.04s linear,box-shadow 0.04s linear,transform 0.04s linear}.tlr-library-strategy-toggle:hover{background:rgba(48,144,255,0.13)!important;color:var(--tlr-lib-color)!important;box-shadow:0 0 10px var(--tlr-lib-color-soft)}.tlr-library-strategy-toggle:active{background:rgba(48,144,255,0.22)!important;transform:translateY(1px)}.tlr-library-strategy-toggle:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
+      style.textContent += `body :is(button,[role="button"],[role="checkbox"],[role="tab"],[tabindex="0"],.tlr-dashboard-action,.tlr-dashboard-segment,.tlr-dashboard-source-switch,.tlr-dashboard-add-trade,.tlr-library-action,.tlr-library-title-action,.tlr-library-strategy-toggle,.tlr-library-tree-row,.tlr-library-content-row,.tlr-library-strategy-row,.tlr-library-status-tab),body :is(button,[role="button"],[role="checkbox"],[role="tab"],[tabindex="0"],.tlr-dashboard-action,.tlr-dashboard-segment,.tlr-dashboard-source-switch,.tlr-dashboard-add-trade,.tlr-library-action,.tlr-library-title-action,.tlr-library-strategy-toggle,.tlr-library-tree-row,.tlr-library-content-row,.tlr-library-strategy-row,.tlr-library-status-tab) *{transition-duration:0ms!important;transition-delay:0ms!important;animation-delay:0ms!important}.tlr-library-multi-check{transition:none!important}.tlr-library-shell:not(.tlr-library-multiple-on):not(.tlr-library-multiple-preview-on) .tlr-library-multi-check{display:none!important}.tlr-library-shell.tlr-library-multiple-preview-on .tlr-library-multi-check{display:block!important}.tlr-library-content-row:active,.tlr-library-strategy-row:active,.tlr-library-tree-row:active,[role="button"]:active,[role="checkbox"]:active,button:active{transition:none!important}.tlr-library-content-row.tlr-library-immediate-active,.tlr-library-strategy-row.tlr-library-immediate-active{background:var(--tlr-lib-active-bg,rgba(48,144,255,0.16))!important;border-color:var(--tlr-lib-color-border)!important;box-shadow:inset 2px 0 0 var(--tlr-lib-color),0 0 0 1px var(--tlr-lib-color-soft)!important}.tlr-library-tree-row.tlr-library-immediate-active,.tlr-library-status-tab.tlr-library-immediate-active{background:var(--tlr-lib-active-bg,rgba(255,255,255,0.055))!important;color:var(--tlr-lib-color,#3090FF)!important}.tlr-library-check-fill{opacity:0}.tlr-library-check-on .tlr-library-check-fill,.tlr-library-immediate-checked .tlr-library-check-fill,.tlr-library-toggle-preview-on .tlr-library-check-fill{opacity:1!important}.tlr-library-immediate-unchecked .tlr-library-check-fill,.tlr-library-toggle-preview-off .tlr-library-check-fill{opacity:0!important}.tlr-library-multiple-toggle{position:relative}`;
       style.textContent += `.tlr-dashboard-shape-hover{transition:filter 90ms ease!important}`;
-      style.textContent += `.tlr-library-footer-cancel:hover{background:rgba(255,255,255,0.065)!important;border-color:rgba(255,255,255,0.20)!important;color:${tcHov}!important}.tlr-library-footer-cancel:active{background:rgba(255,255,255,0.10)!important;border-color:rgba(255,255,255,0.24)!important;transform:translateY(1px)!important}.tlr-library-footer-go:not([aria-disabled="true"]):hover{background:#536fff!important;box-shadow:0 0 13px rgba(74,106,255,0.46)!important;filter:brightness(1.04)!important}.tlr-library-footer-go:not([aria-disabled="true"]):active{background:#3f5df6!important;box-shadow:0 0 8px rgba(74,106,255,0.34)!important;filter:brightness(0.98)!important;transform:translateY(1px)!important}`;
-      style.textContent += `.tlr-library-card{outline:1px solid rgba(255,255,255,0.015)}.tlr-library-primary-action,.tlr-library-primary-action *{cursor:pointer!important}.tlr-library-primary-action:hover{filter:brightness(1.06)!important;box-shadow:0 0 12px var(--tlr-action-glow)!important}.tlr-library-primary-action:active{filter:brightness(0.98)!important;transform:translateY(1px)!important}.tlr-library-primary-action-disabled,.tlr-library-primary-action-disabled *{cursor:default!important}.tlr-library-primary-action-disabled:hover{filter:none!important;box-shadow:none!important}.tlr-library-primary-action-disabled:active{filter:none!important;transform:translateY(0)!important}.tlr-library-close:hover{background:rgba(255,80,80,0.075)!important;color:#ff5068!important}.tlr-library-close:active{background:rgba(255,80,80,0.12)!important;transform:translateY(1px)!important}.tlr-library-multiple-toggle:hover{background:transparent!important;color:#4A6AFF!important}.tlr-library-multiple-toggle[aria-checked="true"]:hover{color:#4A6AFF!important}.tlr-library-multiple-toggle:active{background:transparent!important;color:#4A6AFF!important;transform:translateY(1px)!important}.tlr-library-source-status-mark:hover{filter:drop-shadow(0 0 4px currentColor)!important}.tlr-library-source-status-mark:active{transform:translateY(1px)}.tlr-library-pane-title{line-height:1}.tlr-library-status-tab-active{box-shadow:0 6px 14px -13px var(--tlr-lib-color)!important}.tlr-library-status-tab-active .tlr-library-status-count{font-weight:900!important}.tlr-library-content-row,.tlr-library-strategy-row,.tlr-library-tree-row,.tlr-library-status-tab{touch-action:manipulation}.tlr-library-content-row::before,.tlr-library-strategy-row::before{display:none!important}.tlr-library-content-row-active::before,.tlr-library-strategy-row-active::before,.tlr-library-content-row.tlr-library-immediate-active::before,.tlr-library-strategy-row.tlr-library-immediate-active::before{content:"";display:block!important;position:absolute;left:0;top:14%;bottom:14%;width:1px;background:linear-gradient(180deg,transparent,var(--tlr-lib-color),transparent);box-shadow:0 0 7px var(--tlr-lib-color);pointer-events:none}.tlr-library-content-row.tlr-library-immediate-active,.tlr-library-strategy-row.tlr-library-immediate-active{box-shadow:0 0 0 1px var(--tlr-lib-color-soft)!important}`;
+      style.textContent += `.tlr-library-footer-cancel:hover{background:rgba(255,255,255,0.065)!important;border-color:rgba(255,255,255,0.20)!important;color:${tcHov}!important}.tlr-library-footer-cancel:active{background:rgba(255,255,255,0.10)!important;border-color:rgba(255,255,255,0.24)!important;transform:translateY(1px)!important}.tlr-library-footer-go:not([aria-disabled="true"]):hover{background:#536fff!important;box-shadow:0 0 13px rgba(48,144,255,0.46)!important;filter:brightness(1.04)!important}.tlr-library-footer-go:not([aria-disabled="true"]):active{background:#3f5df6!important;box-shadow:0 0 8px rgba(48,144,255,0.34)!important;filter:brightness(0.98)!important;transform:translateY(1px)!important}`;
+      style.textContent += `.tlr-library-card{outline:1px solid rgba(255,255,255,0.015)}.tlr-library-primary-action,.tlr-library-primary-action *{cursor:pointer!important}.tlr-library-primary-action:hover{filter:brightness(1.06)!important;box-shadow:0 0 12px var(--tlr-action-glow)!important}.tlr-library-primary-action:active{filter:brightness(0.98)!important;transform:translateY(1px)!important}.tlr-library-primary-action-disabled,.tlr-library-primary-action-disabled *{cursor:default!important}.tlr-library-primary-action-disabled:hover{filter:none!important;box-shadow:none!important}.tlr-library-primary-action-disabled:active{filter:none!important;transform:translateY(0)!important}.tlr-library-close:hover{background:rgba(255,80,80,0.075)!important;color:#ff5068!important}.tlr-library-close:active{background:rgba(255,80,80,0.12)!important;transform:translateY(1px)!important}.tlr-library-multiple-toggle:hover{background:transparent!important;color:#3090FF!important}.tlr-library-multiple-toggle[aria-checked="true"]:hover{color:#3090FF!important}.tlr-library-multiple-toggle:active{background:transparent!important;color:#3090FF!important;transform:translateY(1px)!important}.tlr-library-source-status-mark:hover{filter:drop-shadow(0 0 4px currentColor)!important}.tlr-library-source-status-mark:active{transform:translateY(1px)}.tlr-library-pane-title{line-height:1}.tlr-library-status-tab-active{box-shadow:0 6px 14px -13px var(--tlr-lib-color)!important}.tlr-library-status-tab-active .tlr-library-status-count{font-weight:900!important}.tlr-library-content-row,.tlr-library-strategy-row,.tlr-library-tree-row,.tlr-library-status-tab{touch-action:manipulation}.tlr-library-content-row::before,.tlr-library-strategy-row::before{display:none!important}.tlr-library-content-row-active::before,.tlr-library-strategy-row-active::before,.tlr-library-content-row.tlr-library-immediate-active::before,.tlr-library-strategy-row.tlr-library-immediate-active::before{content:"";display:block!important;position:absolute;left:0;top:14%;bottom:14%;width:1px;background:linear-gradient(180deg,transparent,var(--tlr-lib-color),transparent);box-shadow:0 0 7px var(--tlr-lib-color);pointer-events:none}.tlr-library-content-row.tlr-library-immediate-active,.tlr-library-strategy-row.tlr-library-immediate-active{box-shadow:0 0 0 1px var(--tlr-lib-color-soft)!important}`;
       style.textContent += `.tlr-library-content-row.tlr-library-child-source-row:hover,.tlr-library-content-row.tlr-library-child-source-row:active{background:rgba(7,9,18,0.92)!important;border-color:rgba(255,255,255,0.045)!important;box-shadow:none!important;transform:none!important}.tlr-library-content-row.tlr-library-child-source-row:hover .tlr-library-content-title,.tlr-library-content-row.tlr-library-child-source-row:active .tlr-library-content-title{color:${c.tx}!important}`;
       style.textContent += `.tlr-library-content-row.tlr-library-child-source-row:not(.tlr-library-content-row-active):not(.tlr-library-immediate-active):not(.tlr-library-immediate-checked):not([aria-pressed="true"]):hover,.tlr-library-content-row.tlr-library-child-source-row:not(.tlr-library-content-row-active):not(.tlr-library-immediate-active):not(.tlr-library-immediate-checked):not([aria-pressed="true"]):active{background:rgba(7,9,18,0.92)!important;border-color:rgba(255,255,255,0.045)!important;box-shadow:none!important;transform:none!important}.tlr-library-content-row.tlr-library-child-source-row:not(.tlr-library-content-row-active):not(.tlr-library-immediate-active):not(.tlr-library-immediate-checked):not([aria-pressed="true"]):hover::before,.tlr-library-content-row.tlr-library-child-source-row:not(.tlr-library-content-row-active):not(.tlr-library-immediate-active):not(.tlr-library-immediate-checked):not([aria-pressed="true"]):active::before{display:none!important;content:none!important;background:transparent!important;box-shadow:none!important}.tlr-library-content-row.tlr-library-child-source-row:not(.tlr-library-content-row-active):not(.tlr-library-immediate-active):not(.tlr-library-immediate-checked):not([aria-pressed="true"]):hover .tlr-library-content-title{color:${c.tx}!important}`;
       style.textContent += `.tlr-library-content-row.tlr-library-child-source-row.tlr-library-immediate-active,.tlr-library-content-row.tlr-library-child-source-row.tlr-library-content-row-active,.tlr-library-content-row.tlr-library-child-source-row[aria-pressed="true"]{background:rgba(7,9,18,0.92)!important;border-color:rgba(255,255,255,0.045)!important;box-shadow:none!important;transform:none!important}.tlr-library-content-row.tlr-library-child-source-row.tlr-library-immediate-active::before,.tlr-library-content-row.tlr-library-child-source-row.tlr-library-content-row-active::before,.tlr-library-content-row.tlr-library-child-source-row[aria-pressed="true"]::before{display:none!important}.tlr-library-content-row.tlr-library-child-source-row.tlr-library-immediate-active .tlr-library-content-title,.tlr-library-content-row.tlr-library-child-source-row.tlr-library-content-row-active .tlr-library-content-title,.tlr-library-content-row.tlr-library-child-source-row[aria-pressed="true"] .tlr-library-content-title{color:${c.tx}!important}`;
-      style.textContent += `.tlr-resource-card,.tlr-resource-row,.tlr-resource-tree-row,.tlr-resource-chip,.tlr-resource-link,.tlr-resource-helpful,.tlr-resource-search-row{transition:none!important;touch-action:manipulation}.tlr-resource-card:hover{border-color:rgba(74,106,255,0.48)!important;box-shadow:0 0 12px rgba(74,106,255,0.22),inset 0 1px 0 rgba(255,255,255,0.04)!important}.tlr-resource-card:active,.tlr-resource-row:active,.tlr-resource-tree-row:active,.tlr-resource-chip:active,.tlr-resource-link:active,.tlr-resource-search-row:active{transform:translateY(1px)!important;background:rgba(74,106,255,0.12)!important}.tlr-resource-row:hover,.tlr-resource-tree-row:not(.tlr-resource-tree-row-active):hover,.tlr-resource-search-row:hover{background:rgba(255,255,255,0.055)!important;color:${tcHov}!important}.tlr-resource-tree-row-active{background:${c.acD}!important;color:${c.acL}!important}.tlr-resource-tree-row-active::after,.tlr-resource-chip-active::after{content:"";position:absolute;left:8px;right:8px;bottom:0;height:1px;background:linear-gradient(90deg,transparent,#4A6AFF,transparent);box-shadow:0 0 7px rgba(74,106,255,0.78);pointer-events:none}.tlr-resource-chip:hover,.tlr-resource-link:hover,.tlr-resource-helpful:hover{background:rgba(255,255,255,0.055)!important;color:${tcHov}!important}.tlr-resource-deeplink:hover{background:#536fff!important;box-shadow:0 0 13px rgba(74,106,255,0.46)!important}.tlr-resource-deeplink:active{background:#3f5df6!important;transform:translateY(1px)!important}.tlr-resource-gloss:hover{color:#C9A84C!important}.tlr-resource-gloss:hover .tlr-resource-gloss-tip{opacity:1!important;visibility:visible!important}.tlr-resource-lang-active::after{content:"";position:absolute;left:4px;right:4px;bottom:-2px;height:1px;background:linear-gradient(90deg,transparent,#4A6AFF,transparent);box-shadow:0 0 7px rgba(74,106,255,0.78)}.tlr-resource-card:focus-visible,.tlr-resource-row:focus-visible,.tlr-resource-tree-row:focus-visible,.tlr-resource-chip:focus-visible,.tlr-resource-link:focus-visible,.tlr-resource-search-row:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
-      style.textContent += `.tlr-strat-bank-row{transition:background 0.15s ease,border-color 0.15s ease,box-shadow 0.15s ease}.tlr-strat-bank-row:hover{background:rgba(140,160,255,0.045)!important;border-top-color:rgba(38,67,247,0.22)!important;border-right-color:rgba(38,67,247,0.22)!important;border-bottom-color:rgba(38,67,247,0.22)!important;box-shadow:0 0 0 1px rgba(38,67,247,0.22),0 4px 24px rgba(0,0,0,0.6),0 0 18px rgba(38,67,247,0.15)!important}.tlr-strat-bank-row:hover .tlr-strat-bank-row-icon{border-color:rgba(38,67,247,0.22)!important}.tlr-strat-bank-card{transition:background 0.14s ease,border-color 0.14s ease,box-shadow 0.14s ease}.tlr-strat-bank-card:hover{background:rgba(140,160,255,0.045)!important;border-color:${c.brH}!important;box-shadow:0 8px 22px rgba(0,0,0,0.32)!important}.tlr-strat-bank-card:hover .tlr-strat-bank-row-icon{border-color:rgba(38,67,247,0.22)!important}`;
+      style.textContent += `.tlr-resource-card,.tlr-resource-row,.tlr-resource-tree-row,.tlr-resource-chip,.tlr-resource-link,.tlr-resource-helpful,.tlr-resource-search-row{transition:none!important;touch-action:manipulation}.tlr-resource-card:hover{border-color:rgba(48,144,255,0.48)!important;box-shadow:0 0 12px rgba(48,144,255,0.22),inset 0 1px 0 rgba(255,255,255,0.04)!important}.tlr-resource-card:active,.tlr-resource-row:active,.tlr-resource-tree-row:active,.tlr-resource-chip:active,.tlr-resource-link:active,.tlr-resource-search-row:active{transform:translateY(1px)!important;background:rgba(48,144,255,0.12)!important}.tlr-resource-row:hover,.tlr-resource-tree-row:not(.tlr-resource-tree-row-active):hover,.tlr-resource-search-row:hover{background:rgba(255,255,255,0.055)!important;color:${tcHov}!important}.tlr-resource-tree-row-active{background:${c.acD}!important;color:${c.acL}!important}.tlr-resource-tree-row-active::after,.tlr-resource-chip-active::after{content:"";position:absolute;left:8px;right:8px;bottom:0;height:1px;background:linear-gradient(90deg,transparent,#3090FF,transparent);box-shadow:0 0 7px rgba(48,144,255,0.78);pointer-events:none}.tlr-resource-chip:hover,.tlr-resource-link:hover,.tlr-resource-helpful:hover{background:rgba(255,255,255,0.055)!important;color:${tcHov}!important}.tlr-resource-deeplink:hover{background:#536fff!important;box-shadow:0 0 13px rgba(48,144,255,0.46)!important}.tlr-resource-deeplink:active{background:#3f5df6!important;transform:translateY(1px)!important}.tlr-resource-gloss:hover{color:#C9A84C!important}.tlr-resource-gloss:hover .tlr-resource-gloss-tip{opacity:1!important;visibility:visible!important}.tlr-resource-lang-active::after{content:"";position:absolute;left:4px;right:4px;bottom:-2px;height:1px;background:linear-gradient(90deg,transparent,#3090FF,transparent);box-shadow:0 0 7px rgba(48,144,255,0.78)}.tlr-resource-card:focus-visible,.tlr-resource-row:focus-visible,.tlr-resource-tree-row:focus-visible,.tlr-resource-chip:focus-visible,.tlr-resource-link:focus-visible,.tlr-resource-search-row:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
+      style.textContent += `.tlr-strat-bank-row{transition:background 0.15s ease,border-color 0.15s ease,box-shadow 0.15s ease}.tlr-strat-bank-row:hover{background:rgba(140,160,255,0.045)!important;border-top-color:rgba(48,144,255,0.22)!important;border-right-color:rgba(48,144,255,0.22)!important;border-bottom-color:rgba(48,144,255,0.22)!important;box-shadow:0 0 0 1px rgba(48,144,255,0.22),0 4px 24px rgba(0,0,0,0.6),0 0 18px rgba(48,144,255,0.15)!important}.tlr-strat-bank-row:hover .tlr-strat-bank-row-icon{border-color:rgba(48,144,255,0.22)!important}.tlr-strat-bank-card{transition:background 0.14s ease,border-color 0.14s ease,box-shadow 0.14s ease}.tlr-strat-bank-card:hover{background:rgba(140,160,255,0.045)!important;border-color:${c.brH}!important;box-shadow:0 8px 22px rgba(0,0,0,0.32)!important}.tlr-strat-bank-card:hover .tlr-strat-bank-row-icon{border-color:rgba(48,144,255,0.22)!important}`;
     }
   }, [darkMode]);
 
@@ -14387,7 +14387,7 @@ const TalariaV8b = () => {
     return next;
   });
   const defaultTemplateMap = {
-    "Dark Classic":   {bullBody:"#00D4A1",bullBorder:"#00D4A1",bullWick:"#00D4A1",bearBody:"#FF5068",bearBorder:"#FF5068",bearWick:"#FF5068",background:"#07080E",gridColor:"rgba(140,160,255,0.15)"},
+    "Dark Classic":   {bullBody:"#00D4A1",bullBorder:"#00D4A1",bullWick:"#00D4A1",bearBody:"#FF5068",bearBorder:"#FF5068",bearWick:"#FF5068",background:"#000000",gridColor:"rgba(140,160,255,0.15)"},
     "Professional":   {bullBody:"#26A69A",bullBorder:"#26A69A",bullWick:"#26A69A",bearBody:"#EF5350",bearBorder:"#EF5350",bearWick:"#EF5350",background:"#131722",gridColor:"rgba(100,140,200,0.15)"},
     "Ocean Night":    {bullBody:"#00BCD4",bullBorder:"#00BCD4",bullWick:"#00BCD4",bearBody:"#FF4081",bearBorder:"#FF4081",bearWick:"#FF4081",background:"#050D18",gridColor:"rgba(0,188,212,0.12)"},
     "Amber Dusk":     {bullBody:"#FF9800",bullBorder:"#FF9800",bullWick:"#FF9800",bearBody:"#F44336",bearBorder:"#F44336",bearWick:"#F44336",background:"#0E0A05",gridColor:"rgba(255,152,0,0.12)"},
@@ -14444,8 +14444,8 @@ const TalariaV8b = () => {
         <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
         <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
         {!on && isH && <>
-          <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(74,106,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/>
-          <path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(74,106,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/>
+          <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(48,144,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/>
+          <path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(48,144,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/>
         </>}
         {on && <>
           <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
@@ -14468,7 +14468,7 @@ const TalariaV8b = () => {
   // TL-style checkbox SVG — same visual as Chk but wired to tlStyle + hov
   const TlChk = (on, hKey, label, toggle, accent) => {
     const ac = accent || c.acL;
-    const acGhost = accent ? accent.replace(/[\d.]+\)$/,"0.35)") : "rgba(74,106,255,0.35)";
+    const acGhost = accent ? accent.replace(/[\d.]+\)$/,"0.35)") : "rgba(48,144,255,0.35)";
     const isH = hov === hKey;
     const bCol = on ? ac : isH ? c.tx : c.ts;
     const indicator = (
@@ -14545,7 +14545,7 @@ const TalariaV8b = () => {
     setColorPicker(key);
   };
   const openGotoCP = (e) => {
-    const p = parseColor(gotoNewColor || '#4A6AFF');
+    const p = parseColor(gotoNewColor || '#3090FF');
     const hsv = rgbToHsv(p.r, p.g, p.b);
     setCpH(hsv.h); setCpS(hsv.s); setCpV(hsv.v); setCpA(p.a);
     setCpHex(toHex2(p.r)+toHex2(p.g)+toHex2(p.b));
@@ -14870,10 +14870,10 @@ const TalariaV8b = () => {
           minWidth: small ? undefined : 64,
           display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box",
           background: primary
-            ? isP ? c.ac : isH ? `linear-gradient(135deg,${c.acL},#6A8AFF)` : `linear-gradient(135deg,${c.ac},${c.acL})`
+            ? isP ? c.ac : isH ? '#FFFFFF' : '#FFFFFF'
             : isP ? "rgba(140,160,255,0.10)" : isH ? "rgba(140,160,255,0.06)" : c.hv2,
           border: `1px solid ${primary
-            ? isH || isP ? c.acL : "rgba(74,106,255,0.5)"
+            ? isH || isP ? c.acL : "rgba(48,144,255,0.5)"
             : isH || isP ? "rgba(140,160,255,0.4)" : "rgba(140,160,255,0.22)"}`,
           color: primary ? "#fff" : isH || isP ? c.tx : c.ts,
           fontSize: small ? 10 : 12,
@@ -14881,7 +14881,7 @@ const TalariaV8b = () => {
           fontFamily: F,
           cursor: "default",
           boxShadow: primary
-            ? isH ? `0 2px 14px rgba(38,67,247,0.5)` : `0 2px 8px rgba(38,67,247,0.25)`
+            ? isH ? `0 2px 14px rgba(48,144,255,0.5)` : `0 2px 8px rgba(48,144,255,0.25)`
             : isH ? "0 0 0 1px rgba(140,160,255,0.08)" : "none",
           transform: isP ? "scale(0.96)" : "scale(1)",
           transition: "background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease, transform 0.08s ease",
@@ -15137,7 +15137,7 @@ const TalariaV8b = () => {
       ? "0 0 0 1px rgba(201,168,76,0.2), 0 4px 24px rgba(0,0,0,0.6), 0 0 18px rgba(201,168,76,0.12)"
       : isJournal
       ? "0 0 0 1px rgba(0,212,161,0.25), 0 4px 24px rgba(0,0,0,0.6), 0 0 18px rgba(0,212,161,0.15)"
-      : `0 0 0 1px ${c.acB}, 0 4px 24px rgba(0,0,0,0.6), 0 0 18px rgba(38,67,247,0.15)`;
+      : `0 0 0 1px ${c.acB}, 0 4px 24px rgba(0,0,0,0.6), 0 0 18px rgba(48,144,255,0.15)`;
     return { isJournal, isProp: isProp || isPropJournal, stripeCol, hoverBorder, hoverShadow };
   };
   const sessionHasTradingActivity = (sess) => {
@@ -15609,7 +15609,7 @@ const TalariaV8b = () => {
           }}
           style={{
             width: "100%", height: 32, display: "flex", alignItems: "center", justifyContent: "flex-end",
-            background: act ? "rgba(74,106,255,0.08)" : h ? c.hv : "transparent",
+            background: act ? "rgba(48,144,255,0.08)" : h ? c.hv : "transparent",
             border: "none", cursor: "default", color: pressCol,
             padding: 0, paddingRight: 10,
             transition: "color 0.15s ease, background 0.12s", position: "relative", fontFamily: F,
@@ -15698,7 +15698,7 @@ const TalariaV8b = () => {
         .tlc-edit::selection{background:rgba(80,80,80,0.75);color:#fff}
         .tc-x:hover{background:rgba(255,80,80,0.07)!important}.tc-x:hover svg path{fill:var(--rd)!important}
         .tc-cancel:hover{color:var(--tc-hov)!important}.tc-cancel:hover .tc-cancel-line{background:linear-gradient(90deg,transparent,rgba(140,160,255,0.7),transparent)!important}
-        .tc-save:hover{background:linear-gradient(135deg,#3a5af8,#5a78ff)!important;box-shadow:0 2px 14px rgba(38,67,247,0.5)!important;border-color:rgba(140,160,255,0.8)!important}
+        .tc-save:hover{background:linear-gradient(135deg,#3a5af8,#5a78ff)!important;box-shadow:0 2px 14px rgba(48,144,255,0.5)!important;border-color:rgba(140,160,255,0.8)!important}
         .tc-ss-wrap:hover .tc-ss-overlay{opacity:1!important}
         .tc-ss-add:hover{background:rgba(140,160,255,0.05)!important}.tc-ss-add:hover .tc-ss-plus{stroke:rgba(140,160,255,0.8)!important}.tc-ss-add:hover .tc-ss-lbl{color:var(--tc-lbl)!important}
         .tap-ss-wrap:hover .tap-ss-overlay{opacity:1!important}
@@ -15841,17 +15841,17 @@ const TalariaV8b = () => {
                     return (
                       <div key={opt.id} onClick={disabled ? undefined : opt.onClick}
                         style={{padding:"14px 16px",border:`1px solid ${optBorder}`,background:opt.bg || c.el,cursor:"default",opacity:disabled?0.58:1,transition:"border-color 0.12s,box-shadow 0.12s,opacity 0.12s,background 0.12s",position:"relative"}}
-                        onMouseEnter={disabled?undefined:(e=>{e.currentTarget.style.borderColor=optHoverBorder;e.currentTarget.style.boxShadow=`0 0 0 1px ${optHoverBorder}`;e.currentTarget.style.background=opt.bg||"rgba(74,106,255,0.04)";const chev=e.currentTarget.querySelector(".nsp-chev");if(chev)chev.style.color=c.acL;})}
+                        onMouseEnter={disabled?undefined:(e=>{e.currentTarget.style.borderColor=optHoverBorder;e.currentTarget.style.boxShadow=`0 0 0 1px ${optHoverBorder}`;e.currentTarget.style.background=opt.bg||"rgba(48,144,255,0.04)";const chev=e.currentTarget.querySelector(".nsp-chev");if(chev)chev.style.color=c.acL;})}
                         onMouseLeave={disabled?undefined:(e=>{e.currentTarget.style.borderColor=optBorder;e.currentTarget.style.boxShadow="none";e.currentTarget.style.background=opt.bg||c.el;const chev=e.currentTarget.querySelector(".nsp-chev");if(chev)chev.style.color=c.tm;})}>
                         <div style={{display:"flex",alignItems:"center",gap:12}}>
-                          <div style={{width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",background:opt.iconBg||"rgba(74,106,255,0.12)",color:opt.iconColor||c.acL,flexShrink:0}}>
+                          <div style={{width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",background:opt.iconBg||"rgba(48,144,255,0.12)",color:opt.iconColor||c.acL,flexShrink:0}}>
                             {opt.icon}
                           </div>
                           <div style={{flex:1,minWidth:0}}>
                             <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                               <div style={{fontSize:12,fontWeight:800,color:disabled?c.ts:c.tx,letterSpacing:"0.04em"}}>{opt.label}</div>
                               {opt.comingSoon ? (
-                                <span style={{fontSize:7.5,fontWeight:900,color:c.acL,letterSpacing:"0.08em",textTransform:"uppercase",padding:"2px 6px",border:"1px solid rgba(74,106,255,0.35)",background:"rgba(74,106,255,0.10)"}}>Coming soon</span>
+                                <span style={{fontSize:7.5,fontWeight:900,color:c.acL,letterSpacing:"0.08em",textTransform:"uppercase",padding:"2px 6px",border:"1px solid rgba(48,144,255,0.35)",background:"rgba(48,144,255,0.10)"}}>Coming soon</span>
                               ) : opt.disabled && opt.unavailableLabel ? (
                                 <span style={{fontSize:7.5,fontWeight:900,color:c.tm,letterSpacing:"0.08em",textTransform:"uppercase",padding:"2px 6px",border:`1px solid ${c.brH}`,background:"rgba(255,255,255,0.04)"}}>{opt.unavailableLabel}</span>
                               ) : null}
@@ -16065,13 +16065,13 @@ const TalariaV8b = () => {
           height:36,
           width:160,
           padding:"0 20px",
-          background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",
+          background:"#3090FF",
           cursor:"default",
           fontSize:13,
           fontWeight:800,
           color:"rgba(255,255,255,0.96)",
           letterSpacing:"0.08em",
-          boxShadow:"0 2px 10px rgba(38,67,247,0.35)",
+          boxShadow:"0 2px 10px rgba(48,144,255,0.35)",
           flexShrink:0,
           transition:"filter 0.12s",
           fontFamily:F,
@@ -16373,7 +16373,7 @@ const TalariaV8b = () => {
                     const isJournalTab=v==="journal";
                     const tabCol=isA?(isJournalTab?c.gn:isPropTab?c.gold:c.acL):c.ts;
                     const tabBg=isA?(isJournalTab?"rgba(0,212,161,0.10)":isPropTab?"rgba(201,168,76,0.10)":c.acD):"transparent";
-                    const badgeBg=isA?(isJournalTab?"rgba(0,212,161,0.18)":isPropTab?"rgba(201,168,76,0.18)":"rgba(74,106,255,0.2)"):"rgba(255,255,255,0.07)";
+                    const badgeBg=isA?(isJournalTab?"rgba(0,212,161,0.18)":isPropTab?"rgba(201,168,76,0.18)":"rgba(48,144,255,0.2)"):"rgba(255,255,255,0.07)";
                     return(
                       <div key={v} onClick={()=>setSessFilter(v)}
                         style={{position:"relative",height:26,display:"flex",alignItems:"center",gap:5,padding:"0 12px",cursor:"default",
@@ -16402,7 +16402,7 @@ const TalariaV8b = () => {
                         <div onClick={()=>setCardSortOpen(v=>!v)}
                           onMouseEnter={()=>setHov("cardSortBtn")} onMouseLeave={()=>setHov(null)}
                           style={{height:28,padding:"0 8px",display:"flex",alignItems:"center",gap:5,position:"relative",cursor:"default",
-                            background:cardSortOpen?"rgba(74,106,255,0.08)":isBH?"rgba(255,255,255,0.05)":"transparent",
+                            background:cardSortOpen?"rgba(48,144,255,0.08)":isBH?"rgba(255,255,255,0.05)":"transparent",
                             color:cardSortOpen?c.acL:isBH?c.tx:c.ts,
                             fontSize:9,fontWeight:700,fontFamily:F,transition:"background 0.12s,color 0.12s",whiteSpace:"nowrap"}}>
                           <svg width={9} height={9} viewBox="0 0 12 12" fill="none"><line x1="1" y1="3" x2="11" y2="3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="3" y1="6" x2="9" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="5" y1="9" x2="7" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
@@ -16420,7 +16420,7 @@ const TalariaV8b = () => {
                             <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                             <div style={{padding:"6px 8px 8px"}}>
                               <div role="button" tabIndex={0} onClick={()=>chooseSessionSort(null,null)}
-                                style={{height:28,display:"grid",gridTemplateColumns:"minmax(0,1fr) 54px",alignItems:"center",gap:8,padding:"0 8px",marginBottom:4,background:!sessSortBy?"rgba(38,67,247,0.14)":"transparent",border:"none",color:!sessSortBy?c.acL:c.ts,fontSize:8.4,fontWeight:950,letterSpacing:"0.07em",textTransform:"uppercase",boxSizing:"border-box",cursor:"default"}}
+                                style={{height:28,display:"grid",gridTemplateColumns:"minmax(0,1fr) 54px",alignItems:"center",gap:8,padding:"0 8px",marginBottom:4,background:!sessSortBy?"rgba(48,144,255,0.14)":"transparent",border:"none",color:!sessSortBy?c.acL:c.ts,fontSize:8.4,fontWeight:950,letterSpacing:"0.07em",textTransform:"uppercase",boxSizing:"border-box",cursor:"default"}}
                                 onMouseEnter={()=>setHov("csort_default")} onMouseLeave={()=>setHov(null)}>
                                 <span style={{display:"inline-flex",alignItems:"center",gap:6,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                                   <TableSortDefaultGlyphs active={!sessSortBy} accent={c.acL} muted={c.tm} />
@@ -16477,7 +16477,7 @@ const TalariaV8b = () => {
                           onClick={()=>{setSessLayoutMode(mode);setCardSortOpen(false);}}
                           onMouseEnter={()=>setHov("lm_"+mode)} onMouseLeave={()=>setHov(null)}
                           style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",cursor:"default",
-                            background:isA?"rgba(74,106,255,0.08)":isH?"rgba(255,255,255,0.05)":"transparent",
+                            background:isA?"rgba(48,144,255,0.08)":isH?"rgba(255,255,255,0.05)":"transparent",
                             color:isA?c.acL:isH?c.tx:c.ts,transition:"background 0.12s,color 0.12s"}}>
                           {icon}
                           {isA&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acL}`,pointerEvents:"none"}}/>}
@@ -16523,7 +16523,7 @@ const TalariaV8b = () => {
                   <svg width={56} height={56} viewBox="0 0 24 24" fill="none" style={{marginBottom:18,color:c.tm,opacity:0.5}}><rect x="3" y="3" width="18" height="18" rx="1.5" stroke="currentColor" strokeWidth="1.2"/><line x1="7" y1="8" x2="17" y2="8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><line x1="7" y1="12" x2="13" y2="12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><line x1="7" y1="16" x2="15" y2="16" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
                   <div style={{fontSize:16,fontWeight:700,color:c.ts,marginBottom:8}}>No saved sessions yet</div>
                   <div style={{fontSize:13,color:c.tm,marginBottom:24}}>Create your first backtesting session to get started</div>
-                  <div onClick={openNewSessionKindPicker} style={{display:"flex",alignItems:"center",gap:8,height:38,padding:"0 22px",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontSize:12,fontWeight:800,color:"rgba(255,255,255,0.96)",letterSpacing:"0.08em",boxShadow:"0 4px 18px rgba(38,67,247,0.4)",clipPath:"polygon(8px 0%,100% 0%,calc(100% - 8px) 100%,0% 100%)"}}>
+                  <div onClick={openNewSessionKindPicker} style={{display:"flex",alignItems:"center",gap:8,height:38,padding:"0 22px",background:"#3090FF",cursor:"default",fontSize:12,fontWeight:800,color:"rgba(255,255,255,0.96)",letterSpacing:"0.08em",boxShadow:"0 4px 18px rgba(48,144,255,0.4)",clipPath:"polygon(8px 0%,100% 0%,calc(100% - 8px) 100%,0% 100%)"}}>
                     <span style={{fontSize:17,lineHeight:1}}>+</span> Create New Session
                   </div>
                 </div>
@@ -16558,7 +16558,7 @@ const TalariaV8b = () => {
                           {/* Resume */}
                           <div onClick={e=>{e.stopPropagation();launchSessionOrJournal(sess);}}
                             onMouseEnter={()=>setHov("rs_"+sess.id)} onMouseLeave={()=>setHov(null)}
-                            style={{width:26,height:26,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:isJournal?"linear-gradient(135deg,#00a878,#00d4a1)":"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",transition:"filter 0.12s",filter:hov==="rs_"+sess.id?"brightness(1.2)":"brightness(1)",boxShadow:isJournal?"0 2px 8px rgba(0,212,161,0.35)":"0 2px 8px rgba(38,67,247,0.35)"}}>
+                            style={{width:26,height:26,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:isJournal?"linear-gradient(135deg,#00a878,#00d4a1)":"#3090FF",cursor:"default",transition:"filter 0.12s",filter:hov==="rs_"+sess.id?"brightness(1.2)":"brightness(1)",boxShadow:isJournal?"0 2px 8px rgba(0,212,161,0.35)":"0 2px 8px rgba(48,144,255,0.35)"}}>
                             <svg width={9} height={9} viewBox="0 0 12 12"><polygon points="2,1 11,6 2,11" fill="rgba(255,255,255,0.95)"/></svg>
                           </div>
                           {/* Dashboard */}
@@ -16721,7 +16721,7 @@ const TalariaV8b = () => {
                         <div style={{width:96,flexShrink:0,display:"flex",flexDirection:"row",alignItems:"center",justifyContent:"center",gap:6,padding:"0 10px",borderRight:"none"}}>
                           <div onClick={e=>{e.stopPropagation();launchSessionOrJournal(sess);}}
                             onMouseEnter={()=>setHov("rs_"+sess.id)} onMouseLeave={()=>setHov(null)}
-                            style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",background:isJournal?"linear-gradient(135deg,#00a878,#00d4a1)":"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",transition:"filter 0.12s",filter:hov==="rs_"+sess.id?"brightness(1.2)":"brightness(1)",boxShadow:isJournal?"0 2px 8px rgba(0,212,161,0.35)":"0 2px 8px rgba(38,67,247,0.35)",flexShrink:0}}>
+                            style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",background:isJournal?"linear-gradient(135deg,#00a878,#00d4a1)":"#3090FF",cursor:"default",transition:"filter 0.12s",filter:hov==="rs_"+sess.id?"brightness(1.2)":"brightness(1)",boxShadow:isJournal?"0 2px 8px rgba(0,212,161,0.35)":"0 2px 8px rgba(48,144,255,0.35)",flexShrink:0}}>
                             <svg width={10} height={10} viewBox="0 0 12 12"><polygon points="2,1 11,6 2,11" fill="rgba(255,255,255,0.95)"/></svg>
                           </div>
                           <div onClick={e=>{e.stopPropagation();openEmbeddedSessionOrJournalDashboard(sess);}}
@@ -16972,7 +16972,7 @@ const TalariaV8b = () => {
                   id:"backtest",
                   label:"Backtest",
                   desc:"Run historical replay sessions with chart data and strategy testing.",
-                  iconBg:"rgba(74,106,255,0.14)",
+                  iconBg:"rgba(48,144,255,0.14)",
                   iconColor:c.acL,
                   icon:<svg width={18} height={18} viewBox="0 0 24 24" fill="none"><polyline points="3,20 3,4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><polyline points="3,15 8,11 12,14 18,7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>,
                   onClick:startNewBacktestFromPicker,
@@ -16985,10 +16985,10 @@ const TalariaV8b = () => {
                     : "Track live trades manually on a real account or prop firm journal.",
                   disabled:newSessionJournalPickerDisabled,
                   unavailableLabel:newSessionJournalPickerDisabled ? "Not available for now" : undefined,
-                  iconBg:"rgba(74,106,255,0.14)",
+                  iconBg:"rgba(48,144,255,0.14)",
                   iconColor:c.acL,
-                  border:"rgba(74,106,255,0.18)",
-                  hoverBorder:"rgba(74,106,255,0.45)",
+                  border:"rgba(48,144,255,0.18)",
+                  hoverBorder:"rgba(48,144,255,0.45)",
                   icon:<svg width={18} height={18} viewBox="0 0 24 24" fill="none"><rect x="4" y="3" width="16" height="18" rx="1.5" stroke="currentColor" strokeWidth="1.5"/><line x1="8" y1="8" x2="16" y2="8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><line x1="8" y1="12" x2="14" y2="12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><line x1="8" y1="16" x2="12" y2="16" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>,
                   onClick:openJournalTypeFromPicker,
                 },
@@ -17007,10 +17007,10 @@ const TalariaV8b = () => {
                   id:"personal",
                   label:"Real account",
                   desc:"Personal live account for tracking your own trading journal.",
-                  iconBg:"rgba(74,106,255,0.14)",
+                  iconBg:"rgba(48,144,255,0.14)",
                   iconColor:c.acL,
-                  border:"rgba(74,106,255,0.18)",
-                  hoverBorder:"rgba(74,106,255,0.45)",
+                  border:"rgba(48,144,255,0.18)",
+                  hoverBorder:"rgba(48,144,255,0.45)",
                   icon:<svg width={18} height={18} viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.5"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
                   onClick:()=>openJournalMethodFromPicker("personal"),
                 },
@@ -17022,10 +17022,10 @@ const TalariaV8b = () => {
                     : "Challenge or funded prop account journal with prop-specific tracking.",
                   disabled:PROP_FIRM_FEATURES_DISABLED,
                   unavailableLabel:PROP_FIRM_FEATURES_DISABLED ? "Not available for now" : undefined,
-                  iconBg:"rgba(74,106,255,0.14)",
+                  iconBg:"rgba(48,144,255,0.14)",
                   iconColor:c.acL,
-                  border:"rgba(74,106,255,0.18)",
-                  hoverBorder:"rgba(74,106,255,0.45)",
+                  border:"rgba(48,144,255,0.18)",
+                  hoverBorder:"rgba(48,144,255,0.45)",
                   icon:<svg width={18} height={18} viewBox="0 0 24 24" fill="none"><path d="M12 3l8 4v5c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V7l8-4z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>,
                   onClick:()=>openJournalMethodFromPicker("prop"),
                 },
@@ -17044,10 +17044,10 @@ const TalariaV8b = () => {
                   id:"manual",
                   label:"Manual trades",
                   desc:"Create the journal and add trades one by one in the Trades tab.",
-                  iconBg:"rgba(74,106,255,0.14)",
+                  iconBg:"rgba(48,144,255,0.14)",
                   iconColor:c.acL,
-                  border:"rgba(74,106,255,0.18)",
-                  hoverBorder:"rgba(74,106,255,0.45)",
+                  border:"rgba(48,144,255,0.18)",
+                  hoverBorder:"rgba(48,144,255,0.45)",
                   icon:<svg width={18} height={18} viewBox="0 0 24 24" fill="none"><line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>,
                   onClick:startManualJournalFromPicker,
                 },
@@ -17055,10 +17055,10 @@ const TalariaV8b = () => {
                   id:"csv",
                   label:"CSV import",
                   desc:"Upload a CSV export from your platform to bulk-import trades.",
-                  iconBg:"rgba(74,106,255,0.14)",
+                  iconBg:"rgba(48,144,255,0.14)",
                   iconColor:c.acL,
-                  border:"rgba(74,106,255,0.18)",
-                  hoverBorder:"rgba(74,106,255,0.45)",
+                  border:"rgba(48,144,255,0.18)",
+                  hoverBorder:"rgba(48,144,255,0.45)",
                   icon:<svg width={18} height={18} viewBox="0 0 24 24" fill="none"><path d="M12 3v12M8 11l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>,
                   onClick:startCsvJournalFromPicker,
                 },
@@ -17164,7 +17164,7 @@ const TalariaV8b = () => {
                   {(stratPopup.timeframe||stratPopup.market)&&(
                     <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8,paddingTop:8,borderTop:`1px solid ${c.brH}`}}>
                       {stratPopup.timeframe?(
-                        <span style={{fontSize:8,fontWeight:700,color:c.acL,letterSpacing:"0.04em",fontFamily:F,padding:"2px 6px",background:"rgba(38,67,247,0.12)",border:`1px solid rgba(38,67,247,0.22)`}}>{stratPopup.timeframe}</span>
+                        <span style={{fontSize:8,fontWeight:700,color:c.acL,letterSpacing:"0.04em",fontFamily:F,padding:"2px 6px",background:"rgba(48,144,255,0.12)",border:`1px solid rgba(48,144,255,0.22)`}}>{stratPopup.timeframe}</span>
                       ):null}
                       {stratPopup.market?(
                         <span style={{fontSize:8,fontWeight:700,color:c.ts,letterSpacing:"0.04em",fontFamily:F,padding:"2px 6px",background:"rgba(255,255,255,0.04)",border:`1px solid ${c.brH}`}}>{stratPopup.market}</span>
@@ -17275,7 +17275,7 @@ const TalariaV8b = () => {
                             <div role="button" tabIndex={0} aria-label="Create new strategy"
                               onClick={(e) => { e.stopPropagation(); setNewSessStratDropOpen(false); setNewSessOpen(false); openDashboardStrategyBuilder(); }}
                               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); setNewSessStratDropOpen(false); setNewSessOpen(false); openDashboardStrategyBuilder(); } }}
-                              style={{flexShrink:0,height:38,width:160,justifyContent:"center",display:"flex",alignItems:"center",gap:9,background:"#3F54F7",cursor:"default",fontSize:14,fontWeight:800,color:"rgba(255,255,255,0.96)",letterSpacing:"0.02em",boxShadow:"0 2px 12px rgba(38,67,247,0.35)",fontFamily:F,whiteSpace:"nowrap",transition:"filter 0.12s, transform 0.08s"}}
+                              style={{flexShrink:0,height:38,width:160,justifyContent:"center",display:"flex",alignItems:"center",gap:9,background:"#3F54F7",cursor:"default",fontSize:14,fontWeight:800,color:"rgba(255,255,255,0.96)",letterSpacing:"0.02em",boxShadow:"0 2px 12px rgba(48,144,255,0.35)",fontFamily:F,whiteSpace:"nowrap",transition:"filter 0.12s, transform 0.08s"}}
                               onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.12)"}
                               onMouseLeave={e=>{e.currentTarget.style.filter="brightness(1)";e.currentTarget.style.transform="scale(1)";}}
                               onMouseDown={e=>e.currentTarget.style.transform="scale(0.97)"}
@@ -17317,9 +17317,9 @@ const TalariaV8b = () => {
                           const pr=pairInfo(sym);const fw=Math.round(sz*15/11),fh=sz;
                           if(pr){return(<div style={{position:"relative",width:Math.round(sz*22/11),height:fh,flexShrink:0}}><div style={{position:"absolute",left:0,top:0,borderRadius:1,overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.7)",zIndex:2}}><FlagSvg code={pr.b} w={fw} h={fh}/></div><div style={{position:"absolute",left:Math.round(sz*7/11),top:0,borderRadius:1,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.5)",zIndex:1}}><FlagSvg code={pr.q} w={fw} h={fh}/></div></div>);}
                           const metalMap={XAUUSD:{bg:"#2B2200",fg:"#FFD700",label:"Au"},XAGUSD:{bg:"#1C2028",fg:"#C8D4E0",label:"Ag"},GC:{bg:"#2B2200",fg:"#FFD700",label:"Au"},SI:{bg:"#1C2028",fg:"#C8D4E0",label:"Ag"},CL:{bg:"#0D1A12",fg:"#4CAF50",label:"CL"},NG:{bg:"#0A1020",fg:"#64B5F6",label:"NG"}};
-                          if(metalMap[sym]){const m=metalMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:1,boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><rect width={fw} height={fh} fill={m.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={m.fg} fontSize={fh*0.52} fontWeight="800" fontFamily="'Exo 2',sans-serif">{m.label}</text></svg>);}
+                          if(metalMap[sym]){const m=metalMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:1,boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><rect width={fw} height={fh} fill={m.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={m.fg} fontSize={fh*0.52} fontWeight="800" fontFamily='"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif'>{m.label}</text></svg>);}
                           const cryptoMap={BTCUSD:{bg:"#E8820C",fg:"#fff",label:"₿"},ETHUSD:{bg:"#3D4FC4",fg:"#fff",label:"Ξ"},BNBUSD:{bg:"#C99800",fg:"#000",label:"B"},SOLUSD:{bg:"#7B3FBE",fg:"#fff",label:"S"},ADAUSD:{bg:"#0033AD",fg:"#fff",label:"A"}};
-                          if(cryptoMap[sym]){const cr=cryptoMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:Math.round(fh*0.35),boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><rect width={fw} height={fh} rx={Math.round(fh*0.35)} fill={cr.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={cr.fg} fontSize={fh*0.58} fontWeight="900" fontFamily="'Exo 2',sans-serif">{cr.label}</text></svg>);}
+                          if(cryptoMap[sym]){const cr=cryptoMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:Math.round(fh*0.35),boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><rect width={fw} height={fh} rx={Math.round(fh*0.35)} fill={cr.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={cr.fg} fontSize={fh*0.58} fontWeight="900" fontFamily='"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif'>{cr.label}</text></svg>);}
                           return(<div style={{borderRadius:1,overflow:"hidden",flexShrink:0,boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><FlagSvg code="US" w={fw} h={fh}/></div>);
                         };
                         const mkCell=(t,onDel)=>(<div key={t} style={{display:"flex",alignItems:"center",padding:"2px 4px 2px 3px",background:c.sf,border:`1px solid ${c.brH}`,gap:3,minWidth:0}}>{mkFlags(t,10)}<span style={{fontSize:10,fontWeight:700,color:c.tx,fontFamily:F,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t}</span><span onClick={onDel} style={{fontSize:13,lineHeight:1,color:c.tm,cursor:"default",flexShrink:0,marginLeft:5,transition:"color 0.1s"}} onMouseEnter={e=>e.currentTarget.style.color=c.rd} onMouseLeave={e=>e.currentTarget.style.color=c.tm}>×</span></div>);
@@ -17464,7 +17464,7 @@ const TalariaV8b = () => {
                                 <div style={{position:"relative",flexShrink:0}}>
                                   <div onClick={e=>{e.stopPropagation();if(newSessSymPickerOpen){setNewSessSymPickerOpen(false);}else{const r=e.currentTarget.getBoundingClientRect();setNewSessSymPickerPos({top:r.bottom/uiZ+2,left:r.left/uiZ});setNewSessSymPickerSearch("");setNewSessSymPickerOpen(true);}}}
                                     onMouseEnter={e=>{e.stopPropagation();setHov("symPickBtn");}} onMouseLeave={()=>setHov(null)}
-                                    style={{width:26,height:40,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",transition:"filter 0.12s",flexShrink:0,boxShadow:"0 2px 8px rgba(38,67,247,0.35)",filter:hov==="symPickBtn"?"brightness(1.12)":"brightness(1)"}}>
+                                    style={{width:26,height:40,display:"flex",alignItems:"center",justifyContent:"center",background:"#3090FF",cursor:"default",transition:"filter 0.12s",flexShrink:0,boxShadow:"none",filter:hov==="symPickBtn"?"brightness(1.12)":"brightness(1)"}}>
                                     <svg width={11} height={11} viewBox="0 0 12 12" fill="none">
                                       <line x1="6" y1="1" x2="6" y2="11" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
                                       <line x1="1" y1="6" x2="11" y2="6" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
@@ -17746,7 +17746,7 @@ const TalariaV8b = () => {
                                     style={{height:27,padding:"0 10px",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
                                       fontSize:10,fontWeight:isA?700:600,letterSpacing:"0.03em",fontFamily:F,
                                       color:isA?c.acL:isH?c.tx:c.ts,
-                                      background:isA?"rgba(74,106,255,0.08)":isH?"rgba(255,255,255,0.05)":"transparent",
+                                      background:isA?"rgba(48,144,255,0.08)":isH?"rgba(255,255,255,0.05)":"transparent",
                                       cursor:"default",transition:"background 0.12s,color 0.12s"}}>
                                     {p.l}
                                     {isA&&<div style={{position:"absolute",bottom:0,left:"20%",right:"20%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
@@ -18036,7 +18036,7 @@ const TalariaV8b = () => {
                                       </div>
                                       <div onClick={()=>setNewSessMarketOpen(false)}
                                         onMouseEnter={()=>setHov("mktCfgDone")} onMouseLeave={()=>setHov(null)}
-                                        style={{height:27,padding:"0 16px",display:"flex",alignItems:"center",gap:5,background:`linear-gradient(135deg,${c.ac},${c.acL})`,cursor:"default",fontSize:10,fontWeight:700,color:"#fff",letterSpacing:"0.05em",fontFamily:F,boxShadow:"0 2px 10px rgba(38,67,247,0.35)",filter:hov==="mktCfgDone"?"brightness(1.15)":"brightness(1)",transition:"filter 0.12s"}}>
+                                        style={{height:27,padding:"0 16px",display:"flex",alignItems:"center",gap:5,background:'#FFFFFF',cursor:"default",fontSize:10,fontWeight:700,color:"#fff",letterSpacing:"0.05em",fontFamily:F,boxShadow:"0 2px 10px rgba(48,144,255,0.35)",filter:hov==="mktCfgDone"?"brightness(1.15)":"brightness(1)",transition:"filter 0.12s"}}>
                                         <svg width={11} height={11} viewBox="0 0 12 12" fill="none"><path d="M1.5,6 L4.5,9.5 L10.5,2.5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
                                         Done
                                       </div>
@@ -18296,7 +18296,7 @@ const TalariaV8b = () => {
                                   style={{flex:1,padding:"6px 10px 8px",display:"flex",flexDirection:"column",gap:2,
                                     cursor:"default",transition:"all 0.15s",position:"relative",textAlign:"center",
                                     opacity:disabled?0.35:1,
-                                    background:isA?(isPropTab?"rgba(200,150,0,0.07)":"rgba(74,106,255,0.07)"):isH?"rgba(255,255,255,0.03)":"transparent"}}>
+                                    background:isA?(isPropTab?"rgba(200,150,0,0.07)":"rgba(48,144,255,0.07)"):isH?"rgba(255,255,255,0.03)":"transparent"}}>
                                   <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
                                     <span style={{fontSize:11,fontWeight:700,color:isA?acColor:isH?c.tx:c.ts,fontFamily:F,transition:"color 0.12s"}}>{l}</span>
                                     {isPropTab&&(
@@ -18356,7 +18356,7 @@ const TalariaV8b = () => {
                               const isProp=sessTradingMode==="prop";
                               const chipAc=isProp?c.gold:c.acL;
                               const chipGlow=isProp?"rgba(200,150,0,0.4)":c.acG;
-                              const chipBg=isProp?"rgba(200,150,0,0.08)":"rgba(74,106,255,0.08)";
+                              const chipBg=isProp?"rgba(200,150,0,0.08)":"rgba(48,144,255,0.08)";
                               const futPresetsMap={"25000":{dl:"500",dd:"1000",pt:"1500"},"50000":{dl:"1000",dd:"2000",pt:"3000"},"100000":{dl:"1500",dd:"3000",pt:"6000"},"150000":{dl:"2250",dd:"4500",pt:"9000"}};
                               return chips.map(([label,val])=>{
                                 const isA=newSessCapital===val;const hk="bal_"+val;const isH=hov===hk;
@@ -18751,7 +18751,7 @@ const TalariaV8b = () => {
                       </div>
                       <div onClick={isValid2?()=>{closeNewSess();startNewSession();}:undefined}
                         onMouseEnter={()=>setHov("sessStart")} onMouseLeave={()=>setHov(null)}
-                        style={{height:27,padding:"0 16px",display:"flex",alignItems:"center",gap:6,background:isValid2?`linear-gradient(135deg,${c.ac},${c.acL})`:"rgba(38,67,247,0.15)",cursor:isValid2?"default":"not-allowed",fontSize:10,fontWeight:700,color:isValid2?"#fff":"rgba(255,255,255,0.25)",letterSpacing:"0.05em",boxShadow:isValid2?"0 2px 10px rgba(38,67,247,0.35)":"none",filter:hov==="sessStart"&&isValid2?"brightness(1.12)":"brightness(1)",transition:"all 0.12s",flexShrink:0,fontFamily:F}}>
+                        style={{height:27,padding:"0 16px",display:"flex",alignItems:"center",gap:6,background:isValid2?'#FFFFFF':"rgba(48,144,255,0.15)",cursor:isValid2?"default":"not-allowed",fontSize:10,fontWeight:700,color:isValid2?"#fff":"rgba(255,255,255,0.25)",letterSpacing:"0.05em",boxShadow:isValid2?"0 2px 10px rgba(48,144,255,0.35)":"none",filter:hov==="sessStart"&&isValid2?"brightness(1.12)":"brightness(1)",transition:"all 0.12s",flexShrink:0,fontFamily:F}}>
                         <svg width={8} height={8} viewBox="0 0 12 12" fill="none"><polygon points="2,1 11,6 2,11" fill="currentColor"/></svg>
                         Start Session
                       </div>
@@ -20576,12 +20576,12 @@ const TalariaV8b = () => {
                     <div style={{flex:1,height:22,display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>
                       {(mode==="days" || mode==="months") && (
                         <span className="tlr-dashboard-calendar-title-btn" onPointerDown={e=>{e.preventDefault();e.stopPropagation();setMode(mode==="months"?"days":"months");}}
-                          style={{height:22,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:mode==="months"?c.acL:c.tx,cursor:"default",padding:"0 6px",background:mode==="months"?"rgba(74,106,255,0.12)":"transparent",boxSizing:"border-box",lineHeight:1}}>
+                          style={{height:22,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:mode==="months"?c.acL:c.tx,cursor:"default",padding:"0 6px",background:mode==="months"?"rgba(48,144,255,0.12)":"transparent",boxSizing:"border-box",lineHeight:1}}>
                           {dashCalendarMonths[viewM]}
                         </span>
                       )}
                       <span className="tlr-dashboard-calendar-title-btn" onPointerDown={e=>{e.preventDefault();e.stopPropagation();if(mode!=="years"){setYearBase(Math.floor(viewY / 12) * 12);setMode("years");}else{setMode("days");}}}
-                        style={{height:22,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:mode==="years"?c.acL:c.tx,cursor:"default",padding:"0 6px",background:mode==="years"?"rgba(74,106,255,0.12)":"transparent",boxSizing:"border-box",lineHeight:1}}>
+                        style={{height:22,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:mode==="years"?c.acL:c.tx,cursor:"default",padding:"0 6px",background:mode==="years"?"rgba(48,144,255,0.12)":"transparent",boxSizing:"border-box",lineHeight:1}}>
                         {mode==="years" ? `${yearBase} - ${yearBase + 11}` : viewY}
                       </span>
                     </div>
@@ -21074,7 +21074,7 @@ const TalariaV8b = () => {
                             title={dashTxt(`Change unit (${unitLongLabel})`, `تغيير الوحدة (${unitLongLabel})`)}
                             onPointerDown={e=>{e.preventDefault();if(!groupEnabled)return;cycleDashDurationUnit(range.id);}}
                             onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();if(!groupEnabled)return;cycleDashDurationUnit(range.id);}}}
-                            style={{height:28,width:"100%",minWidth:0,justifySelf:"stretch",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:3,background:c.well,border:`1px solid ${unitActive ? "rgba(74,106,255,0.42)" : c.brH}`,boxShadow:unitActive ? "inset 0 0 0 1px rgba(74,106,255,0.10)" : "none",boxSizing:"border-box",color:unitActive ? c.acL : c.tm,fontSize:8.8,fontWeight:950,letterSpacing:"0.05em",lineHeight:1,textTransform:"uppercase",fontFamily:F,cursor:groupEnabled ? "default" : "not-allowed",padding:"0 3px",opacity:groupEnabled ? 1 : 0.55}}>
+                            style={{height:28,width:"100%",minWidth:0,justifySelf:"stretch",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:3,background:c.well,border:`1px solid ${unitActive ? "rgba(48,144,255,0.42)" : c.brH}`,boxShadow:unitActive ? "inset 0 0 0 1px rgba(48,144,255,0.10)" : "none",boxSizing:"border-box",color:unitActive ? c.acL : c.tm,fontSize:8.8,fontWeight:950,letterSpacing:"0.05em",lineHeight:1,textTransform:"uppercase",fontFamily:F,cursor:groupEnabled ? "default" : "not-allowed",padding:"0 3px",opacity:groupEnabled ? 1 : 0.55}}>
                             <span>{unitLabel}</span>
                             <svg aria-hidden="true" width={9} height={9} viewBox="0 0 9 9" fill="none" style={{flexShrink:0,opacity:0.82}}>
                               <path d="M1.5 2.4 4.5 4.8 7.5 2.4" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round"/>
@@ -21328,7 +21328,7 @@ const TalariaV8b = () => {
                       <div key={option.value} className="tlr-dashboard-filter-source-row tlr-library-content-row" role="checkbox" tabIndex={0} aria-checked={activeStrategy}
                         onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();toggleDashboardJournalStrategyFilter(option.value);}}
                         onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();toggleDashboardJournalStrategyFilter(option.value);}}}
-                        style={{height:48,display:"grid",gridTemplateColumns:"minmax(0,1fr) 82px",alignItems:"center",gap:10,padding:"0 28px 0 13px",position:"relative",background:activeStrategy?"rgba(38,67,247,0.13)":"rgba(8,10,20,0.96)",borderTop:idx===0?`1px solid ${activeStrategy?"rgba(74,106,255,0.58)":"rgba(255,255,255,0.055)"}`:"none",borderRight:`1px solid ${activeStrategy?"rgba(74,106,255,0.58)":"rgba(255,255,255,0.055)"}`,borderBottom:`1px solid ${activeStrategy?"rgba(74,106,255,0.58)":"rgba(255,255,255,0.055)"}`,borderLeft:`1px solid ${activeStrategy?"rgba(74,106,255,0.58)":"rgba(255,255,255,0.055)"}`,boxSizing:"border-box",cursor:"default",overflow:"hidden","--tlr-lib-color":c.acL,"--tlr-lib-hover-bg":activeStrategy?"rgba(38,67,247,0.13)":"rgba(255,255,255,0.045)","--tlr-lib-hover-border":activeStrategy?"rgba(74,106,255,0.58)":"rgba(255,255,255,0.12)","--tlr-lib-active-press":activeStrategy?"rgba(38,67,247,0.13)":"rgba(255,255,255,0.065)"}}>
+                        style={{height:48,display:"grid",gridTemplateColumns:"minmax(0,1fr) 82px",alignItems:"center",gap:10,padding:"0 28px 0 13px",position:"relative",background:activeStrategy?"rgba(48,144,255,0.13)":"rgba(8,10,20,0.96)",borderTop:idx===0?`1px solid ${activeStrategy?"rgba(48,144,255,0.58)":"rgba(255,255,255,0.055)"}`:"none",borderRight:`1px solid ${activeStrategy?"rgba(48,144,255,0.58)":"rgba(255,255,255,0.055)"}`,borderBottom:`1px solid ${activeStrategy?"rgba(48,144,255,0.58)":"rgba(255,255,255,0.055)"}`,borderLeft:`1px solid ${activeStrategy?"rgba(48,144,255,0.58)":"rgba(255,255,255,0.055)"}`,boxSizing:"border-box",cursor:"default",overflow:"hidden","--tlr-lib-color":c.acL,"--tlr-lib-hover-bg":activeStrategy?"rgba(48,144,255,0.13)":"rgba(255,255,255,0.045)","--tlr-lib-hover-border":activeStrategy?"rgba(48,144,255,0.58)":"rgba(255,255,255,0.12)","--tlr-lib-active-press":activeStrategy?"rgba(48,144,255,0.13)":"rgba(255,255,255,0.065)"}}>
                         <div style={{position:"absolute",right:6,top:6,width:14,height:14,display:"grid",placeItems:"center",color:activeStrategy?c.acL:c.tm}}>
                           {sourceFilterCornerCheck(activeStrategy, c.acL)}
                         </div>
@@ -21403,9 +21403,9 @@ const TalariaV8b = () => {
               const selectedColor = c.acL;
               const isChild = !!options.child;
               const rowHeight = isChild ? 58 : 68;
-              const activeBg = isChild ? "rgba(38,67,247,0.115)" : "rgba(38,67,247,0.135)";
+              const activeBg = isChild ? "rgba(48,144,255,0.115)" : "rgba(48,144,255,0.135)";
               const sourceBg = activeSource ? activeBg : "rgba(8,10,20,0.96)";
-              const sourceBorder = activeSource ? "rgba(74,106,255,0.62)" : "rgba(255,255,255,0.055)";
+              const sourceBorder = activeSource ? "rgba(48,144,255,0.62)" : "rgba(255,255,255,0.055)";
               return (
                 <div key={item.key} className="tlr-dashboard-filter-source-row tlr-library-content-row" role="checkbox" tabIndex={0} aria-checked={activeSource}
                   onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();toggleDashboardSourceFilterKey(item.key);}}
@@ -21456,7 +21456,7 @@ const TalariaV8b = () => {
                 <div className="tlr-dashboard-filter-source-row tlr-library-content-row" role="button" tabIndex={0} aria-pressed={allActive}
                   onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();setDashSourceFilterKeys([]);}}
                   onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();setDashSourceFilterKeys([]);}}}
-                  style={{height:76,display:"grid",gridTemplateColumns:"22px minmax(0,1fr) 102px",alignItems:"center",gap:10,padding:"0 26px 0 12px",position:"relative",background:allActive?"rgba(38,67,247,0.13)":"rgba(8,10,20,0.96)",border:`1px solid ${allActive?"rgba(74,106,255,0.62)":"rgba(255,255,255,0.055)"}`,boxSizing:"border-box",cursor:"default",overflow:"hidden","--tlr-lib-color":c.acL,"--tlr-lib-hover-bg":allActive?"rgba(38,67,247,0.13)":"rgba(255,255,255,0.045)","--tlr-lib-hover-border":allActive?"rgba(74,106,255,0.62)":"rgba(255,255,255,0.12)","--tlr-lib-active-press":allActive?"rgba(38,67,247,0.13)":"rgba(255,255,255,0.065)"}}>
+                  style={{height:76,display:"grid",gridTemplateColumns:"22px minmax(0,1fr) 102px",alignItems:"center",gap:10,padding:"0 26px 0 12px",position:"relative",background:allActive?"rgba(48,144,255,0.13)":"rgba(8,10,20,0.96)",border:`1px solid ${allActive?"rgba(48,144,255,0.62)":"rgba(255,255,255,0.055)"}`,boxSizing:"border-box",cursor:"default",overflow:"hidden","--tlr-lib-color":c.acL,"--tlr-lib-hover-bg":allActive?"rgba(48,144,255,0.13)":"rgba(255,255,255,0.045)","--tlr-lib-hover-border":allActive?"rgba(48,144,255,0.62)":"rgba(255,255,255,0.12)","--tlr-lib-active-press":allActive?"rgba(48,144,255,0.13)":"rgba(255,255,255,0.065)"}}>
                   <div style={{position:"absolute",right:6,top:6,width:14,height:14,display:"grid",placeItems:"center"}}>
                     {sourceFilterCornerCheck(allActive, c.acL)}
                   </div>
@@ -23302,7 +23302,7 @@ const TalariaV8b = () => {
           const compareSelectionColor = dashCompareDraftInfo?.color || activeCompareColor;
           const compareSummaryStrip = () => (
             <div style={{height:50,flexShrink:0,display:"grid",gridTemplateColumns:"minmax(0,1fr) 42px minmax(0,1fr)",alignItems:"stretch",border:`1px solid ${c.br}`,background:c.sf,marginBottom:10,fontFamily:F,overflow:"hidden"}}>
-              <div style={{minWidth:0,display:"flex",flexDirection:"column",justifyContent:"center",gap:4,padding:"0 12px 0 14px",background:compareSelectedCount ? (compareSelectionColor===c.gn ? "rgba(0,212,161,0.045)" : compareSelectionColor===c.gold ? "rgba(201,168,76,0.055)" : "rgba(38,67,247,0.055)") : "transparent"}}>
+              <div style={{minWidth:0,display:"flex",flexDirection:"column",justifyContent:"center",gap:4,padding:"0 12px 0 14px",background:compareSelectedCount ? (compareSelectionColor===c.gn ? "rgba(0,212,161,0.045)" : compareSelectionColor===c.gold ? "rgba(201,168,76,0.055)" : "rgba(48,144,255,0.055)") : "transparent"}}>
                 <div style={{fontSize:7.8,fontWeight:950,color:compareSelectedCount?compareSelectionColor:c.tm,letterSpacing:"0.08em",textTransform:"uppercase",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{compareSelectionType}</div>
                 <div style={{fontSize:11,fontWeight:900,color:compareSelectedCount?c.tx:c.tm,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{compareDraftLabel}</div>
               </div>
@@ -23600,7 +23600,7 @@ const TalariaV8b = () => {
               ? "rgba(0,212,161,0.09)"
               : color === c.gold
                 ? "rgba(201,168,76,0.10)"
-                : (isChild ? "rgba(38,67,247,0.105)" : c.acD);
+                : (isChild ? "rgba(48,144,255,0.105)" : c.acD);
             const pressBg = color === c.gn
               ? "rgba(0,212,161,0.07)"
               : color === c.gold
@@ -24762,7 +24762,7 @@ const TalariaV8b = () => {
               <div className={`tlr-dashboard-source-switch-redesign${dashFreshNavOpen?" tlr-dashboard-source-switch-open":""}`} role="button" tabIndex={0} aria-haspopup="menu" aria-expanded={dashFreshNavOpen} aria-label={`${dashTxt("Dashboard","لوحة التحكم")}: ${activeFreshPageLabel}`}
                 onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();setDashFreshNavOpen(v=>!v);setDashSnapshotTopModeOpen(false);setDashFiltersOpen(false);setDashLibraryOpen(false);setDashCompareOpen(false);}}
                 onKeyDown={libraryKeyActivate(()=>{setDashFreshNavOpen(v=>!v);setDashSnapshotTopModeOpen(false);setDashFiltersOpen(false);setDashLibraryOpen(false);setDashCompareOpen(false);})}
-                style={{"--tlr-source-accent":c.acL,height:38,width:"100%",padding:"0 9px 0 10px",display:"grid",gridTemplateColumns:"14px minmax(0,1fr) 14px",alignItems:"center",columnGap:8,position:"relative",background:dashFreshNavOpen?"rgba(38,67,247,0.16)":"rgba(15,19,34,0.92)",border:`1px solid ${dashFreshNavOpen?`${c.acL}66`:"rgba(140,160,255,0.14)"}`,boxShadow:dashFreshNavOpen?`inset 0 1px 0 rgba(255,255,255,0.05),0 0 13px -10px ${c.acL}`:"inset 0 1px 0 rgba(255,255,255,0.04)",color:dashFreshNavOpen?c.acL:c.ts,boxSizing:"border-box",cursor:"default",transition:"none",overflow:"hidden",fontFamily:F}}>
+                style={{"--tlr-source-accent":c.acL,height:38,width:"100%",padding:"0 9px 0 10px",display:"grid",gridTemplateColumns:"14px minmax(0,1fr) 14px",alignItems:"center",columnGap:8,position:"relative",background:dashFreshNavOpen?"rgba(48,144,255,0.16)":"rgba(15,19,34,0.92)",border:`1px solid ${dashFreshNavOpen?`${c.acL}66`:"rgba(140,160,255,0.14)"}`,boxShadow:dashFreshNavOpen?`inset 0 1px 0 rgba(255,255,255,0.05),0 0 13px -10px ${c.acL}`:"inset 0 1px 0 rgba(255,255,255,0.04)",color:dashFreshNavOpen?c.acL:c.ts,boxSizing:"border-box",cursor:"default",transition:"none",overflow:"hidden",fontFamily:F}}>
                 <DashboardPageIcon id={activeFreshPageMeta.id} size={14} color={dashFreshNavOpen?c.acL:c.ts}/>
                 <div style={{minWidth:0,display:"flex",flexDirection:"column",gap:3,lineHeight:1}}>
                   <span data-tlr-upper-accent="true" style={{fontSize:8,fontWeight:900,color:c.acL,letterSpacing:"0.075em",textTransform:"uppercase",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1,textShadow:"none",textRendering:"geometricPrecision"}}>{dashTxt("Dashboard","لوحة التحكم")}</span>
@@ -24783,7 +24783,7 @@ const TalariaV8b = () => {
                           <button key={`${group.label}-${page.id}`} className={`tlr-dashboard-page-menu-item${active?" tlr-dashboard-page-menu-item-active":""}`} type="button" role="menuitem" aria-current={active?"page":undefined}
                             onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();selectFreshDashboardPage(page);}}
                             onClick={e=>e.preventDefault()}
-                            style={{position:"relative",width:"100%",height:30,padding:isDashRTL?"0 10px 0 12px":"0 12px 0 10px",display:"grid",gridTemplateColumns:isDashRTL?"minmax(0,1fr) 14px":"14px minmax(0,1fr)",alignItems:"center",columnGap:9,border:0,outline:"none",background:active?"rgba(38,67,247,0.15)":"transparent",color:active?c.acL:c.ts,opacity:1,fontSize:8.9,fontWeight:active?900:850,letterSpacing:"0.035em",fontFamily:F,cursor:"default",textAlign:isDashRTL?"right":"left",textTransform:"uppercase",boxSizing:"border-box"}}>
+                            style={{position:"relative",width:"100%",height:30,padding:isDashRTL?"0 10px 0 12px":"0 12px 0 10px",display:"grid",gridTemplateColumns:isDashRTL?"minmax(0,1fr) 14px":"14px minmax(0,1fr)",alignItems:"center",columnGap:9,border:0,outline:"none",background:active?"rgba(48,144,255,0.15)":"transparent",color:active?c.acL:c.ts,opacity:1,fontSize:8.9,fontWeight:active?900:850,letterSpacing:"0.035em",fontFamily:F,cursor:"default",textAlign:isDashRTL?"right":"left",textTransform:"uppercase",boxSizing:"border-box"}}>
                             {active && <span style={{position:"absolute",left:isDashRTL?"auto":0,right:isDashRTL?0:"auto",top:8,bottom:8,width:1,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 7px ${c.acG}`}}/>}
                             <DashboardPageIcon id={page.id} size={14} color={active?c.acL:c.ts}/>
                             <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{page.label}</span>
@@ -24801,7 +24801,7 @@ const TalariaV8b = () => {
               <div className={`tlr-dashboard-source-switch-redesign${dashSnapshotTopModeOpen?" tlr-dashboard-source-switch-open":""}`} role="button" tabIndex={0} aria-haspopup="menu" aria-expanded={dashSnapshotTopModeOpen} aria-label={`${dashTxt("Snapshot Mode","وضع اللمحة")}: ${activeSnapshotTopModeMeta.label}`}
                 onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();setDashSnapshotTopModeOpen(v=>!v);setDashFreshNavOpen(false);setDashFiltersOpen(false);setDashLibraryOpen(false);setDashCompareOpen(false);}}
                 onKeyDown={libraryKeyActivate(()=>{setDashSnapshotTopModeOpen(v=>!v);setDashFreshNavOpen(false);setDashFiltersOpen(false);setDashLibraryOpen(false);setDashCompareOpen(false);})}
-                style={{"--tlr-source-accent":c.acL,height:38,width:"100%",padding:"0 8px",display:"grid",gridTemplateColumns:"14px minmax(0,1fr) 14px",alignItems:"center",columnGap:6,position:"relative",background:dashSnapshotTopModeOpen?"rgba(38,67,247,0.16)":"rgba(15,19,34,0.92)",border:`1px solid ${dashSnapshotTopModeOpen?`${c.acL}66`:"rgba(140,160,255,0.14)"}`,boxShadow:dashSnapshotTopModeOpen?`inset 0 1px 0 rgba(255,255,255,0.05),0 0 13px -10px ${c.acL}`:"inset 0 1px 0 rgba(255,255,255,0.04)",color:dashSnapshotTopModeOpen?c.acL:c.ts,boxSizing:"border-box",cursor:"default",transition:"none",overflow:"hidden",fontFamily:F}}>
+                style={{"--tlr-source-accent":c.acL,height:38,width:"100%",padding:"0 8px",display:"grid",gridTemplateColumns:"14px minmax(0,1fr) 14px",alignItems:"center",columnGap:6,position:"relative",background:dashSnapshotTopModeOpen?"rgba(48,144,255,0.16)":"rgba(15,19,34,0.92)",border:`1px solid ${dashSnapshotTopModeOpen?`${c.acL}66`:"rgba(140,160,255,0.14)"}`,boxShadow:dashSnapshotTopModeOpen?`inset 0 1px 0 rgba(255,255,255,0.05),0 0 13px -10px ${c.acL}`:"inset 0 1px 0 rgba(255,255,255,0.04)",color:dashSnapshotTopModeOpen?c.acL:c.ts,boxSizing:"border-box",cursor:"default",transition:"none",overflow:"hidden",fontFamily:F}}>
                 <svg data-tlr-upper-icon="true" width={14} height={14} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{display:"block",color:dashSnapshotTopModeOpen?c.acL:c.ts}}>
                   <path d="M3 4h10M3 8h10M3 12h10" stroke="currentColor" strokeWidth="1.7" strokeLinecap="square"/>
                 </svg>
@@ -24821,7 +24821,7 @@ const TalariaV8b = () => {
                       <button key={option.id} className={`tlr-dashboard-page-menu-item${active?" tlr-dashboard-page-menu-item-active":""}`} type="button" role="menuitem" aria-current={active?"page":undefined}
                         onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();setDashSnapshotTopMode(option.id);setDashSnapshotTopModeOpen(false);}}
                         onClick={e=>e.preventDefault()}
-                        style={{position:"relative",width:"100%",height:30,padding:isDashRTL?"0 10px 0 12px":"0 12px 0 10px",display:"flex",alignItems:"center",border:0,outline:"none",background:active?"rgba(38,67,247,0.15)":"transparent",color:active?c.acL:c.ts,opacity:1,fontSize:8.9,fontWeight:active?900:850,letterSpacing:"0.035em",fontFamily:F,cursor:"default",textAlign:isDashRTL?"right":"left",textTransform:"uppercase",boxSizing:"border-box"}}>
+                        style={{position:"relative",width:"100%",height:30,padding:isDashRTL?"0 10px 0 12px":"0 12px 0 10px",display:"flex",alignItems:"center",border:0,outline:"none",background:active?"rgba(48,144,255,0.15)":"transparent",color:active?c.acL:c.ts,opacity:1,fontSize:8.9,fontWeight:active?900:850,letterSpacing:"0.035em",fontFamily:F,cursor:"default",textAlign:isDashRTL?"right":"left",textTransform:"uppercase",boxSizing:"border-box"}}>
                         {active && <span style={{position:"absolute",left:isDashRTL?"auto":0,right:isDashRTL?0:"auto",top:8,bottom:8,width:1,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 7px ${c.acG}`}}/>}
                         <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{option.label}</span>
                       </button>
@@ -25249,7 +25249,7 @@ const TalariaV8b = () => {
                                 performDashboardTradesCsvExport(mapCopy, m.exportRows, fileName);
                               })}
                               aria-disabled={!mappingReady}
-                              style={{height:34,padding:"0 16px",display:"flex",alignItems:"center",justifyContent:"center",background:mappingReady ? "rgba(74,106,255,0.22)" : "rgba(15,19,34,0.55)",border:`1px solid ${mappingReady ? "rgba(74,106,255,0.45)" : c.brH}`,color:mappingReady ? c.tx : c.tm,fontSize:11,fontWeight:900,fontFamily:F,cursor:"default",opacity:mappingReady ? 1 : 0.5,pointerEvents:mappingReady ? "auto" : "none"}}>
+                              style={{height:34,padding:"0 16px",display:"flex",alignItems:"center",justifyContent:"center",background:mappingReady ? "rgba(48,144,255,0.22)" : "rgba(15,19,34,0.55)",border:`1px solid ${mappingReady ? "rgba(48,144,255,0.45)" : c.brH}`,color:mappingReady ? c.tx : c.tm,fontSize:11,fontWeight:900,fontFamily:F,cursor:"default",opacity:mappingReady ? 1 : 0.5,pointerEvents:mappingReady ? "auto" : "none"}}>
                               {dashTxt("Export CSV","تصدير CSV")}
                             </div>
                           ) : (
@@ -25267,7 +25267,7 @@ const TalariaV8b = () => {
                                 void importDashboardTradesCsv(m.file, mapCopy);
                               })}
                               aria-disabled={!mappingReady || dashTradesImportBusy}
-                              style={{height:34,padding:"0 16px",display:"flex",alignItems:"center",justifyContent:"center",background:mappingReady ? "rgba(74,106,255,0.22)" : "rgba(15,19,34,0.55)",border:`1px solid ${mappingReady ? "rgba(74,106,255,0.45)" : c.brH}`,color:mappingReady ? c.tx : c.tm,fontSize:11,fontWeight:900,fontFamily:F,cursor:"default",opacity:mappingReady && !dashTradesImportBusy ? 1 : 0.5,pointerEvents:mappingReady && !dashTradesImportBusy ? "auto" : "none"}}>
+                              style={{height:34,padding:"0 16px",display:"flex",alignItems:"center",justifyContent:"center",background:mappingReady ? "rgba(48,144,255,0.22)" : "rgba(15,19,34,0.55)",border:`1px solid ${mappingReady ? "rgba(48,144,255,0.45)" : c.brH}`,color:mappingReady ? c.tx : c.tm,fontSize:11,fontWeight:900,fontFamily:F,cursor:"default",opacity:mappingReady && !dashTradesImportBusy ? 1 : 0.5,pointerEvents:mappingReady && !dashTradesImportBusy ? "auto" : "none"}}>
                               {dashTxt("Import trades","استيراد الصفقات")}
                             </div>
                           )}
@@ -25413,7 +25413,7 @@ const TalariaV8b = () => {
             const activeIdx = Math.max(0, stepOrder.indexOf(p.phase));
             return (
               <div style={{flexShrink:0,padding:"0 0 12px",background:c.bg,boxSizing:"border-box"}}>
-                <div style={{width:"100%",maxWidth:1534,margin:"0 auto",padding:"12px 14px",border:`1px solid ${isError ? "rgba(255,80,104,0.35)" : isSuccess ? "rgba(0,212,161,0.28)" : "rgba(74,106,255,0.28)"}`,background:isError ? "rgba(255,80,104,0.08)" : isSuccess ? "rgba(0,212,161,0.07)" : "rgba(74,106,255,0.08)",boxShadow:`inset 0 1px 0 rgba(255,255,255,0.03)`}}>
+                <div style={{width:"100%",maxWidth:1534,margin:"0 auto",padding:"12px 14px",border:`1px solid ${isError ? "rgba(255,80,104,0.35)" : isSuccess ? "rgba(0,212,161,0.28)" : "rgba(48,144,255,0.28)"}`,background:isError ? "rgba(255,80,104,0.08)" : isSuccess ? "rgba(0,212,161,0.07)" : "rgba(48,144,255,0.08)",boxShadow:`inset 0 1px 0 rgba(255,255,255,0.03)`}}>
                   <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,marginBottom:10}}>
                     <div style={{minWidth:0,flex:"1 1 auto"}}>
                       <div style={{fontSize:8.5,fontWeight:950,color:accent,letterSpacing:"0.08em",textTransform:"uppercase",fontFamily:F}}>
@@ -25446,7 +25446,7 @@ const TalariaV8b = () => {
                         const active = step.id === p.phase;
                         const color = done ? c.gn : active ? c.acL : c.tm;
                         return (
-                          <div key={step.id} style={{minWidth:0,padding:"6px 8px",border:`1px solid ${active ? "rgba(74,106,255,0.35)" : done ? "rgba(0,212,161,0.22)" : c.brH}`,background:active ? "rgba(74,106,255,0.12)" : "rgba(15,19,34,0.55)"}}>
+                          <div key={step.id} style={{minWidth:0,padding:"6px 8px",border:`1px solid ${active ? "rgba(48,144,255,0.35)" : done ? "rgba(0,212,161,0.22)" : c.brH}`,background:active ? "rgba(48,144,255,0.12)" : "rgba(15,19,34,0.55)"}}>
                             <div style={{fontSize:8,fontWeight:950,color,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
                               {done ? "✓ " : active ? "… " : ""}{step.label}
                             </div>
@@ -26371,9 +26371,9 @@ const TalariaV8b = () => {
               pushPriceRows("TP", priceStructure.targets, c.gn, "TPs");
               detailPriceRows.push(["Stop", record.values.stopLoss.text, c.rd]);
               pushPriceRows("Exit", priceStructure.exits, c.gold, "exits");
-              const expandedTradeBorder = "rgba(74,106,255,0.44)";
+              const expandedTradeBorder = "rgba(48,144,255,0.44)";
               return (
-                <div className="tlr-dashboard-trade-detail" style={{gridColumn:"1 / -1",background:"rgba(10,14,26,0.98)",borderTop:"none",borderRight:`1px solid ${expandedTradeBorder}`,borderBottom:`1px solid ${expandedTradeBorder}`,borderLeft:`1px solid ${expandedTradeBorder}`,boxShadow:`inset 3px 0 0 rgba(74,106,255,0.78), inset 0 1px 0 rgba(255,255,255,0.025), 0 10px 24px rgba(0,0,0,0.22)`,padding:"10px 12px 11px",marginBottom:6,boxSizing:"border-box"}}>
+                <div className="tlr-dashboard-trade-detail" style={{gridColumn:"1 / -1",background:"rgba(10,14,26,0.98)",borderTop:"none",borderRight:`1px solid ${expandedTradeBorder}`,borderBottom:`1px solid ${expandedTradeBorder}`,borderLeft:`1px solid ${expandedTradeBorder}`,boxShadow:`inset 3px 0 0 rgba(48,144,255,0.78), inset 0 1px 0 rgba(255,255,255,0.025), 0 10px 24px rgba(0,0,0,0.22)`,padding:"10px 12px 11px",marginBottom:6,boxSizing:"border-box"}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,paddingBottom:8,borderBottom:`1px solid ${c.br}`,marginBottom:9}}>
                     <div style={{minWidth:0,display:"flex",alignItems:"center",gap:10}}>
                       <span style={{fontSize:13,fontWeight:950,color:c.tx,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{record.values.symbol.text} · <span style={{color:record.values.side.color}}>{record.values.side.text}</span></span>
@@ -26477,7 +26477,7 @@ const TalariaV8b = () => {
                       const custom = dashTradesCustomViews.some(customView => customView.id === view.id);
                       return (
                         <div key={view.id} className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0} aria-pressed={active} onPointerDown={libraryPointerActivate(()=>selectTradesView(view.id))} onKeyDown={libraryKeyActivate(()=>selectTradesView(view.id))}
-                          style={{height:26,padding:custom?"0 18px 3px 10px":"0 10px 3px",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",background:active?"rgba(38,67,247,0.16)":"transparent",color:active?c.acL:c.ts,border:0,fontSize:8.7,fontWeight:950,letterSpacing:"0.075em",textTransform:"uppercase",fontFamily:F,boxShadow:active?`0 8px 14px -12px ${c.acL}`:"none",cursor:"default",overflow:"visible","--tlr-add-hover-bg":"rgba(38,67,247,0.18)","--tlr-add-hover-color":c.acL,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":`0 8px 16px -14px ${c.acL}`,"--tlr-add-active-bg":"rgba(38,67,247,0.24)","--tlr-add-active-color":c.acL,"--tlr-add-active-border":"transparent","--tlr-add-active-shadow":`0 6px 12px -12px ${c.acL}`}}>
+                          style={{height:26,padding:custom?"0 18px 3px 10px":"0 10px 3px",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",background:active?"rgba(48,144,255,0.16)":"transparent",color:active?c.acL:c.ts,border:0,fontSize:8.7,fontWeight:950,letterSpacing:"0.075em",textTransform:"uppercase",fontFamily:F,boxShadow:active?`0 8px 14px -12px ${c.acL}`:"none",cursor:"default",overflow:"visible","--tlr-add-hover-bg":"rgba(48,144,255,0.18)","--tlr-add-hover-color":c.acL,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":`0 8px 16px -14px ${c.acL}`,"--tlr-add-active-bg":"rgba(48,144,255,0.24)","--tlr-add-active-color":c.acL,"--tlr-add-active-border":"transparent","--tlr-add-active-shadow":`0 6px 12px -12px ${c.acL}`}}>
                           <span style={{minWidth:0,maxWidth:custom?128:undefined,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{view.label}</span>
                           {custom && (
                             <button
@@ -26494,7 +26494,7 @@ const TalariaV8b = () => {
                               </svg>
                             </button>
                           )}
-                          <span aria-hidden="true" style={{position:"absolute",left:"50%",bottom:1,width:active?36:28,height:1,transform:"translateX(-50%)",background:`linear-gradient(90deg,transparent,${active?c.acL:"rgba(140,160,255,0.74)"},transparent)`,boxShadow:`0 0 ${active?9:6}px ${active?c.acL:"rgba(74,106,255,0.45)"}`,opacity:active?1:0.72,pointerEvents:"none"}}/>
+                          <span aria-hidden="true" style={{position:"absolute",left:"50%",bottom:1,width:active?36:28,height:1,transform:"translateX(-50%)",background:`linear-gradient(90deg,transparent,${active?c.acL:"rgba(140,160,255,0.74)"},transparent)`,boxShadow:`0 0 ${active?9:6}px ${active?c.acL:"rgba(48,144,255,0.45)"}`,opacity:active?1:0.72,pointerEvents:"none"}}/>
                         </div>
                       );
                     })}
@@ -26582,7 +26582,7 @@ const TalariaV8b = () => {
                         aria-label="Sort trades"
                         onPointerDown={libraryPointerActivate(()=>{setDashTradesColumnsOpen(false);setDashTradesSortOpen(v=>!v);})}
                         onKeyDown={libraryKeyActivate(()=>{setDashTradesColumnsOpen(false);setDashTradesSortOpen(v=>!v);})}
-                        style={{height:28,width:154,display:"grid",gridTemplateColumns:"minmax(0,1fr) 10px",alignItems:"center",columnGap:8,position:"relative",zIndex:21,background:dashTradesSortOpen?"rgba(18,22,40,0.98)":"rgba(15,19,34,0.96)",border:`1px solid ${dashTradesSortOpen?`${c.acL}70`:c.brH}`,boxShadow:dashTradesSortOpen?`inset 0 1px 0 rgba(255,255,255,0.055),0 0 12px -9px ${c.acL}`:"inset 0 1px 0 rgba(255,255,255,0.035)",color:dashTradesSortOpen?c.acL:c.tx,padding:"0 9px 0 10px",boxSizing:"border-box",fontFamily:F,cursor:"default",overflow:"hidden","--tlr-add-hover-bg":"rgba(255,255,255,0.06)","--tlr-add-hover-color":c.acL,"--tlr-add-hover-border":"rgba(74,106,255,0.42)","--tlr-add-hover-shadow":"0 0 12px rgba(74,106,255,0.14)","--tlr-add-active-bg":"rgba(74,106,255,0.14)"}}>
+                        style={{height:28,width:154,display:"grid",gridTemplateColumns:"minmax(0,1fr) 10px",alignItems:"center",columnGap:8,position:"relative",zIndex:21,background:dashTradesSortOpen?"rgba(18,22,40,0.98)":"rgba(15,19,34,0.96)",border:`1px solid ${dashTradesSortOpen?`${c.acL}70`:c.brH}`,boxShadow:dashTradesSortOpen?`inset 0 1px 0 rgba(255,255,255,0.055),0 0 12px -9px ${c.acL}`:"inset 0 1px 0 rgba(255,255,255,0.035)",color:dashTradesSortOpen?c.acL:c.tx,padding:"0 9px 0 10px",boxSizing:"border-box",fontFamily:F,cursor:"default",overflow:"hidden","--tlr-add-hover-bg":"rgba(255,255,255,0.06)","--tlr-add-hover-color":c.acL,"--tlr-add-hover-border":"rgba(48,144,255,0.42)","--tlr-add-hover-shadow":"0 0 12px rgba(48,144,255,0.14)","--tlr-add-active-bg":"rgba(48,144,255,0.14)"}}>
                         {dashTradesSortOpen && (
                           <span aria-hidden="true" style={{position:"absolute",left:0,top:"23%",bottom:"23%",width:1,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 7px ${c.acL}`}}/>
                         )}
@@ -26605,7 +26605,7 @@ const TalariaV8b = () => {
                           <span aria-hidden="true" style={{position:"absolute",left:0,right:0,top:0,height:1,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 12px ${c.acL}`,pointerEvents:"none"}}/>
                           <div className="tlr-scroll" style={{minHeight:0,overflowY:"auto",paddingRight:2}}>
                             <div className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0} aria-pressed={!activeSort.key} onPointerDown={libraryPointerActivate(()=>chooseTradesSort(null, null))} onKeyDown={libraryKeyActivate(()=>chooseTradesSort(null, null))}
-                              style={{height:28,display:"grid",gridTemplateColumns:"minmax(0,1fr) 28px",alignItems:"center",gap:8,padding:"0 8px",marginBottom:4,background:!activeSort.key?"rgba(38,67,247,0.14)":"transparent",border:"none",color:!activeSort.key?c.acL:c.ts,fontSize:8.4,fontWeight:950,letterSpacing:"0.07em",textTransform:"uppercase",boxSizing:"border-box",cursor:"default","--tlr-add-hover-bg":"rgba(255,255,255,0.055)","--tlr-add-hover-color":c.acL}}>
+                              style={{height:28,display:"grid",gridTemplateColumns:"minmax(0,1fr) 28px",alignItems:"center",gap:8,padding:"0 8px",marginBottom:4,background:!activeSort.key?"rgba(48,144,255,0.14)":"transparent",border:"none",color:!activeSort.key?c.acL:c.ts,fontSize:8.4,fontWeight:950,letterSpacing:"0.07em",textTransform:"uppercase",boxSizing:"border-box",cursor:"default","--tlr-add-hover-bg":"rgba(255,255,255,0.055)","--tlr-add-hover-color":c.acL}}>
                               <span style={{display:"inline-flex",alignItems:"center",gap:6,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                                 <TableSortDefaultGlyphs active={!activeSort.key} accent={c.acL} muted={c.tm} />
                                 Default
@@ -26650,7 +26650,7 @@ const TalariaV8b = () => {
                           onKeyDown={sortable?libraryKeyActivate(()=>setSortFor(key)):undefined}
                           onMouseEnter={sortable?()=>setHov(hoverKey):undefined}
                           onMouseLeave={sortable?()=>setHov(null):undefined}
-                          style={{minWidth:0,height:"100%",position:"relative",display:"flex",alignItems:"center",justifyContent:"center",gap:3,color:active?c.acL:isHov?c.acL:c.tm,fontSize:8,fontWeight:800,letterSpacing:"0.08em",textTransform:"uppercase",cursor:sortable?"default":"inherit",fontFamily:F,textAlign:"center",userSelect:"none",boxSizing:"border-box",padding:"0 3px",background:isHov&&!active?"rgba(38,67,247,0.14)":"transparent",boxShadow:active||isHov?`inset 0 -1px 0 ${c.acL}, 0 7px 13px -14px ${c.acL}`:"none",transition:"color 0.08s, background 0.08s, box-shadow 0.08s"}}>
+                          style={{minWidth:0,height:"100%",position:"relative",display:"flex",alignItems:"center",justifyContent:"center",gap:3,color:active?c.acL:isHov?c.acL:c.tm,fontSize:8,fontWeight:800,letterSpacing:"0.08em",textTransform:"uppercase",cursor:sortable?"default":"inherit",fontFamily:F,textAlign:"center",userSelect:"none",boxSizing:"border-box",padding:"0 3px",background:isHov&&!active?"rgba(48,144,255,0.14)":"transparent",boxShadow:active||isHov?`inset 0 -1px 0 ${c.acL}, 0 7px 13px -14px ${c.acL}`:"none",transition:"color 0.08s, background 0.08s, box-shadow 0.08s"}}>
                           <span style={{minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textAlign:"center",boxSizing:"border-box"}}>{columnDefs[key].label}</span>
                           {sortable && (
                             <TableSortGlyphs active={active} dir={sortDir} hover={isHov && !active} accent={c.acL} muted={c.tm} />
@@ -26670,7 +26670,7 @@ const TalariaV8b = () => {
                             e.preventDefault();
                             toggleExpandedTradeRow(record.key);
                           }}
-                          style={{display:"grid",gridTemplateColumns,alignItems:"center",minHeight:46,borderTop:`1px solid ${expanded ? "rgba(74,106,255,0.44)" : "transparent"}`,borderRight:`1px solid ${expanded ? "rgba(74,106,255,0.44)" : "transparent"}`,borderBottom:expanded ? "none" : `1px solid ${c.br}`,borderLeft:`1px solid ${expanded ? "rgba(74,106,255,0.44)" : "transparent"}`,background:expanded?"rgba(17,24,54,0.94)":"rgba(6,9,18,0.98)",boxShadow:expanded?"inset 3px 0 0 rgba(74,106,255,0.78)":"none",padding:`0 ${tradesTablePadX}px`,columnGap:tradesColumnGap,cursor:"default",boxSizing:"border-box"}}>
+                          style={{display:"grid",gridTemplateColumns,alignItems:"center",minHeight:46,borderTop:`1px solid ${expanded ? "rgba(48,144,255,0.44)" : "transparent"}`,borderRight:`1px solid ${expanded ? "rgba(48,144,255,0.44)" : "transparent"}`,borderBottom:expanded ? "none" : `1px solid ${c.br}`,borderLeft:`1px solid ${expanded ? "rgba(48,144,255,0.44)" : "transparent"}`,background:expanded?"rgba(17,24,54,0.94)":"rgba(6,9,18,0.98)",boxShadow:expanded?"inset 3px 0 0 rgba(48,144,255,0.78)":"none",padding:`0 ${tradesTablePadX}px`,columnGap:tradesColumnGap,cursor:"default",boxSizing:"border-box"}}>
                           {activeColumnKeys.map(key => {
                             if (key === "expand") {
                               return (
@@ -26678,7 +26678,7 @@ const TalariaV8b = () => {
                                   <div className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0} aria-label={expanded ? "Collapse trade details" : "Expand trade details"} aria-pressed={expanded}
                                     onPointerDown={e=>{e.stopPropagation(); libraryPointerActivate(()=>toggleExpandedTradeRow(record.key))(e);}}
                                     onKeyDown={e=>{e.stopPropagation(); libraryKeyActivate(()=>toggleExpandedTradeRow(record.key))(e);}}
-                                    style={{width:20,height:20,display:"grid",placeItems:"center",padding:0,background:expanded?"rgba(38,67,247,0.18)":"rgba(15,19,34,0.96)",border:`1px solid ${expanded?`${c.acL}66`:c.brH}`,boxShadow:expanded?`0 0 10px -7px ${c.acL}, inset 0 1px 0 rgba(255,255,255,0.06)`:"inset 0 1px 0 rgba(255,255,255,0.035)",color:expanded?c.acL:c.ts,fontSize:15,fontWeight:900,lineHeight:1,cursor:"default",fontFamily:F}}>
+                                    style={{width:20,height:20,display:"grid",placeItems:"center",padding:0,background:expanded?"rgba(48,144,255,0.18)":"rgba(15,19,34,0.96)",border:`1px solid ${expanded?`${c.acL}66`:c.brH}`,boxShadow:expanded?`0 0 10px -7px ${c.acL}, inset 0 1px 0 rgba(255,255,255,0.06)`:"inset 0 1px 0 rgba(255,255,255,0.035)",color:expanded?c.acL:c.ts,fontSize:15,fontWeight:900,lineHeight:1,cursor:"default",fontFamily:F}}>
                                       {expanded ? "-" : "+"}
                                   </div>
                                 </div>
@@ -27619,7 +27619,7 @@ const TalariaV8b = () => {
               const currentPoly = poly(axis => Math.max(.08, axis.value / 100));
               return (
                 <svg width="100%" height={300} viewBox={`0 0 ${size} ${size}`} aria-label="Strategy radar" style={{display:"block",maxWidth:330}}>
-                  <polygon points={poly(1)} fill="rgba(74,106,255,0.03)" stroke={c.brH} strokeWidth="1.2"/>
+                  <polygon points={poly(1)} fill="rgba(48,144,255,0.03)" stroke={c.brH} strokeWidth="1.2"/>
                   {[.25,.5,.75,1].map(level => (
                     <polygon key={`radar-grid-${level}`} points={poly(level)} fill="none" stroke={level===1?c.brH:c.br} strokeWidth="1"/>
                   ))}
@@ -27634,7 +27634,7 @@ const TalariaV8b = () => {
                     );
                   })}
                   <polygon points={comparePoly} fill="none" stroke={compareColor} strokeWidth="1.5" opacity=".72"/>
-                  <polygon points={currentPoly} fill="rgba(74,106,255,0.18)" stroke={c.acL} strokeWidth="1.5" style={{filter:`drop-shadow(0 0 4px ${c.acG})`}}/>
+                  <polygon points={currentPoly} fill="rgba(48,144,255,0.18)" stroke={c.acL} strokeWidth="1.5" style={{filter:`drop-shadow(0 0 4px ${c.acG})`}}/>
                   {axes.map((axis,index) => {
                     const p = point(index, Math.max(.08, axis.value / 100));
                     const compare = compareValues[index] ?? axis.value;
@@ -29596,7 +29596,7 @@ const TalariaV8b = () => {
                           alignItems: "center",
                           gap: 8,
                           border: "none",
-                          background: active ? "rgba(38,67,247,0.16)" : "rgb(7, 10, 20)",
+                          background: active ? "rgba(48,144,255,0.16)" : "rgb(7, 10, 20)",
                           color: option.available ? (active ? c.acL : c.tx) : c.tm,
                           fontFamily: scoreFont,
                           cursor: option.available ? "default" : "not-allowed",
@@ -29648,7 +29648,7 @@ const TalariaV8b = () => {
                       alignItems: "center",
                       gap: 7,
                       border: `1px solid ${dashScoreCompareOpen ? c.acL : c.brH}`,
-                      background: dashScoreCompareOpen ? "rgba(38,67,247,0.13)" : c.sf,
+                      background: dashScoreCompareOpen ? "rgba(48,144,255,0.13)" : c.sf,
                       color: c.tx,
                       fontFamily: scoreFont,
                       cursor: "default",
@@ -31738,11 +31738,11 @@ const TalariaV8b = () => {
                               "--tlr-add-hover-bg":"#536fff",
                               "--tlr-add-hover-color":"#fff",
                               "--tlr-add-hover-border":"#536fff",
-                              "--tlr-add-hover-shadow":"0 0 13px rgba(74,106,255,0.46)",
+                              "--tlr-add-hover-shadow":"0 0 13px rgba(48,144,255,0.46)",
                               "--tlr-add-active-bg":"#3f5df6",
                               "--tlr-add-active-color":"#fff",
                               "--tlr-add-active-border":"#3f5df6",
-                              "--tlr-add-active-shadow":"0 0 8px rgba(74,106,255,0.34)",
+                              "--tlr-add-active-shadow":"0 0 8px rgba(48,144,255,0.34)",
                             }}
                           >
                             Open {targetLabel}
@@ -35050,7 +35050,7 @@ const TalariaV8b = () => {
                   }}
                   onMouseEnter={event=>{
                     event.currentTarget.style.color = c.acL;
-                    event.currentTarget.style.background = "rgba(38,67,247,0.12)";
+                    event.currentTarget.style.background = "rgba(48,144,255,0.12)";
                   }}
                   onMouseLeave={event=>{
                     event.currentTarget.style.color = c.tm;
@@ -35190,8 +35190,8 @@ const TalariaV8b = () => {
                             setDashReturnsMaEnabled(prev => !prev);
                             setDashReturnsCurveHover(null);
                           }}
-                          onMouseEnter={event=>{event.currentTarget.style.background=returnsMaEnabled?"rgba(38,67,247,0.26)":"rgba(38,67,247,0.10)";event.currentTarget.style.borderColor=`${c.acL}88`;}}
-                          onMouseLeave={event=>{event.currentTarget.style.background=returnsMaEnabled?"rgba(38,67,247,0.18)":"rgba(12,16,30,0.98)";event.currentTarget.style.borderColor=returnsMaEnabled?`${c.acL}77`:c.brH;event.currentTarget.style.transform="translateY(0)";}}
+                          onMouseEnter={event=>{event.currentTarget.style.background=returnsMaEnabled?"rgba(48,144,255,0.26)":"rgba(48,144,255,0.10)";event.currentTarget.style.borderColor=`${c.acL}88`;}}
+                          onMouseLeave={event=>{event.currentTarget.style.background=returnsMaEnabled?"rgba(48,144,255,0.18)":"rgba(12,16,30,0.98)";event.currentTarget.style.borderColor=returnsMaEnabled?`${c.acL}77`:c.brH;event.currentTarget.style.transform="translateY(0)";}}
                           onMouseDown={event=>{event.currentTarget.style.transform="translateY(1px)";}}
                           onMouseUp={event=>{event.currentTarget.style.transform="translateY(0)";}}
                           style={{
@@ -35199,7 +35199,7 @@ const TalariaV8b = () => {
                             width:34,
                             height:16,
                             border:`1px solid ${returnsMaEnabled ? `${c.acL}77` : c.brH}`,
-                            background:returnsMaEnabled ? "rgba(38,67,247,0.18)" : "rgba(12,16,30,0.98)",
+                            background:returnsMaEnabled ? "rgba(48,144,255,0.18)" : "rgba(12,16,30,0.98)",
                             boxShadow:returnsMaEnabled ? `0 0 12px -8px ${c.acL}, inset 0 1px 0 rgba(255,255,255,0.05)` : "inset 0 1px 0 rgba(255,255,255,0.035)",
                             borderRadius:999,
                             cursor:"default",
@@ -41457,7 +41457,7 @@ const TalariaV8b = () => {
                     onPointerDown={e=>{e.preventDefault();toggleDashLibrary();}}
                     onClick={e=>e.preventDefault()}
                     onKeyDown={libraryKeyActivate(toggleDashLibrary)}
-                    style={{"--tlr-source-accent":c.acL,height:38,width:dashboardSourceButtonWidth,flex:`0 0 ${dashboardSourceButtonWidth}px`,padding:"0 10px 0 12px",display:"grid",gridTemplateColumns:dashboardLibraryStateMarks?"auto minmax(0,1fr)":"minmax(0,1fr)",columnGap:dashboardLibraryStateMarks?8:0,alignItems:"center",position:"relative",background:dashLibraryOpen?"rgba(38,67,247,0.16)":"rgba(15,19,34,0.92)",border:`1px solid ${dashLibraryOpen?`${c.acL}66`:"rgba(140,160,255,0.14)"}`,boxShadow:dashLibraryOpen?`inset 0 1px 0 rgba(255,255,255,0.05),0 0 13px -10px ${c.acL}`:"inset 0 1px 0 rgba(255,255,255,0.04)",color:dashLibraryOpen?c.acL:c.ts,boxSizing:"border-box",cursor:"default",transition:"none",overflow:"hidden",fontFamily:F}}>
+                    style={{"--tlr-source-accent":c.acL,height:38,width:dashboardSourceButtonWidth,flex:`0 0 ${dashboardSourceButtonWidth}px`,padding:"0 10px 0 12px",display:"grid",gridTemplateColumns:dashboardLibraryStateMarks?"auto minmax(0,1fr)":"minmax(0,1fr)",columnGap:dashboardLibraryStateMarks?8:0,alignItems:"center",position:"relative",background:dashLibraryOpen?"rgba(48,144,255,0.16)":"rgba(15,19,34,0.92)",border:`1px solid ${dashLibraryOpen?`${c.acL}66`:"rgba(140,160,255,0.14)"}`,boxShadow:dashLibraryOpen?`inset 0 1px 0 rgba(255,255,255,0.05),0 0 13px -10px ${c.acL}`:"inset 0 1px 0 rgba(255,255,255,0.04)",color:dashLibraryOpen?c.acL:c.ts,boxSizing:"border-box",cursor:"default",transition:"none",overflow:"hidden",fontFamily:F}}>
                     {dashboardLibraryStateMarks && <div style={{display:"flex",alignItems:"center",justifyContent:"center",justifySelf:"start",minWidth:16}}>{dashboardLibraryStateMarks}</div>}
                     <div style={{minWidth:0,width:"100%",display:"flex",flexDirection:"column",gap:3,justifyContent:"center",lineHeight:1}}>
                       <div data-tlr-upper-accent="true" style={{fontSize:8,fontWeight:900,color:c.acL,letterSpacing:"0.075em",textTransform:"uppercase",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1,textShadow:"none",textRendering:"geometricPrecision"}}>
@@ -41473,7 +41473,7 @@ const TalariaV8b = () => {
                   <div className={`tlr-dashboard-source-switch-redesign${dashboardMainFiltersActive?" tlr-dashboard-source-switch-open":""}`} role="button" tabIndex={0} aria-label={dashTxt("Filters","الفلاتر")}
                     onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();toggleDashFiltersWindow(e.currentTarget,"main");}}
                     onKeyDown={libraryKeyActivate(e=>toggleDashFiltersWindow(e.currentTarget,"main"))}
-                    style={{"--tlr-source-accent":c.acL,height:38,width:dashboardFilterButtonWidth,flex:`0 0 ${dashboardFilterButtonWidth}px`,padding:"0 8px 0 11px",display:"grid",gridTemplateColumns:activeDashboardFilterCount?"auto minmax(0,1fr) auto":"auto minmax(0,1fr)",alignItems:"center",columnGap:8,position:"relative",background:dashboardMainFiltersActive?"rgba(38,67,247,0.16)":activeDashboardFilterCount?"rgba(15,19,34,0.98)":"rgba(15,19,34,0.92)",border:`1px solid ${dashboardMainFiltersActive?`${c.acL}66`:"rgba(140,160,255,0.14)"}`,boxShadow:dashboardMainFiltersActive?`inset 0 1px 0 rgba(255,255,255,0.05),0 0 13px -10px ${c.acL}`:"inset 0 1px 0 rgba(255,255,255,0.04)",color:dashboardMainFiltersActive?c.acL:c.ts,boxSizing:"border-box",cursor:"default",transition:"none",overflow:"hidden",fontFamily:F}}>
+                    style={{"--tlr-source-accent":c.acL,height:38,width:dashboardFilterButtonWidth,flex:`0 0 ${dashboardFilterButtonWidth}px`,padding:"0 8px 0 11px",display:"grid",gridTemplateColumns:activeDashboardFilterCount?"auto minmax(0,1fr) auto":"auto minmax(0,1fr)",alignItems:"center",columnGap:8,position:"relative",background:dashboardMainFiltersActive?"rgba(48,144,255,0.16)":activeDashboardFilterCount?"rgba(15,19,34,0.98)":"rgba(15,19,34,0.92)",border:`1px solid ${dashboardMainFiltersActive?`${c.acL}66`:"rgba(140,160,255,0.14)"}`,boxShadow:dashboardMainFiltersActive?`inset 0 1px 0 rgba(255,255,255,0.05),0 0 13px -10px ${c.acL}`:"inset 0 1px 0 rgba(255,255,255,0.04)",color:dashboardMainFiltersActive?c.acL:c.ts,boxSizing:"border-box",cursor:"default",transition:"none",overflow:"hidden",fontFamily:F}}>
                     <svg data-tlr-upper-icon="true" width={14} height={14} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{display:"block",color:dashboardMainFiltersActive?c.acL:c.tm}}>
                       <path d="M2 4h12M4.5 8h7M6.5 12h3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="square"/>
                     </svg>
@@ -41586,7 +41586,7 @@ const TalariaV8b = () => {
                     onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();openAddTradeSourcePicker();}}
                     onClick={e=>e.preventDefault()}
                     onKeyDown={libraryKeyActivate(openAddTradeSourcePicker)}
-                    style={{height:36,padding:"0 20px",display:"flex",alignItems:"center",justifyContent:"center",gap:7,background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",border:"none",color:"rgba(255,255,255,0.96)",fontSize:13,fontWeight:800,letterSpacing:"0.08em",fontFamily:F,whiteSpace:"nowrap",cursor:"default",boxShadow:"0 2px 10px rgba(38,67,247,0.35)",boxSizing:"border-box",flexShrink:0,transition:dashControlTransition}}>
+                    style={{height:36,padding:"0 20px",display:"flex",alignItems:"center",justifyContent:"center",gap:7,background:"#3090FF",border:"none",color:"rgba(255,255,255,0.96)",fontSize:13,fontWeight:800,letterSpacing:"0.08em",fontFamily:F,whiteSpace:"nowrap",cursor:"default",boxShadow:"0 2px 10px rgba(48,144,255,0.35)",boxSizing:"border-box",flexShrink:0,transition:dashControlTransition}}>
                     <svg width={15} height={15} viewBox="0 0 24 24" fill="none" aria-hidden="true">
                       <path d="M12 4v16M4 12h16" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
                     </svg>
@@ -41911,7 +41911,7 @@ const TalariaV8b = () => {
                           <div style={{display:"grid",gridTemplateColumns:`90px repeat(${Math.min(4,Math.max(1,metrics.bySession.length))},1fr)`,gap:5}}>
                             <div/>
                             {metrics.bySession.slice(0,4).map(s=><div key={s.label} style={{...miniLabel,textAlign:"center"}}>{s.label}</div>)}
-                            {metrics.bySymbol.slice(0,6).map(sym=><React.Fragment key={sym.label}><div style={{fontSize:10,fontWeight:900,color:c.ts,fontFamily:F,alignSelf:"center"}}>{sym.label}</div>{metrics.bySession.slice(0,4).map(sess=>{const val=btDashHash(`${ds.id}-${sym.label}-${sess.label}`)%100;return <div key={sess.label} style={{height:34,background:`linear-gradient(135deg,rgba(38,67,247,${0.12+val/180}),rgba(0,212,161,${0.05+val/250}))`,border:`1px solid ${c.br}`,transform:`translateY(${-Math.round(val/24)}px)`,boxShadow:`0 ${Math.round(val/24)}px 0 rgba(0,0,0,0.25)`}}/>;})}</React.Fragment>)}
+                            {metrics.bySymbol.slice(0,6).map(sym=><React.Fragment key={sym.label}><div style={{fontSize:10,fontWeight:900,color:c.ts,fontFamily:F,alignSelf:"center"}}>{sym.label}</div>{metrics.bySession.slice(0,4).map(sess=>{const val=btDashHash(`${ds.id}-${sym.label}-${sess.label}`)%100;return <div key={sess.label} style={{height:34,background:`linear-gradient(135deg,rgba(48,144,255,${0.12+val/180}),rgba(0,212,161,${0.05+val/250}))`,border:`1px solid ${c.br}`,transform:`translateY(${-Math.round(val/24)}px)`,boxShadow:`0 ${Math.round(val/24)}px 0 rgba(0,0,0,0.25)`}}/>;})}</React.Fragment>)}
                           </div>
                         ), 4, null, 300, "heat3d")}
                         {card("Correlation Matrix", (
@@ -42089,7 +42089,7 @@ const TalariaV8b = () => {
                                   return (
                                     <div key={status.id} className={`tlr-library-status-tab${active ? " tlr-library-status-tab-active" : ""}`} role="tab" tabIndex={0} aria-selected={active} onPointerDown={librarySelectPointerActivate(()=>setDashLibraryStatusCat(status.id))} onKeyDown={libraryKeyActivate(()=>setDashLibraryStatusCat(status.id))} style={{height:26,display:"flex",alignItems:"center",gap:6,padding:"0 11px",color:active?color:c.ts,background:active?(color===c.gold?"rgba(201,168,76,0.10)":c.acD):"transparent",fontSize:10.5,fontWeight:900,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",cursor:"default",position:"relative",boxSizing:"border-box","--tlr-status-hover-bg":"rgba(255,255,255,0.06)","--tlr-lib-color":color}}>
                                       {status.label}
-                                      <span className="tlr-library-status-count" style={{fontSize:8.5,fontWeight:800,color:active?color:c.tm,background:active?(color===c.gold?"rgba(201,168,76,0.18)":"rgba(74,106,255,0.2)"):"rgba(255,255,255,0.07)",padding:"1px 5px",fontVariantNumeric:"tabular-nums"}}>{count}</span>
+                                      <span className="tlr-library-status-count" style={{fontSize:8.5,fontWeight:800,color:active?color:c.tm,background:active?(color===c.gold?"rgba(201,168,76,0.18)":"rgba(48,144,255,0.2)"):"rgba(255,255,255,0.07)",padding:"1px 5px",fontVariantNumeric:"tabular-nums"}}>{count}</span>
                                       <span style={{position:"absolute",left:0,right:0,bottom:-1,height:1,background:active?`linear-gradient(90deg,transparent,${color},transparent)`:"transparent",boxShadow:active?`0 0 7px ${color}`:"none"}}/>
                                     </div>
                                   );
@@ -42214,7 +42214,7 @@ const TalariaV8b = () => {
                                     <div key={status.id} className={`tlr-library-status-tab${active ? " tlr-library-status-tab-active" : ""}`} role="tab" tabIndex={0} aria-selected={active} onPointerDown={compareSelectPointerActivate(()=>setDashCompareStatusCat(status.id))} onKeyDown={libraryKeyActivate(()=>setDashCompareStatusCat(status.id))}
                                       style={{height:26,display:"flex",alignItems:"center",gap:6,padding:"0 11px",color:active?color:c.ts,background:active?(color===c.gold?"rgba(201,168,76,0.10)":c.acD):"transparent",fontSize:10.5,fontWeight:900,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",cursor:"default",position:"relative",boxSizing:"border-box","--tlr-status-hover-bg":"rgba(255,255,255,0.06)","--tlr-lib-color":color}}>
                                       {status.label}
-                                      <span className="tlr-library-status-count" style={{fontSize:8.5,fontWeight:800,color:active?color:c.tm,background:active?(color===c.gold?"rgba(201,168,76,0.18)":"rgba(74,106,255,0.2)"):"rgba(255,255,255,0.07)",padding:"1px 5px",fontVariantNumeric:"tabular-nums"}}>{count}</span>
+                                      <span className="tlr-library-status-count" style={{fontSize:8.5,fontWeight:800,color:active?color:c.tm,background:active?(color===c.gold?"rgba(201,168,76,0.18)":"rgba(48,144,255,0.2)"):"rgba(255,255,255,0.07)",padding:"1px 5px",fontVariantNumeric:"tabular-nums"}}>{count}</span>
                                       <span style={{position:"absolute",left:0,right:0,bottom:-1,height:1,background:active?`linear-gradient(90deg,transparent,${color},transparent)`:"transparent",boxShadow:active?`0 0 7px ${color}`:"none"}}/>
                                     </div>
                                   );
@@ -42823,7 +42823,7 @@ const TalariaV8b = () => {
                 };
                 const addTradeTimingFieldSurface = darkMode ? "rgba(18,23,38,0.94)" : c.well;
                 const addTradeTimingFieldBorder = darkMode ? "rgba(140,160,255,0.28)" : c.brH;
-                const addTradeTimingFieldShadow = darkMode ? "inset 0 1px 0 rgba(255,255,255,0.045), inset 0 -1px 0 rgba(38,67,247,0.10)" : "none";
+                const addTradeTimingFieldShadow = darkMode ? "inset 0 1px 0 rgba(255,255,255,0.045), inset 0 -1px 0 rgba(48,144,255,0.10)" : "none";
                 const addTradeTimingInputStyle = {
                   background:addTradeTimingFieldSurface,
                   borderColor:addTradeTimingFieldBorder,
@@ -43317,7 +43317,7 @@ const TalariaV8b = () => {
                             const active = selected.id === option.id;
                             return (
                               <div key={`excursion-mode-${option.id}`} className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0} aria-pressed={active} onPointerDown={libraryPointerActivate(()=>chooseMode(option.id))} onKeyDown={libraryKeyActivate(()=>chooseMode(option.id))}
-                                style={{position:"relative",height:26,display:"flex",alignItems:"center",gap:8,padding:"0 9px 0 13px",background:"transparent",boxSizing:"border-box",overflow:"hidden","--tlr-add-hover-bg":active?"transparent":"rgba(255,255,255,0.055)","--tlr-add-hover-color":active?c.acL:c.tx,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":"none","--tlr-add-active-bg":active?"transparent":"rgba(74,106,255,0.12)"}}>
+                                style={{position:"relative",height:26,display:"flex",alignItems:"center",gap:8,padding:"0 9px 0 13px",background:"transparent",boxSizing:"border-box",overflow:"hidden","--tlr-add-hover-bg":active?"transparent":"rgba(255,255,255,0.055)","--tlr-add-hover-color":active?c.acL:c.tx,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":"none","--tlr-add-active-bg":active?"transparent":"rgba(48,144,255,0.12)"}}>
                                 {active && <span aria-hidden="true" style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
                                 <span style={{fontSize:9.4,fontWeight:950,color:active?c.acL:c.ts,letterSpacing:"0.055em",textTransform:"uppercase",whiteSpace:"nowrap"}}>{option.label}</span>
                               </div>
@@ -43353,7 +43353,7 @@ const TalariaV8b = () => {
                           gap:8,
                           padding:"0 8px",
                           borderColor:marketLocked ? c.brH : dashAddTradeMarketOpen?c.acB:c.brH,
-                          boxShadow:marketLocked ? addTradeTimingFieldShadow : dashAddTradeMarketOpen?`inset 0 -1px 0 ${c.acL}, 0 0 0 1px rgba(74,106,255,0.10)`:addTradeTimingFieldShadow,
+                          boxShadow:marketLocked ? addTradeTimingFieldShadow : dashAddTradeMarketOpen?`inset 0 -1px 0 ${c.acL}, 0 0 0 1px rgba(48,144,255,0.10)`:addTradeTimingFieldShadow,
                           cursor: marketLocked ? "default" : undefined,
                           opacity: marketLocked ? 0.92 : 1,
                         }}>
@@ -43374,7 +43374,7 @@ const TalariaV8b = () => {
                                 onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}
                                 onMouseDown={e=>{e.currentTarget.style.background="rgba(255,255,255,0.07)";}}
                                 onMouseUp={e=>{e.currentTarget.style.background=active?"transparent":"rgba(255,255,255,0.045)";}}
-                                style={{position:"relative",height:26,display:"flex",alignItems:"center",padding:"0 10px 0 13px",background:"transparent",boxSizing:"border-box",transition:"none",overflow:"hidden","--tlr-add-hover-bg":active?"transparent":"rgba(255,255,255,0.055)","--tlr-add-hover-color":active?c.acL:c.tx,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":"none","--tlr-add-active-bg":active?"transparent":"rgba(74,106,255,0.12)"}}>
+                                style={{position:"relative",height:26,display:"flex",alignItems:"center",padding:"0 10px 0 13px",background:"transparent",boxSizing:"border-box",transition:"none",overflow:"hidden","--tlr-add-hover-bg":active?"transparent":"rgba(255,255,255,0.055)","--tlr-add-hover-color":active?c.acL:c.tx,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":"none","--tlr-add-active-bg":active?"transparent":"rgba(48,144,255,0.12)"}}>
                                 {active && <span aria-hidden="true" style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
                                 <span style={{minWidth:0,fontSize:10.2,fontWeight:850,color:active?c.acL:c.ts,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",letterSpacing:"0.01em",textTransform:"none"}}>{market}</span>
                               </div>
@@ -43439,7 +43439,7 @@ const TalariaV8b = () => {
                         onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}
                         onMouseDown={e=>{e.currentTarget.style.background="rgba(255,255,255,0.07)";}}
                         onMouseUp={e=>{e.currentTarget.style.background=active?"transparent":"rgba(255,255,255,0.045)";}}
-                        style={{position:"relative",height:26,display:"flex",alignItems:"center",padding:"0 10px 0 13px",background:"transparent",boxSizing:"border-box",transition:"none",overflow:"hidden","--tlr-add-hover-bg":active?"transparent":"rgba(255,255,255,0.055)","--tlr-add-hover-color":active?activeColor:c.tx,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":"none","--tlr-add-active-bg":active?"transparent":"rgba(74,106,255,0.12)"}}>
+                        style={{position:"relative",height:26,display:"flex",alignItems:"center",padding:"0 10px 0 13px",background:"transparent",boxSizing:"border-box",transition:"none",overflow:"hidden","--tlr-add-hover-bg":active?"transparent":"rgba(255,255,255,0.055)","--tlr-add-hover-color":active?activeColor:c.tx,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":"none","--tlr-add-active-bg":active?"transparent":"rgba(48,144,255,0.12)"}}>
                         {active && <span aria-hidden="true" style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${activeColor},transparent)`,boxShadow:`0 0 6px ${activeGlow}`,pointerEvents:"none"}}/>}
                         <span style={{minWidth:0,fontSize:10.2,fontWeight:850,color:active?activeColor:c.ts,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",letterSpacing:"0.01em",textTransform:"none"}}>{option.label}</span>
                       </div>
@@ -43491,7 +43491,7 @@ const TalariaV8b = () => {
                             )}
                             <div className="tlr-scroll" style={{maxHeight:listMaxHeight,overflowY:"auto",overflowX:"hidden",padding:0}}>
                             {visiblePinnedOptions.length > 0 && (
-                              <div style={{padding:"5px 0 6px",borderBottom:visibleOptions.length ? `1px solid ${c.br}` : "none",background:"rgba(74,106,255,0.025)"}}>
+                              <div style={{padding:"5px 0 6px",borderBottom:visibleOptions.length ? `1px solid ${c.br}` : "none",background:"rgba(48,144,255,0.025)"}}>
                                 <div style={{height:18,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 10px 0 13px",boxSizing:"border-box"}}>
                                   <span style={{fontSize:7.8,fontWeight:950,color:props.pinnedColor || props.topOptionsColor || c.acL,letterSpacing:"0.09em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
                                     {props.pinnedLabel || dashTxt("Used in this journal","مستخدمة في هذه اليومية")}
@@ -43556,7 +43556,7 @@ const TalariaV8b = () => {
                         onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}
                         onMouseDown={e=>{e.currentTarget.style.background="rgba(255,255,255,0.07)";}}
                         onMouseUp={e=>{e.currentTarget.style.background=active?"transparent":"rgba(255,255,255,0.045)";}}
-                        style={{position:"relative",height:26,display:"flex",alignItems:"center",padding:"0 10px 0 13px",background:"transparent",boxSizing:"border-box",transition:"none",overflow:"hidden","--tlr-add-hover-bg":active?"transparent":"rgba(255,255,255,0.055)","--tlr-add-hover-color":active?activeColor:c.tx,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":"none","--tlr-add-active-bg":active?"transparent":"rgba(74,106,255,0.12)"}}>
+                        style={{position:"relative",height:26,display:"flex",alignItems:"center",padding:"0 10px 0 13px",background:"transparent",boxSizing:"border-box",transition:"none",overflow:"hidden","--tlr-add-hover-bg":active?"transparent":"rgba(255,255,255,0.055)","--tlr-add-hover-color":active?activeColor:c.tx,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":"none","--tlr-add-active-bg":active?"transparent":"rgba(48,144,255,0.12)"}}>
                         {active && <span aria-hidden="true" style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${activeColor},transparent)`,boxShadow:`0 0 6px ${activeGlow}`,pointerEvents:"none"}}/>}
                         <span style={{minWidth:0,fontSize:10.2,fontWeight:850,color:active?activeColor:c.ts,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",letterSpacing:"0.01em",textTransform:"none"}}>{option.label}</span>
                       </div>
@@ -43609,7 +43609,7 @@ const TalariaV8b = () => {
                                 ) : (
                                   <>
                                     {visiblePinnedOptions.length > 0 && (
-                                      <div style={{padding:"5px 0 6px",borderBottom:visibleOptions.length ? `1px solid ${c.br}` : "none",background:"rgba(74,106,255,0.025)"}}>
+                                      <div style={{padding:"5px 0 6px",borderBottom:visibleOptions.length ? `1px solid ${c.br}` : "none",background:"rgba(48,144,255,0.025)"}}>
                                         <div style={{height:18,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 10px 0 13px",boxSizing:"border-box"}}>
                                           <span style={{fontSize:7.8,fontWeight:950,color:c.acL,letterSpacing:"0.09em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
                                             {dashTxt("Used in this journal","مستخدمة في هذه اليومية")}
@@ -43742,7 +43742,7 @@ const TalariaV8b = () => {
                       );
                     }
                   }
-                  const tokenMap = {XAUUSD:{bg:"#2B2200",fg:"#FFD700",label:"Au"},XAGUSD:{bg:"#1C2028",fg:"#C8D4E0",label:"Ag"},GC:{bg:"#2B2200",fg:"#FFD700",label:"GC"},SI:{bg:"#1C2028",fg:"#C8D4E0",label:"SI"},CL:{bg:"#0D1A12",fg:"#4CAF50",label:"CL"},NG:{bg:"#0A1020",fg:"#64B5F6",label:"NG"},NQ:{bg:"#101A3D",fg:"#4A6AFF",label:"NQ"},ES:{bg:"#101A3D",fg:"#4A6AFF",label:"ES"}};
+                  const tokenMap = {XAUUSD:{bg:"#2B2200",fg:"#FFD700",label:"Au"},XAGUSD:{bg:"#1C2028",fg:"#C8D4E0",label:"Ag"},GC:{bg:"#2B2200",fg:"#FFD700",label:"GC"},SI:{bg:"#1C2028",fg:"#C8D4E0",label:"SI"},CL:{bg:"#0D1A12",fg:"#4CAF50",label:"CL"},NG:{bg:"#0A1020",fg:"#64B5F6",label:"NG"},NQ:{bg:"#101A3D",fg:"#3090FF",label:"NQ"},ES:{bg:"#101A3D",fg:"#3090FF",label:"ES"}};
                   if (tokenMap[sym]) {
                     const item = tokenMap[sym];
                     return <svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:1}}><rect width={fw} height={fh} fill={item.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={item.fg} fontSize={fh*0.52} fontWeight="800" fontFamily={F}>{item.label}</text></svg>;
@@ -43773,7 +43773,7 @@ const TalariaV8b = () => {
                           gap:8,
                           padding:"0 8px",
                           borderColor:dashAddTradeSymbolOpen?c.acB:c.brH,
-                          boxShadow:dashAddTradeSymbolOpen?`inset 0 -1px 0 ${c.acL}, 0 0 0 1px rgba(74,106,255,0.10)`:addTradeTimingFieldShadow,
+                          boxShadow:dashAddTradeSymbolOpen?`inset 0 -1px 0 ${c.acL}, 0 0 0 1px rgba(48,144,255,0.10)`:addTradeTimingFieldShadow,
                         }}>
                         <span style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}>
                           {addTradeSymbolIcon(selected, 10)}
@@ -43798,7 +43798,7 @@ const TalariaV8b = () => {
                                   onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}
                                   onMouseDown={e=>{e.currentTarget.style.background="rgba(255,255,255,0.07)";}}
                                   onMouseUp={e=>{e.currentTarget.style.background=active?"transparent":"rgba(255,255,255,0.045)";}}
-                                  style={{position:"relative",height:24,display:"grid",gridTemplateColumns:"24px minmax(0,1fr)",alignItems:"center",gap:5,padding:"0 8px 0 12px",background:"transparent",boxSizing:"border-box",transition:"none",overflow:"hidden","--tlr-add-hover-bg":active?"transparent":"rgba(255,255,255,0.055)","--tlr-add-hover-color":active?c.acL:c.tx,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":"none","--tlr-add-active-bg":active?"transparent":"rgba(74,106,255,0.12)"}}>
+                                  style={{position:"relative",height:24,display:"grid",gridTemplateColumns:"24px minmax(0,1fr)",alignItems:"center",gap:5,padding:"0 8px 0 12px",background:"transparent",boxSizing:"border-box",transition:"none",overflow:"hidden","--tlr-add-hover-bg":active?"transparent":"rgba(255,255,255,0.055)","--tlr-add-hover-color":active?c.acL:c.tx,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":"none","--tlr-add-active-bg":active?"transparent":"rgba(48,144,255,0.12)"}}>
                                   {active && <span aria-hidden="true" style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
                                   <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}>{addTradeSymbolIcon(symbol, 10)}</div>
                                   <div style={{fontSize:10.4,fontWeight:900,color:active?c.acL:c.ts,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{symbol}</div>
@@ -44115,7 +44115,7 @@ const TalariaV8b = () => {
                       {labelNode}
                       <div
                         data-add-trade-date-field="1"
-                        style={{...inputStyle,...addTradeTimingInputStyle,height:32,display:"grid",gridTemplateColumns:linkedTimeField?"minmax(0,1fr) 56px 18px":"minmax(0,1fr) 18px",alignItems:"center",gap:5,color:disabled?(softDisabled?addTradeReadableMuted:c.tm):c.tx,opacity:disabledOpacity,padding:"0 5px 0 8px",cursor:"text",borderColor:active?c.acB:addTradeTimingFieldBorder,boxShadow:active?`inset 0 -1px 0 ${c.acL}, 0 0 0 1px rgba(74,106,255,0.10)`:addTradeTimingFieldShadow}}
+                        style={{...inputStyle,...addTradeTimingInputStyle,height:32,display:"grid",gridTemplateColumns:linkedTimeField?"minmax(0,1fr) 56px 18px":"minmax(0,1fr) 18px",alignItems:"center",gap:5,color:disabled?(softDisabled?addTradeReadableMuted:c.tm):c.tx,opacity:disabledOpacity,padding:"0 5px 0 8px",cursor:"text",borderColor:active?c.acB:addTradeTimingFieldBorder,boxShadow:active?`inset 0 -1px 0 ${c.acL}, 0 0 0 1px rgba(48,144,255,0.10)`:addTradeTimingFieldShadow}}
                       >
                         <input
                           value={dateInputValue}
@@ -44146,7 +44146,7 @@ const TalariaV8b = () => {
                           onPointerDown={disabled ? undefined : libraryPointerActivate(toggleCalendar)}
                           onKeyDown={disabled ? undefined : libraryKeyActivate(toggleCalendar)}
                           aria-label={active ? dashTxt("Close calendar","إغلاق التقويم") : dashTxt("Open calendar","فتح التقويم")}
-                          style={{height:24,width:18,display:"grid",placeItems:"center",justifySelf:"end",color:active ? c.acL : (disabled && softDisabled ? addTradeReadableMuted : c.tm),cursor:disabled?"default":"default","--tlr-add-hover-bg":"rgba(74,106,255,0.12)","--tlr-add-hover-color":c.acL,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":`0 0 8px ${c.acG}`,"--tlr-add-active-bg":"rgba(74,106,255,0.18)","--tlr-add-active-color":c.acL}}>
+                          style={{height:24,width:18,display:"grid",placeItems:"center",justifySelf:"end",color:active ? c.acL : (disabled && softDisabled ? addTradeReadableMuted : c.tm),cursor:disabled?"default":"default","--tlr-add-hover-bg":"rgba(48,144,255,0.12)","--tlr-add-hover-color":c.acL,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":`0 0 8px ${c.acG}`,"--tlr-add-active-bg":"rgba(48,144,255,0.18)","--tlr-add-active-color":c.acL}}>
                           <svg width={12} height={12} viewBox="0 0 14 14" aria-hidden="true" style={{display:"block",flexShrink:0}}>
                             <path d="M3.4 1.4v2M10.6 1.4v2M2 4.7h10M2.2 2.8h9.6v9.6H2.2z" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="square" strokeLinejoin="miter"/>
                           </svg>
@@ -44287,7 +44287,7 @@ const TalariaV8b = () => {
                         <div key={`add-trade-day-${iso}`} className={isDisabled ? "" : "tlr-library-action tlr-add-trade-soft-action"} role={isDisabled ? "presentation" : "button"} tabIndex={isDisabled ? -1 : 0}
                           onPointerDown={isDisabled ? undefined : libraryPointerActivate(()=>selectDayIso(iso))}
                           onKeyDown={isDisabled ? undefined : libraryKeyActivate(()=>selectDayIso(iso))}
-                          style={{...cellSx({isSelected,isDisabled,isToday,isOutside,isWeekend}),"--tlr-add-hover-bg":isSelected?c.acL:"rgba(255,255,255,0.045)","--tlr-add-hover-color":isSelected?"#fff":c.tx,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":isToday && !isSelected ? `inset 0 0 0 1px ${c.acL}` : "none","--tlr-add-active-bg":isSelected?c.acL:"rgba(74,106,255,0.12)"}}>
+                          style={{...cellSx({isSelected,isDisabled,isToday,isOutside,isWeekend}),"--tlr-add-hover-bg":isSelected?c.acL:"rgba(255,255,255,0.045)","--tlr-add-hover-color":isSelected?"#fff":c.tx,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":isToday && !isSelected ? `inset 0 0 0 1px ${c.acL}` : "none","--tlr-add-active-bg":isSelected?c.acL:"rgba(48,144,255,0.12)"}}>
                           {date.getUTCDate()}
                         </div>
                       );
@@ -44425,7 +44425,7 @@ const TalariaV8b = () => {
                                 } : undefined}
                                 onPointerDown={isDisabledOption ? undefined : libraryPointerActivate(()=>updateTimePart(part, item))}
                                 onKeyDown={isDisabledOption ? undefined : libraryKeyActivate(()=>updateTimePart(part, item))}
-                                style={{height:24,display:"flex",alignItems:"center",justifyContent:"center",color:isDisabledOption ? addTradeReadableMuted : (isSelected?"#fff":c.ts),opacity:isDisabledOption?0.32:1,background:isSelected && !isDisabledOption?c.acL:"transparent",boxShadow:isSelected && !isDisabledOption?`0 0 8px ${c.acG}`:"none",fontSize:11.2,fontWeight:950,fontFamily:F,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",boxSizing:"border-box","--tlr-add-hover-bg":isSelected && !isDisabledOption?c.acL:"rgba(255,255,255,0.055)","--tlr-add-hover-color":isSelected && !isDisabledOption?"#fff":c.tx,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":isSelected && !isDisabledOption?`0 0 8px ${c.acG}`:"none","--tlr-add-active-bg":isSelected && !isDisabledOption?c.acL:"rgba(74,106,255,0.12)"}}>
+                                style={{height:24,display:"flex",alignItems:"center",justifyContent:"center",color:isDisabledOption ? addTradeReadableMuted : (isSelected?"#fff":c.ts),opacity:isDisabledOption?0.32:1,background:isSelected && !isDisabledOption?c.acL:"transparent",boxShadow:isSelected && !isDisabledOption?`0 0 8px ${c.acG}`:"none",fontSize:11.2,fontWeight:950,fontFamily:F,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",boxSizing:"border-box","--tlr-add-hover-bg":isSelected && !isDisabledOption?c.acL:"rgba(255,255,255,0.055)","--tlr-add-hover-color":isSelected && !isDisabledOption?"#fff":c.tx,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":isSelected && !isDisabledOption?`0 0 8px ${c.acG}`:"none","--tlr-add-active-bg":isSelected && !isDisabledOption?c.acL:"rgba(48,144,255,0.12)"}}>
                                 {renderLabel(item)}
                               </div>
                             );
@@ -44656,7 +44656,7 @@ const TalariaV8b = () => {
                               } : undefined}
                               onPointerDown={isDisabledOption ? undefined : libraryPointerActivate(()=>updateTimePart(part, item, part === "minute"))}
                               onKeyDown={isDisabledOption ? undefined : libraryKeyActivate(()=>updateTimePart(part, item, part === "minute"))}
-                              style={{position:"relative",height:24,display:"flex",alignItems:"center",justifyContent:"center",color:isDisabledOption ? addTradeReadableMuted : (isSelected?"#fff":c.ts),opacity:isDisabledOption?0.34:1,background:isSelected && !isDisabledOption?c.acL:"transparent",boxShadow:isSelected && !isDisabledOption?`0 0 8px ${c.acG}`:"none",fontSize:10.8,fontWeight:950,fontFamily:F,fontVariantNumeric:"tabular-nums",boxSizing:"border-box",whiteSpace:"nowrap","--tlr-add-hover-bg":isSelected && !isDisabledOption?c.acL:"rgba(255,255,255,0.055)","--tlr-add-hover-color":isSelected && !isDisabledOption?"#fff":c.tx,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":isSelected && !isDisabledOption?`0 0 8px ${c.acG}`:"none","--tlr-add-active-bg":isSelected && !isDisabledOption?c.acL:"rgba(74,106,255,0.12)"}}>
+                              style={{position:"relative",height:24,display:"flex",alignItems:"center",justifyContent:"center",color:isDisabledOption ? addTradeReadableMuted : (isSelected?"#fff":c.ts),opacity:isDisabledOption?0.34:1,background:isSelected && !isDisabledOption?c.acL:"transparent",boxShadow:isSelected && !isDisabledOption?`0 0 8px ${c.acG}`:"none",fontSize:10.8,fontWeight:950,fontFamily:F,fontVariantNumeric:"tabular-nums",boxSizing:"border-box",whiteSpace:"nowrap","--tlr-add-hover-bg":isSelected && !isDisabledOption?c.acL:"rgba(255,255,255,0.055)","--tlr-add-hover-color":isSelected && !isDisabledOption?"#fff":c.tx,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":isSelected && !isDisabledOption?`0 0 8px ${c.acG}`:"none","--tlr-add-active-bg":isSelected && !isDisabledOption?c.acL:"rgba(48,144,255,0.12)"}}>
                               {renderLabel(item)}
                             </div>
                           );
@@ -44685,7 +44685,7 @@ const TalariaV8b = () => {
                         aria-expanded={active}
                         onPointerDown={disabled ? undefined : libraryPointerActivate(openAddTradeTimeField)}
                         onKeyDown={disabled ? undefined : libraryKeyActivate(openAddTradeTimeField)}
-                        style={{...inputStyle,...addTradeTimingInputStyle,height:34,display:"grid",gridTemplateColumns:"minmax(0,1fr) 20px",alignItems:"center",gap:4,color:disabled?c.tm:c.tx,opacity:disabled?0.42:1,padding:"0 7px 0 9px",cursor:"default",fontVariantNumeric:"tabular-nums",fontSize:12.2,fontWeight:950,borderColor:active?c.acB:addTradeTimingFieldBorder,boxShadow:active?`inset 0 -1px 0 ${c.acL}, 0 0 0 1px rgba(74,106,255,0.10)`:addTradeTimingFieldShadow,boxSizing:"border-box"}}
+                        style={{...inputStyle,...addTradeTimingInputStyle,height:34,display:"grid",gridTemplateColumns:"minmax(0,1fr) 20px",alignItems:"center",gap:4,color:disabled?c.tm:c.tx,opacity:disabled?0.42:1,padding:"0 7px 0 9px",cursor:"default",fontVariantNumeric:"tabular-nums",fontSize:12.2,fontWeight:950,borderColor:active?c.acB:addTradeTimingFieldBorder,boxShadow:active?`inset 0 -1px 0 ${c.acL}, 0 0 0 1px rgba(48,144,255,0.10)`:addTradeTimingFieldShadow,boxSizing:"border-box"}}
                       >
                         <span style={{minWidth:0,textAlign:"center",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addTradeTimeDisplay(dashAddTradeDraft?.[field])}</span>
                         <svg width={10} height={7} viewBox="0 0 10 7" aria-hidden="true" style={{display:"block",justifySelf:"end",color:active?c.acL:c.tm,transform:active?"rotate(180deg)":"rotate(0deg)",transition:"none"}}>
@@ -44729,7 +44729,7 @@ const TalariaV8b = () => {
                             aria-expanded={dateActive}
                             onPointerDown={disabled ? undefined : libraryPointerActivate(toggleCalendar)}
                             onKeyDown={disabled ? undefined : libraryKeyActivate(toggleCalendar)}
-                            style={{...inputStyle,...addTradeTimingInputStyle,height:34,display:"grid",gridTemplateColumns:"38px minmax(0,1fr) 22px",alignItems:"center",padding:0,overflow:"hidden",borderColor:dateActive?c.acB:addTradeTimingFieldBorder,opacity:disabled?0.42:1,cursor:"default",boxShadow:dateActive?`inset 0 -1px 0 ${c.acL}, 0 0 0 1px rgba(74,106,255,0.10)`:addTradeTimingFieldShadow}}
+                            style={{...inputStyle,...addTradeTimingInputStyle,height:34,display:"grid",gridTemplateColumns:"38px minmax(0,1fr) 22px",alignItems:"center",padding:0,overflow:"hidden",borderColor:dateActive?c.acB:addTradeTimingFieldBorder,opacity:disabled?0.42:1,cursor:"default",boxShadow:dateActive?`inset 0 -1px 0 ${c.acL}, 0 0 0 1px rgba(48,144,255,0.10)`:addTradeTimingFieldShadow}}
                           >
                             <span style={{height:"100%",display:"flex",alignItems:"center",justifyContent:"center",borderRight:`1px solid ${c.br}`,fontSize:8.6,fontWeight:950,color:disabled?c.tm:c.acL,letterSpacing:"0.06em",fontFamily:F}}>
                               {weekdayLabel}
@@ -44757,14 +44757,14 @@ const TalariaV8b = () => {
                   return (
                     <React.Fragment key={page.id}>
                       <div className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0} aria-pressed={active} onPointerDown={libraryPointerActivate(()=>navigateDashAddTradeEditorPage(page.id))} onKeyDown={libraryKeyActivate(()=>navigateDashAddTradeEditorPage(page.id))}
-                        style={{position:"relative",zIndex:1,height:34,width:addTradeTabWidth,flex:`0 0 ${addTradeTabWidth}px`,padding:"0 10px",display:"flex",alignItems:"center",justifyContent:"center",color:active?c.acL:c.ts,background:"transparent",border:"none",fontSize:9,fontWeight:950,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F,boxSizing:"border-box","--tlr-add-hover-bg":"rgba(38,67,247,0.10)","--tlr-add-hover-color":c.acL,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":"none","--tlr-add-active-bg":"rgba(38,67,247,0.14)","--tlr-add-active-color":c.acL,"--tlr-add-active-border":"transparent","--tlr-add-active-shadow":"none"}}>
+                        style={{position:"relative",zIndex:1,height:34,width:addTradeTabWidth,flex:`0 0 ${addTradeTabWidth}px`,padding:"0 10px",display:"flex",alignItems:"center",justifyContent:"center",color:active?c.acL:c.ts,background:"transparent",border:"none",fontSize:9,fontWeight:950,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F,boxSizing:"border-box","--tlr-add-hover-bg":"rgba(48,144,255,0.10)","--tlr-add-hover-color":c.acL,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":"none","--tlr-add-active-bg":"rgba(48,144,255,0.14)","--tlr-add-active-color":c.acL,"--tlr-add-active-border":"transparent","--tlr-add-active-shadow":"none"}}>
                         {page.label}
                       </div>
                       {index < addTradePages.length - 1 && (
                         <div className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0} aria-label={`${dashTxt("Go to","انتقل إلى")} ${addTradePages[index + 1]?.label || ""}`}
                           onPointerDown={libraryPointerActivate(()=>addTradeGoToPageIndex(index + 1))}
                           onKeyDown={libraryKeyActivate(()=>addTradeGoToPageIndex(index + 1))}
-                          style={{width:addTradeTabArrowWidth,height:34,display:"grid",placeItems:"center",color:arrowActive?c.acL:c.tm,opacity:arrowActive?0.96:0.76,flex:`0 0 ${addTradeTabArrowWidth}px`,background:"transparent",border:"none",boxSizing:"border-box","--tlr-add-hover-bg":"rgba(38,67,247,0.10)","--tlr-add-hover-color":c.acL,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":"none","--tlr-add-active-bg":"rgba(38,67,247,0.16)","--tlr-add-active-color":c.acL,"--tlr-add-active-border":"transparent","--tlr-add-active-shadow":"none"}}>
+                          style={{width:addTradeTabArrowWidth,height:34,display:"grid",placeItems:"center",color:arrowActive?c.acL:c.tm,opacity:arrowActive?0.96:0.76,flex:`0 0 ${addTradeTabArrowWidth}px`,background:"transparent",border:"none",boxSizing:"border-box","--tlr-add-hover-bg":"rgba(48,144,255,0.10)","--tlr-add-hover-color":c.acL,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":"none","--tlr-add-active-bg":"rgba(48,144,255,0.16)","--tlr-add-active-color":c.acL,"--tlr-add-active-border":"transparent","--tlr-add-active-shadow":"none"}}>
                           <svg width={18} height={18} viewBox="0 0 18 18" fill="none" style={{display:"block",filter:arrowActive?`drop-shadow(0 0 5px ${c.acG})`:"none"}}>
                             <path d="M6.5 4.5 11.25 9 6.5 13.5" stroke="currentColor" strokeWidth="2.35" strokeLinecap="square" strokeLinejoin="miter"/>
                           </svg>
@@ -45712,7 +45712,7 @@ const TalariaV8b = () => {
                                       <div key={`${menuKey}-${optId || optLabel}-${index}`} className="tlr-library-action tlr-add-trade-soft-action" role="option" aria-selected={active} tabIndex={0}
                                         onPointerDown={libraryPointerActivate(()=>chooseOption(option))}
                                         onKeyDown={libraryKeyActivate(()=>chooseOption(option))}
-                                        style={{position:"relative",height:28,display:"grid",gridTemplateColumns:"16px minmax(0,1fr)",alignItems:"center",gap:8,padding:"0 10px",background:active?`${accent}10`:"rgba(255,255,255,0.012)",borderTop:"none",boxSizing:"border-box",transition:"none",overflow:"hidden","--tlr-add-hover-bg":active?`${accent}12`:"rgba(255,255,255,0.06)","--tlr-add-hover-color":active?accent:c.tx,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":"none","--tlr-add-active-bg":active?`${accent}16`:"rgba(74,106,255,0.12)"}}>
+                                        style={{position:"relative",height:28,display:"grid",gridTemplateColumns:"16px minmax(0,1fr)",alignItems:"center",gap:8,padding:"0 10px",background:active?`${accent}10`:"rgba(255,255,255,0.012)",borderTop:"none",boxSizing:"border-box",transition:"none",overflow:"hidden","--tlr-add-hover-bg":active?`${accent}12`:"rgba(255,255,255,0.06)","--tlr-add-hover-color":active?accent:c.tx,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":"none","--tlr-add-active-bg":active?`${accent}16`:"rgba(48,144,255,0.12)"}}>
                                         <span aria-hidden="true" style={{display:"flex",alignItems:"center",justifyContent:"center",color:active?accent:c.tm}}>
                                           {libraryCornerCheckbox(active, accent, {width:11,height:11})}
                                         </span>
@@ -45788,7 +45788,7 @@ const TalariaV8b = () => {
                       <div key={`plan-review-${option.id}`} className="tlr-library-action tlr-add-trade-soft-action" role="radio" aria-checked={active} tabIndex={0}
                         onPointerDown={libraryPointerActivate(()=>setDashAddTradePlanReview(option.id))}
                         onKeyDown={libraryKeyActivate(()=>setDashAddTradePlanReview(option.id))}
-                        style={{minHeight:52,padding:"10px 12px",display:"flex",flexDirection:"column",alignItems:"flex-start",justifyContent:"center",gap:4,background:active?`${option.color}12`:"rgba(255,255,255,0.014)",border:`1px solid ${active?`${option.color}66`:c.br}`,boxSizing:"border-box",position:"relative","--tlr-add-hover-bg":active?`${option.color}18`:"rgba(74,106,255,0.06)","--tlr-add-hover-color":active?option.color:c.tx,"--tlr-add-hover-border":active?`${option.color}77`:"rgba(140,160,255,0.32)","--tlr-add-hover-shadow":active?`0 0 10px ${option.color}22`:"none","--tlr-add-active-bg":active?`${option.color}22`:"rgba(74,106,255,0.10)"}}>
+                        style={{minHeight:52,padding:"10px 12px",display:"flex",flexDirection:"column",alignItems:"flex-start",justifyContent:"center",gap:4,background:active?`${option.color}12`:"rgba(255,255,255,0.014)",border:`1px solid ${active?`${option.color}66`:c.br}`,boxSizing:"border-box",position:"relative","--tlr-add-hover-bg":active?`${option.color}18`:"rgba(48,144,255,0.06)","--tlr-add-hover-color":active?option.color:c.tx,"--tlr-add-hover-border":active?`${option.color}77`:"rgba(140,160,255,0.32)","--tlr-add-hover-shadow":active?`0 0 10px ${option.color}22`:"none","--tlr-add-active-bg":active?`${option.color}22`:"rgba(48,144,255,0.10)"}}>
                         <span style={{fontSize:9.4,fontWeight:950,color:active?option.color:c.ts,letterSpacing:"0.04em",lineHeight:1.2}}>{option.label}</span>
                         <span style={{fontSize:8,fontWeight:780,color:addTradeReadableMuted,lineHeight:1.25}}>
                           {option.id === "according_to_plan"
@@ -45833,7 +45833,7 @@ const TalariaV8b = () => {
                       <div key={`manual-demon-${def.type}`} className="tlr-library-action tlr-add-trade-soft-action" role="checkbox" aria-checked={active} tabIndex={0}
                         onPointerDown={libraryPointerActivate(()=>setDashAddTradeDemonState(def.type, "manual", active ? null : "confirmed", {evidence:dashAddTradeDraft.demonTrigger || dashTxt("Marked manually.","تم تحديده يدويا.")}))}
                         onKeyDown={libraryKeyActivate(()=>setDashAddTradeDemonState(def.type, "manual", active ? null : "confirmed", {evidence:dashAddTradeDraft.demonTrigger || dashTxt("Marked manually.","تم تحديده يدويا.")}))}
-                        style={{height:28,display:"grid",gridTemplateColumns:"15px minmax(0,1fr)",gap:8,alignItems:"center",padding:"0 8px",background:active?"rgba(201,168,76,0.08)":"rgba(255,255,255,0.012)",border:`1px solid ${active?`${BT_DASH_DEMON_AMBER}55`:c.br}`,boxSizing:"border-box","--tlr-add-hover-bg":active?"rgba(201,168,76,0.10)":"rgba(255,255,255,0.055)","--tlr-add-hover-color":active?BT_DASH_DEMON_AMBER:c.tx,"--tlr-add-hover-border":active?`${BT_DASH_DEMON_AMBER}77`:"rgba(140,160,255,0.32)","--tlr-add-hover-shadow":"none","--tlr-add-active-bg":active?"rgba(201,168,76,0.15)":"rgba(74,106,255,0.12)"}}>
+                        style={{height:28,display:"grid",gridTemplateColumns:"15px minmax(0,1fr)",gap:8,alignItems:"center",padding:"0 8px",background:active?"rgba(201,168,76,0.08)":"rgba(255,255,255,0.012)",border:`1px solid ${active?`${BT_DASH_DEMON_AMBER}55`:c.br}`,boxSizing:"border-box","--tlr-add-hover-bg":active?"rgba(201,168,76,0.10)":"rgba(255,255,255,0.055)","--tlr-add-hover-color":active?BT_DASH_DEMON_AMBER:c.tx,"--tlr-add-hover-border":active?`${BT_DASH_DEMON_AMBER}77`:"rgba(140,160,255,0.32)","--tlr-add-hover-shadow":"none","--tlr-add-active-bg":active?"rgba(201,168,76,0.15)":"rgba(48,144,255,0.12)"}}>
                         <span aria-hidden="true" style={{display:"flex",alignItems:"center",justifyContent:"center",color:active?BT_DASH_DEMON_AMBER:c.tm}}>{libraryCornerCheckbox(active, BT_DASH_DEMON_AMBER, {width:11,height:11})}</span>
                         <span style={{minWidth:0,fontSize:9.2,fontWeight:900,color:active?BT_DASH_DEMON_AMBER:c.ts,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",letterSpacing:"0.01em"}}>{def.label}</span>
                       </div>
@@ -46029,7 +46029,7 @@ const TalariaV8b = () => {
                       </div>
                       <div style={{height:36,display:"flex",alignItems:"stretch",justifyContent:"center",gap:0,borderBottom:`1px solid ${c.br}`,background:"rgba(255,255,255,0.012)",flexShrink:0}}>
                         <div style={{position:"relative",width:addTradeTabRailWidth,height:36,display:"flex",alignItems:"stretch",justifyContent:"center",gap:0}}>
-                          <div aria-hidden="true" style={{position:"absolute",left:addTradeTabSliderLeft,top:1,width:addTradeTabWidth,height:34,background:"rgba(38,67,247,0.12)",transition:"left 150ms cubic-bezier(.2,.7,.2,1)",pointerEvents:"none"}}/>
+                          <div aria-hidden="true" style={{position:"absolute",left:addTradeTabSliderLeft,top:1,width:addTradeTabWidth,height:34,background:"rgba(48,144,255,0.12)",transition:"left 150ms cubic-bezier(.2,.7,.2,1)",pointerEvents:"none"}}/>
                           <div aria-hidden="true" style={{position:"absolute",left:addTradeTabSliderLeft + 12,bottom:0,width:addTradeTabWidth - 24,height:1,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,transition:"left 150ms cubic-bezier(.2,.7,.2,1)",pointerEvents:"none"}}/>
                           {addTradePages.map(editorPageTab)}
                         </div>
@@ -46237,7 +46237,7 @@ const TalariaV8b = () => {
                           <div className={addTradeCanGoNextPage ? "tlr-library-action tlr-add-trade-soft-action" : ""} role="button" tabIndex={addTradeCanGoNextPage ? 0 : -1} aria-disabled={!addTradeCanGoNextPage}
                             onPointerDown={addTradeCanGoNextPage ? libraryPointerActivate(()=>addTradeGoToPageIndex(addTradePageIndex + 1)) : undefined}
                             onKeyDown={addTradeCanGoNextPage ? libraryKeyActivate(()=>addTradeGoToPageIndex(addTradePageIndex + 1)) : undefined}
-                            style={{height:32,minWidth:92,padding:"0 14px",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:7,color:addTradeCanGoNextPage?"#fff":"rgba(255,255,255,0.34)",border:addTradeCanGoNextPage?"1px solid transparent":`1px solid ${c.br}`,background:addTradeCanGoNextPage?c.acL:"rgba(255,255,255,0.055)",fontSize:9,fontWeight:950,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,boxSizing:"border-box",opacity:addTradeCanGoNextPage?1:0.88,boxShadow:addTradeCanGoNextPage?libraryGoButtonStyle.boxShadow:"none",cursor:"default","--tlr-add-hover-bg":"#536fff","--tlr-add-hover-color":"#fff","--tlr-add-hover-border":"#536fff","--tlr-add-hover-shadow":"0 0 13px rgba(74,106,255,0.46)","--tlr-add-active-bg":"#3f5df6","--tlr-add-active-color":"#fff","--tlr-add-active-border":"#3f5df6","--tlr-add-active-shadow":"0 0 8px rgba(74,106,255,0.34)"}}>
+                            style={{height:32,minWidth:92,padding:"0 14px",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:7,color:addTradeCanGoNextPage?"#fff":"rgba(255,255,255,0.34)",border:addTradeCanGoNextPage?"1px solid transparent":`1px solid ${c.br}`,background:addTradeCanGoNextPage?c.acL:"rgba(255,255,255,0.055)",fontSize:9,fontWeight:950,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,boxSizing:"border-box",opacity:addTradeCanGoNextPage?1:0.88,boxShadow:addTradeCanGoNextPage?libraryGoButtonStyle.boxShadow:"none",cursor:"default","--tlr-add-hover-bg":"#536fff","--tlr-add-hover-color":"#fff","--tlr-add-hover-border":"#536fff","--tlr-add-hover-shadow":"0 0 13px rgba(48,144,255,0.46)","--tlr-add-active-bg":"#3f5df6","--tlr-add-active-color":"#fff","--tlr-add-active-border":"#3f5df6","--tlr-add-active-shadow":"0 0 8px rgba(48,144,255,0.34)"}}>
                             <span>{dashTxt("Next","التالي")}</span>
                             <svg width={12} height={12} viewBox="0 0 12 12" fill="none" aria-hidden="true" style={{display:"block",flexShrink:0}}>
                               <path d="M4.1 2.75 7.45 6 4.1 9.25" stroke="currentColor" strokeWidth="2" strokeLinecap="square" strokeLinejoin="miter"/>
@@ -46252,7 +46252,7 @@ const TalariaV8b = () => {
                             }, "add-trade-save-button")}
                             onPointerDown={libraryPointerActivate(() => { hideDashboardInfo(); addTradeCanSave ? saveDashAddTradeDraft() : revealAddTradeSaveBlockers(); })}
                             onKeyDown={libraryKeyActivate(() => { hideDashboardInfo(); addTradeCanSave ? saveDashAddTradeDraft() : revealAddTradeSaveBlockers(); })}
-                            style={{height:32,minWidth:92,padding:"0 16px",display:"flex",alignItems:"center",justifyContent:"center",background:addTradeCanSave?c.acL:"rgba(255,255,255,0.055)",color:addTradeCanSave?"#fff":"rgba(255,255,255,0.34)",border:addTradeCanSave?"1px solid transparent":`1px solid ${c.br}`,fontSize:9,fontWeight:950,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,boxShadow:addTradeCanSave?libraryGoButtonStyle.boxShadow:"none",boxSizing:"border-box",opacity:addTradeCanSave?1:0.88,cursor:"default","--tlr-add-hover-bg":"#536fff","--tlr-add-hover-color":"#fff","--tlr-add-hover-border":"#536fff","--tlr-add-hover-shadow":"0 0 13px rgba(74,106,255,0.46)","--tlr-add-active-bg":"#3f5df6","--tlr-add-active-color":"#fff","--tlr-add-active-border":"#3f5df6","--tlr-add-active-shadow":"0 0 8px rgba(74,106,255,0.34)"}}>
+                            style={{height:32,minWidth:92,padding:"0 16px",display:"flex",alignItems:"center",justifyContent:"center",background:addTradeCanSave?c.acL:"rgba(255,255,255,0.055)",color:addTradeCanSave?"#fff":"rgba(255,255,255,0.34)",border:addTradeCanSave?"1px solid transparent":`1px solid ${c.br}`,fontSize:9,fontWeight:950,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,boxShadow:addTradeCanSave?libraryGoButtonStyle.boxShadow:"none",boxSizing:"border-box",opacity:addTradeCanSave?1:0.88,cursor:"default","--tlr-add-hover-bg":"#536fff","--tlr-add-hover-color":"#fff","--tlr-add-hover-border":"#536fff","--tlr-add-hover-shadow":"0 0 13px rgba(48,144,255,0.46)","--tlr-add-active-bg":"#3f5df6","--tlr-add-active-color":"#fff","--tlr-add-active-border":"#3f5df6","--tlr-add-active-shadow":"0 0 8px rgba(48,144,255,0.34)"}}>
                             {dashTxt("Save","حفظ")}
                           </div>
                         </div>
@@ -47272,7 +47272,7 @@ const TalariaV8b = () => {
                         const isA=stratTab===k&&!disabled;
                         const tabCol=isA?c.acL:(disabled?c.tm:c.ts);
                         const tabBg=isA?c.acD:"transparent";
-                        const badgeBg=isA?"rgba(74,106,255,0.2)":"rgba(255,255,255,0.07)";
+                        const badgeBg=isA?"rgba(48,144,255,0.2)":"rgba(255,255,255,0.07)";
                         return(
                           <div key={k} role="button" tabIndex={disabled?-1:0} aria-disabled={disabled?"true":"false"} onClick={()=>{if(!disabled)setStratTab(k);}}
                             style={{height:26,padding:"0 12px",display:"flex",alignItems:"center",gap:5,cursor:"default",position:"relative",transition:"color 0.12s, background 0.12s, opacity 0.12s, transform 0.08s",background:tabBg,color:tabCol,opacity:disabled?0.42:1,fontSize:9,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F,flexShrink:0}}
@@ -47298,7 +47298,7 @@ const TalariaV8b = () => {
                           <div onClick={()=>setStratSortOpen(v=>!v)}
                             onMouseEnter={()=>setHov("stratSortBtn")} onMouseLeave={()=>setHov(null)}
                             style={{height:28,padding:"0 8px",display:"flex",alignItems:"center",gap:5,position:"relative",cursor:"default",
-                              background:stratSortOpen?"rgba(74,106,255,0.08)":isBH?"rgba(255,255,255,0.05)":"transparent",
+                              background:stratSortOpen?"rgba(48,144,255,0.08)":isBH?"rgba(255,255,255,0.05)":"transparent",
                               color:stratSortOpen?c.acL:isBH?c.tx:c.ts,
                               fontSize:9,fontWeight:700,fontFamily:F,transition:"background 0.12s,color 0.12s",whiteSpace:"nowrap"}}>
                             <svg width={9} height={9} viewBox="0 0 12 12" fill="none"><line x1="1" y1="3" x2="11" y2="3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="3" y1="6" x2="9" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="5" y1="9" x2="7" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
@@ -47355,7 +47355,7 @@ const TalariaV8b = () => {
                         const isA=effectiveStratLayoutMode===mode;
                         return(
                           <div key={mode} role="button" tabIndex={0} aria-label={st(`Show strategies as ${label.toLowerCase()}`,`عرض الاستراتيجيات كـ ${label}`)} title={label} onClick={()=>setStratLayoutMode(mode)}
-                            style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",cursor:"default",background:isA?"rgba(74,106,255,0.08)":"transparent",color:isA?c.acL:c.ts,transition:"background 0.12s,color 0.12s,transform 0.08s"}}
+                            style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",cursor:"default",background:isA?"rgba(48,144,255,0.08)":"transparent",color:isA?c.acL:c.ts,transition:"background 0.12s,color 0.12s,transform 0.08s"}}
                             onMouseEnter={e=>{if(!isA){e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color=c.tx;}}}
                             onMouseLeave={e=>{if(!isA){e.currentTarget.style.background="transparent";e.currentTarget.style.color=c.ts;}e.currentTarget.style.transform="scale(1)";}}
                             onMouseDown={e=>e.currentTarget.style.transform="scale(0.94)"}
@@ -47433,7 +47433,7 @@ const TalariaV8b = () => {
                         <div style={{fontSize:10,color:c.tm,fontFamily:F,textAlign:"center",maxWidth:320}}>{normalizeSearchQuery(stratSearch)?st("Try adjusting your search.","جرّب تعديل البحث."):st("Build your first strategy to keep track of your trading rules, instruments, and tags.","أنشئ استراتيجيتك الأولى لتتبع قواعد التداول والأدوات والوسوم.")}</div>
                         {!normalizeSearchQuery(stratSearch)&&(
                           <div role="button" tabIndex={0} aria-label={st("Build strategy","بناء استراتيجية")} onClick={()=>openBuilder()}
-                            style={{width:appAr?180:160,height:36,padding:"0 20px",display:"flex",alignItems:"center",justifyContent:"center",gap:7,background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontFamily:F,marginTop:4,transition:"filter 0.12s, transform 0.08s",boxSizing:"border-box"}}
+                            style={{width:appAr?180:160,height:36,padding:"0 20px",display:"flex",alignItems:"center",justifyContent:"center",gap:7,background:"#3090FF",cursor:"default",fontFamily:F,marginTop:4,transition:"filter 0.12s, transform 0.08s",boxSizing:"border-box"}}
                             onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.12)"}
                             onMouseLeave={e=>{e.currentTarget.style.filter="brightness(1)";e.currentTarget.style.transform="scale(1)";}}
                             onMouseDown={e=>e.currentTarget.style.transform="scale(0.97)"}
@@ -47476,7 +47476,7 @@ const TalariaV8b = () => {
                         <div style={{fontSize:13,fontWeight:700,color:c.ts,fontFamily:F}}>{st("No saved strategies yet","لا توجد استراتيجيات محفوظة بعد")}</div>
                         <div style={{fontSize:10,color:c.tm,fontFamily:F,textAlign:"center",maxWidth:320}}>{st("Browse the Community tab and save strategies you want to reference later.","تصفح تبويب المجتمع واحفظ الاستراتيجيات التي تريد الرجوع إليها لاحقاً.")}</div>
                         <div role="button" tabIndex={0} aria-label={st("Browse community strategies","تصفح استراتيجيات المجتمع")} onClick={()=>setStratTab("community")}
-                          style={{display:"flex",alignItems:"center",gap:6,height:32,padding:"0 18px",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontFamily:F,marginTop:4,transition:"filter 0.12s, transform 0.08s"}}
+                          style={{display:"flex",alignItems:"center",gap:6,height:32,padding:"0 18px",background:"#3090FF",cursor:"default",fontFamily:F,marginTop:4,transition:"filter 0.12s, transform 0.08s"}}
                           onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.12)"}
                           onMouseLeave={e=>{e.currentTarget.style.filter="brightness(1)";e.currentTarget.style.transform="scale(1)";}}
                           onMouseDown={e=>e.currentTarget.style.transform="scale(0.97)"}
@@ -47765,7 +47765,7 @@ const TalariaV8b = () => {
                           }
                           setStratShareStrat(null);
                         }}
-                          style={{height:32,padding:"0 20px",display:"flex",alignItems:"center",gap:6,fontSize:9,fontWeight:800,color:"rgba(255,255,255,0.95)",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontFamily:F,letterSpacing:"0.05em",transition:"filter 0.12s"}}
+                          style={{height:32,padding:"0 20px",display:"flex",alignItems:"center",gap:6,fontSize:9,fontWeight:800,color:"rgba(255,255,255,0.95)",background:"#3090FF",cursor:"default",fontFamily:F,letterSpacing:"0.05em",transition:"filter 0.12s"}}
                           onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.12)"}
                           onMouseLeave={e=>e.currentTarget.style.filter="brightness(1)"}>
                           <svg width={11} height={11} viewBox="0 0 24 24" fill="none"><circle cx="18" cy="5" r="3" stroke="currentColor" strokeWidth="2"/><circle cx="6" cy="12" r="3" stroke="currentColor" strokeWidth="2"/><circle cx="18" cy="19" r="3" stroke="currentColor" strokeWidth="2"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
@@ -47823,7 +47823,7 @@ const TalariaV8b = () => {
         /* ── VIEW: RESOURCES ── */
         if (sessView === "resources") return (() => {
           const resAr = resourcesLang === "ar";
-          const resFont = resAr ? "'Tajawal','IBM Plex Sans Arabic','Exo 2',sans-serif" : F;
+          const resFont = resAr ? "'Tajawal','IBM Plex Sans Arabic','Helvetica Now','Helvetica Neue',Helvetica,Arial,sans-serif" : F;
           const tx = (en, ar) => resAr ? (ar || en) : en;
           const tObj = (obj) => resAr ? (obj?.ar || obj?.en || "") : (obj?.en || "");
           const openSection = (id) => { setResourcesSectionId(id); setResourcesArticleId(null); setResourcesGlossaryPeek(null); };
@@ -48327,7 +48327,7 @@ const TalariaV8b = () => {
                   <svg width="100%" height="132" viewBox="0 0 640 132" preserveAspectRatio="none">
                     <rect x="0" y="0" width="640" height="132" fill="rgba(7,8,14,0.96)"/>
                     <path d="M20 94 C90 70 128 82 180 48 S275 88 332 46 438 64 500 28 586 50 620 24" fill="none" stroke={c.acL} strokeWidth="2"/>
-                    <path d="M20 94 C90 70 128 82 180 48 S275 88 332 46 438 64 500 28 586 50 620 24 L620 132 L20 132 Z" fill="rgba(74,106,255,0.08)"/>
+                    <path d="M20 94 C90 70 128 82 180 48 S275 88 332 46 438 64 500 28 586 50 620 24 L620 132 L20 132 Z" fill="rgba(48,144,255,0.08)"/>
                     <circle cx="332" cy="46" r="9" fill={c.gold}/><text x="332" y="50" textAnchor="middle" fontSize="10" fill="#08090f" fontWeight="900">1</text>
                   </svg>
                 </div>
@@ -48506,9 +48506,9 @@ const TalariaV8b = () => {
       {loading && (
         <div style={{
           position:"fixed", inset:0, zIndex:99999,
-          background:"#07080E",
+          background:"#000000",
           display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
-          fontFamily:"'Exo 2',sans-serif",
+          fontFamily:'"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif',
           opacity: loadFading ? 0 : 1,
           transition: loadFading ? "opacity 0.3s ease" : "none",
           animation:"tlrLoadFadeIn 0.5s ease forwards",
@@ -48541,7 +48541,7 @@ const TalariaV8b = () => {
               {x:30,y:96,s:1,d:2.7,del:0.3,c:2},{x:50,y:98,s:1.6,d:3.6,del:0.7,c:1},{x:70,y:95,s:1.1,d:2.2,del:1.4,c:0},
               {x:90,y:97,s:1.8,d:4.1,del:0.5,c:2},{x:44,y:60,s:2,d:2.5,del:1.0,c:1},{x:56,y:55,s:1.3,d:3.4,del:0.1,c:2},
             ];
-            const starColors=["rgba(255,255,255,0.9)","rgba(110,153,255,1)","rgba(74,106,255,0.85)","rgba(150,180,255,0.7)"];
+            const starColors=["rgba(255,255,255,0.9)","rgba(110,153,255,1)","rgba(48,144,255,0.85)","rgba(150,180,255,0.7)"];
             return(
               <div style={{position:"absolute",inset:0,pointerEvents:"none",overflow:"hidden"}}>
                 {starData.map((st,i)=>(
@@ -48574,10 +48574,10 @@ const TalariaV8b = () => {
           <div style={{marginTop:10,width:540,height:6,background:"rgba(255,255,255,0.07)",borderRadius:3,overflow:"hidden",position:"relative"}}>
             <div style={{
               position:"absolute",left:0,top:0,bottom:0,
-              background:"linear-gradient(90deg,#2643F7,#4A6AFF,#6A8AFF)",
+              background:"linear-gradient(90deg,#232CF4,#3090FF,#6A8AFF)",
               borderRadius:2,
               animation:"tlrLoadBar 10s linear forwards",
-              boxShadow:"0 0 8px rgba(74,106,255,0.7)",
+              boxShadow:"0 0 8px rgba(48,144,255,0.7)",
             }}/>
           </div>
           {/* Quote — typewriter */}
@@ -48635,7 +48635,7 @@ const TalariaV8b = () => {
                 onMouseEnter={()=>setHov("tl-tmpl-hdr")} onMouseLeave={()=>setHov(null)}
                 onClick={e=>{e.stopPropagation();if(tlSettTplDrop||closing.has("tlSettTplDrop")){closeTlSettTplDrop();}else{setTlSettTplDrop(true);setTlSaveAsMode(false);setTlNewTplName("");}if(tlBarDrop)closeTlBarDrop();setColorPicker(null);cpBarAnchorRef.current=null;}}
                 style={{ width:30, height:30, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", position:"relative",
-                         background:(tlSettTplDrop||closing.has("tlSettTplDrop"))?"rgba(74,106,255,0.10)":hov==="tl-tmpl-hdr"?c.hv:"transparent",
+                         background:(tlSettTplDrop||closing.has("tlSettTplDrop"))?"rgba(48,144,255,0.10)":hov==="tl-tmpl-hdr"?c.hv:"transparent",
                          transition:"background 0.12s", color:(tlSettTplDrop||closing.has("tlSettTplDrop"))?c.acL:hov==="tl-tmpl-hdr"?c.tx:c.ts }}>
                 <svg width={14} height={14} viewBox="0 0 16 16" fill="none">
                   <rect x="1" y="1" width="6" height="6" rx="1" fill="currentColor"/>
@@ -48736,7 +48736,7 @@ const TalariaV8b = () => {
                       style={{ flex:1, padding:"10px 4px", border:"none", fontFamily:F, cursor:"default",
                                color:isAct?c.acL:hov===`tlTab-${id}`?c.tx:c.ts, fontSize:12, fontWeight:isAct?700:500,
                                display:"flex", alignItems:"center", justifyContent:"center",
-                               background: isAct ? (hov===`tlTab-${id}`?"rgba(74,106,255,0.12)":"rgba(74,106,255,0.05)") : hov===`tlTab-${id}`?"rgba(255,255,255,0.06)":"transparent",
+                               background: isAct ? (hov===`tlTab-${id}`?"rgba(48,144,255,0.12)":"rgba(48,144,255,0.05)") : hov===`tlTab-${id}`?"rgba(255,255,255,0.06)":"transparent",
                                transform: btnPressed===`tlTab-${id}` ? "scale(0.94)" : "scale(1)",
                                transition:"color 0.15s, background 0.12s, transform 0.08s" }}>
                       {lbl}
@@ -48766,7 +48766,7 @@ const TalariaV8b = () => {
                   <div onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setTlStyleDropUp(r.bottom+110>window.innerHeight);setTlStyleDrop(tlStyleDrop===key?null:key);}}
                     onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
                     style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", justifyContent:"center", gap:3, cursor:"default", position:"relative",
-                             background:isOpen?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",
+                             background:isOpen?"rgba(48,144,255,0.08)":isH?c.hv:"transparent",
                              transition:"background 0.12s", ...(btnW?{width:btnW}:{}) }}>
                     {preview(isOpen)}
                     <I n="chevDown" s={7} cl={isOpen?c.acL:c.ts}/>
@@ -48961,7 +48961,7 @@ const TalariaV8b = () => {
                         <div onClick={e=>{e.stopPropagation();if(tlStyle.showInfo){if(tlStyleDrop==="info"||closing.has("tlInfoDrop")){closeTlInfoDrop();}else{const r=e.currentTarget.getBoundingClientRect();const dropH=210;const goUp=r.bottom/Z+dropH>window.innerHeight/Z;setTlInfoDropUp(goUp);setTlStyleDrop("info");}}}}
                           onMouseEnter={()=>setHov("tlInfoBtn")} onMouseLeave={()=>setHov(null)}
                           style={{height:26,padding:"0 8px",display:"flex",alignItems:"center",gap:5,position:"relative",cursor:"default",
-                            background:(tlStyleDrop==="info"||closing.has("tlInfoDrop"))?"rgba(74,106,255,0.08)":hov==="tlInfoBtn"?c.hv:"transparent",
+                            background:(tlStyleDrop==="info"||closing.has("tlInfoDrop"))?"rgba(48,144,255,0.08)":hov==="tlInfoBtn"?c.hv:"transparent",
                             transition:"background 0.12s"}}>
                           <span style={{fontSize:12,color:(tlStyleDrop==="info"||closing.has("tlInfoDrop"))?c.acL:c.ts}}>
                             {tlStyle.showInfoTypes.length===0?"None":tlStyle.showInfoTypes.length===1?tlStyle.showInfoTypes[0]:`${tlStyle.showInfoTypes.length} selected`}
@@ -48986,7 +48986,7 @@ const TalariaV8b = () => {
                                   {(()=>{const bCol=isA?c.acL:isH?c.ts:"rgba(140,160,255,0.22)";return(<>
                                     <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
                                     <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                                    {!isA&&isH&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(74,106,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(74,106,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/></>}
+                                    {!isA&&isH&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(48,144,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(48,144,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/></>}
                                     {isA&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/><circle cx={5} cy={5} r={2.8} fill={c.acL} opacity={0.12}/><circle cx={5} cy={5} r={1.6} fill={c.acL}/></>}
                                   </>);})()}
                                 </svg>
@@ -49069,7 +49069,7 @@ const TalariaV8b = () => {
                       <div onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setTlStyleDropUp(r.bottom+200>window.innerHeight);setTlStyleDrop(tlStyleDrop==="width"?null:"width");}}
                         onMouseEnter={()=>setHov("tl-btn-width")} onMouseLeave={()=>setHov(null)}
                         style={{ height:26, padding:"0 8px", display:"flex", alignItems:"center", gap:4, cursor:"default", position:"relative",
-                                 background:tlStyleDrop==="width"?"rgba(74,106,255,0.08)":hov==="tl-btn-width"?c.hv:"transparent",
+                                 background:tlStyleDrop==="width"?"rgba(48,144,255,0.08)":hov==="tl-btn-width"?c.hv:"transparent",
                                  transition:"background 0.12s" }}>
                         <span style={{ fontSize:12, color:tlStyleDrop==="width"?c.acL:c.ts }}>{tlStyle.lineWidth}x</span>
                         <I n="chevDown" s={7} cl={tlStyleDrop==="width"?c.acL:c.ts}/>
@@ -49188,7 +49188,7 @@ const TalariaV8b = () => {
                           return (
                             <div key={hk} onClick={toggle} onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
                               style={{ width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
-                                       background:isAct?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",
+                                       background:isAct?"rgba(48,144,255,0.08)":isH?c.hv:"transparent",
                                        cursor:"default", transition:"background 0.12s",
                                        color:isAct?c.acL:isH?c.tx:c.ts, fontFamily:F, ...extra }}>
                               {label}
@@ -49323,7 +49323,7 @@ const TalariaV8b = () => {
                             <div onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setTlStyleDropUp(r.bottom+110>window.innerHeight);setTlStyleDrop(tlStyleDrop===chDk?null:chDk);}}
                               onMouseEnter={()=>setHov(`tl-btn-${chDk}`)} onMouseLeave={()=>setHov(null)}
                               style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", justifyContent:"center", gap:3, cursor:"default", position:"relative",
-                                       background:tlStyleDrop===chDk?"rgba(74,106,255,0.08)":hov===`tl-btn-${chDk}`?c.hv:"transparent",
+                                       background:tlStyleDrop===chDk?"rgba(48,144,255,0.08)":hov===`tl-btn-${chDk}`?c.hv:"transparent",
                                        transition:"background 0.12s" }}>
                               <svg width={22} height={10} viewBox="0 0 22 10">
                                 <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop===chDk?c.acL:c.ts}
@@ -49353,7 +49353,7 @@ const TalariaV8b = () => {
                             <div onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setTlStyleDropUp(r.bottom+110>window.innerHeight);setTlStyleDrop(tlStyleDrop===chWk?null:chWk);}}
                               onMouseEnter={()=>setHov(`tl-btn-${chWk}`)} onMouseLeave={()=>setHov(null)}
                               style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", justifyContent:"center", gap:3, cursor:"default", position:"relative",
-                                       background:tlStyleDrop===chWk?"rgba(74,106,255,0.08)":hov===`tl-btn-${chWk}`?c.hv:"transparent",
+                                       background:tlStyleDrop===chWk?"rgba(48,144,255,0.08)":hov===`tl-btn-${chWk}`?c.hv:"transparent",
                                        transition:"background 0.12s" }}>
                               <svg width={22} height={Math.max(8,+ln.width+4)} viewBox={`0 0 22 ${Math.max(8,+ln.width+4)}`}>
                                 <line x1={0} y1={Math.max(8,+ln.width+4)/2} x2={22} y2={Math.max(8,+ln.width+4)/2}
@@ -49416,7 +49416,7 @@ const TalariaV8b = () => {
                           <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop===pfDk?null:pfDk);}}
                             onMouseEnter={()=>setHov(`tl-btn-${pfDk}`)} onMouseLeave={()=>setHov(null)}
                             style={{ height:26, padding:"0 10px", display:"flex", alignItems:"center", gap:5, cursor:"default", position:"relative",
-                                     background:tlStyleDrop===pfDk?"rgba(74,106,255,0.08)":hov===`tl-btn-${pfDk}`?c.hv:"transparent",
+                                     background:tlStyleDrop===pfDk?"rgba(48,144,255,0.08)":hov===`tl-btn-${pfDk}`?c.hv:"transparent",
                                      transition:"background 0.12s" }}>
                             <span style={{ fontSize:12, color:tlStyleDrop===pfDk?c.acL:c.ts }}>{tlStyle.pitchforkStyle}</span>
                             <I n="chevDown" s={7} cl={tlStyleDrop===pfDk?c.acL:c.ts}/>
@@ -49460,7 +49460,7 @@ const TalariaV8b = () => {
                               <div onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setTlStyleDropUp(r.bottom+110>window.innerHeight);setTlStyleDrop(tlStyleDrop===dk?null:dk);}}
                                 onMouseEnter={()=>setHov(`tl-btn-${dk}`)} onMouseLeave={()=>setHov(null)}
                                 style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", justifyContent:"center", gap:3, cursor:"default", position:"relative",
-                                         background:tlStyleDrop===dk?"rgba(74,106,255,0.08)":hov===`tl-btn-${dk}`?c.hv:"transparent",
+                                         background:tlStyleDrop===dk?"rgba(48,144,255,0.08)":hov===`tl-btn-${dk}`?c.hv:"transparent",
                                          transition:"background 0.12s" }}>
                                 <svg width={22} height={10} viewBox="0 0 22 10">
                                   <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop===dk?c.acL:c.ts}
@@ -49495,7 +49495,7 @@ const TalariaV8b = () => {
                               <div onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setTlStyleDropUp(r.bottom+110>window.innerHeight);setTlStyleDrop(tlStyleDrop===dk?null:dk);}}
                                 onMouseEnter={()=>setHov(`tl-btn-${dk}`)} onMouseLeave={()=>setHov(null)}
                                 style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", justifyContent:"center", gap:3, cursor:"default", position:"relative",
-                                         background:tlStyleDrop===dk?"rgba(74,106,255,0.08)":hov===`tl-btn-${dk}`?c.hv:"transparent",
+                                         background:tlStyleDrop===dk?"rgba(48,144,255,0.08)":hov===`tl-btn-${dk}`?c.hv:"transparent",
                                          transition:"background 0.12s" }}>
                                 <svg width={22} height={Math.max(8,+tlStyle.lineWidth+4)} viewBox={`0 0 22 ${Math.max(8,+tlStyle.lineWidth+4)}`}>
                                   <line x1={0} y1={Math.max(8,+tlStyle.lineWidth+4)/2} x2={22} y2={Math.max(8,+tlStyle.lineWidth+4)/2}
@@ -49532,7 +49532,7 @@ const TalariaV8b = () => {
                         <div style={{ marginLeft:78, display:"flex", alignItems:"center", opacity:on?1:0.38, pointerEvents:on?"auto":"none", transition:"opacity 0.15s" }}>
                           <div style={{ position:"relative", width:100, height:20, display:"flex", alignItems:"center" }}>
                             <div style={{ position:"absolute", left:0, right:0, height:3, top:"50%", transform:"translateY(-50%)", borderRadius:99, background:c.trk }}>
-                              <div style={{ width:`${pct}%`, height:"100%", borderRadius:99, background:`linear-gradient(90deg,rgba(74,106,255,0.35),${c.acL})`, boxShadow:`0 0 5px ${c.acG}` }}/>
+                              <div style={{ width:`${pct}%`, height:"100%", borderRadius:99, background:`linear-gradient(90deg,rgba(48,144,255,0.35),${c.acL})`, boxShadow:`0 0 5px ${c.acG}` }}/>
                             </div>
                             <div style={{ position:"absolute", left:`calc(${pct}% - 6px)`, top:"calc(50% + 2px)", width:12, height:9, clipPath:"polygon(50% 0%,0% 100%,100% 100%)", background:`linear-gradient(180deg,${c.acL},${c.ac})`, filter:hov==="pf-bg-sl"?`drop-shadow(0 0 8px ${c.acG}) brightness(1.35)`:`drop-shadow(0 0 4px ${c.acG})`, transform:hov==="pf-bg-sl"?"scale(1.18)":"scale(1)", transition:"transform 0.08s ease,filter 0.08s ease", pointerEvents:"none" }}/>
                             <input type="range" min="0" max="1" step="0.01" value={tlStyle.pfBgOpacity??0.5}
@@ -49599,7 +49599,7 @@ const TalariaV8b = () => {
                         <div style={{ marginLeft:78, display:"flex", alignItems:"center", opacity:tlStyle.fibBackground?1:0.38, pointerEvents:tlStyle.fibBackground?"auto":"none", transition:"opacity 0.15s" }}>
                           <div style={{ position:"relative", width:100, height:20, display:"flex", alignItems:"center" }}>
                             <div style={{ position:"absolute", left:0, right:0, height:3, top:"50%", transform:"translateY(-50%)", borderRadius:99, background:c.trk }}>
-                              <div style={{ width:`${pct}%`, height:"100%", borderRadius:99, background:`linear-gradient(90deg,rgba(74,106,255,0.35),${c.acL})`, boxShadow:`0 0 5px ${c.acG}` }}/>
+                              <div style={{ width:`${pct}%`, height:"100%", borderRadius:99, background:`linear-gradient(90deg,rgba(48,144,255,0.35),${c.acL})`, boxShadow:`0 0 5px ${c.acG}` }}/>
                             </div>
                             <div style={{ position:"absolute", left:`calc(${pct}% - 6px)`, top:"calc(50% + 2px)", width:12, height:9, clipPath:"polygon(50% 0%,0% 100%,100% 100%)", background:`linear-gradient(180deg,${c.acL},${c.ac})`, filter:hov==="fib-bg-sl"?`drop-shadow(0 0 8px ${c.acG}) brightness(1.35)`:`drop-shadow(0 0 4px ${c.acG})`, transform:hov==="fib-bg-sl"?"scale(1.18)":"scale(1)", transition:"transform 0.08s ease,filter 0.08s ease", pointerEvents:"none" }}/>
                             <input type="range" min="0" max="1" step="0.01" value={tlStyle.fibBgOpacity}
@@ -49635,7 +49635,7 @@ const TalariaV8b = () => {
                                 <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop===typeDk?null:typeDk);}}
                                   onMouseEnter={()=>setHov(`tl-btn-${typeDk}`)} onMouseLeave={()=>setHov(null)}
                                   style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", gap:3, cursor:"default", position:"relative",
-                                           background:tlStyleDrop===typeDk?"rgba(74,106,255,0.08)":hov===`tl-btn-${typeDk}`?c.hv:"transparent", transition:"background 0.12s" }}>
+                                           background:tlStyleDrop===typeDk?"rgba(48,144,255,0.08)":hov===`tl-btn-${typeDk}`?c.hv:"transparent", transition:"background 0.12s" }}>
                                   <svg width={22} height={10} viewBox="0 0 22 10">
                                     <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop===typeDk?c.acL:c.ts}
                                       strokeWidth={tlStyle.fibGridType==="bold"?2.5:1.5} strokeLinecap="round" strokeDasharray={da(tlStyle.fibGridType)}/>
@@ -49665,7 +49665,7 @@ const TalariaV8b = () => {
                                 <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop===widDk?null:widDk);}}
                                   onMouseEnter={()=>setHov(`tl-btn-${widDk}`)} onMouseLeave={()=>setHov(null)}
                                   style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", gap:3, cursor:"default", position:"relative",
-                                           background:tlStyleDrop===widDk?"rgba(74,106,255,0.08)":hov===`tl-btn-${widDk}`?c.hv:"transparent", transition:"background 0.12s" }}>
+                                           background:tlStyleDrop===widDk?"rgba(48,144,255,0.08)":hov===`tl-btn-${widDk}`?c.hv:"transparent", transition:"background 0.12s" }}>
                                   <svg width={22} height={Math.max(8,+tlStyle.fibGridWidth+4)} viewBox={`0 0 22 ${Math.max(8,+tlStyle.fibGridWidth+4)}`}>
                                     <line x1={0} y1={Math.max(8,+tlStyle.fibGridWidth+4)/2} x2={22} y2={Math.max(8,+tlStyle.fibGridWidth+4)/2}
                                       stroke={tlStyleDrop===widDk?c.acL:c.ts} strokeWidth={+tlStyle.fibGridWidth} strokeLinecap="round"/>
@@ -49710,7 +49710,7 @@ const TalariaV8b = () => {
                               <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop===dk?null:dk);}}
                                 onMouseEnter={()=>setHov(`tl-btn-${dk}`)} onMouseLeave={()=>setHov(null)}
                                 style={{ height:26, padding:"0 10px", display:"flex", alignItems:"center", gap:5, cursor:"default", position:"relative",
-                                         background:tlStyleDrop===dk?"rgba(74,106,255,0.08)":hov===`tl-btn-${dk}`?c.hv:"transparent",
+                                         background:tlStyleDrop===dk?"rgba(48,144,255,0.08)":hov===`tl-btn-${dk}`?c.hv:"transparent",
                                          transition:"background 0.12s" }}>
                                 <span style={{ fontSize:12, color:tlStyleDrop===dk?c.acL:c.ts }}>{val}</span>
                                 <I n="chevDown" s={7} cl={tlStyleDrop===dk?c.acL:c.ts}/>
@@ -49752,7 +49752,7 @@ const TalariaV8b = () => {
                     <div style={{ marginLeft:78, display:"flex", alignItems:"center", opacity:tlStyle.fibBackground?1:0.38, pointerEvents:tlStyle.fibBackground?"auto":"none", transition:"opacity 0.15s" }}>
                       <div style={{ position:"relative", width:100, height:20, display:"flex", alignItems:"center" }}>
                         <div style={{ position:"absolute", left:0, right:0, height:3, top:"50%", transform:"translateY(-50%)", borderRadius:99, background:c.trk }}>
-                          <div style={{ width:`${pct}%`, height:"100%", borderRadius:99, background:`linear-gradient(90deg,rgba(74,106,255,0.35),${c.acL})`, boxShadow:`0 0 5px ${c.acG}` }}/>
+                          <div style={{ width:`${pct}%`, height:"100%", borderRadius:99, background:`linear-gradient(90deg,rgba(48,144,255,0.35),${c.acL})`, boxShadow:`0 0 5px ${c.acG}` }}/>
                         </div>
                         <div style={{ position:"absolute", left:`calc(${pct}% - 6px)`, top:"calc(50% + 2px)", width:12, height:9, clipPath:"polygon(50% 0%,0% 100%,100% 100%)", background:`linear-gradient(180deg,${c.acL},${c.ac})`, filter:hov==="fibC-bg-sl"?`drop-shadow(0 0 8px ${c.acG}) brightness(1.35)`:`drop-shadow(0 0 4px ${c.acG})`, transform:hov==="fibC-bg-sl"?"scale(1.18)":"scale(1)", transition:"transform 0.08s ease,filter 0.08s ease", pointerEvents:"none" }}/>
                         <input type="range" min="0" max="1" step="0.01" value={tlStyle.fibBgOpacity}
@@ -49776,7 +49776,7 @@ const TalariaV8b = () => {
                         <div style={{ marginLeft:78, display:"flex", alignItems:"center", opacity:tlStyle.gannBackground?1:0.38, pointerEvents:tlStyle.gannBackground?"auto":"none", transition:"opacity 0.15s" }}>
                           <div style={{ position:"relative", width:100, height:20, display:"flex", alignItems:"center" }}>
                             <div style={{ position:"absolute", left:0, right:0, height:3, top:"50%", transform:"translateY(-50%)", borderRadius:99, background:c.trk }}>
-                              <div style={{ width:`${pct}%`, height:"100%", borderRadius:99, background:`linear-gradient(90deg,rgba(74,106,255,0.35),${c.acL})`, boxShadow:`0 0 5px ${c.acG}` }}/>
+                              <div style={{ width:`${pct}%`, height:"100%", borderRadius:99, background:`linear-gradient(90deg,rgba(48,144,255,0.35),${c.acL})`, boxShadow:`0 0 5px ${c.acG}` }}/>
                             </div>
                             <div style={{ position:"absolute", left:`calc(${pct}% - 6px)`, top:"calc(50% + 2px)", width:12, height:9, clipPath:"polygon(50% 0%,0% 100%,100% 100%)", background:`linear-gradient(180deg,${c.acL},${c.ac})`, filter:hov==="gann-bg-sl"?`drop-shadow(0 0 8px ${c.acG}) brightness(1.35)`:`drop-shadow(0 0 4px ${c.acG})`, transform:hov==="gann-bg-sl"?"scale(1.18)":"scale(1)", transition:"transform 0.08s ease,filter 0.08s ease", pointerEvents:"none" }}/>
                             <input type="range" min="0" max="1" step="0.01" value={tlStyle.gannBgOpacity}
@@ -49834,7 +49834,7 @@ const TalariaV8b = () => {
                   <div onClick={e=>{e.stopPropagation();if(tlStyle.showInfo){if(tlStyleDrop==="info"||closing.has("tlInfoDrop")){closeTlInfoDrop();}else{const r=e.currentTarget.getBoundingClientRect();const dropH=210;const goUp=r.bottom/Z+dropH>window.innerHeight/Z;setTlInfoDropUp(goUp);setTlStyleDrop("info");}}}}
                     onMouseEnter={()=>setHov("tlInfoBtn")} onMouseLeave={()=>setHov(null)}
                     style={{ height:26, padding:"0 8px", display:"flex", alignItems:"center", gap:5, position:"relative",
-                             background:(tlStyleDrop==="info"||closing.has("tlInfoDrop"))?"rgba(74,106,255,0.08)":hov==="tlInfoBtn"?c.hv:"transparent",
+                             background:(tlStyleDrop==="info"||closing.has("tlInfoDrop"))?"rgba(48,144,255,0.08)":hov==="tlInfoBtn"?c.hv:"transparent",
                              cursor:tlStyle.showInfo?"default":"not-allowed",
                              opacity:tlStyle.showInfo?1:0.38, transition:"background 0.12s, opacity 0.15s" }}>
                     <span style={{ fontSize:12, color:(tlStyleDrop==="info"||closing.has("tlInfoDrop"))?c.acL:c.ts }}>{tlStyle.showInfoTypes.length===0?"None":tlStyle.showInfoTypes.length===1?tlStyle.showInfoTypes[0]:`${tlStyle.showInfoTypes.length} selected`}</span>
@@ -49860,7 +49860,7 @@ const TalariaV8b = () => {
                               {(()=>{const bCol=isA?c.acL:isH?c.ts:"rgba(140,160,255,0.22)";return(<>
                                 <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
                                 <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                                {!isA&&isH&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(74,106,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(74,106,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/></>}
+                                {!isA&&isH&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(48,144,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(48,144,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/></>}
                                 {isA&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/><circle cx={5} cy={5} r={2.8} fill={c.acL} opacity={0.12}/><circle cx={5} cy={5} r={1.6} fill={c.acL}/></>}
                               </>);})()}
                             </svg>
@@ -49895,7 +49895,7 @@ const TalariaV8b = () => {
                       <div onClick={e=>{e.stopPropagation();if(tlStyleDrop==="textSize"||closing.has("tlFontSizeDrop")){closeFontSizeDrop();}else{setTlStyleDrop("textSize");}}}
                         onMouseEnter={()=>setHov("tlSzBtn")} onMouseLeave={()=>setHov(null)}
                         style={{ height:26, padding:"0 7px", display:"flex", alignItems:"center", gap:3, position:"relative",
-                                 background:(tlStyleDrop==="textSize"||closing.has("tlFontSizeDrop"))?"rgba(74,106,255,0.08)":hov==="tlSzBtn"?c.hv:"transparent",
+                                 background:(tlStyleDrop==="textSize"||closing.has("tlFontSizeDrop"))?"rgba(48,144,255,0.08)":hov==="tlSzBtn"?c.hv:"transparent",
                                  cursor:"default", transition:"background 0.12s" }}>
                         <span style={{ fontSize:12, color:(tlStyleDrop==="textSize"||closing.has("tlFontSizeDrop"))?c.acL:c.ts, minWidth:16, textAlign:"center" }}>{tlStyle.textSize}</span>
                         <I n="chevDown" s={9} cl={(tlStyleDrop==="textSize"||closing.has("tlFontSizeDrop"))?c.acL:c.ts}/>
@@ -49931,7 +49931,7 @@ const TalariaV8b = () => {
                         return (
                           <div key={hk} onClick={toggle} onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
                             style={{ width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
-                                     background:isAct?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",
+                                     background:isAct?"rgba(48,144,255,0.08)":isH?c.hv:"transparent",
                                      cursor:"default", transition:"background 0.12s",
                                      color:isAct?c.acL:isH?c.tx:c.ts, fontFamily:F, ...extra }}>
                             {label}
@@ -49977,7 +49977,7 @@ const TalariaV8b = () => {
                           <div key={v} onClick={()=>setTlStyle(s=>({...s,[key]:v}))}
                             onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
                             style={{ width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
-                                     background:isAct?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",
+                                     background:isAct?"rgba(48,144,255,0.08)":isH?c.hv:"transparent",
                                      cursor:"default", color:isAct?c.acL:isH?c.tx:c.ts, transition:"background 0.12s, color 0.12s" }}>
                             {ico}
                             <div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:isAct?"70%":"50%",height:isAct?2:1,
@@ -50057,7 +50057,7 @@ const TalariaV8b = () => {
                         <div onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setTlStyleDropUp(r.bottom+110>window.innerHeight);setTlStyleDrop(tlStyleDrop===typeDk?null:typeDk);}}
                           onMouseEnter={()=>setHov(`tl-btn-${typeDk}`)} onMouseLeave={()=>setHov(null)}
                           style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", gap:3, cursor:"default", position:"relative",
-                                   background:tlStyleDrop===typeDk?"rgba(74,106,255,0.08)":hov===`tl-btn-${typeDk}`?c.hv:"transparent", transition:"background 0.12s" }}>
+                                   background:tlStyleDrop===typeDk?"rgba(48,144,255,0.08)":hov===`tl-btn-${typeDk}`?c.hv:"transparent", transition:"background 0.12s" }}>
                           <svg width={22} height={10} viewBox="0 0 22 10">
                             <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop===typeDk?c.acL:c.ts}
                               strokeWidth={lv.type==="bold"?2.5:1.5} strokeLinecap="round" strokeDasharray={da(lv.type)}/>
@@ -50087,7 +50087,7 @@ const TalariaV8b = () => {
                         <div onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setTlStyleDropUp(r.bottom+110>window.innerHeight);setTlStyleDrop(tlStyleDrop===widDk?null:widDk);}}
                           onMouseEnter={()=>setHov(`tl-btn-${widDk}`)} onMouseLeave={()=>setHov(null)}
                           style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", gap:3, cursor:"default", position:"relative",
-                                   background:tlStyleDrop===widDk?"rgba(74,106,255,0.08)":hov===`tl-btn-${widDk}`?c.hv:"transparent", transition:"background 0.12s" }}>
+                                   background:tlStyleDrop===widDk?"rgba(48,144,255,0.08)":hov===`tl-btn-${widDk}`?c.hv:"transparent", transition:"background 0.12s" }}>
                           <svg width={22} height={Math.max(8,+lv.width+4)} viewBox={`0 0 22 ${Math.max(8,+lv.width+4)}`}>
                             <line x1={0} y1={Math.max(8,+lv.width+4)/2} x2={22} y2={Math.max(8,+lv.width+4)/2}
                               stroke={tlStyleDrop===widDk?c.acL:c.ts} strokeWidth={+lv.width} strokeLinecap="round"/>
@@ -50202,7 +50202,7 @@ const TalariaV8b = () => {
                         <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop===typeDk?null:typeDk);}}
                           onMouseEnter={()=>setHov(`tl-btn-${typeDk}`)} onMouseLeave={()=>setHov(null)}
                           style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", gap:3, cursor:"default", position:"relative",
-                                   background:tlStyleDrop===typeDk?"rgba(74,106,255,0.08)":hov===`tl-btn-${typeDk}`?c.hv:"transparent", transition:"background 0.12s" }}>
+                                   background:tlStyleDrop===typeDk?"rgba(48,144,255,0.08)":hov===`tl-btn-${typeDk}`?c.hv:"transparent", transition:"background 0.12s" }}>
                           <svg width={22} height={10} viewBox="0 0 22 10">
                             <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop===typeDk?c.acL:c.ts}
                               strokeWidth={tlStyle.fibTimeTrendType==="bold"?2.5:1.5} strokeLinecap="round" strokeDasharray={da(tlStyle.fibTimeTrendType)}/>
@@ -50232,7 +50232,7 @@ const TalariaV8b = () => {
                         <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop===widDk?null:widDk);}}
                           onMouseEnter={()=>setHov(`tl-btn-${widDk}`)} onMouseLeave={()=>setHov(null)}
                           style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", gap:3, cursor:"default", position:"relative",
-                                   background:tlStyleDrop===widDk?"rgba(74,106,255,0.08)":hov===`tl-btn-${widDk}`?c.hv:"transparent", transition:"background 0.12s" }}>
+                                   background:tlStyleDrop===widDk?"rgba(48,144,255,0.08)":hov===`tl-btn-${widDk}`?c.hv:"transparent", transition:"background 0.12s" }}>
                           <svg width={22} height={Math.max(8,+tlStyle.fibTimeTrendWidth+4)} viewBox={`0 0 22 ${Math.max(8,+tlStyle.fibTimeTrendWidth+4)}`}>
                             <line x1={0} y1={Math.max(8,+tlStyle.fibTimeTrendWidth+4)/2} x2={22} y2={Math.max(8,+tlStyle.fibTimeTrendWidth+4)/2}
                               stroke={tlStyleDrop===widDk?c.acL:c.ts} strokeWidth={+tlStyle.fibTimeTrendWidth} strokeLinecap="round"/>
@@ -50283,7 +50283,7 @@ const TalariaV8b = () => {
                         <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop===typeDk?null:typeDk);}}
                           onMouseEnter={()=>setHov(`tl-btn-${typeDk}`)} onMouseLeave={()=>setHov(null)}
                           style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", gap:3, cursor:"default", position:"relative",
-                                   background:tlStyleDrop===typeDk?"rgba(74,106,255,0.08)":hov===`tl-btn-${typeDk}`?c.hv:"transparent", transition:"background 0.12s" }}>
+                                   background:tlStyleDrop===typeDk?"rgba(48,144,255,0.08)":hov===`tl-btn-${typeDk}`?c.hv:"transparent", transition:"background 0.12s" }}>
                           <svg width={22} height={10} viewBox="0 0 22 10">
                             <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop===typeDk?c.acL:c.ts}
                               strokeWidth={typeVal==="bold"?2.5:1.5} strokeLinecap="round" strokeDasharray={da(typeVal)}/>
@@ -50313,7 +50313,7 @@ const TalariaV8b = () => {
                         <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop===widDk?null:widDk);}}
                           onMouseEnter={()=>setHov(`tl-btn-${widDk}`)} onMouseLeave={()=>setHov(null)}
                           style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", gap:3, cursor:"default", position:"relative",
-                                   background:tlStyleDrop===widDk?"rgba(74,106,255,0.08)":hov===`tl-btn-${widDk}`?c.hv:"transparent", transition:"background 0.12s" }}>
+                                   background:tlStyleDrop===widDk?"rgba(48,144,255,0.08)":hov===`tl-btn-${widDk}`?c.hv:"transparent", transition:"background 0.12s" }}>
                           <svg width={22} height={Math.max(8,+widVal+4)} viewBox={`0 0 22 ${Math.max(8,+widVal+4)}`}>
                             <line x1={0} y1={Math.max(8,+widVal+4)/2} x2={22} y2={Math.max(8,+widVal+4)/2}
                               stroke={tlStyleDrop===widDk?c.acL:c.ts} strokeWidth={+widVal} strokeLinecap="round"/>
@@ -50354,7 +50354,7 @@ const TalariaV8b = () => {
                     <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop==="fibLnType"?null:"fibLnType");}}
                       onMouseEnter={()=>setHov("tl-btn-fibLnType")} onMouseLeave={()=>setHov(null)}
                       style={{ height:26, padding:"0 8px", display:"flex", alignItems:"center", gap:4, cursor:"default", position:"relative",
-                               background:tlStyleDrop==="fibLnType"?"rgba(74,106,255,0.08)":hov==="tl-btn-fibLnType"?c.hv:"transparent",
+                               background:tlStyleDrop==="fibLnType"?"rgba(48,144,255,0.08)":hov==="tl-btn-fibLnType"?c.hv:"transparent",
                                transition:"background 0.12s" }}>
                       <svg width={22} height={10} viewBox="0 0 22 10">
                         <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop==="fibLnType"?c.acL:c.ts}
@@ -50385,7 +50385,7 @@ const TalariaV8b = () => {
                     <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop==="fibLnWidth"?null:"fibLnWidth");}}
                       onMouseEnter={()=>setHov("tl-btn-fibLnWidth")} onMouseLeave={()=>setHov(null)}
                       style={{ height:26, padding:"0 8px", display:"flex", alignItems:"center", gap:4, cursor:"default", position:"relative",
-                               background:tlStyleDrop==="fibLnWidth"?"rgba(74,106,255,0.08)":hov==="tl-btn-fibLnWidth"?c.hv:"transparent",
+                               background:tlStyleDrop==="fibLnWidth"?"rgba(48,144,255,0.08)":hov==="tl-btn-fibLnWidth"?c.hv:"transparent",
                                transition:"background 0.12s" }}>
                       <svg width={22} height={Math.max(8,+tlStyle.fibLineWidth+4)} viewBox={`0 0 22 ${Math.max(8,+tlStyle.fibLineWidth+4)}`}>
                         <line x1={0} y1={Math.max(8,+tlStyle.fibLineWidth+4)/2} x2={22} y2={Math.max(8,+tlStyle.fibLineWidth+4)/2}
@@ -50547,7 +50547,7 @@ const TalariaV8b = () => {
                     <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop==="gannLnType"?null:"gannLnType");}}
                       onMouseEnter={()=>setHov("tl-btn-gannLnType")} onMouseLeave={()=>setHov(null)}
                       style={{ height:26, padding:"0 8px", display:"flex", alignItems:"center", gap:4, cursor:"default", position:"relative",
-                               background:tlStyleDrop==="gannLnType"?"rgba(74,106,255,0.08)":hov==="tl-btn-gannLnType"?c.hv:"transparent",
+                               background:tlStyleDrop==="gannLnType"?"rgba(48,144,255,0.08)":hov==="tl-btn-gannLnType"?c.hv:"transparent",
                                transition:"background 0.12s" }}>
                       <svg width={34} height={10} viewBox="0 0 34 10">
                         <line x1={0} y1={5} x2={34} y2={5} stroke={tlStyleDrop==="gannLnType"?c.acL:c.ts}
@@ -50577,7 +50577,7 @@ const TalariaV8b = () => {
                     <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop==="gannLnWidth"?null:"gannLnWidth");}}
                       onMouseEnter={()=>setHov("tl-btn-gannLnWidth")} onMouseLeave={()=>setHov(null)}
                       style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", gap:4, cursor:"default", position:"relative",
-                               background:tlStyleDrop==="gannLnWidth"?"rgba(74,106,255,0.08)":hov==="tl-btn-gannLnWidth"?c.hv:"transparent",
+                               background:tlStyleDrop==="gannLnWidth"?"rgba(48,144,255,0.08)":hov==="tl-btn-gannLnWidth"?c.hv:"transparent",
                                transition:"background 0.12s" }}>
                       <svg width={22} height={Math.max(8,+tlStyle.gannLineWidth+4)} viewBox={`0 0 22 ${Math.max(8,+tlStyle.gannLineWidth+4)}`}>
                         <line x1={0} y1={Math.max(8,+tlStyle.gannLineWidth+4)/2} x2={22} y2={Math.max(8,+tlStyle.gannLineWidth+4)/2}
@@ -50729,7 +50729,7 @@ const TalariaV8b = () => {
                       <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop===dk?null:dk);}}
                         onMouseEnter={()=>setHov(`tl-btn-${dk}`)} onMouseLeave={()=>setHov(null)}
                         style={{ height:26, padding:"0 10px", display:"flex", alignItems:"center", gap:5, cursor:"default", position:"relative",
-                                 background:tlStyleDrop===dk?"rgba(74,106,255,0.08)":hov===`tl-btn-${dk}`?c.hv:"transparent",
+                                 background:tlStyleDrop===dk?"rgba(48,144,255,0.08)":hov===`tl-btn-${dk}`?c.hv:"transparent",
                                  transition:"background 0.12s" }}>
                         <span style={{ fontSize:12, color:tlStyleDrop===dk?c.acL:c.ts }}>{val}</span>
                         <I n="chevDown" s={7} cl={tlStyleDrop===dk?c.acL:c.ts}/>
@@ -50837,7 +50837,7 @@ const TalariaV8b = () => {
                   <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop==="rangeType"?null:"rangeType");}}
                     onMouseEnter={()=>setHov("rngTypeBtn")} onMouseLeave={()=>setHov(null)}
                     style={{ height:26, padding:"0 8px", display:"flex", alignItems:"center", gap:4, cursor:"default", position:"relative",
-                      background:tlStyleDrop==="rangeType"?"rgba(74,106,255,0.08)":hov==="rngTypeBtn"?c.hv:"transparent",
+                      background:tlStyleDrop==="rangeType"?"rgba(48,144,255,0.08)":hov==="rngTypeBtn"?c.hv:"transparent",
                       transition:"background 0.12s" }}>
                     <span style={{ fontSize:12, color:tlStyleDrop==="rangeType"?c.acL:c.ts }}>{tlStyle.rangeType}</span>
                     <I n="chevDown" s={7} cl={tlStyleDrop==="rangeType"?c.acL:c.ts}/>
@@ -51004,7 +51004,7 @@ const TalariaV8b = () => {
                           {/* track */}
                           <div style={{ position:"absolute", left:0, right:0, height:3, top:"50%", transform:"translateY(-50%)", borderRadius:99, background:c.trk }}>
                             <div style={{ position:"absolute", left:`${pctMin}%`, width:`${Math.max(0,pctMax-pctMin)}%`, height:"100%", borderRadius:99,
-                              background:`linear-gradient(90deg,rgba(74,106,255,0.35),${c.acL})`, boxShadow:`0 0 5px ${c.acG}` }}/>
+                              background:`linear-gradient(90deg,rgba(48,144,255,0.35),${c.acL})`, boxShadow:`0 0 5px ${c.acG}` }}/>
                           </div>
                           {/* visual triangles — no pointer events */}
                           <div style={{ position:"absolute", left:`calc(${pctMin}% - 6px)`, top:"calc(50% + 2px)", width:12, height:9,
@@ -51065,7 +51065,7 @@ const TalariaV8b = () => {
               onMouseLeave={()=>{setHov(null);hideTip();}}
               onClick={onClick}
               style={{width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",position:"relative",flexShrink:0,
-                background:isAct?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",transition:"background 0.12s"}}>
+                background:isAct?"rgba(48,144,255,0.08)":isH?c.hv:"transparent",transition:"background 0.12s"}}>
               {children(isH, isAct, isDel&&isH?c.rd:isAct?c.acL:isH?c.tx:c.ts)}
               {isAct&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
               {isH&&!isAct&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:isDel?`linear-gradient(90deg,transparent,${c.rd}44,transparent)`:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`}}/>}
@@ -51076,7 +51076,7 @@ const TalariaV8b = () => {
         <div data-sdrop="1" onClick={e=>e.stopPropagation()}
           style={{position:"fixed",top:tlBarPos.y,left:tlBarPos.x,zIndex:9050,
                   background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,
-                  boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
+                  boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(48,144,255,0.18)`,
                   display:"flex",flexDirection:"row",alignItems:"stretch",
                   userSelect:"none",animation:"tlrPopIn 0.15s ease",fontFamily:F}}>
           <div style={{width:2,alignSelf:"stretch",background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,flexShrink:0,marginLeft:3}}/>
@@ -51172,7 +51172,7 @@ const TalariaV8b = () => {
           </TxBtn>}
           {/* tool color button — pin only */}
           {txtSubTool.icon === "pin" && <TxBtn id="txt-pincol" isAct={colorPicker==="pinLabelColor"}
-            onClick={e=>{e.stopPropagation();if(colorPicker==="pinLabelColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.pinLabelColor||'#4A6AFF');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("pinLabelColor");}}}>
+            onClick={e=>{e.stopPropagation();if(colorPicker==="pinLabelColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.pinLabelColor||'#3090FF');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("pinLabelColor");}}}>
             {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><I n="pin" s={16} cl={col}/><div style={{width:12,height:2,background:txtStyle.pinLabelColor,borderRadius:1}}/></div>}
           </TxBtn>}
           {/* background color button — note order: shown here (before text color); other tools: shown after text color */}
@@ -51195,7 +51195,7 @@ const TalariaV8b = () => {
             <div onMouseEnter={()=>setHov("txt-bar-sz")} onMouseLeave={()=>setHov(null)}
               onClick={e=>{e.stopPropagation();setTxtBarSizeOpen(v=>!v);setTxtSizeOpen(false);}}
               style={{height:32,padding:"0 7px",display:"flex",alignItems:"center",gap:3,position:"relative",cursor:"default",
-                      background:txtBarSizeOpen?"rgba(74,106,255,0.08)":hov==="txt-bar-sz"?c.hv:"transparent",transition:"background 0.12s"}}>
+                      background:txtBarSizeOpen?"rgba(48,144,255,0.08)":hov==="txt-bar-sz"?c.hv:"transparent",transition:"background 0.12s"}}>
               <span style={{fontSize:12,color:txtBarSizeOpen?c.acL:c.ts,minWidth:16,textAlign:"center"}}>{txtStyle.fontSize}</span>
               <I n="chevDown" s={9} cl={txtBarSizeOpen?c.acL:c.ts}/>
               {txtBarSizeOpen&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
@@ -51386,7 +51386,7 @@ const TalariaV8b = () => {
                   style={{flex:1,padding:"10px 4px",border:"none",fontFamily:F,cursor:"default",
                           color:isAct?c.acL:hov===`txtTab-${id}`?c.tx:c.ts,fontSize:12,fontWeight:isAct?700:500,
                           display:"flex",alignItems:"center",justifyContent:"center",
-                          background:isAct?(hov===`txtTab-${id}`?"rgba(74,106,255,0.12)":"rgba(74,106,255,0.05)"):hov===`txtTab-${id}`?"rgba(255,255,255,0.06)":"transparent",
+                          background:isAct?(hov===`txtTab-${id}`?"rgba(48,144,255,0.12)":"rgba(48,144,255,0.05)"):hov===`txtTab-${id}`?"rgba(255,255,255,0.06)":"transparent",
                           transform:btnPressed===`txtTab-${id}`?"scale(0.94)":"scale(1)",
                           transition:"color 0.15s, background 0.12s, transform 0.08s"}}>
                   {lbl}
@@ -51440,7 +51440,7 @@ const TalariaV8b = () => {
                         {/* track */}
                         <div style={{position:"absolute",left:0,right:0,height:3,top:"50%",transform:"translateY(-50%)",borderRadius:99,background:c.trk}}>
                           <div style={{position:"absolute",left:0,width:`${pct}%`,height:"100%",borderRadius:99,
-                            background:`linear-gradient(90deg,rgba(74,106,255,0.35),${c.acL})`,boxShadow:`0 0 5px ${c.acG}`}}/>
+                            background:`linear-gradient(90deg,rgba(48,144,255,0.35),${c.acL})`,boxShadow:`0 0 5px ${c.acG}`}}/>
                         </div>
                         {/* triangle handle */}
                         <div style={{position:"absolute",left:`calc(${pct}% - 6px)`,top:"calc(50% + 2px)",width:12,height:9,
@@ -51472,7 +51472,7 @@ const TalariaV8b = () => {
                       <div onClick={e=>{e.stopPropagation();setTxtSizeOpen(v=>!v);}}
                         onMouseEnter={()=>setHov("txtSzBtn")} onMouseLeave={()=>setHov(null)}
                         style={{height:26,padding:"0 7px",display:"flex",alignItems:"center",gap:3,position:"relative",
-                                background:txtSizeOpen?"rgba(74,106,255,0.08)":hov==="txtSzBtn"?c.hv:"transparent",
+                                background:txtSizeOpen?"rgba(48,144,255,0.08)":hov==="txtSzBtn"?c.hv:"transparent",
                                 cursor:"default",transition:"background 0.12s"}}>
                         <span style={{fontSize:12,color:txtSizeOpen?c.acL:c.ts,minWidth:16,textAlign:"center"}}>{txtStyle.fontSize}</span>
                         <I n="chevDown" s={9} cl={txtSizeOpen?c.acL:c.ts}/>
@@ -51509,7 +51509,7 @@ const TalariaV8b = () => {
                         return (
                           <div key={hk} onClick={toggle} onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
                             style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
-                                    background:isAct?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",
+                                    background:isAct?"rgba(48,144,255,0.08)":isH?c.hv:"transparent",
                                     cursor:"default",transition:"background 0.12s",
                                     color:isAct?c.acL:isH?c.tx:c.ts,fontFamily:F,...extra}}>
                             {label}
@@ -51548,7 +51548,7 @@ const TalariaV8b = () => {
                           <div key={v} onClick={()=>setTxtStyle(s=>({...s,horizAlign:v}))}
                             onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
                             style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
-                                    background:isAct?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",
+                                    background:isAct?"rgba(48,144,255,0.08)":isH?c.hv:"transparent",
                                     cursor:"default",color:isAct?c.acL:isH?c.tx:c.ts,transition:"background 0.12s, color 0.12s"}}>
                             {ico}
                             <div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:isAct?"70%":"50%",height:isAct?2:1,
@@ -51615,7 +51615,7 @@ const TalariaV8b = () => {
                           return (
                             <div key={hk} onClick={toggle} onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
                               style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
-                                      background:isAct?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",
+                                      background:isAct?"rgba(48,144,255,0.08)":isH?c.hv:"transparent",
                                       cursor:"default",transition:"background 0.12s",
                                       color:isAct?c.acL:isH?c.tx:c.ts,fontFamily:F,...extra}}>
                               {label}
@@ -51651,7 +51651,7 @@ const TalariaV8b = () => {
                           <div key={v} onClick={()=>setTxtStyle(s=>({...s,horizAlign:v}))}
                             onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
                             style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
-                                    background:isAct?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",
+                                    background:isAct?"rgba(48,144,255,0.08)":isH?c.hv:"transparent",
                                     cursor:"default",color:isAct?c.acL:isH?c.tx:c.ts,transition:"background 0.12s, color 0.12s"}}>
                             {ico}
                             <div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:isAct?"70%":"50%",height:isAct?2:1,
@@ -51676,7 +51676,7 @@ const TalariaV8b = () => {
                         <div onClick={e=>{e.stopPropagation();setTxtSizeOpen(v=>!v);}}
                           onMouseEnter={()=>setHov("txtSzBtn")} onMouseLeave={()=>setHov(null)}
                           style={{height:26,padding:"0 7px",display:"flex",alignItems:"center",gap:3,position:"relative",
-                                  background:txtSizeOpen?"rgba(74,106,255,0.08)":hov==="txtSzBtn"?c.hv:"transparent",
+                                  background:txtSizeOpen?"rgba(48,144,255,0.08)":hov==="txtSzBtn"?c.hv:"transparent",
                                   cursor:"default",transition:"background 0.12s"}}>
                           <span style={{fontSize:12,color:txtSizeOpen?c.acL:c.ts,minWidth:16,textAlign:"center"}}>{txtStyle.fontSize}</span>
                           <I n="chevDown" s={9} cl={txtSizeOpen?c.acL:c.ts}/>
@@ -51712,7 +51712,7 @@ const TalariaV8b = () => {
                           return (
                             <div key={hk} onClick={toggle} onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
                               style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
-                                      background:isAct?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",
+                                      background:isAct?"rgba(48,144,255,0.08)":isH?c.hv:"transparent",
                                       cursor:"default",transition:"background 0.12s",
                                       color:isAct?c.acL:isH?c.tx:c.ts,fontFamily:F,...extra}}>
                               {label}
@@ -51835,7 +51835,7 @@ const TalariaV8b = () => {
                           {/* track */}
                           <div style={{position:"absolute",left:0,right:0,height:3,top:"50%",transform:"translateY(-50%)",borderRadius:99,background:c.trk}}>
                             <div style={{position:"absolute",left:`${pctMin}%`,width:`${Math.max(0,pctMax-pctMin)}%`,height:"100%",borderRadius:99,
-                              background:`linear-gradient(90deg,rgba(74,106,255,0.35),${c.acL})`,boxShadow:`0 0 5px ${c.acG}`}}/>
+                              background:`linear-gradient(90deg,rgba(48,144,255,0.35),${c.acL})`,boxShadow:`0 0 5px ${c.acG}`}}/>
                           </div>
                           {/* min triangle handle */}
                           <div style={{position:"absolute",left:`calc(${pctMin}% - 6px)`,top:"calc(50% + 2px)",width:12,height:9,
@@ -52026,7 +52026,7 @@ const TalariaV8b = () => {
                 onMouseEnter={()=>{if(!disabled)setHov(dk);}} onMouseLeave={()=>setHov(null)}
                 style={{height:26,width:56,padding:"0 6px",display:"flex",alignItems:"center",justifyContent:"center",gap:3,
                         cursor:disabled?"default":"default",position:"relative",
-                        background:isOpen?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",transition:"background 0.12s"}}>
+                        background:isOpen?"rgba(48,144,255,0.08)":isH?c.hv:"transparent",transition:"background 0.12s"}}>
                 <svg width={22} height={10} viewBox="0 0 22 10">
                   <line x1={0} y1={5} x2={22} y2={5} stroke={isOpen?c.acL:c.ts} strokeWidth={1.5} strokeLinecap="round" strokeDasharray={da(val)}/>
                 </svg>
@@ -52063,7 +52063,7 @@ const TalariaV8b = () => {
                 onMouseEnter={()=>{if(!disabled)setHov(dk);}} onMouseLeave={()=>setHov(null)}
                 style={{height:26,width:56,padding:"0 6px",display:"flex",alignItems:"center",justifyContent:"center",gap:3,
                         cursor:"default",position:"relative",
-                        background:isOpen?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",transition:"background 0.12s"}}>
+                        background:isOpen?"rgba(48,144,255,0.08)":isH?c.hv:"transparent",transition:"background 0.12s"}}>
                 <svg width={22} height={Math.max(8,+val+4)} viewBox={`0 0 22 ${Math.max(8,+val+4)}`}>
                   <line x1={0} y1={Math.max(8,+val+4)/2} x2={22} y2={Math.max(8,+val+4)/2} stroke={isOpen?c.acL:c.ts} strokeWidth={+val} strokeLinecap="round"/>
                 </svg>
@@ -52100,7 +52100,7 @@ const TalariaV8b = () => {
                 onMouseEnter={()=>setHov(dk)} onMouseLeave={()=>setHov(null)}
                 style={{height:26,padding:"0 8px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,
                         cursor:"default",position:"relative",
-                        background:isOpen?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",
+                        background:isOpen?"rgba(48,144,255,0.08)":isH?c.hv:"transparent",
                         transition:"background 0.12s"}}>
                 <span style={{fontSize:12,color:isOpen?c.acL:c.ts,whiteSpace:"nowrap"}}>{val}</span>
                 <I n="chevDown" s={7} cl={isOpen?c.acL:c.ts}/>
@@ -52193,7 +52193,7 @@ const TalariaV8b = () => {
                     style={{flex:1,padding:"10px 4px",border:"none",fontFamily:F,cursor:"default",
                             color:isAct?c.acL:hov===`vwapTab-${id}`?c.tx:c.ts,fontSize:12,fontWeight:isAct?700:500,
                             display:"flex",alignItems:"center",justifyContent:"center",
-                            background:isAct?(hov===`vwapTab-${id}`?"rgba(74,106,255,0.12)":"rgba(74,106,255,0.05)"):hov===`vwapTab-${id}`?"rgba(255,255,255,0.06)":"transparent",
+                            background:isAct?(hov===`vwapTab-${id}`?"rgba(48,144,255,0.12)":"rgba(48,144,255,0.05)"):hov===`vwapTab-${id}`?"rgba(255,255,255,0.06)":"transparent",
                             transform:btnPressed===`vwapTab-${id}`?"scale(0.94)":"scale(1)",
                             transition:"color 0.15s, background 0.12s, transform 0.08s"}}>
                     {lbl}
@@ -52404,7 +52404,7 @@ const TalariaV8b = () => {
                             style={{position:"relative",height:28,display:"flex",alignItems:"center",cursor:"default"}}>
                             <div style={{position:"absolute",left:0,right:0,height:3,top:"50%",transform:"translateY(-50%)",borderRadius:99,background:c.trk}}>
                               <div style={{position:"absolute",left:`${pctMin}%`,width:`${Math.max(0,pctMax-pctMin)}%`,height:"100%",borderRadius:99,
-                                background:`linear-gradient(90deg,rgba(74,106,255,0.35),${c.acL})`,boxShadow:`0 0 5px ${c.acG}`}}/>
+                                background:`linear-gradient(90deg,rgba(48,144,255,0.35),${c.acL})`,boxShadow:`0 0 5px ${c.acG}`}}/>
                             </div>
                             <div style={{position:"absolute",left:`calc(${pctMin}% - 6px)`,top:"calc(50% + 2px)",width:12,height:9,
                               clipPath:"polygon(50% 0%,0% 100%,100% 100%)",
@@ -52478,7 +52478,7 @@ const TalariaV8b = () => {
               <div onClick={e=>{e.stopPropagation();if(!disabled)setVpStyleDrop(isOpen?null:dk);}}
                 onMouseEnter={()=>{if(!disabled)setHov(dk);}} onMouseLeave={()=>setHov(null)}
                 style={{height:26,...(w?{width:w}:{minWidth:130}),padding:"0 8px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,
-                        background:isOpen?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",
+                        background:isOpen?"rgba(48,144,255,0.08)":isH?c.hv:"transparent",
                         transition:"background 0.12s",cursor:"default",position:"relative"}}>
                 <span style={{fontSize:12,color:isOpen?c.acL:c.ts,fontFamily:F}}>{val}</span>
                 <I n="chevDown" s={7} cl={isOpen?c.acL:c.ts}/>
@@ -52569,7 +52569,7 @@ const TalariaV8b = () => {
                     style={{flex:1,padding:"10px 4px",border:"none",fontFamily:F,cursor:"default",
                             color:isAct?c.acL:hov===`vpTab-${id}`?c.tx:c.ts,fontSize:12,fontWeight:isAct?700:500,
                             display:"flex",alignItems:"center",justifyContent:"center",
-                            background:isAct?(hov===`vpTab-${id}`?"rgba(74,106,255,0.12)":"rgba(74,106,255,0.05)"):hov===`vpTab-${id}`?"rgba(255,255,255,0.06)":"transparent",
+                            background:isAct?(hov===`vpTab-${id}`?"rgba(48,144,255,0.12)":"rgba(48,144,255,0.05)"):hov===`vpTab-${id}`?"rgba(255,255,255,0.06)":"transparent",
                             transform:btnPressed===`vpTab-${id}`?"scale(0.94)":"scale(1)",
                             transition:"color 0.15s, background 0.12s, transform 0.08s"}}>
                     {lbl}
@@ -52619,7 +52619,7 @@ const TalariaV8b = () => {
                       style={{position:"relative",flex:1,height:28,display:"flex",alignItems:"center",cursor:"default"}}>
                       <div style={{position:"absolute",left:0,right:0,height:3,top:"50%",transform:"translateY(-50%)",borderRadius:99,background:c.trk}}>
                         <div style={{position:"absolute",left:0,width:`${pct}%`,height:"100%",borderRadius:99,
-                          background:`linear-gradient(90deg,rgba(74,106,255,0.35),${c.acL})`,boxShadow:`0 0 5px ${c.acG}`}}/>
+                          background:`linear-gradient(90deg,rgba(48,144,255,0.35),${c.acL})`,boxShadow:`0 0 5px ${c.acG}`}}/>
                       </div>
                       <div style={{position:"absolute",left:`calc(${pct}% - 6px)`,top:"calc(50% + 2px)",width:12,height:9,
                         clipPath:"polygon(50% 0%,0% 100%,100% 100%)",
@@ -52785,7 +52785,7 @@ const TalariaV8b = () => {
                             style={{position:"relative",height:28,display:"flex",alignItems:"center",cursor:"default"}}>
                             <div style={{position:"absolute",left:0,right:0,height:3,top:"50%",transform:"translateY(-50%)",borderRadius:99,background:c.trk}}>
                               <div style={{position:"absolute",left:`${pctMin}%`,width:`${Math.max(0,pctMax-pctMin)}%`,height:"100%",borderRadius:99,
-                                background:`linear-gradient(90deg,rgba(74,106,255,0.35),${c.acL})`,boxShadow:`0 0 5px ${c.acG}`}}/>
+                                background:`linear-gradient(90deg,rgba(48,144,255,0.35),${c.acL})`,boxShadow:`0 0 5px ${c.acG}`}}/>
                             </div>
                             <div style={{position:"absolute",left:`calc(${pctMin}% - 6px)`,top:"calc(50% + 2px)",width:12,height:9,
                               clipPath:"polygon(50% 0%,0% 100%,100% 100%)",
@@ -52859,7 +52859,7 @@ const TalariaV8b = () => {
               <div onClick={e=>{e.stopPropagation();if(!disabled)setAvStyleDrop(isOpen?null:dk);}}
                 onMouseEnter={()=>{if(!disabled)setHov(dk);}} onMouseLeave={()=>setHov(null)}
                 style={{height:26,...(w?{width:w}:{minWidth:130}),padding:"0 8px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,
-                        background:isOpen?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",
+                        background:isOpen?"rgba(48,144,255,0.08)":isH?c.hv:"transparent",
                         transition:"background 0.12s",cursor:"default",position:"relative"}}>
                 <span style={{fontSize:12,color:isOpen?c.acL:c.ts,fontFamily:F}}>{val}</span>
                 <I n="chevDown" s={7} cl={isOpen?c.acL:c.ts}/>
@@ -52950,7 +52950,7 @@ const TalariaV8b = () => {
                     style={{flex:1,padding:"10px 4px",border:"none",fontFamily:F,cursor:"default",
                             color:isAct?c.acL:hov===`avTab-${id}`?c.tx:c.ts,fontSize:12,fontWeight:isAct?700:500,
                             display:"flex",alignItems:"center",justifyContent:"center",
-                            background:isAct?(hov===`avTab-${id}`?"rgba(74,106,255,0.12)":"rgba(74,106,255,0.05)"):hov===`avTab-${id}`?"rgba(255,255,255,0.06)":"transparent",
+                            background:isAct?(hov===`avTab-${id}`?"rgba(48,144,255,0.12)":"rgba(48,144,255,0.05)"):hov===`avTab-${id}`?"rgba(255,255,255,0.06)":"transparent",
                             transform:btnPressed===`avTab-${id}`?"scale(0.94)":"scale(1)",
                             transition:"color 0.15s, background 0.12s, transform 0.08s"}}>
                     {lbl}
@@ -52992,7 +52992,7 @@ const TalariaV8b = () => {
                       style={{position:"relative",flex:1,height:28,display:"flex",alignItems:"center",cursor:"default"}}>
                       <div style={{position:"absolute",left:0,right:0,height:3,top:"50%",transform:"translateY(-50%)",borderRadius:99,background:c.trk}}>
                         <div style={{position:"absolute",left:0,width:`${pct}%`,height:"100%",borderRadius:99,
-                          background:`linear-gradient(90deg,rgba(74,106,255,0.35),${c.acL})`,boxShadow:`0 0 5px ${c.acG}`}}/>
+                          background:`linear-gradient(90deg,rgba(48,144,255,0.35),${c.acL})`,boxShadow:`0 0 5px ${c.acG}`}}/>
                       </div>
                       <div style={{position:"absolute",left:`calc(${pct}% - 6px)`,top:"calc(50% + 2px)",width:12,height:9,
                         clipPath:"polygon(50% 0%,0% 100%,100% 100%)",
@@ -53154,7 +53154,7 @@ const TalariaV8b = () => {
                             style={{position:"relative",height:28,display:"flex",alignItems:"center",cursor:"default"}}>
                             <div style={{position:"absolute",left:0,right:0,height:3,top:"50%",transform:"translateY(-50%)",borderRadius:99,background:c.trk}}>
                               <div style={{position:"absolute",left:`${pctMin}%`,width:`${Math.max(0,pctMax-pctMin)}%`,height:"100%",borderRadius:99,
-                                background:`linear-gradient(90deg,rgba(74,106,255,0.35),${c.acL})`,boxShadow:`0 0 5px ${c.acG}`}}/>
+                                background:`linear-gradient(90deg,rgba(48,144,255,0.35),${c.acL})`,boxShadow:`0 0 5px ${c.acG}`}}/>
                             </div>
                             <div style={{position:"absolute",left:`calc(${pctMin}% - 6px)`,top:"calc(50% + 2px)",width:12,height:9,
                               clipPath:"polygon(50% 0%,0% 100%,100% 100%)",
@@ -53215,7 +53215,7 @@ const TalariaV8b = () => {
               onClick={onClick}
               style={{width:w||32,height:32,display:"flex",alignItems:"center",justifyContent:"center",
                       cursor:"default",position:"relative",flexShrink:0,userSelect:"none",
-                      background: isAct ? "rgba(74,106,255,0.08)" : isH ? c.hv : "transparent",
+                      background: isAct ? "rgba(48,144,255,0.08)" : isH ? c.hv : "transparent",
                       transition:"background 0.12s"}}>
               {children(isH, isAct, isDel&&isH ? c.rd : isAct ? c.acL : isH ? c.tx : c.ts)}
               {isAct && <div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
@@ -53228,7 +53228,7 @@ const TalariaV8b = () => {
         <div ref={tlBarRef} data-sdrop="1" data-tlbar="1" onClick={e=>e.stopPropagation()}
           style={{ position:"fixed", top:tlBarPos.y, left:tlBarPos.x, zIndex:9050,
                    background:c.sf, border:`1px solid rgba(140,160,255,0.22)`,
-                   boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
+                   boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(48,144,255,0.18)`,
                    display:"flex", flexDirection:"row", alignItems:"stretch",
                    userSelect:"none", animation:"tlrPopIn 0.15s ease", fontFamily:F }}>
           {/* Left blue accent line */}
@@ -53570,7 +53570,7 @@ const TalariaV8b = () => {
                     onMouseEnter={()=>setHov(`pb-${i}`)} onMouseLeave={()=>setHov(null)}
                     onClick={()=>{ setTool(t.parentId||t.id); if(t.parentId) setGroupSelected(p=>({...p,[t.parentId]:t})); }}
                     style={{width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",position:"relative",
-                      background:isAct?"rgba(74,106,255,0.10)":isH?c.hv:"transparent",
+                      background:isAct?"rgba(48,144,255,0.10)":isH?c.hv:"transparent",
                       transition:"background 0.12s"}}>
                     <I n={t.icon} s={16} cl={col}/>
                     {isAct && <div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
@@ -53706,7 +53706,7 @@ const TalariaV8b = () => {
             <div onMouseEnter={()=>setHov(id)} onMouseLeave={()=>setHov(null)} onClick={onClick}
               style={{width:w||32,height:32,display:"flex",alignItems:"center",justifyContent:"center",
                       cursor:"default",position:"relative",flexShrink:0,userSelect:"none",
-                      background: isAct ? "rgba(74,106,255,0.08)" : isH ? c.hv : "transparent",
+                      background: isAct ? "rgba(48,144,255,0.08)" : isH ? c.hv : "transparent",
                       transition:"background 0.12s"}}>
               {children(isH, isAct, isDel&&isH ? c.rd : isAct ? c.acL : isH ? c.tx : c.ts)}
               {isAct && <div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
@@ -53719,7 +53719,7 @@ const TalariaV8b = () => {
           <div data-sdrop="1" data-tlbar="1" onClick={e=>e.stopPropagation()}
             style={{ position:"fixed", top:vwapBarPos.y, left:vwapBarPos.x, zIndex:9050,
                      background:c.sf, border:`1px solid rgba(140,160,255,0.22)`,
-                     boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
+                     boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(48,144,255,0.18)`,
                      display:"flex", flexDirection:"row", alignItems:"stretch",
                      userSelect:"none", animation:"tlrPopIn 0.15s ease", fontFamily:F }}>
             {/* Left blue accent line */}
@@ -53875,7 +53875,7 @@ const TalariaV8b = () => {
             <div onMouseEnter={()=>setHov(id)} onMouseLeave={()=>setHov(null)} onClick={onClick}
               style={{width:w||32,height:32,display:"flex",alignItems:"center",justifyContent:"center",
                       cursor:"default",position:"relative",flexShrink:0,userSelect:"none",
-                      background: isAct ? "rgba(74,106,255,0.08)" : isH ? c.hv : "transparent",
+                      background: isAct ? "rgba(48,144,255,0.08)" : isH ? c.hv : "transparent",
                       transition:"background 0.12s"}}>
               {children(isH, isAct, isDel&&isH ? c.rd : isAct ? c.acL : isH ? c.tx : c.ts)}
               {isAct && <div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
@@ -53888,7 +53888,7 @@ const TalariaV8b = () => {
           <div data-sdrop="1" data-tlbar="1" onClick={e=>e.stopPropagation()}
             style={{ position:"fixed", top:vpBarPos.y, left:vpBarPos.x, zIndex:9050,
                      background:c.sf, border:`1px solid rgba(140,160,255,0.22)`,
-                     boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
+                     boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(48,144,255,0.18)`,
                      display:"flex", flexDirection:"row", alignItems:"stretch",
                      userSelect:"none", animation:"tlrPopIn 0.15s ease", fontFamily:F }}>
             <div style={{width:2,alignSelf:"stretch",background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,flexShrink:0,marginLeft:3}}/>
@@ -53968,7 +53968,7 @@ const TalariaV8b = () => {
             <div onMouseEnter={()=>setHov(id)} onMouseLeave={()=>setHov(null)} onClick={onClick}
               style={{width:w||32,height:32,display:"flex",alignItems:"center",justifyContent:"center",
                       cursor:"default",position:"relative",flexShrink:0,userSelect:"none",
-                      background: isAct ? "rgba(74,106,255,0.08)" : isH ? c.hv : "transparent",
+                      background: isAct ? "rgba(48,144,255,0.08)" : isH ? c.hv : "transparent",
                       transition:"background 0.12s"}}>
               {children(isH, isAct, isDel&&isH ? c.rd : isAct ? c.acL : isH ? c.tx : c.ts)}
               {isAct && <div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
@@ -53981,7 +53981,7 @@ const TalariaV8b = () => {
           <div data-sdrop="1" data-tlbar="1" onClick={e=>e.stopPropagation()}
             style={{ position:"fixed", top:avBarPos.y, left:avBarPos.x, zIndex:9050,
                      background:c.sf, border:`1px solid rgba(140,160,255,0.22)`,
-                     boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
+                     boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(48,144,255,0.18)`,
                      display:"flex", flexDirection:"row", alignItems:"stretch",
                      userSelect:"none", animation:"tlrPopIn 0.15s ease", fontFamily:F }}>
             <div style={{width:2,alignSelf:"stretch",background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,flexShrink:0,marginLeft:3}}/>
@@ -54117,7 +54117,7 @@ const TalariaV8b = () => {
                     title={cat.label}
                     style={{flex:1,height:24,display:"flex",alignItems:"center",justifyContent:"center",
                             flexShrink:0,cursor:"default",fontSize:13,position:"relative",
-                            background:isA?"rgba(74,106,255,0.12)":isH?c.hv:"transparent",
+                            background:isA?"rgba(48,144,255,0.12)":isH?c.hv:"transparent",
                             transition:"background 0.1s"}}>
                     {cat.icon}
                     {isA&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,
@@ -54168,7 +54168,7 @@ const TalariaV8b = () => {
               <div onClick={e=>{e.stopPropagation();setIndTplOpen(o=>!o);setIndTplSaveMode(false);setIndTplName("");}}
                 onMouseEnter={()=>setSwHov("ind-tpl")} onMouseLeave={()=>setSwHov(null)}
                 style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",position:"relative",
-                  background:indTplOpen?"rgba(74,106,255,0.10)":swHov==="ind-tpl"?c.hv:"transparent",
+                  background:indTplOpen?"rgba(48,144,255,0.10)":swHov==="ind-tpl"?c.hv:"transparent",
                   transition:"background 0.12s",color:indTplOpen?c.acL:swHov==="ind-tpl"?c.tx:c.ts}}>
                 <svg width={14} height={14} viewBox="0 0 16 16" fill="none">
                   <rect x="1" y="1" width="6" height="6" rx="1" fill="currentColor"/>
@@ -54264,7 +54264,7 @@ const TalariaV8b = () => {
                     color: isAct ? accent : (id==="active" ? c.gn : id==="pinned" ? c.gold : swHov===`indTab-${id}` ? c.tx : c.ts),
                     fontSize:11,fontWeight:isAct?700:500,
                     display:"flex",alignItems:"center",justifyContent:"center",gap:3,
-                    background:isAct?(swHov===`indTab-${id}`?(id==="active"?"rgba(0,212,161,0.14)":id==="pinned"?"rgba(201,168,76,0.14)":"rgba(74,106,255,0.12)"):(id==="active"?c.gnD:id==="pinned"?"rgba(201,168,76,0.08)":c.acD)):swHov===`indTab-${id}`?"rgba(255,255,255,0.06)":"transparent",
+                    background:isAct?(swHov===`indTab-${id}`?(id==="active"?"rgba(0,212,161,0.14)":id==="pinned"?"rgba(201,168,76,0.14)":"rgba(48,144,255,0.12)"):(id==="active"?c.gnD:id==="pinned"?"rgba(201,168,76,0.08)":c.acD)):swHov===`indTab-${id}`?"rgba(255,255,255,0.06)":"transparent",
                     transition:"color 0.15s, background 0.12s",whiteSpace:"nowrap",overflow:"hidden",opacity:isAct?1:id==="active"||id==="pinned"?0.7:1}}>
                   {label}
                   {(cnt>0||(id!=="active"&&id!=="pinned")) && <span style={{fontSize:11,fontWeight:700,color:isAct?accent:(id==="active"?c.gn:id==="pinned"?c.gold:c.tm),marginLeft:1,opacity:isAct?1:id==="active"||id==="pinned"?0.7:1}}>{cnt}</span>}
@@ -54298,7 +54298,7 @@ const TalariaV8b = () => {
                   onClick={(e)=>{if(!(e.target.closest('[data-indaction]')))setIndSelected(prev=>prev===ind.id?null:ind.id);}}
                   onMouseEnter={()=>setSwHov(`ind-${ind.id}`)} onMouseLeave={()=>setSwHov(null)}
                   style={{display:"flex",alignItems:"center",gap:10,padding:"7px 14px",cursor:"default",position:"relative",
-                    background:isAct?"rgba(38,67,247,0.07)":isSel?"rgba(255,255,255,0.045)":indRowHov?"rgba(255,255,255,0.022)":"transparent",
+                    background:isAct?"rgba(48,144,255,0.07)":isSel?"rgba(255,255,255,0.045)":indRowHov?"rgba(255,255,255,0.022)":"transparent",
                     transition:"background 0.1s"}}>
                   {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
                   {!isAct&&isSel&&<div style={{position:"absolute",left:0,top:"20%",bottom:"20%",width:2,background:`linear-gradient(180deg,transparent,rgba(140,160,255,0.4),transparent)`}}/>}
@@ -54329,7 +54329,7 @@ const TalariaV8b = () => {
                       opacity:isAct?1:indRowHov||isSel?0.7:0,
                       background: isAct
                         ? isAddHov ? "rgba(255,80,104,0.10)" : "rgba(255,80,104,0.05)"
-                        : isAddHov ? "rgba(74,106,255,0.10)" : "transparent",
+                        : isAddHov ? "rgba(48,144,255,0.10)" : "transparent",
                       transform: isAddDn ? "scale(0.88)" : "scale(1)",
                       transition:"opacity 0.15s,background 0.12s,transform 0.08s"}}>
                     {isAct
@@ -54348,7 +54348,7 @@ const TalariaV8b = () => {
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           <div style={{padding:"8px 14px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:4,flexShrink:0}}>
             <div onClick={closeInd} onMouseEnter={()=>setSwHov("indCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="indCancel"?c.tx:c.ts,background:swHov==="indCancel"?c.hv:"transparent",transition:"background 0.12s,color 0.12s"}}>Cancel</div>
-            <div onClick={closeInd} onMouseEnter={()=>setSwHov("indOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="indOk"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,WebkitFontSmoothing:"antialiased",boxShadow:swHov==="indOk"?`0 2px 12px rgba(38,67,247,0.45)`:`0 2px 6px rgba(38,67,247,0.22)`,transition:"background 0.12s,box-shadow 0.12s"}}>Apply</div>
+            <div onClick={closeInd} onMouseEnter={()=>setSwHov("indOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="indOk"?'#FFFFFF':'#FFFFFF',WebkitFontSmoothing:"antialiased",boxShadow:swHov==="indOk"?`0 2px 12px rgba(48,144,255,0.45)`:`0 2px 6px rgba(48,144,255,0.22)`,transition:"background 0.12s,box-shadow 0.12s"}}>Apply</div>
           </div>
         </div>
         );
@@ -54363,7 +54363,7 @@ const TalariaV8b = () => {
               <div onMouseEnter={()=>setSwHov("sett-tpl-hdr")} onMouseLeave={()=>setSwHov(null)}
                 onClick={e=>{e.stopPropagation();if(settHdrTplDrop){setSettHdrTplDrop(false);setSettHdrSaveAs(false);setSettHdrTplName("");}else{setSettHdrTplDrop(true);setSettHdrSaveAs(false);setSettHdrTplName("");}}}
                 style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",position:"relative",
-                  background:settHdrTplDrop?"rgba(74,106,255,0.10)":swHov==="sett-tpl-hdr"?c.hv:"transparent",
+                  background:settHdrTplDrop?"rgba(48,144,255,0.10)":swHov==="sett-tpl-hdr"?c.hv:"transparent",
                   transition:"background 0.12s",color:settHdrTplDrop?c.acL:swHov==="sett-tpl-hdr"?c.tx:c.ts}}>
                 <svg width={14} height={14} viewBox="0 0 16 16" fill="none">
                   <rect x="1" y="1" width="6" height="6" rx="1" fill="currentColor"/>
@@ -54506,7 +54506,7 @@ const TalariaV8b = () => {
                     {Chk(settings.gridLinesOn,"gridLinesOn","chkGrid","Grid Lines")}
                     <div onMouseEnter={()=>setSwHov("gsb")} onMouseLeave={()=>setSwHov(null)}
                       onClick={(e)=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setSettDropPos(sdPos(r,{h:120}));setSettDrop(settDrop==="gridStyle"?null:"gridStyle");}}
-                      style={{display:"flex",alignItems:"center",gap:3,padding:"0 5px",height:20,position:"relative",background:settDrop==="gridStyle"?"rgba(74,106,255,0.08)":swHov==="gsb"?c.hv:"transparent",cursor:"default",transition:"background 0.12s",flexShrink:0}}>
+                      style={{display:"flex",alignItems:"center",gap:3,padding:"0 5px",height:20,position:"relative",background:settDrop==="gridStyle"?"rgba(48,144,255,0.08)":swHov==="gsb"?c.hv:"transparent",cursor:"default",transition:"background 0.12s",flexShrink:0}}>
                       <svg width={24} height={10}><line x1={1} y1={5} x2={23} y2={5} stroke={c.ts} strokeWidth={1.2} strokeDasharray={gDash}/></svg>
                       <svg width={7} height={5}><path d="M0,0 L3.5,4.5 L7,0" stroke={settDrop==="gridStyle"?c.acL:c.tm} strokeWidth={1.2} fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
                       {settDrop==="gridStyle"&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
@@ -54514,7 +54514,7 @@ const TalariaV8b = () => {
                     </div>
                     <div onMouseEnter={()=>setSwHov("gtb")} onMouseLeave={()=>setSwHov(null)}
                       onClick={(e)=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setSettDropPos(sdPos(r,{h:150}));setSettDrop(settDrop==="gridThick"?null:"gridThick");}}
-                      style={{display:"flex",alignItems:"center",gap:3,padding:"0 5px",height:20,position:"relative",background:settDrop==="gridThick"?"rgba(74,106,255,0.08)":swHov==="gtb"?c.hv:"transparent",cursor:"default",transition:"background 0.12s",flexShrink:0}}>
+                      style={{display:"flex",alignItems:"center",gap:3,padding:"0 5px",height:20,position:"relative",background:settDrop==="gridThick"?"rgba(48,144,255,0.08)":swHov==="gtb"?c.hv:"transparent",cursor:"default",transition:"background 0.12s",flexShrink:0}}>
                       <svg width={24} height={Math.max(gH,10)}><line x1={1} y1={Math.max(gH,10)/2} x2={23} y2={Math.max(gH,10)/2} stroke={c.ts} strokeWidth={gThick*1.2} strokeLinecap="round"/></svg>
                       <svg width={7} height={5}><path d="M0,0 L3.5,4.5 L7,0" stroke={settDrop==="gridThick"?c.acL:c.tm} strokeWidth={1.2} fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
                       {settDrop==="gridThick"&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
@@ -54541,7 +54541,7 @@ const TalariaV8b = () => {
                     {Chk(settings.priceLine,"priceLine","chkPrice","Price Line")}
                     <div onMouseEnter={()=>setSwHov("psb")} onMouseLeave={()=>setSwHov(null)}
                       onClick={(e)=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setSettDropPos(sdPos(r,{h:120}));setSettDrop(settDrop==="priceStyle"?null:"priceStyle");}}
-                      style={{display:"flex",alignItems:"center",gap:3,padding:"0 5px",height:20,position:"relative",background:settDrop==="priceStyle"?"rgba(74,106,255,0.08)":swHov==="psb"?c.hv:"transparent",cursor:"default",transition:"background 0.12s",flexShrink:0}}>
+                      style={{display:"flex",alignItems:"center",gap:3,padding:"0 5px",height:20,position:"relative",background:settDrop==="priceStyle"?"rgba(48,144,255,0.08)":swHov==="psb"?c.hv:"transparent",cursor:"default",transition:"background 0.12s",flexShrink:0}}>
                       <svg width={24} height={10}><line x1={1} y1={5} x2={23} y2={5} stroke={c.ts} strokeWidth={1.2} strokeDasharray={pDash}/></svg>
                       <svg width={7} height={5}><path d="M0,0 L3.5,4.5 L7,0" stroke={settDrop==="priceStyle"?c.acL:c.tm} strokeWidth={1.2} fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
                       {settDrop==="priceStyle"&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
@@ -54549,7 +54549,7 @@ const TalariaV8b = () => {
                     </div>
                     <div onMouseEnter={()=>setSwHov("ptb")} onMouseLeave={()=>setSwHov(null)}
                       onClick={(e)=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setSettDropPos(sdPos(r,{h:150}));setSettDrop(settDrop==="priceThick"?null:"priceThick");}}
-                      style={{display:"flex",alignItems:"center",gap:3,padding:"0 5px",height:20,position:"relative",background:settDrop==="priceThick"?"rgba(74,106,255,0.08)":swHov==="ptb"?c.hv:"transparent",cursor:"default",transition:"background 0.12s",flexShrink:0}}>
+                      style={{display:"flex",alignItems:"center",gap:3,padding:"0 5px",height:20,position:"relative",background:settDrop==="priceThick"?"rgba(48,144,255,0.08)":swHov==="ptb"?c.hv:"transparent",cursor:"default",transition:"background 0.12s",flexShrink:0}}>
                       <svg width={24} height={Math.max(pH,10)}><line x1={1} y1={Math.max(pH,10)/2} x2={23} y2={Math.max(pH,10)/2} stroke={c.ts} strokeWidth={pThick*1.2} strokeLinecap="round"/></svg>
                       <svg width={7} height={5}><path d="M0,0 L3.5,4.5 L7,0" stroke={settDrop==="priceThick"?c.acL:c.tm} strokeWidth={1.2} fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
                       {settDrop==="priceThick"&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
@@ -54571,7 +54571,7 @@ const TalariaV8b = () => {
                   <span style={{fontSize:13,color:c.ts}}>{lbl}</span>
                   <div onMouseEnter={()=>setSwHov(dropKey)} onMouseLeave={()=>setSwHov(null)}
                     onClick={(e)=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setSettDropPos(sdPos(r,{h:180,rightAlign:true,w:r.width/Z}));setSettDrop(settDrop===dropKey?null:dropKey);}}
-                    style={{display:"flex",alignItems:"center",gap:4,padding:"3px 8px",height:22,width:w,position:"relative",background:settDrop===dropKey?"rgba(74,106,255,0.08)":swHov===dropKey?c.hv:"transparent",cursor:"default",transition:"background 0.12s",flexShrink:0}}>
+                    style={{display:"flex",alignItems:"center",gap:4,padding:"3px 8px",height:22,width:w,position:"relative",background:settDrop===dropKey?"rgba(48,144,255,0.08)":swHov===dropKey?c.hv:"transparent",cursor:"default",transition:"background 0.12s",flexShrink:0}}>
                     <span style={{flex:1,fontSize:11,color:settDrop===dropKey?c.acL:c.ts,fontFamily:F,fontVariantNumeric:"tabular-nums"}}>{settings[sKey]}</span>
                     <svg width={7} height={5}><path d="M0,0 L3.5,4.5 L7,0" stroke={settDrop===dropKey?c.acL:c.tm} strokeWidth={1.2} fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     {settDrop===dropKey&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
@@ -54595,7 +54595,7 @@ const TalariaV8b = () => {
 
             {/* ── TEMPLATES ─────────────────────────────────── */}
             {(()=>{
-              const defaultTpls = [{n:"Dark Classic",cols:["#00D4A1","#FF5068","#2643F7"]},{n:"Professional",cols:["#26A69A","#EF5350","#1565C0"]},{n:"Ocean Night",cols:["#00BCD4","#FF4081","#00E5FF"]},{n:"Amber Dusk",cols:["#FF9800","#F44336","#FFC107"]},{n:"Forest Deep",cols:["#66BB6A","#81C784","#4CAF50"]},{n:"Midnight",cols:["#42A5F5","#EF5350","#7E57C2"]},{n:"Crimson",cols:["#F44336","#9C27B0","#E91E63"]},{n:"Arctic Frost",cols:["#80DEEA","#FFAB40","#4FC3F7"]},{n:"Cyber Green",cols:["#00E676","#FF1744","#76FF03"]},{n:"Rose Gold",cols:["#F48FB1","#FFB74D","#CE93D8"]}];
+              const defaultTpls = [{n:"Dark Classic",cols:["#00D4A1","#FF5068","#232CF4"]},{n:"Professional",cols:["#26A69A","#EF5350","#1565C0"]},{n:"Ocean Night",cols:["#00BCD4","#FF4081","#00E5FF"]},{n:"Amber Dusk",cols:["#FF9800","#F44336","#FFC107"]},{n:"Forest Deep",cols:["#66BB6A","#81C784","#4CAF50"]},{n:"Midnight",cols:["#42A5F5","#EF5350","#7E57C2"]},{n:"Crimson",cols:["#F44336","#9C27B0","#E91E63"]},{n:"Arctic Frost",cols:["#80DEEA","#FFAB40","#4FC3F7"]},{n:"Cyber Green",cols:["#00E676","#FF1744","#76FF03"]},{n:"Rose Gold",cols:["#F48FB1","#FFB74D","#CE93D8"]}];
               const allTpls = [...customTemplates,...defaultTpls];
               const cur = allTpls.find(t=>t.n===settings.chartTemplate);
               return (
@@ -54626,7 +54626,7 @@ const TalariaV8b = () => {
                       />
                       <div onMouseEnter={()=>setSwHov("tplSave")} onMouseLeave={()=>setSwHov(null)}
                         onClick={saveCustomTemplate}
-                        style={{padding:"6px 12px",background:swHov==="tplSave"?`linear-gradient(135deg,${c.ac},${c.acL})`:`linear-gradient(135deg,rgba(38,67,247,0.35),rgba(74,106,255,0.35))`,border:`1px solid ${swHov==="tplSave"?"transparent":"rgba(74,106,255,0.45)"}`,cursor:"default",fontSize:11,fontWeight:700,color:"#fff",fontFamily:F,flexShrink:0,transition:"all 0.14s",whiteSpace:"nowrap",letterSpacing:"0.04em"}}>
+                        style={{padding:"6px 12px",background:swHov==="tplSave"?'#FFFFFF':`linear-gradient(135deg,rgba(48,144,255,0.35),rgba(48,144,255,0.35))`,border:`1px solid ${swHov==="tplSave"?"transparent":"rgba(48,144,255,0.45)"}`,cursor:"default",fontSize:11,fontWeight:700,color:"#fff",fontFamily:F,flexShrink:0,transition:"all 0.14s",whiteSpace:"nowrap",letterSpacing:"0.04em"}}>
                         Save
                       </div>
                       <div onMouseEnter={()=>setSwHov("tplLoadBtn")} onMouseLeave={()=>setSwHov(null)}
@@ -54655,7 +54655,7 @@ const TalariaV8b = () => {
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           <div style={{padding:"8px 14px",display:"flex",justifyContent:"flex-end",alignItems:"center",gap:6,flexShrink:0}}>
             <button onClick={()=>animClose(setSettingsOpen,"settings")} onMouseEnter={()=>setSwHov("settCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="settCancel"?c.tx:c.ts,background:swHov==="settCancel"?"rgba(255,255,255,0.07)":c.hv2,border:`1px solid ${swHov==="settCancel"?"rgba(140,160,255,0.45)":"rgba(140,160,255,0.22)"}`,transition:"background 0.12s,border-color 0.12s,color 0.12s"}}>Cancel</button>
-            <button onClick={confirmSettingsModal} onMouseEnter={()=>setSwHov("settOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="settOk"?`linear-gradient(135deg,${c.acL},${c.ac})`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="settOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
+            <button onClick={confirmSettingsModal} onMouseEnter={()=>setSwHov("settOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:'#FFFFFF',color:'#000000',border:"1px solid var(--line-strong)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:"none"}}>OK</button>
           </div>
         </div>
       )}
@@ -54704,7 +54704,7 @@ const TalariaV8b = () => {
               <div style={{fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em",marginBottom:8}}>PROFILE PICTURE</div>
               <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:14,padding:"12px 14px",background:c.bg,border:`1px solid ${c.br}`}}>
                 <div style={{position:"relative",flexShrink:0}}>
-                  <div style={{width:52,height:52,borderRadius:"50%",border:`2px solid ${c.brH}`,boxShadow:`0 0 14px rgba(38,67,247,0.3)`,flexShrink:0}}>
+                  <div style={{width:52,height:52,borderRadius:"50%",border:`2px solid ${c.brH}`,boxShadow:`0 0 14px rgba(48,144,255,0.3)`,flexShrink:0}}>
                     <div style={{width:"100%",height:"100%",borderRadius:"50%",overflow:"hidden",background:`linear-gradient(135deg,#F0A030,${c.ac})`,position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
                       {profileAvatar
                         ? <img src={profileAvatar} alt="avatar" style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:"center",display:"block"}}/>
@@ -54715,7 +54715,7 @@ const TalariaV8b = () => {
                     onMouseEnter={()=>setSwHov("prof-avatar-btn")} onMouseLeave={()=>setSwHov(null)}
                     onMouseDown={()=>setSwHov("prof-avatar-btn_dn")} onMouseUp={()=>setSwHov("prof-avatar-btn")}
                     style={{position:"absolute",bottom:-2,right:-2,width:17,height:17,borderRadius:"50%",
-                      background:swHov==="prof-avatar-btn_dn"?c.ac:swHov==="prof-avatar-btn"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,
+                      background:swHov==="prof-avatar-btn_dn"?c.ac:swHov==="prof-avatar-btn"?'#FFFFFF':'#FFFFFF',
                       border:`2px solid ${c.sf}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",
                       boxShadow:swHov==="prof-avatar-btn"||swHov==="prof-avatar-btn_dn"?`0 0 8px ${c.acG}`:`0 1px 4px ${c.acG}`,
                       transform:swHov==="prof-avatar-btn_dn"?"scale(0.88)":"scale(1)",transition:"all 0.12s"}}>
@@ -54735,8 +54735,8 @@ const TalariaV8b = () => {
                         onMouseEnter={()=>setSwHov("pn-save")} onMouseLeave={()=>setSwHov(null)}
                         onMouseDown={()=>setSwHov("pn-save_dn")} onMouseUp={()=>setSwHov("pn-save")}
                         style={{flexShrink:0,width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",
-                          background:swHov==="pn-save_dn"?c.ac:swHov==="pn-save"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,
-                          border:`1px solid ${swHov==="pn-save"||swHov==="pn-save_dn"?c.acL:"rgba(74,106,255,0.5)"}`,
+                          background:swHov==="pn-save_dn"?c.ac:swHov==="pn-save"?'#FFFFFF':'#FFFFFF',
+                          border:`1px solid ${swHov==="pn-save"||swHov==="pn-save_dn"?c.acL:"rgba(48,144,255,0.5)"}`,
                           transform:swHov==="pn-save_dn"?"scale(0.92)":"scale(1)",
                           transition:"background 0.12s,border-color 0.12s,transform 0.08s"}}>
                         <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" style={{pointerEvents:"none"}}><polyline points="4 12 9 17 20 6"/></svg>
@@ -54779,7 +54779,7 @@ const TalariaV8b = () => {
                           <div onClick={(e)=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setSettDropPos(sdPos(r,{h:100,rightAlign:true,w:r.width/Z}));setSettDrop(settDrop==="profLang"?null:"profLang");}}
                             onMouseEnter={()=>setSwHov("prof-lang-btn")} onMouseLeave={()=>setSwHov(null)}
                             style={{display:"flex",alignItems:"center",gap:5,padding:"4px 8px",cursor:"default",minWidth:90,justifyContent:"space-between",position:"relative",
-                              background:isAct?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",
+                              background:isAct?"rgba(48,144,255,0.08)":isH?c.hv:"transparent",
                               transition:"background 0.12s"}}>
                             <span style={{fontSize:13,color:isAct?c.acL:isH?c.tx:c.ts,fontFamily:F,transition:"color 0.12s"}}>{langLabels[profileLang]||"English"}</span>
                             <svg width={8} height={5} viewBox="0 0 8 5"><path d="M0.5,0.5 L4,4 L7.5,0.5" stroke={isAct?c.acL:c.ts} strokeWidth={1.5} fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -54833,8 +54833,8 @@ const TalariaV8b = () => {
                     {(()=>{const isH=swHov==="prof-upgrade",isP=swHov==="prof-upgrade_dn";return(
                       <div onClick={()=>{}} onMouseEnter={()=>setSwHov("prof-upgrade")} onMouseLeave={()=>setSwHov(null)} onMouseDown={()=>setSwHov("prof-upgrade_dn")} onMouseUp={()=>setSwHov("prof-upgrade")}
                         style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"5px 12px",cursor:"default",flex:1,
-                          background:isP?c.ac:isH?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,
-                          border:`1px solid ${isH||isP?c.acL:"rgba(74,106,255,0.5)"}`,
+                          background:isP?c.ac:isH?'#FFFFFF':'#FFFFFF',
+                          border:`1px solid ${isH||isP?c.acL:"rgba(48,144,255,0.5)"}`,
                           boxShadow:isH?`0 4px 14px ${c.acG}`:`0 2px 8px ${c.acG}`,
                           transform:isP?"scale(0.98)":"scale(1)",transition:"all 0.12s"}}>
                         <span style={{fontSize:13,fontWeight:700,color:"#fff",WebkitFontSmoothing:"antialiased"}}>Upgrade to Annual — Save 20%</span>
@@ -54869,8 +54869,8 @@ const TalariaV8b = () => {
                     <button onMouseEnter={()=>setSwHov(hk)} onMouseLeave={()=>setSwHov(null)}
                       style={{height:20,padding:"0 9px",cursor:"default",fontFamily:F,fontSize:11,fontWeight:700,letterSpacing:"0.04em",
                         color:isH?"#fff":c.acL,
-                        background:isH?`linear-gradient(135deg,${c.ac},${c.acL})`:"transparent",
-                        border:`1px solid ${isH?"rgba(74,106,255,0.5)":c.acB}`,
+                        background:isH?'#FFFFFF':"transparent",
+                        border:`1px solid ${isH?"rgba(48,144,255,0.5)":c.acB}`,
                         transition:"background 0.12s,color 0.12s,border-color 0.12s"}}>
                       PDF
                     </button>
@@ -54894,7 +54894,7 @@ const TalariaV8b = () => {
               Log Out
             </button>}
             <button onClick={()=>animClose(setProfileOpen,"profile")} onMouseEnter={()=>setSwHov("profCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="profCancel"?c.tx:c.ts,background:swHov==="profCancel"?"rgba(255,255,255,0.07)":c.hv2,border:`1px solid ${swHov==="profCancel"?"rgba(140,160,255,0.45)":"rgba(140,160,255,0.22)"}`,transition:"background 0.12s,border-color 0.12s,color 0.12s"}}>Cancel</button>
-            <button onClick={()=>animClose(setProfileOpen,"profile")} onMouseEnter={()=>setSwHov("profOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="profOk"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="profOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
+            <button onClick={()=>animClose(setProfileOpen,"profile")} onMouseEnter={()=>setSwHov("profOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="profOk"?'#FFFFFF':'#FFFFFF',border:"1px solid rgba(48,144,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="profOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
           </div>
         </div>
         );
@@ -55049,7 +55049,7 @@ const TalariaV8b = () => {
                 onMouseDown={()=>setSwHov("edu-all_dn")} onMouseUp={()=>setSwHov("edu-all")}
                 style={{width:"100%",height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",gap:6,cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,
                   color:swHov==="edu-all"||swHov==="edu-all_dn"?c.acL:c.ts,
-                  background:swHov==="edu-all_dn"?"rgba(38,67,247,0.10)":swHov==="edu-all"?"rgba(255,255,255,0.06)":c.hv2,
+                  background:swHov==="edu-all_dn"?"rgba(48,144,255,0.10)":swHov==="edu-all"?"rgba(255,255,255,0.06)":c.hv2,
                   border:`1px solid ${swHov==="edu-all"||swHov==="edu-all_dn"?"rgba(140,160,255,0.40)":"rgba(140,160,255,0.22)"}`,
                   transition:"background 0.12s,border-color 0.12s,color 0.12s"}}>
                 Browse All Education Content
@@ -55113,7 +55113,7 @@ const TalariaV8b = () => {
                     onMouseDown={()=>setSwHov(hk+"_dn")} onMouseUp={()=>setSwHov(hk)}
                     style={{flex:1,height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,
                       color:swHov===hk||swHov===hk+"_dn"?c.acL:c.ts,
-                      background:swHov===hk+"_dn"?"rgba(38,67,247,0.10)":swHov===hk?"rgba(255,255,255,0.06)":c.hv2,
+                      background:swHov===hk+"_dn"?"rgba(48,144,255,0.10)":swHov===hk?"rgba(255,255,255,0.06)":c.hv2,
                       border:`1px solid ${swHov===hk||swHov===hk+"_dn"?"rgba(140,160,255,0.40)":"rgba(140,160,255,0.22)"}`,
                       transition:"background 0.12s,border-color 0.12s,color 0.12s"}}>
                     {label}
@@ -55125,7 +55125,7 @@ const TalariaV8b = () => {
           {/* Footer */}
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           <div style={{padding:"8px 14px",display:"flex",justifyContent:"flex-end",gap:4,flexShrink:0}}>
-            <button onClick={()=>animClose(setFaqOpen,"faq")} onMouseEnter={()=>setSwHov("faqClose")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="faqClose"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="faqClose"?`0 0 10px ${c.acG}`:"none"}}>Close</button>
+            <button onClick={()=>animClose(setFaqOpen,"faq")} onMouseEnter={()=>setSwHov("faqClose")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="faqClose"?'#FFFFFF':'#FFFFFF',border:"1px solid rgba(48,144,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="faqClose"?`0 0 10px ${c.acG}`:"none"}}>Close</button>
           </div>
         </div>
         );
@@ -55279,7 +55279,7 @@ const TalariaV8b = () => {
                                         style={{fontSize:10,fontWeight:700,padding:"3px 7px",cursor:"default",
                                           position:"relative",
                                           color:isPh?c.acL:isPhH?c.tx:c.ts,
-                                          background:isPh?"rgba(74,106,255,0.08)":isPhH?c.hv:"transparent",
+                                          background:isPh?"rgba(48,144,255,0.08)":isPhH?c.hv:"transparent",
                                           transition:"background 0.1s,color 0.1s"}}>
                                         {ph}
                                         {isPh&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
@@ -55298,8 +55298,8 @@ const TalariaV8b = () => {
                   <div onClick={()=>{setScLinkOpen(o=>!o);setScLinkSearch("");}}
                     onMouseEnter={()=>setSwHov("sc-link")} onMouseLeave={()=>setSwHov(null)}
                     style={{height:28,padding:"0 12px",display:"flex",alignItems:"center",gap:6,cursor:"default",
-                      background:isLinked?"rgba(74,106,255,0.08)":isLH?c.hv:c.hv2,
-                      border:`1px solid ${isLinked?"rgba(74,106,255,0.4)":isLH?"rgba(140,160,255,0.3)":"rgba(140,160,255,0.18)"}`,
+                      background:isLinked?"rgba(48,144,255,0.08)":isLH?c.hv:c.hv2,
+                      border:`1px solid ${isLinked?"rgba(48,144,255,0.4)":isLH?"rgba(140,160,255,0.3)":"rgba(140,160,255,0.18)"}`,
                       transition:"background 0.12s,border-color 0.12s"}}>
                     <svg width={13} height={13} viewBox="0 96 960 960" fill={isLinked?c.acL:isLH?c.tx:c.ts}>
                       <path d="M440 726 296 582l56-56 88 88 168-168 56 56-224 224ZM200 976q-33 0-56.5-23.5T120 896V296q0-33 23.5-56.5T200 216h360l200 200v480q0 33-23.5 56.5T680 976H200Zm0-80h480V456H520V296H200v600Zm0 0V296v600Z"/>
@@ -55332,9 +55332,9 @@ const TalariaV8b = () => {
                     boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:primary?700:600,
                     color:primary?"#fff":isH?c.tx:c.ts,
                     background:primary
-                      ? isDn?c.ac:isH?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`
+                      ? isDn?c.ac:isH?'#FFFFFF':'#FFFFFF'
                       : isH?"rgba(140,160,255,0.08)":c.hv2,
-                    border:primary?`1px solid ${isH?c.acL:"rgba(74,106,255,0.5)"}`:`1px solid ${isH?"rgba(140,160,255,0.35)":"rgba(140,160,255,0.18)"}`,
+                    border:primary?`1px solid ${isH?c.acL:"rgba(48,144,255,0.5)"}`:`1px solid ${isH?"rgba(140,160,255,0.35)":"rgba(140,160,255,0.18)"}`,
                     transform:isDn?"scale(0.97)":"scale(1)",
                     transition:"background 0.12s,border-color 0.12s,transform 0.08s",
                     WebkitFontSmoothing:"antialiased"}}>
@@ -55382,8 +55382,8 @@ const TalariaV8b = () => {
                     onMouseEnter={()=>setSwHov("lm-dash")} onMouseLeave={()=>setSwHov(null)}
                     onMouseDown={()=>setSwHov("lm-dash_dn")} onMouseUp={()=>setSwHov("lm-dash")}
                     style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"6px 10px",cursor:"default",
-                      background:isP?c.ac:isH?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,
-                      border:`1px solid ${isH||isP?c.acL:"rgba(74,106,255,0.5)"}`,
+                      background:isP?c.ac:isH?'#FFFFFF':'#FFFFFF',
+                      border:`1px solid ${isH||isP?c.acL:"rgba(48,144,255,0.5)"}`,
                       boxShadow:isH?`0 4px 14px ${c.acG}`:`0 2px 8px ${c.acG}`,
                       transform:isP?"scale(0.96)":"scale(1)",
                       transition:"background 0.12s ease,border-color 0.12s ease,box-shadow 0.12s ease,transform 0.08s ease"}}>
@@ -55480,7 +55480,7 @@ const TalariaV8b = () => {
             style={{ width: 32, height: 32, objectFit: "contain", display: "block",
               transform: logoActive ? "scale(1.12)" : hov==="logo-btn" ? "scale(1.05)" : "scale(1)",
               filter: logoActive
-                ? `drop-shadow(0 0 8px ${c.acL}) drop-shadow(0 0 18px rgba(74,106,255,0.5)) brightness(1.25) contrast(1.1)`
+                ? `drop-shadow(0 0 8px ${c.acL}) drop-shadow(0 0 18px rgba(48,144,255,0.5)) brightness(1.25) contrast(1.1)`
                 : hov==="logo-btn"
                   ? `drop-shadow(0 0 5px ${c.acL}) brightness(1.15) contrast(1.05)`
                   : `brightness(1.1) contrast(1.08) drop-shadow(0 1px 3px rgba(0,0,0,0.6))`,
@@ -55490,7 +55490,7 @@ const TalariaV8b = () => {
         ); })()}
         <div style={{ width: 1, height: 16, margin: "0 3px 0 0", background: "rgba(140,160,255,0.18)" }}/>
         <button onClick={(e) => { e.stopPropagation(); const was=symbolOpen; closeAll(); if(!was) setSymbolOpen(true); }} onMouseEnter={() => setHov("symbol")} onMouseLeave={() => setHov(null)}
-          style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 8px", background: symbolOpen ? "rgba(74,106,255,0.08)" : hov==="symbol" ? c.hv : "transparent", border: "none", color: symbolOpen ? c.acL : hov==="symbol" ? c.tx : c.ts, cursor: "default", fontSize: 14, fontWeight: 700, fontFamily: F, position: "relative", width: 128, flexShrink: 0, transition: "color 0.12s, background 0.12s" }}>
+          style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 8px", background: symbolOpen ? "rgba(48,144,255,0.08)" : hov==="symbol" ? c.hv : "transparent", border: "none", color: symbolOpen ? c.acL : hov==="symbol" ? c.tx : c.ts, cursor: "default", fontSize: 14, fontWeight: 700, fontFamily: F, position: "relative", width: 128, flexShrink: 0, transition: "color 0.12s, background 0.12s" }}>
           <div style={{ display: "flex", alignItems: "center", position: "relative", width: 32, height: 14, flexShrink: 0 }}>
             {currentSymbol.type==="forex" ? <>
               <div style={{ position: "absolute", left: 0, top: 0, borderRadius: 1, overflow: "hidden", boxShadow: "0 2px 4px rgba(0,0,0,0.8)", zIndex: 2 }}><FlagSvg code={currentSymbol.base} w={22} h={14}/></div>
@@ -55506,7 +55506,7 @@ const TalariaV8b = () => {
         </button>
         <div style={{ width: 1, height: 16, margin: "0 2px", background: "rgba(140,160,255,0.18)" }}/>
         <button onClick={(e) => { e.stopPropagation(); const was=chartTypeOpen; closeAll(); if(!was) { const r=e.currentTarget.getBoundingClientRect(); setChartTypeDropL(r.left/Z); setChartTypeOpen(true); } }} onMouseEnter={() => setHov("chartType")} onMouseLeave={() => setHov(null)}
-          style={{ padding: "3px 7px", display: "flex", alignItems: "center", gap: 4, position: "relative", background: chartTypeOpen ? "rgba(74,106,255,0.08)" : hov==="chartType" ? c.hv : "transparent", border: "none", fontFamily: F, color: chartTypeOpen ? c.acL : hov==="chartType" ? c.tx : c.ts, fontSize: currentChartType.label==="Hollow Candles" ? 11 : 13, fontWeight: 600, cursor: "default", width: 136, flexShrink: 0, transition: "background 0.12s, color 0.12s" }}>
+          style={{ padding: "3px 7px", display: "flex", alignItems: "center", gap: 4, position: "relative", background: chartTypeOpen ? "rgba(48,144,255,0.08)" : hov==="chartType" ? c.hv : "transparent", border: "none", fontFamily: F, color: chartTypeOpen ? c.acL : hov==="chartType" ? c.tx : c.ts, fontSize: currentChartType.label==="Hollow Candles" ? 11 : 13, fontWeight: 600, cursor: "default", width: 136, flexShrink: 0, transition: "background 0.12s, color 0.12s" }}>
           <I n={currentChartType.icon} s={18} cl={chartTypeOpen ? c.acL : hov==="chartType" ? c.tx : c.ts}/><span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentChartType.label}</span>
           <div style={{transform:chartTypeOpen?"rotate(180deg)":"rotate(0deg)",transition:"transform 0.2s ease",lineHeight:0,flexShrink:0}}>
             <svg width={10} height={6} viewBox="0 0 10 6"><path d="M1,1 L5,5 L9,1" stroke={chartTypeOpen ? c.acL : hov==="chartType" ? c.tx : c.ts} strokeWidth={1.8} fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -55516,7 +55516,7 @@ const TalariaV8b = () => {
         </button>
         <div style={{ width: 1, height: 16, margin: "0 2px", background: "rgba(140,160,255,0.18)" }}/>
         <button onClick={(e) => { e.stopPropagation(); if(indOpen){animClose(setIndOpen,"ind");setIndSearch("");}else{closeWindows();setSettingsOpen(false);setIndOpen(true);} }} onMouseEnter={() => setHov("indicators")} onMouseLeave={() => setHov(null)}
-          style={{ padding: "3px 8px", display: "flex", alignItems: "center", gap: 4, background: indOpen ? "rgba(74,106,255,0.08)" : hov==="indicators" ? c.hv : "transparent", border: "none", fontFamily: F, color: indOpen ? c.acL : hov==="indicators" ? c.tx : c.ts, fontSize: 13, fontWeight: indOpen ? 700 : 600, cursor: "default", position: "relative", transition: "background 0.12s, color 0.12s" }}>
+          style={{ padding: "3px 8px", display: "flex", alignItems: "center", gap: 4, background: indOpen ? "rgba(48,144,255,0.08)" : hov==="indicators" ? c.hv : "transparent", border: "none", fontFamily: F, color: indOpen ? c.acL : hov==="indicators" ? c.tx : c.ts, fontSize: 13, fontWeight: indOpen ? 700 : 600, cursor: "default", position: "relative", transition: "background 0.12s, color 0.12s" }}>
           <I n="indicator" s={15} cl={indOpen ? c.acL : hov==="indicators" ? c.tx : c.ts}/>Indicators
           {indOpen && <div style={{ position: "absolute", bottom: -1, left: "10%", right: "10%", height: 2, background: `linear-gradient(90deg, transparent, ${c.acL}, transparent)`, boxShadow: `0 0 6px ${c.acG}` }}/>}
           {hov==="indicators" && !indOpen && <div style={{ position: "absolute", bottom: -1, left: "15%", right: "15%", height: 1, background: `linear-gradient(90deg, transparent, `+c.hvLn+`, transparent)` }}/>}
@@ -55525,7 +55525,7 @@ const TalariaV8b = () => {
         <div style={{ display: "flex", gap: 0, alignItems: "center" }}>
           <div style={{ position: "relative" }}>
             <button onClick={(e) => { e.stopPropagation(); const was=tfOpen; setDropdown(null); setSymbolSearch(""); setTfCat(null); setTfUnitOpen(false); setSDrop(null); setSettDrop(null); if(logoMenu)closePopup(setLogoMenu,"logoMenu");if(replayOpts)closePopup(setReplayOpts,"replayOpts");if(gotoOpen)closePopup(setGotoOpen,"goto");if(symbolOpen)closePopup(setSymbolOpen,"symbol");if(chartTypeOpen)closePopup(setChartTypeOpen,"chartType"); if(was){closePopup(setTfOpen,"tf");}else{setTfOpen(true);setTfEditMode(false);} }} onMouseEnter={() => setHov("tf-more")} onMouseLeave={() => setHov(null)}
-              style={{ padding: "4px 5px", position: "relative", background: tfOpen ? "rgba(74,106,255,0.08)" : hov==="tf-more" ? c.hv : "transparent", border: "none", fontFamily: F, cursor: "default", display: "flex", alignItems: "center", transition: "background 0.12s" }}>
+              style={{ padding: "4px 5px", position: "relative", background: tfOpen ? "rgba(48,144,255,0.08)" : hov==="tf-more" ? c.hv : "transparent", border: "none", fontFamily: F, cursor: "default", display: "flex", alignItems: "center", transition: "background 0.12s" }}>
               <div style={{transform:tfOpen?"rotate(180deg)":"rotate(0deg)",transition:"transform 0.2s ease",lineHeight:0}}>
                 <svg width={10} height={6} viewBox="0 0 10 6"><path d="M1,1 L5,5 L9,1" stroke={tfOpen ? c.acL : hov==="tf-more" ? c.tx : c.ts} strokeWidth={1.8} fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </div>
@@ -55652,8 +55652,8 @@ const TalariaV8b = () => {
                     onMouseDown={()=>setSwHov("tf-add_dn")} onMouseUp={()=>setSwHov("tf-add")}
                     style={{width:22,height:22,position:"relative",boxSizing:"border-box",cursor:"default",
                       padding:0,flexShrink:0,
-                      background:swHov==="tf-add_dn"?"rgba(38,67,247,0.2)":swHov==="tf-add"?"rgba(74,106,255,0.12)":"transparent",
-                      border:`1px solid ${swHov==="tf-add_dn"?"rgba(74,106,255,0.65)":swHov==="tf-add"?"rgba(74,106,255,0.55)":"rgba(140,160,255,0.28)"}`,
+                      background:swHov==="tf-add_dn"?"rgba(48,144,255,0.2)":swHov==="tf-add"?"rgba(48,144,255,0.12)":"transparent",
+                      border:`1px solid ${swHov==="tf-add_dn"?"rgba(48,144,255,0.65)":swHov==="tf-add"?"rgba(48,144,255,0.55)":"rgba(140,160,255,0.28)"}`,
                       transform:swHov==="tf-add_dn"?"scale(0.88)":"scale(1)",
                       transition:"background 0.12s,border-color 0.12s,transform 0.08s"}}>
                     <svg width={7} height={7} viewBox="0 0 10 10" fill="none"
@@ -55671,7 +55671,7 @@ const TalariaV8b = () => {
           <div ref={tfBarRef} style={{ display:"flex", alignItems:"center", position:"relative" }}>
             {[...new Set([...tfPinned, tf])].sort((a,b)=>{const uO={m:0,H:1,D:2,W:3,M:4};const uA=a.replace(/[0-9]/g,""),uB=b.replace(/[0-9]/g,"");return uO[uA]!==uO[uB]?uO[uA]-uO[uB]:parseInt(a)-parseInt(b);}).map((t) => (
               <button key={t} data-tf={t} onClick={() => setTf(t)} onMouseEnter={() => setHov(`tf-${t}`)} onMouseLeave={() => setHov(null)}
-                style={{ padding: "4px 7px", position: "relative", background: tf===t ? "rgba(74,106,255,0.08)" : hov===`tf-${t}` ? c.hv : "transparent", border: "none", fontFamily: F, color: tf===t ? c.acL : hov===`tf-${t}` ? c.tx : c.ts, fontSize: 12, fontWeight: tf===t ? 700 : 500, cursor: "default", transition: "background 0.12s, color 0.12s" }}>
+                style={{ padding: "4px 7px", position: "relative", background: tf===t ? "rgba(48,144,255,0.08)" : hov===`tf-${t}` ? c.hv : "transparent", border: "none", fontFamily: F, color: tf===t ? c.acL : hov===`tf-${t}` ? c.tx : c.ts, fontSize: 12, fontWeight: tf===t ? 700 : 500, cursor: "default", transition: "background 0.12s, color 0.12s" }}>
                 {t}
                 {hov===`tf-${t}` && tf!==t && <div style={{ position: "absolute", bottom: -1, left: "25%", right: "25%", height: 1, background: `linear-gradient(90deg, transparent, `+c.hvLn+`, transparent)` }}/>}
               </button>
@@ -55693,11 +55693,11 @@ const TalariaV8b = () => {
           style={{
             height: 28, padding: "0 14px", marginRight: 6,
             display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box", gap: 5,
-            background: hov==="place-order_dn" ? `linear-gradient(135deg,${c.ac},#1F35D4)` : hov==="place-order" ? `linear-gradient(135deg,${c.acL},#6B8AFF)` : `linear-gradient(135deg,${c.ac},${c.acL})`,
-            border: `1px solid ${orderPanelOpen && !rightPanel ? "rgba(74,106,255,0.8)" : hov==="place-order" ? "rgba(74,106,255,0.75)" : "rgba(74,106,255,0.5)"}`,
+            background: '#FFFFFF', color: '#000000',
+            border: `1px solid ${orderPanelOpen && !rightPanel ? "rgba(48,144,255,0.8)" : hov==="place-order" ? "rgba(48,144,255,0.75)" : "rgba(48,144,255,0.5)"}`,
             cursor: "default", fontFamily: F,
             transform: hov==="place-order_dn" ? "scale(0.95)" : "scale(1)",
-            boxShadow: hov==="place-order" ? `0 0 10px rgba(74,106,255,0.35)` : hov==="place-order_dn" ? `0 0 6px rgba(38,67,247,0.4)` : "none",
+            boxShadow: hov==="place-order" ? `0 0 10px rgba(48,144,255,0.35)` : hov==="place-order_dn" ? `0 0 6px rgba(48,144,255,0.4)` : "none",
             transition: "background 0.1s, border-color 0.1s, transform 0.08s, box-shadow 0.1s",
           }}>
           <svg width={12} height={12} viewBox="0 0 12 12" fill="none" style={{flexShrink:0}}>
@@ -55709,7 +55709,7 @@ const TalariaV8b = () => {
         {[{id:"layout",icon:"layout",label:"Layout"},{id:"layers",icon:"tree",label:"Objects Tree"},{id:"news",icon:"news",label:"News"},{id:"screenshot",icon:"screenshot",label:"Screenshot"},{id:"expand",icon:"expand",label:"Fullscreen"}].map(({id,icon,label}) => (
           <button key={id} onClick={(e) => { if(id==="news"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="news"){setRightPanel(null);}else{setRightPanel("news");setOrderPanelOpen(false);} } if(id==="layout"){ e.stopPropagation(); if(rightPanel==="layout"){setRightPanel(null);}else{setRightPanel("layout");setOrderPanelOpen(false);} } if(id==="screenshot"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); if(chartCanvasRef.current){const r=chartCanvasRef.current.getBoundingClientRect();setCanvasDims({w:Math.round(r.width),h:Math.round(r.height)});} setScreenshotFlash(true); setTimeout(()=>setScreenshotOpen(true),260); } if(id==="layers"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="layers"){setRightPanel(null);}else{setRightPanel("layers");setOrderPanelOpen(false);} } if(id==="expand"){ e.stopPropagation(); if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{});}else{document.exitFullscreen().catch(()=>{});} }}} onMouseEnter={e=>{setHov(`u-${id}`);showTip(label,e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
             style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "default", position: "relative",
-              background: (() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&rightPanel==="layout") || (id==="expand"&&isFullscreen); return isActive ? "rgba(74,106,255,0.10)" : hov===`u-${id}` ? c.hv : "transparent"; })(),
+              background: (() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&rightPanel==="layout") || (id==="expand"&&isFullscreen); return isActive ? "rgba(48,144,255,0.10)" : hov===`u-${id}` ? c.hv : "transparent"; })(),
               transition: "background 0.12s" }}>
             {(() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&rightPanel==="layout") || (id==="expand"&&isFullscreen); return <>
               <I n={id==="expand"&&isFullscreen?"compress":icon} s={16} cl={isActive ? c.acL : hov===`u-${id}` ? c.tx : c.ts}/>
@@ -55773,7 +55773,7 @@ const TalariaV8b = () => {
               {priceLabels.map((_, i) => <div key={`h${i}`} style={{ position: "absolute", left: 0, right: 0, top: `${(i/(priceLabels.length-1))*100}%`, height: 1, background: c.grid }}/>)}
               {timeLabels.map((_, i) => <div key={`v${i}`} style={{ position: "absolute", top: 0, bottom: 0, left: `${(i/(timeLabels.length-1))*100}%`, width: 1, background: c.grid }}/>)}
               <div style={{ position: "absolute", left: 0, right: 0, top: "28%", height: 1, background: c.ac, opacity: 0.3 }}>
-                <div style={{ position: "absolute", right: 0, top: -9, background: `linear-gradient(135deg,${c.ac},${c.acL})`, color: "#fff", fontSize: 11, fontWeight: 700, fontFamily: F, padding: "2px 8px", fontVariantNumeric: "tabular-nums" }}>126.895</div>
+                <div style={{ position: "absolute", right: 0, top: -9, background: '#FFFFFF', color: "#fff", fontSize: 11, fontWeight: 700, fontFamily: F, padding: "2px 8px", fontVariantNumeric: "tabular-nums" }}>126.895</div>
               </div>
               <div style={{ position: "absolute", left: 0, right: 0, top: "58%", height: 1, borderTop: `1px dashed ${c.rd}44` }}/>
               <div style={{ position: "absolute", top: 8, left: 10, zIndex: 10 }}>
@@ -55875,7 +55875,7 @@ const TalariaV8b = () => {
             <div style={{position:"relative"}}>
               <button onClick={(e)=>{e.stopPropagation();if(replayOpts){closePopup(setReplayOpts,"replayOpts");}else{if(gotoOpen){closePopup(setGotoOpen,"goto");setGotoAddType(null);}setReplayOpts(true);}}}
                 onMouseEnter={()=>setHov("rp-mode")} onMouseLeave={()=>setHov(null)}
-                style={{padding:"4px 5px",position:"relative",background:replayOpts?"rgba(74,106,255,0.08)":hov==="rp-mode"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",color:replayOpts?c.acL:hov==="rp-mode"?c.tx:c.ts,transition:"color 0.15s ease,background 0.12s"}}>
+                style={{padding:"4px 5px",position:"relative",background:replayOpts?"rgba(48,144,255,0.08)":hov==="rp-mode"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",color:replayOpts?c.acL:hov==="rp-mode"?c.tx:c.ts,transition:"color 0.15s ease,background 0.12s"}}>
                 <I n="config" s={18} cl="currentColor"/>
                 {replayOpts&&<div style={{position:"absolute",bottom:0,left:"15%",right:"15%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
                 {hov==="rp-mode"&&!replayOpts&&<div style={{position:"absolute",bottom:0,left:"25%",right:"25%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`}}/>}
@@ -55899,7 +55899,7 @@ const TalariaV8b = () => {
                     {["Auto","1m","5m","15m","30m"].map(t=>{const isA=replayInterval===t,isH=hov===`ri-${t}`;return(
                       <div key={t} onClick={()=>setReplayInterval(t)}
                         onMouseEnter={()=>setHov(`ri-${t}`)} onMouseLeave={()=>setHov(null)}
-                        style={{padding:"3px 8px",position:"relative",background:isA?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",color:isA?c.acL:isH?c.tx:c.ts,fontSize:10,fontWeight:700,fontFamily:F,cursor:"default",transition:"background 0.12s",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                        style={{padding:"3px 8px",position:"relative",background:isA?"rgba(48,144,255,0.08)":isH?c.hv:"transparent",color:isA?c.acL:isH?c.tx:c.ts,fontSize:10,fontWeight:700,fontFamily:F,cursor:"default",transition:"background 0.12s",display:"flex",alignItems:"center",justifyContent:"center"}}>
                         {t}
                         {isA&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
                         {!isA&&isH&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`,pointerEvents:"none"}}/>}
@@ -55928,7 +55928,7 @@ const TalariaV8b = () => {
               <div style={{position:"relative",width:88,height:36,display:"flex",alignItems:"center"}}>
                 {/* Track */}
                 <div style={{position:"absolute",left:0,right:0,height:3,top:"50%",transform:"translateY(-50%)",borderRadius:99,background:c.trk}}>
-                  <div style={{width:`${pct}%`,height:"100%",borderRadius:99,background:`linear-gradient(90deg,rgba(74,106,255,0.35),${c.acL})`,boxShadow:`0 0 5px ${c.acG}`}}/>
+                  <div style={{width:`${pct}%`,height:"100%",borderRadius:99,background:`linear-gradient(90deg,rgba(48,144,255,0.35),${c.acL})`,boxShadow:`0 0 5px ${c.acG}`}}/>
                 </div>
                 {/* Thumb — upward triangle */}
                 <div style={{position:"absolute",left:`calc(${pct}% - 6px)`,top:"calc(50% + 2px)",width:12,height:9,clipPath:"polygon(50% 0%,0% 100%,100% 100%)",background:`linear-gradient(180deg,${c.acL},${c.ac})`,filter:hov==="rp-spd-dn"?`drop-shadow(0 0 8px ${c.acG}) brightness(1.35)`:`drop-shadow(0 0 4px ${c.acG})`,transform:hov==="rp-spd-dn"?"scale(1.18)":"scale(1)",transition:"transform 0.08s ease,filter 0.08s ease",pointerEvents:"none"}}/>
@@ -55943,7 +55943,7 @@ const TalariaV8b = () => {
             <button
               onPointerDown={()=>setHov("rp-next-dn")} onPointerUp={()=>setHov("rp-next")} onPointerLeave={()=>{setHov(null);hideTip();}}
               onMouseEnter={e=>{setHov(h=>h==="rp-next-dn"?h:"rp-next");showTip("Step Forward",e.currentTarget,"top");}} onMouseLeave={()=>{setHov(null);hideTip();}}
-              style={{padding:"4px 5px",position:"relative",background:hov==="rp-next-dn"?"rgba(74,106,255,0.08)":hov==="rp-next"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",transition:"transform 0.08s ease, color 0.15s ease, background 0.12s",transform:hov==="rp-next-dn"?"scale(0.88)":"scale(1)",color:hov==="rp-next-dn"?c.acL:hov==="rp-next"?c.tx:c.ts}}>
+              style={{padding:"4px 5px",position:"relative",background:hov==="rp-next-dn"?"rgba(48,144,255,0.08)":hov==="rp-next"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",transition:"transform 0.08s ease, color 0.15s ease, background 0.12s",transform:hov==="rp-next-dn"?"scale(0.88)":"scale(1)",color:hov==="rp-next-dn"?c.acL:hov==="rp-next"?c.tx:c.ts}}>
               <I n="stepFwd" s={18} cl="currentColor"/>
               {hov==="rp-next-dn"&&<div style={{position:"absolute",bottom:0,left:"15%",right:"15%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
               {hov==="rp-next"&&<div style={{position:"absolute",bottom:0,left:"25%",right:"25%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`}}/>}
@@ -55951,7 +55951,7 @@ const TalariaV8b = () => {
             {/* Rollback */}
             <button onClick={(e)=>{e.stopPropagation();const opening=!rollback;if(opening)closeAll();setRollback(opening);}}
               onMouseEnter={e=>{setHov("rp-rb");showTip("Rollback",e.currentTarget,"top");}} onMouseLeave={()=>{setHov(null);hideTip();}}
-              style={{padding:"4px 5px",position:"relative",background:rollback?"rgba(74,106,255,0.08)":hov==="rp-rb"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",transition:"transform 0.15s ease, color 0.15s ease, background 0.12s",transform:rollback?"scale(1.18)":"scale(1)",color:rollback?c.acL:hov==="rp-rb"?c.tx:c.ts}}>
+              style={{padding:"4px 5px",position:"relative",background:rollback?"rgba(48,144,255,0.08)":hov==="rp-rb"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",transition:"transform 0.15s ease, color 0.15s ease, background 0.12s",transform:rollback?"scale(1.18)":"scale(1)",color:rollback?c.acL:hov==="rp-rb"?c.tx:c.ts}}>
               <svg width={19} height={19} viewBox="0 0 24 24" fill="none"><line x1="15" y1="4" x2="15" y2="7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><rect x="12" y="7" width="6" height="10" rx="0.5" fill="currentColor"/><line x1="15" y1="17" x2="15" y2="20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><line x1="12" y1="12" x2="4" y2="12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><polyline points="7,9 4,12 7,15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><line x1="3" y1="4" x2="3" y2="20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
               {rollback&&<div style={{position:"absolute",bottom:0,left:"15%",right:"15%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 8px ${c.acG}`}}/>}
               {!rollback&&hov==="rp-rb"&&<div style={{position:"absolute",bottom:0,left:"25%",right:"25%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`}}/>}
@@ -55960,7 +55960,7 @@ const TalariaV8b = () => {
             <div style={{position:"relative"}}>
               <button onClick={(e)=>{e.stopPropagation();if(gotoOpen){closePopup(setGotoOpen,"goto");setGotoAddType(null);}else{if(replayOpts){closePopup(setReplayOpts,"replayOpts");}setGotoOpen(true);setGotoTab("pinned");}}}
                 onMouseEnter={e=>{setHov("rp-goto");showTip("Go To",e.currentTarget,"top");}} onMouseLeave={()=>{setHov(null);hideTip();}}
-                style={{padding:"4px 5px",position:"relative",background:gotoOpen?"rgba(74,106,255,0.08)":hov==="rp-goto"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",color:gotoOpen?c.acL:hov==="rp-goto"?c.tx:c.ts,transition:"color 0.15s ease,background 0.12s"}}>
+                style={{padding:"4px 5px",position:"relative",background:gotoOpen?"rgba(48,144,255,0.08)":hov==="rp-goto"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",color:gotoOpen?c.acL:hov==="rp-goto"?c.tx:c.ts,transition:"color 0.15s ease,background 0.12s"}}>
                 <I n="goto" s={19} cl="currentColor"/>
                 {gotoOpen&&<div style={{position:"absolute",bottom:0,left:"15%",right:"15%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
                 {hov==="rp-goto"&&!gotoOpen&&<div style={{position:"absolute",bottom:0,left:"25%",right:"25%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`}}/>}
@@ -55989,7 +55989,7 @@ const TalariaV8b = () => {
                     </div>
                   </div>
                   {/* Sub-header glow line */}
-                  <div style={{height:3,background:`linear-gradient(90deg,transparent,${c.acB},rgba(74,106,255,0.4),${c.acB},transparent)`,flexShrink:0}}/>
+                  <div style={{height:3,background:`linear-gradient(90deg,transparent,${c.acB},rgba(48,144,255,0.4),${c.acB},transparent)`,flexShrink:0}}/>
                   {/* Tab bar */}
                   <div style={{position:"relative",display:"flex",flexShrink:0}}>
                     {gtTabs.map(([id,label])=>{
@@ -56123,8 +56123,8 @@ const TalariaV8b = () => {
                     {gotoTab==="create"&&(()=>{
                       const crTabs=[{t:"datetime",l:"Date & Time"},{t:"price",l:"Price"}];
                       const crIdx=crTabs.findIndex(x=>x.t===gotoAddType);
-                      const doAdd=(extra)=>{addItem({...extra,color:gotoNewColor});setGotoNewName("");setGotoNewColor("#4A6AFF");};
-                      const doAddAndGo=(extra)=>{addItem({...extra,color:gotoNewColor});setGotoNewName("");setGotoNewColor("#4A6AFF");closePopup(setGotoOpen,"goto");};
+                      const doAdd=(extra)=>{addItem({...extra,color:gotoNewColor});setGotoNewName("");setGotoNewColor("#3090FF");};
+                      const doAddAndGo=(extra)=>{addItem({...extra,color:gotoNewColor});setGotoNewName("");setGotoNewColor("#3090FF");closePopup(setGotoOpen,"goto");};
                       const Chevron=({open})=>(
                         <svg width={8} height={8} viewBox="0 0 8 8" fill="none">
                           <path d={open?"M1,5 L4,2 L7,5":"M1,3 L4,6 L7,3"} stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round"/>
@@ -56247,7 +56247,7 @@ const TalariaV8b = () => {
                                   {["none","daily","weekly","monthly"].map(r=>{const isA=gotoNewRepeat===r,isH=hov===`gr-${r}`;return(
                                     <div key={r} onClick={e=>{e.stopPropagation();setGotoNewRepeat(r);}}
                                       onMouseEnter={()=>setHov(`gr-${r}`)} onMouseLeave={()=>setHov(null)}
-                                      style={{flex:1,padding:"6px 0",position:"relative",background:isA?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",color:isA?c.acL:isH?c.tx:c.ts,fontSize:11,fontWeight:isA?700:500,fontFamily:F,cursor:"default",transition:"background 0.12s",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                                      style={{flex:1,padding:"6px 0",position:"relative",background:isA?"rgba(48,144,255,0.08)":isH?c.hv:"transparent",color:isA?c.acL:isH?c.tx:c.ts,fontSize:11,fontWeight:isA?700:500,fontFamily:F,cursor:"default",transition:"background 0.12s",display:"flex",alignItems:"center",justifyContent:"center"}}>
                                       {r==="none"?"None":r.charAt(0).toUpperCase()+r.slice(1)}
                                       {isA&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
                                       {!isA&&isH&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`,pointerEvents:"none"}}/>}
@@ -56261,7 +56261,7 @@ const TalariaV8b = () => {
                                   Add
                                 </button>
                                 <button onClick={e=>{e.stopPropagation();const d=new Date(gotoNewDate+"T00:00:00");const mon=d.toLocaleString("en",{month:"short"});const auto=`${d.getDate()} ${mon} ${d.getFullYear()}`;doAddAndGo({type:"datetime",label:gotoNewName||auto,time:gotoNewTime,repeat:gotoNewRepeat});}}
-                                  style={{flex:1,padding:"7px 0",background:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"none",color:"#fff",fontSize:12,fontWeight:700,fontFamily:F,cursor:"default",letterSpacing:"0.03em"}}>
+                                  style={{flex:1,padding:"7px 0",background:'#FFFFFF',border:"none",color:"#fff",fontSize:12,fontWeight:700,fontFamily:F,cursor:"default",letterSpacing:"0.03em"}}>
                                   Go
                                 </button>
                               </div>
@@ -56298,7 +56298,7 @@ const TalariaV8b = () => {
                                   Add
                                 </button>
                                 <button onClick={e=>{e.stopPropagation();if(!gotoNewPrice)return;doAddAndGo({type:"price",label:gotoNewName||parseFloat(gotoNewPrice).toFixed(decimals)});setGotoNewPrice("");}}
-                                  style={{flex:1,padding:"7px 0",background:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"none",color:"#fff",fontSize:12,fontWeight:700,fontFamily:F,cursor:"default",letterSpacing:"0.03em"}}>
+                                  style={{flex:1,padding:"7px 0",background:'#FFFFFF',border:"none",color:"#fff",fontSize:12,fontWeight:700,fontFamily:F,cursor:"default",letterSpacing:"0.03em"}}>
                                   Go
                                 </button>
                               </div>
@@ -56343,7 +56343,7 @@ const TalariaV8b = () => {
               <div style={{width:1,height:16,background:'rgba(140,160,255,0.18)',flexShrink:0}}/>
               <div onClick={()=>setBtmOpen(o=>!o)} onMouseEnter={()=>setHov("btm-tog")} onMouseLeave={()=>setHov(null)}
                 style={{cursor:'default',width:36,height:36,display:'flex',alignItems:'center',justifyContent:'center',position:'relative',flexShrink:0,
-                  background:btmOpen?"rgba(74,106,255,0.08)":hov==="btm-tog"?c.hv:"transparent",
+                  background:btmOpen?"rgba(48,144,255,0.08)":hov==="btm-tog"?c.hv:"transparent",
                   transition:"background 0.12s"}}>
                 <div style={{transform:btmOpen?"rotate(0deg)":"rotate(180deg)",transition:"transform 0.2s ease",lineHeight:0}}>
                   <svg width={10} height={6} viewBox="0 0 10 6"><path d="M1,1 L5,5 L9,1" stroke={btmOpen?c.acL:hov==="btm-tog"?c.tx:c.ts} strokeWidth={1.8} fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -56976,8 +56976,8 @@ const TalariaV8b = () => {
                                       <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={on?c.acL:isH?c.ts:"rgba(140,160,255,0.22)"} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
                                       <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={on?c.acL:isH?c.ts:"rgba(140,160,255,0.22)"} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
                                       {!on && isH && <>
-                                        <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(74,106,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/>
-                                        <path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(74,106,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/>
+                                        <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(48,144,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/>
+                                        <path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(48,144,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/>
                                       </>}
                                       {on && <>
                                         <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
@@ -57264,7 +57264,7 @@ const TalariaV8b = () => {
                                     style={{width:IW,height:IH,cursor:"default",flexShrink:0}}>
                                     <svg width={IW} height={IH} viewBox={`0 0 ${IW} ${IH}`} style={{display:"block"}}>
                                       <rect x={pad} y={pad} width={iw} height={ih} rx={1}
-                                        fill={isAct?"rgba(38,67,247,0.15)":isH?"rgba(140,160,255,0.08)":"rgba(140,160,255,0.05)"}
+                                        fill={isAct?"rgba(48,144,255,0.15)":isH?"rgba(140,160,255,0.08)":"rgba(140,160,255,0.05)"}
                                         stroke={lineCol} strokeWidth={0.7}/>
                                       {lines.map((l,i)=>(
                                         <line key={i}
@@ -57303,8 +57303,8 @@ const TalariaV8b = () => {
                               <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
                               <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
                               {!on&&isH&&<>
-                                <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(74,106,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/>
-                                <path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(74,106,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/>
+                                <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(48,144,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/>
+                                <path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(48,144,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/>
                               </>}
                               {on&&<>
                                 <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
@@ -57360,7 +57360,7 @@ const TalariaV8b = () => {
             <div data-nodrag="1" onClick={e => { e.stopPropagation(); if(opSizeOpen){setOpSizeOpen(false);return;} const r=e.currentTarget.getBoundingClientRect(); setOpSizePos({top:r.bottom+4, left:r.left}); setOpSizeOpen(true); }}
               onMouseEnter={() => setSwHov("op-size")} onMouseLeave={() => setSwHov(null)}
               style={{ display:"flex", alignItems:"center", gap:3, padding:"0 6px", height:20, cursor:"default", position:"relative", flexShrink:0,
-                       background:c.acD, border:`1px solid ${opSizeOpen||swHov==="op-size"?c.acB:"rgba(74,106,255,0.35)"}`, transition:"border-color 0.12s" }}>
+                       background:c.acD, border:`1px solid ${opSizeOpen||swHov==="op-size"?c.acB:"rgba(48,144,255,0.35)"}`, transition:"border-color 0.12s" }}>
               <span style={{ fontSize:11, fontWeight:800, color:c.acL }}>{sizeMode}</span>
               <I n="chevDown" s={7} cl={c.acL}/>
               {opSizeOpen && <div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"80%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
@@ -57371,7 +57371,7 @@ const TalariaV8b = () => {
               <div data-nodrag="1" onClick={e=>{ e.stopPropagation(); const r=e.currentTarget.getBoundingClientRect(); const mw=152; setOpDotsPos({top:r.bottom+4,left:Math.max(4,Math.min(r.right-mw,window.innerWidth-mw-4))}); setOpDotsOpen(v=>!v); setOpTplOpen(false); }}
                 onMouseEnter={()=>setSwHov("op-dots")} onMouseLeave={()=>setSwHov(null)}
                 style={{ width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", position:"relative",
-                         color:isAct?c.acL:isH?c.tx:c.ts, background:isAct?"rgba(74,106,255,0.08)":isH?c.hv:"transparent", transition:"color 0.12s, background 0.12s" }}>
+                         color:isAct?c.acL:isH?c.tx:c.ts, background:isAct?"rgba(48,144,255,0.08)":isH?c.hv:"transparent", transition:"color 0.12s, background 0.12s" }}>
                 <svg width={12} height={3} viewBox="0 0 12 3" fill="currentColor"><circle cx="1.5" cy="1.5" r="1.5"/><circle cx="6" cy="1.5" r="1.5"/><circle cx="10.5" cy="1.5" r="1.5"/></svg>
                 {(isH||isAct) && <div style={{ position:"absolute", bottom:0, left:"50%", transform:"translateX(-50%)", width:"50%", height:1, background:`linear-gradient(90deg,transparent,${isAct?c.acL:"`+c.hvLn+`"},transparent)`, pointerEvents:"none" }}/>}
               </div>
@@ -57381,7 +57381,7 @@ const TalariaV8b = () => {
               <div data-nodrag="1" onClick={e=>{ e.stopPropagation(); const r=e.currentTarget.getBoundingClientRect(); setOpTplPos({top:r.bottom+4,left:r.right-160}); setOpTplOpen(v=>!v); setOpDotsOpen(false); }}
                 onMouseEnter={()=>setSwHov("op-tpl-hdr")} onMouseLeave={()=>setSwHov(null)}
                 style={{ width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", position:"relative",
-                         color:isAct?c.acL:isH?c.tx:c.ts, background:isAct?"rgba(74,106,255,0.08)":isH?c.hv:"transparent", transition:"color 0.12s, background 0.12s" }}>
+                         color:isAct?c.acL:isH?c.tx:c.ts, background:isAct?"rgba(48,144,255,0.08)":isH?c.hv:"transparent", transition:"color 0.12s, background 0.12s" }}>
                 <svg width={12} height={12} viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1" fill="currentColor"/><rect x="9" y="1" width="6" height="6" rx="1" fill="currentColor"/><rect x="1" y="9" width="6" height="6" rx="1" fill="currentColor"/><line x1="12" y1="9" x2="12" y2="15" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><line x1="9" y1="12" x2="15" y2="12" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>
                 {(isH||isAct) && <div style={{ position:"absolute", bottom:0, left:"50%", transform:"translateX(-50%)", width:"50%", height:1, background:`linear-gradient(90deg,transparent,${isAct?c.acL:"`+c.hvLn+`"},transparent)`, pointerEvents:"none" }}/>}
               </div>
@@ -57401,7 +57401,7 @@ const TalariaV8b = () => {
             <div onClick={e => { e.stopPropagation(); if(opSymOpen){setOpSymOpen(false);return;} const r=e.currentTarget.getBoundingClientRect(); setOpSymPos({top:r.bottom/Z+2, left:r.left/Z}); setOpSymSearch(""); setOpSymOpen(true); }}
               onMouseEnter={()=>setSwHov("op-sym")} onMouseLeave={()=>setSwHov(null)}
               style={{ display:"flex", alignItems:"center", gap:3, padding:"0 7px", height:20, cursor:"default", position:"relative",
-                       background:c.acD, border:`1px solid ${opSymOpen||swHov==="op-sym"?c.acB:"rgba(74,106,255,0.35)"}`, transition:"border-color 0.12s" }}>
+                       background:c.acD, border:`1px solid ${opSymOpen||swHov==="op-sym"?c.acB:"rgba(48,144,255,0.35)"}`, transition:"border-color 0.12s" }}>
               <span style={{ fontSize:10, fontWeight:800, color:c.acL }}>{symbol}</span>
               <I n="chevDown" s={8} cl={c.acL}/>
               {opSymOpen && <div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"80%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
@@ -57581,9 +57581,9 @@ const TalariaV8b = () => {
             return (
               <div style={{ flexShrink:0, padding:"4px 8px 6px" }}>
                 {/* Blue box */}
-                <div style={{ border:"1px solid rgba(74,106,255,0.18)", background:"rgba(74,106,255,0.02)" }}>
+                <div style={{ border:"1px solid rgba(48,144,255,0.18)", background:"rgba(48,144,255,0.02)" }}>
                   {/* Header */}
-                  <div style={{ padding:"3px 6px", display:"flex", alignItems:"center", gap:4, borderBottom:"1px solid rgba(74,106,255,0.1)" }}>
+                  <div style={{ padding:"3px 6px", display:"flex", alignItems:"center", gap:4, borderBottom:"1px solid rgba(48,144,255,0.1)" }}>
                     <div style={{ width:5, height:5, background:c.acL, transform:"rotate(45deg)", flexShrink:0 }}/>
                     <span style={{ fontSize:10, fontWeight:800, color:c.acL, letterSpacing:"0.06em" }}>ENTRY</span>
                     {panelMode==="advanced" && entryRows.length > 1 && (
@@ -57599,7 +57599,7 @@ const TalariaV8b = () => {
                         style={{ width:20, height:20, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", flexShrink:0,
                                  color:swHov==="ep-eq"?c.acL:c.ts,
                                  background:swHov==="ep-eq"?c.acD:"transparent",
-                                 border:`1px solid ${swHov==="ep-eq"?"rgba(74,106,255,0.4)":"rgba(140,160,255,0.15)"}`,
+                                 border:`1px solid ${swHov==="ep-eq"?"rgba(48,144,255,0.4)":"rgba(140,160,255,0.15)"}`,
                                  transition:"all 0.12s" }}>
                         <svg width={11} height={8} viewBox="0 0 11 8" fill="none">
                           <line x1="0" y1="2" x2="11" y2="2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -57630,7 +57630,7 @@ const TalariaV8b = () => {
                       style={{ width:20, height:20, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", flexShrink:0,
                                color:swHov==="ep-add"?c.acL:c.ts,
                                background:swHov==="ep-add"?c.acD:"transparent",
-                               border:`1px solid ${swHov==="ep-add"?"rgba(74,106,255,0.4)":"rgba(140,160,255,0.15)"}`,
+                               border:`1px solid ${swHov==="ep-add"?"rgba(48,144,255,0.4)":"rgba(140,160,255,0.15)"}`,
                                transition:"all 0.12s" }}>
                       <svg width={9} height={9} viewBox="0 0 9 9" fill="none">
                         <line x1="4.5" y1="1" x2="4.5" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -57696,7 +57696,7 @@ const TalariaV8b = () => {
                   </div>
                   {/* Footer — only when 2+ levels */}
                   {entryRows.length > 1 && (
-                    <div style={{ padding:"2px 6px 3px", display:"flex", alignItems:"center", gap:6, borderTop:"1px solid rgba(74,106,255,0.1)" }}>
+                    <div style={{ padding:"2px 6px 3px", display:"flex", alignItems:"center", gap:6, borderTop:"1px solid rgba(48,144,255,0.1)" }}>
                       <div style={{ flex:1 }}/>
                       <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
                         Avg <span style={{ color:c.ts, fontWeight:700 }}>{avgPrice}</span>
@@ -57772,8 +57772,8 @@ const TalariaV8b = () => {
                       const isOpen   = slAdvDrop;
                       const label    = slAdvMode==="breakeven" ? "BE" : slAdvMode==="trailing" ? "TSL" : null;
                       const btnColor  = isActive ? c.gold : (isOpen||isH) ? c.acL : c.ts;
-                      const btnBg     = isOpen ? c.acD : isActive ? "rgba(255,200,60,0.1)" : isH ? "rgba(74,106,255,0.08)" : "transparent";
-                      const btnBorder = isOpen ? "rgba(74,106,255,0.5)" : isActive ? "rgba(255,200,60,0.45)" : isH ? "rgba(140,160,255,0.35)" : "rgba(140,160,255,0.15)";
+                      const btnBg     = isOpen ? c.acD : isActive ? "rgba(255,200,60,0.1)" : isH ? "rgba(48,144,255,0.08)" : "transparent";
+                      const btnBorder = isOpen ? "rgba(48,144,255,0.5)" : isActive ? "rgba(255,200,60,0.45)" : isH ? "rgba(140,160,255,0.35)" : "rgba(140,160,255,0.15)";
                       return (
                         <div style={{ position:"relative" }}>
                           <div onClick={()=>setSlAdvDrop(v=>!v)}
@@ -57885,8 +57885,8 @@ const TalariaV8b = () => {
                                 onMouseEnter={()=>setSwHov("be-unit-btn")} onMouseLeave={()=>setSwHov(null)}
                                 style={{ width:44, height:20, display:"flex", alignItems:"center", justifyContent:"space-between",
                                          padding:"0 5px", cursor:"default", flexShrink:0, boxSizing:"border-box",
-                                         background:slBeUnitDrop?c.acD:isUnitH?"rgba(74,106,255,0.08)":"transparent",
-                                         border:`1px solid ${slBeUnitDrop?"rgba(74,106,255,0.5)":isUnitH?"rgba(140,160,255,0.35)":"rgba(140,160,255,0.18)"}`,
+                                         background:slBeUnitDrop?c.acD:isUnitH?"rgba(48,144,255,0.08)":"transparent",
+                                         border:`1px solid ${slBeUnitDrop?"rgba(48,144,255,0.5)":isUnitH?"rgba(140,160,255,0.35)":"rgba(140,160,255,0.18)"}`,
                                          color:slBeUnitDrop?c.acL:isUnitH?c.tx:c.ts,
                                          transition:"all 0.12s" }}>
                                 <span style={{ fontSize:11, fontWeight:700 }}>{unitLabels[slBeUnit]}</span>
@@ -57977,8 +57977,8 @@ const TalariaV8b = () => {
                                   onMouseEnter={()=>setSwHov("tsl-unit-btn")} onMouseLeave={()=>setSwHov(null)}
                                   style={{ width:44, height:20, display:"flex", alignItems:"center", justifyContent:"space-between",
                                            padding:"0 5px", cursor:"default", flexShrink:0, boxSizing:"border-box",
-                                           background:slTslUnitDrop?c.acD:isUnitH?"rgba(74,106,255,0.08)":"transparent",
-                                           border:`1px solid ${slTslUnitDrop?"rgba(74,106,255,0.5)":isUnitH?"rgba(140,160,255,0.35)":"rgba(140,160,255,0.18)"}`,
+                                           background:slTslUnitDrop?c.acD:isUnitH?"rgba(48,144,255,0.08)":"transparent",
+                                           border:`1px solid ${slTslUnitDrop?"rgba(48,144,255,0.5)":isUnitH?"rgba(140,160,255,0.35)":"rgba(140,160,255,0.18)"}`,
                                            color:slTslUnitDrop?c.acL:isUnitH?c.tx:c.ts, transition:"all 0.12s" }}>
                                   <span style={{ fontSize:11, fontWeight:700 }}>{unitLabels[slTslUnit]}</span>
                                   <svg width={6} height={4} viewBox="0 0 6 4" fill="none" style={{ flexShrink:0, opacity:0.6 }}>
@@ -58299,8 +58299,8 @@ const TalariaV8b = () => {
                           onMouseEnter={()=>setSwHov(`tag-btn-${tag.id}`)} onMouseLeave={()=>setSwHov(null)}
                           style={{ height:16, width:64, padding:"0 5px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:2,
                                    cursor:"default", flexShrink:0, boxSizing:"border-box",
-                                   background:isDropOpen?c.acD:btnH?"rgba(74,106,255,0.08)":"transparent",
-                                   border:`1px solid ${isDropOpen?"rgba(74,106,255,0.5)":btnH?"rgba(140,160,255,0.35)":"rgba(140,160,255,0.18)"}`,
+                                   background:isDropOpen?c.acD:btnH?"rgba(48,144,255,0.08)":"transparent",
+                                   border:`1px solid ${isDropOpen?"rgba(48,144,255,0.5)":btnH?"rgba(140,160,255,0.35)":"rgba(140,160,255,0.18)"}`,
                                    color:isDropOpen?c.acL:val?c.tx:btnH?c.tx:c.ts,
                                    transition:"all 0.12s" }}>
                           <span style={{ fontSize:9, fontWeight:val?700:400, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{val || "—"}</span>
@@ -58390,7 +58390,7 @@ const TalariaV8b = () => {
                 <div onClick={()=>fileInputRef.current?.click()}
                   onMouseEnter={()=>setSwHov("ss-add")} onMouseLeave={()=>setSwHov(null)}
                   style={{ width:24, height:24, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center",
-                           background:isH?"rgba(74,106,255,0.08)":"transparent",
+                           background:isH?"rgba(48,144,255,0.08)":"transparent",
                            border:`1px solid ${isH?"rgba(140,160,255,0.38)":"rgba(140,160,255,0.2)"}`,
                            color:isH?c.acL:c.ts, cursor:"default", transition:"all 0.12s", position:"relative" }}>
                   <svg width={11} height={11} viewBox="0 0 14 14" fill="none">
@@ -58655,7 +58655,7 @@ const TalariaV8b = () => {
       {opDotsOpen && <div onClick={()=>setOpDotsOpen(false)} style={{ position:"fixed", inset:0, zIndex:9199 }}/>}
 
       {settDrop && (()=>{
-        const defaultTplOpts = [{n:"Dark Classic",cols:["#00D4A1","#FF5068","#2643F7"]},{n:"Professional",cols:["#26A69A","#EF5350","#1565C0"]},{n:"Ocean Night",cols:["#00BCD4","#FF4081","#00E5FF"]},{n:"Amber Dusk",cols:["#FF9800","#F44336","#FFC107"]},{n:"Forest Deep",cols:["#66BB6A","#81C784","#4CAF50"]},{n:"Midnight",cols:["#42A5F5","#EF5350","#7E57C2"]},{n:"Crimson",cols:["#F44336","#9C27B0","#E91E63"]},{n:"Arctic Frost",cols:["#80DEEA","#FFAB40","#4FC3F7"]},{n:"Cyber Green",cols:["#00E676","#FF1744","#76FF03"]},{n:"Rose Gold",cols:["#F48FB1","#FFB74D","#CE93D8"]}];
+        const defaultTplOpts = [{n:"Dark Classic",cols:["#00D4A1","#FF5068","#232CF4"]},{n:"Professional",cols:["#26A69A","#EF5350","#1565C0"]},{n:"Ocean Night",cols:["#00BCD4","#FF4081","#00E5FF"]},{n:"Amber Dusk",cols:["#FF9800","#F44336","#FFC107"]},{n:"Forest Deep",cols:["#66BB6A","#81C784","#4CAF50"]},{n:"Midnight",cols:["#42A5F5","#EF5350","#7E57C2"]},{n:"Crimson",cols:["#F44336","#9C27B0","#E91E63"]},{n:"Arctic Frost",cols:["#80DEEA","#FFAB40","#4FC3F7"]},{n:"Cyber Green",cols:["#00E676","#FF1744","#76FF03"]},{n:"Rose Gold",cols:["#F48FB1","#FFB74D","#CE93D8"]}];
         const tplOpts = [...(customTemplates.length>0?[{divider:"SAVED"},...customTemplates,{divider:"DEFAULT"}]:[]),...defaultTplOpts];
         const cfgMap = { gridStyle:{key:"gridLineStyle",type:"style"}, gridThick:{key:"gridLineThickness",type:"thick"}, priceStyle:{key:"priceLineStyle",type:"style"}, priceThick:{key:"priceLineThickness",type:"thick"}, chartTimeFormat:{key:"timeFormat",type:"select",opts:["24h","12h"]}, chartTimezone:{key:"timezone",type:"select",opts:["UTC","UTC+3 (Riyadh)","UTC+4 (Dubai)","UTC+5:30 (IST)","UTC+8 (Asia)","UTC-5 (EST)","UTC-8 (PST)"]}, chartPrecision:{key:"precision",type:"select",opts:["0.00000","0.0000","0.000","0.00","0.0"]}, chartTemplate:{key:"chartTemplate",type:"template",opts:tplOpts} };
         if (settDrop==="profLang") return <>
@@ -58827,7 +58827,7 @@ const TalariaV8b = () => {
               <I n="x" s={14} cl={hov==="gcal-x"?c.rd:c.ts}/>
             </div>
           </div>
-          <div style={{height:2,background:`linear-gradient(90deg,transparent,${c.acB},rgba(74,106,255,0.4),${c.acB},transparent)`}}/>
+          <div style={{height:2,background:`linear-gradient(90deg,transparent,${c.acB},rgba(48,144,255,0.4),${c.acB},transparent)`}}/>
 
           {/* ── NAV ROW — always visible ── */}
           <div style={{display:"flex",alignItems:"center",padding:"5px 4px",borderBottom:`1px solid ${c.br}`}}>
@@ -58839,7 +58839,7 @@ const TalariaV8b = () => {
               {(gotoCalMode==="days"||gotoCalMode==="months")&&(
                 <span onClick={e=>{e.stopPropagation();setGotoCalMode(m=>m==="months"?"days":"months");}}
                   style={{fontSize:12,fontWeight:700,color:gotoCalMode==="months"?c.acL:c.tx,cursor:"default",padding:"2px 4px",
-                    background:gotoCalMode==="months"?"rgba(74,106,255,0.12)":"transparent",
+                    background:gotoCalMode==="months"?"rgba(48,144,255,0.12)":"transparent",
                     transition:"color 0.12s,background 0.12s"}}>
                   {MON_SHORT[gotoCalViewM]}
                 </span>
@@ -58847,7 +58847,7 @@ const TalariaV8b = () => {
               {/* Year label — clickable to switch to year picker */}
               <span onClick={e=>{e.stopPropagation();if(gotoCalMode!=="years"){setGotoCalYearBase(Math.floor(gotoCalViewY/12)*12);setGotoCalMode("years");}else{setGotoCalMode("days");}}}
                 style={{fontSize:12,fontWeight:700,color:gotoCalMode==="years"?c.acL:c.tx,cursor:"default",padding:"2px 4px",
-                  background:gotoCalMode==="years"?"rgba(74,106,255,0.12)":"transparent",
+                  background:gotoCalMode==="years"?"rgba(48,144,255,0.12)":"transparent",
                   transition:"color 0.12s,background 0.12s"}}>
                 {gotoCalMode==="years"?`${gotoCalYearBase} – ${gotoCalYearBase+11}`:gotoCalViewY}
               </span>
@@ -58976,11 +58976,11 @@ const TalariaV8b = () => {
               {newSessCalMode==="years"&&<NavBtn label="‹" onClick={()=>setNewSessCalYearBase(b=>b-12)}/>}
               <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
                 {(newSessCalMode==="days"||newSessCalMode==="months")&&(
-                  <span onClick={e=>{e.stopPropagation();setNewSessCalMode(m=>m==="months"?"days":"months");}} style={{fontSize:11,fontWeight:700,color:newSessCalMode==="months"?c.acL:c.tx,cursor:"default",padding:"2px 5px",background:newSessCalMode==="months"?"rgba(74,106,255,0.12)":"transparent",transition:"color 0.12s,background 0.12s"}}>
+                  <span onClick={e=>{e.stopPropagation();setNewSessCalMode(m=>m==="months"?"days":"months");}} style={{fontSize:11,fontWeight:700,color:newSessCalMode==="months"?c.acL:c.tx,cursor:"default",padding:"2px 5px",background:newSessCalMode==="months"?"rgba(48,144,255,0.12)":"transparent",transition:"color 0.12s,background 0.12s"}}>
                     {MON_SHORT[newSessCalViewM]}
                   </span>
                 )}
-                <span onClick={e=>{e.stopPropagation();if(newSessCalMode!=="years"){setNewSessCalYearBase(Math.floor(newSessCalViewY/12)*12);setNewSessCalMode("years");}else{setNewSessCalMode("days");}}} style={{fontSize:11,fontWeight:700,color:newSessCalMode==="years"?c.acL:c.tx,cursor:"default",padding:"2px 5px",background:newSessCalMode==="years"?"rgba(74,106,255,0.12)":"transparent",transition:"color 0.12s,background 0.12s"}}>
+                <span onClick={e=>{e.stopPropagation();if(newSessCalMode!=="years"){setNewSessCalYearBase(Math.floor(newSessCalViewY/12)*12);setNewSessCalMode("years");}else{setNewSessCalMode("days");}}} style={{fontSize:11,fontWeight:700,color:newSessCalMode==="years"?c.acL:c.tx,cursor:"default",padding:"2px 5px",background:newSessCalMode==="years"?"rgba(48,144,255,0.12)":"transparent",transition:"color 0.12s,background 0.12s"}}>
                   {newSessCalMode==="years"?`${newSessCalYearBase} – ${newSessCalYearBase+11}`:newSessCalViewY}
                 </span>
               </div>
@@ -59053,7 +59053,7 @@ const TalariaV8b = () => {
             <SpinCol val={String(tMn).padStart(2,"0")} onUp={()=>setMn((tMn+1)%60)} onDn={()=>setMn((tMn-1+60)%60)}/>
             {use12&&(
               <button onClick={e=>{e.stopPropagation();setH(isPM?tH-12:tH+12);}}
-                style={{marginLeft:1,padding:"3px 5px",background:isPM?"rgba(74,106,255,0.15)":"rgba(140,160,255,0.06)",
+                style={{marginLeft:1,padding:"3px 5px",background:isPM?"rgba(48,144,255,0.15)":"rgba(140,160,255,0.06)",
                   border:`1px solid ${isPM?c.acL:c.br}`,color:isPM?c.acL:c.ts,cursor:"default",
                   fontSize:10,fontWeight:700,fontFamily:F,letterSpacing:"0.04em",lineHeight:1,transition:"all 0.12s"}}>
                 {isPM?"PM":"AM"}
@@ -59061,7 +59061,7 @@ const TalariaV8b = () => {
             )}
           </div>
           <div style={{padding:"3px 8px 7px"}}>
-            <button onClick={e=>{e.stopPropagation();setGotoTimeOpen(false);}} style={{width:"100%",padding:"4px 0",background:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"none",color:"#fff",fontSize:10,fontWeight:700,fontFamily:F,cursor:"default",letterSpacing:"0.04em"}}>Done</button>
+            <button onClick={e=>{e.stopPropagation();setGotoTimeOpen(false);}} style={{width:"100%",padding:"4px 0",background:'#FFFFFF',border:"none",color:"#fff",fontSize:10,fontWeight:700,fontFamily:F,cursor:"default",letterSpacing:"0.04em"}}>Done</button>
           </div>
         </div>
         );
@@ -59286,7 +59286,7 @@ const TalariaV8b = () => {
                   {rrRisk>0&&<div style={{fontSize:10,color:c.ts,marginTop:3,fontVariantNumeric:"tabular-nums"}}>{rrRisk.toFixed(2)} pts</div>}
                   {hasProtection&&<div style={{marginTop:6,display:"flex",flexDirection:"column",gap:3}}>
                     {r.breakeven&&<div style={{display:"flex",alignItems:"center",gap:3}}>
-                      <div style={{width:5,height:5,borderRadius:"50%",background:"rgba(74,106,255,0.8)",flexShrink:0}}/>
+                      <div style={{width:5,height:5,borderRadius:"50%",background:"rgba(48,144,255,0.8)",flexShrink:0}}/>
                       <span style={{fontSize:9,color:c.acL}}>BE {r.breakeven}</span>
                     </div>}
                     {r.trailingSL&&<div style={{display:"flex",alignItems:"center",gap:3}}>
@@ -59464,7 +59464,7 @@ const TalariaV8b = () => {
         <div onClick={()=>setTradeActPopup(null)}
           style={{position:"fixed",inset:0,zIndex:99999,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(4px)"}}>
           <div onClick={e=>e.stopPropagation()}
-            style={{width:660,maxHeight:"88vh",background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 28px 70px rgba(0,0,0,0.8), 0 0 30px rgba(74,106,255,0.12)`,display:"flex",flexDirection:"column",fontFamily:F,animation:"tlrWinIn 0.2s ease"}}>
+            style={{width:660,maxHeight:"88vh",background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 28px 70px rgba(0,0,0,0.8), 0 0 30px rgba(48,144,255,0.12)`,display:"flex",flexDirection:"column",fontFamily:F,animation:"tlrWinIn 0.2s ease"}}>
             {/* Top accent */}
             <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
             {/* Header */}
@@ -59589,7 +59589,7 @@ const TalariaV8b = () => {
                       <div key={si}
                         onMouseEnter={()=>setSwHov(`tap-ss-${si}`)} onMouseLeave={()=>setSwHov(null)}
                         className="tap-ss-wrap"
-                        style={{height:90,position:"relative",border:`1px solid ${img?(isH?"rgba(74,106,255,0.5)":"rgba(74,106,255,0.25)"):(isH?"rgba(140,160,255,0.35)":c.br)}`,
+                        style={{height:90,position:"relative",border:`1px solid ${img?(isH?"rgba(48,144,255,0.5)":"rgba(48,144,255,0.25)"):(isH?"rgba(140,160,255,0.35)":c.br)}`,
                           cursor:"default",overflow:"hidden",background:img?"transparent":isH?"rgba(140,160,255,0.04)":"transparent",transition:"border-color 0.15s,background 0.15s"}}>
                         {img?(
                           <>

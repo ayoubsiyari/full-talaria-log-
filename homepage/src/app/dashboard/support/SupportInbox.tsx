@@ -788,7 +788,7 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
                       alignSelf: isOwner ? "flex-start" : "flex-end",
                       maxWidth: "85%",
                       padding: "10px 14px",
-                      borderRadius: 10,
+                      borderRadius: 6,
                       background: isOwner ? "rgba(255,255,255,0.05)" : "rgba(59,130,246,0.12)",
                       border: `1px solid ${isOwner ? "rgba(255,255,255,0.08)" : "rgba(59,130,246,0.25)"}`,
                     }}

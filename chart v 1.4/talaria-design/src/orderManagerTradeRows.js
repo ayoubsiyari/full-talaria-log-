@@ -1276,6 +1276,111 @@ function rowSymHint(journal) {
   return journal?.symbol || journal?.ticker || "";
 }
 
+function fmtTradeMoney(n) {
+  if (!Number.isFinite(n)) return null;
+  const abs = Math.abs(n);
+  const body = abs >= 100 ? abs.toFixed(0) : abs.toFixed(2);
+  if (n < 0) return `-$${body}`;
+  return `$${body}`;
+}
+
+function fmtTradeRMultiple(n) {
+  if (!Number.isFinite(n)) return null;
+  const sign = n > 0 ? "+" : "";
+  return `${sign}${n.toFixed(2)}R`;
+}
+
+function fmtTradePipsOrPts(n, unit) {
+  if (!Number.isFinite(n)) return null;
+  const abs = Math.abs(n);
+  const body = abs >= 10 ? abs.toFixed(1) : abs.toFixed(2);
+  const u = unit || "pips";
+  if (n < 0) return `-${body} ${u}`;
+  if (n > 0) return `${body} ${u}`;
+  return `0 ${u}`;
+}
+
+/**
+ * Surface execution economics on the trade row for the trade card.
+ * Slots stay reserved even when a value is missing (card shows "—").
+ */
+function attachExecutionEconomicsToRow(om, row, order, journal) {
+  const src = journal || order || {};
+  const fmtPx =
+    typeof om?._formatPrice === "function"
+      ? (px) => {
+          try { return om._formatPrice(px); } catch (_) { return String(px); }
+        }
+      : (px) => {
+          const n = Number.parseFloat(px);
+          if (!Number.isFinite(n)) return null;
+          return String(n);
+        };
+
+  const maePx = Number.parseFloat(src.mae ?? order?.mae ?? journal?.mae);
+  const mfePx = Number.parseFloat(src.mfe ?? order?.mfe ?? journal?.mfe);
+  if (Number.isFinite(maePx) && !row.mae) row.mae = fmtPx(maePx);
+  if (Number.isFinite(mfePx) && !row.mfe) row.mfe = fmtPx(mfePx);
+
+  const maeR = Number.parseFloat(src.mae_r ?? src.maeR ?? order?.mae_r ?? journal?.mae_r);
+  const mfeR = Number.parseFloat(src.mfe_r ?? src.mfeR ?? order?.mfe_r ?? journal?.mfe_r);
+  if (Number.isFinite(maeR)) row.maeR = fmtTradeRMultiple(maeR);
+  if (Number.isFinite(mfeR)) row.mfeR = fmtTradeRMultiple(mfeR);
+
+  let commission = Number.parseFloat(
+    src.commission_total ?? src.commissionTotal ?? src.finalCommission
+      ?? order?.commission_total ?? order?.finalCommission
+      ?? journal?.commission_total ?? journal?.commission
+  );
+  if (!Number.isFinite(commission) && om && order && typeof om._getRoundTripCommissionUsd === "function") {
+    try {
+      const est = om._getRoundTripCommissionUsd(order);
+      if (Number.isFinite(est) && est > 0) commission = est;
+    } catch (_) { /* ignore */ }
+  }
+  if (Number.isFinite(commission) && commission !== 0) {
+    // Commission is a cost — store absolute debit display.
+    row.commission = fmtTradeMoney(-Math.abs(commission));
+    row.commissionN = -Math.abs(commission);
+  }
+
+  let slippage = Number.parseFloat(
+    src.slippage ?? src.slippage_pips ?? src.slippagePips
+      ?? order?.slippage ?? order?.slippage_pips ?? journal?.slippage
+  );
+  const slipUnitRaw = src.slippage_unit ?? order?.slippage_unit ?? journal?.slippage_unit;
+  const slipUnit = slipUnitRaw === "pts" || slipUnitRaw === "ticks" ? slipUnitRaw : "pips";
+  if (Number.isFinite(slippage)) {
+    row.slippage = fmtTradePipsOrPts(slippage, slipUnit);
+    row.slippageN = slippage;
+  }
+
+  let spread = Number.parseFloat(
+    src.spread_pips ?? src.spreadPips ?? src.spread
+      ?? order?.spread_pips ?? order?.spreadPips
+      ?? journal?.spread_pips
+  );
+  if (!Number.isFinite(spread) && om && order && typeof om._getSpreadPipsForPosition === "function") {
+    try {
+      const s = om._getSpreadPipsForPosition(order);
+      if (Number.isFinite(s) && s > 0) spread = s;
+    } catch (_) { /* ignore */ }
+  }
+  if (Number.isFinite(spread) && spread > 0) {
+    row.spread = fmtTradePipsOrPts(spread, "pips");
+    row.spreadN = spread;
+  }
+
+  const swap = Number.parseFloat(
+    src.swap ?? src.swap_cost ?? src.swapCost
+      ?? order?.swap ?? journal?.swap
+  );
+  if (Number.isFinite(swap) && swap !== 0) {
+    row.swap = fmtTradeMoney(swap);
+    row.swapN = swap;
+  }
+}
+
 function attachTradeMetricsToRow(om, row, order, journal) {
   const src = journal || order;
   if (!src) return;
@@ -1302,6 +1407,7 @@ function attachTradeMetricsToRow(om, row, order, journal) {
     const realized = extractRealizedRMultiple(journal || order, om, sideHint);
     if (realized != null && Number.isFinite(realized)) row.rMultiple = realized;
   }
+  attachExecutionEconomicsToRow(om, row, order, journal);
 }
 
 function coalesceTimeMs(...vals) {

@@ -58,7 +58,7 @@ export default function TalariaV16HandoffPreviewPage() {
   const iframeSrc = useMemo(() => iframeSrcForEnv(TALARIA_V16_IFRAME_SRC), []);
 
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col bg-[#07080E] m-0 p-0" dir="ltr" lang="en">
+    <div className="fixed inset-0 z-[100] flex flex-col bg-[#000000] m-0 p-0" dir="ltr" lang="en">
       <iframe
         title="Talaria V16 handoff dashboard"
         src={iframeSrc}

@@ -60,7 +60,7 @@ async function sniffImageMime(file: File): Promise<string | null> {
   return null;
 }
 
-const F = "'Exo 2', sans-serif";
+const F = '"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif';
 const C = {
   sf: "#111520",
   bg: "#0a0c12",
@@ -69,7 +69,7 @@ const C = {
   tm: "#5c6688",
   br: "rgba(140,160,255,0.15)",
   acL: "#6b8cff",
-  acD: "rgba(74,106,255,0.12)",
+  acD: "rgba(48,144,255,0.12)",
   hv: "rgba(140,160,255,0.08)",
 };
 
@@ -557,7 +557,7 @@ export function V16SupportChatPopover() {
             : hov === `filter-${id}`
               ? C.hv
               : "rgba(255,255,255,0.04)",
-          border: `1px solid ${active ? (id === "open" ? "rgba(76,175,80,0.35)" : id === "closed" ? "rgba(229,57,53,0.35)" : "rgba(74,106,255,0.35)") : C.br}`,
+          border: `1px solid ${active ? (id === "open" ? "rgba(76,175,80,0.35)" : id === "closed" ? "rgba(229,57,53,0.35)" : "rgba(48,144,255,0.35)") : C.br}`,
         }}
       >
         {label}
@@ -582,7 +582,7 @@ export function V16SupportChatPopover() {
         maxHeight: "min(78vh, 580px)",
         background: "linear-gradient(180deg, #111520 0%, #0c101c 100%)",
         border: "1px solid rgba(140,160,255,0.34)",
-        borderRadius: 10,
+        borderRadius: 6,
         boxShadow: "0 16px 48px rgba(0,0,0,0.62)",
         zIndex: 100010,
         display: "flex",
@@ -591,7 +591,7 @@ export function V16SupportChatPopover() {
         overflow: "hidden",
       }}
     >
-      <div style={{ height: 2, background: "linear-gradient(90deg, transparent, rgba(74,106,255,0.85), transparent)", flexShrink: 0 }} />
+      <div style={{ height: 2, background: "linear-gradient(90deg, transparent, rgba(48,144,255,0.85), transparent)", flexShrink: 0 }} />
       <div
         style={{
           padding: "10px 14px",
@@ -732,7 +732,7 @@ export function V16SupportChatPopover() {
                 borderRadius: 8,
                 outline: "none",
                 background: newFile ? C.acD : "rgba(0,0,0,0.22)",
-                border: `1px solid ${newFile ? "rgba(74,106,255,0.4)" : C.br}`,
+                border: `1px solid ${newFile ? "rgba(48,144,255,0.4)" : C.br}`,
               }}
             >
               {newFile ? (
@@ -770,7 +770,7 @@ export function V16SupportChatPopover() {
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      background: "rgba(74,106,255,0.14)",
+                      background: "rgba(48,144,255,0.14)",
                       color: C.acL,
                       fontSize: 14,
                     }}
@@ -789,7 +789,7 @@ export function V16SupportChatPopover() {
             type="button"
             disabled={sending || !newSubject.trim() || (!newBody.trim() && !newFile)}
             onClick={() => void createThread()}
-            style={{ padding: "10px 0", fontSize: 13, fontWeight: 750, borderRadius: 8, border: "1px solid rgba(107,140,255,0.45)", cursor: "pointer", background: "linear-gradient(135deg,#4A6AFF,#3B5BDB)", color: "#fff", opacity: sending ? 0.6 : 1, marginTop: 2, boxShadow: "0 6px 18px rgba(74,106,255,0.28)" }}
+            style={{ padding: "10px 0", fontSize: 13, fontWeight: 750, borderRadius: 8, border: "1px solid rgba(107,140,255,0.45)", cursor: "pointer", background: "linear-gradient(135deg,#3090FF,#3B5BDB)", color: "#fff", opacity: sending ? 0.6 : 1, marginTop: 2, boxShadow: "0 6px 18px rgba(48,144,255,0.28)" }}
           >
             {sending ? "Sending…" : "Create Thread"}
           </button>
@@ -812,7 +812,7 @@ export function V16SupportChatPopover() {
                       padding: "7px 11px",
                       borderRadius: isOwn ? "12px 12px 2px 12px" : "12px 12px 12px 2px",
                       background: isOwn ? C.acD : "rgba(255,255,255,0.06)",
-                      border: `1px solid ${isOwn ? "rgba(74,106,255,0.25)" : "rgba(255,255,255,0.08)"}`,
+                      border: `1px solid ${isOwn ? "rgba(48,144,255,0.25)" : "rgba(255,255,255,0.08)"}`,
                       maxWidth: "100%",
                     }}
                   >
@@ -863,7 +863,7 @@ export function V16SupportChatPopover() {
                   borderRadius: 8,
                   outline: "none",
                   background: replyFile ? C.acD : "rgba(0,0,0,0.22)",
-                  border: `1px solid ${replyFile ? "rgba(74,106,255,0.4)" : C.br}`,
+                  border: `1px solid ${replyFile ? "rgba(48,144,255,0.4)" : C.br}`,
                 }}
               >
                 {replyFile ? (
@@ -898,7 +898,7 @@ export function V16SupportChatPopover() {
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        background: "rgba(74,106,255,0.14)",
+                        background: "rgba(48,144,255,0.14)",
                         color: C.acL,
                         fontSize: 14,
                       }}
@@ -930,7 +930,7 @@ export function V16SupportChatPopover() {
                   onClick={() => {
                     if (!sending) void sendReply();
                   }}
-                  style={{ cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", width: 34, height: 34, borderRadius: 8, background: "linear-gradient(135deg,#4A6AFF,#3B5BDB)", opacity: sending ? 0.5 : 1, flexShrink: 0 }}
+                  style={{ cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", width: 34, height: 34, borderRadius: 8, background: "linear-gradient(135deg,#3090FF,#3B5BDB)", opacity: sending ? 0.5 : 1, flexShrink: 0 }}
                 >
                   <svg width={14} height={14} viewBox="0 0 24 24" fill="#fff">
                     <path d="M2 21l21-9L2 3v7l15 2-15 2v7z" />
@@ -1031,7 +1031,7 @@ export function V16SupportChatPopover() {
           cursor: "pointer",
           background: "linear-gradient(180deg, #141a2c 0%, #0e1320 100%)",
           border: "1px solid rgba(107,140,255,0.45)",
-          borderRadius: 12,
+          borderRadius: 6,
           padding: "12px 14px",
           boxShadow: "0 14px 36px rgba(0,0,0,0.55)",
           fontFamily: F,

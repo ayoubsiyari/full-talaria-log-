@@ -268,7 +268,7 @@ export default function BacktestAnalyticsPage() {
 
   if (listError) {
     return (
-      <div className={`${spaceMono.variable} bt-os-dashboard`} style={{ fontFamily: "'Exo 2', sans-serif" }}>
+      <div className={`${spaceMono.variable} bt-os-dashboard`} style={{ fontFamily: '"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif' }}>
         <div className="bt-os-page-error">{listError}</div>
       </div>
     );
@@ -277,7 +277,7 @@ export default function BacktestAnalyticsPage() {
   return (
     <div
       className={`${spaceMono.variable} bt-os-dashboard${compareMode ? " bt-os-dashboard--compare-shell" : ""}`}
-      style={{ fontFamily: "'Exo 2', sans-serif" }}
+      style={{ fontFamily: '"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif' }}
     >
       {compareMode ? (
         <>

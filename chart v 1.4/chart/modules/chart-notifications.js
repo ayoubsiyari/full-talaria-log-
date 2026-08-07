@@ -7,22 +7,22 @@
     'use strict';
 
     const TOAST_SURFACE = {
-        background: 'rgba(42, 46, 57, 0.95)',
-        border: '1px solid #363a45',
-        borderRadius: '4px',
-        padding: '7px 11px',
-        fontSize: '11px',
-        lineHeight: '14px',
-        color: '#ffffff',
-        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.35)',
+        background: 'var(--surface, #0a0a0b)',
+        border: '1px solid var(--line, rgba(162,161,205,0.22))',
+        borderRadius: '6px',
+        padding: '8px 12px',
+        fontSize: '12px',
+        lineHeight: '1.35',
+        color: 'var(--text, rgba(244,244,245,0.92))',
+        boxShadow: 'none',
         zIndex: '10000',
-        fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-        fontWeight: '600'
+        fontFamily: 'var(--font-ui), "Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
+        fontWeight: '500'
     };
 
     function applyToastStyles(selection, borderLeft) {
         selection
-            .attr('class', 'chart-notification chart-toast-tooltip')
+            .attr('class', 'chart-notification chart-toast-tooltip tlr-toast-stack-msg')
             .style('position', 'fixed')
             .style('top', '20px')
             .style('right', '20px')
@@ -35,13 +35,14 @@
             .style('font-weight', TOAST_SURFACE.fontWeight)
             .style('font-family', TOAST_SURFACE.fontFamily)
             .style('box-shadow', TOAST_SURFACE.boxShadow)
+            .style('filter', 'none')
             .style('z-index', TOAST_SURFACE.zIndex)
             .style('border', TOAST_SURFACE.border)
-            .style('border-left', borderLeft || '3px solid #3b82f6')
-            .style('max-width', '340px')
+            .style('border-left', borderLeft || '2px solid var(--accent, #3090FF)')
+            .style('max-width', '360px')
             .style('opacity', '0')
-            .style('transform', 'translateY(-10px)')
-            .style('transition', 'all 0.3s ease')
+            .style('transform', 'translateY(-6px)')
+            .style('transition', 'opacity 0.16s ease, transform 0.16s ease')
             .style('box-sizing', 'border-box');
     }
 

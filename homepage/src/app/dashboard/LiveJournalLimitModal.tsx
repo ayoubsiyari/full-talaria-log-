@@ -8,11 +8,11 @@ import {
   type LiveJournalLimitsPayload,
 } from "@/lib/liveJournalLimits";
 
-const F = "'Exo 2', sans-serif";
+const F = '"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif';
 
 const c = {
-  acL: "#4A6AFF",
-  sf: "#0A0C14",
+  acL: "#3090FF",
+  sf: "#0a0a0b",
   brH: "rgba(140,160,255,0.12)",
   tx: "rgba(255,255,255,0.92)",
   ts: "rgba(255,255,255,0.70)",
@@ -106,7 +106,7 @@ export function LiveJournalLimitModal({ open, accountType, limits, onClose }: Pr
             style={{
               padding: "8px 14px",
               border: `1px solid ${closeHov ? c.acL : c.brH}`,
-              background: closeHov ? "rgba(74,106,255,0.12)" : "transparent",
+              background: closeHov ? "rgba(48,144,255,0.12)" : "transparent",
               color: closeHov ? c.tx : c.ts,
               fontSize: 11,
               fontWeight: 700,

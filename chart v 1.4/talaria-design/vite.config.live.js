@@ -28,7 +28,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // Backend that serves /chart/* (legacy chart.js + modules) and /api/*.
 // Override with `CHART_BACKEND=http://your-server:port npm run dev:live`.
 const BACKEND = process.env.CHART_BACKEND || 'http://31.97.192.82:3000'
-const USE_LOCAL_CHART = process.env.USE_LOCAL_CHART === '1' || process.env.USE_LOCAL_CHART === 'true'
+// Prefer local ../chart/* over the remote proxy so chrome edits (context menu,
+// order lines, etc.) show up on localhost. Force remote with USE_LOCAL_CHART=0.
+const FORCE_REMOTE_CHART =
+    process.env.USE_LOCAL_CHART === '0' || process.env.USE_LOCAL_CHART === 'false'
 const chartRoot = path.resolve(__dirname, '../chart')
 
 const MIME_TYPES = {
@@ -48,12 +51,12 @@ function localChartFileForUrl(url) {
     return file.startsWith(chartRoot + path.sep) ? file : null
 }
 
-/** Serve existing ../chart/* static files from disk when USE_LOCAL_CHART=1. */
+/** Serve ../chart/* from disk when present (default). Proxy only fills gaps. */
 function localChartModulesPlugin() {
     return {
         name: 'local-chart-modules',
         configureServer(server) {
-            if (!USE_LOCAL_CHART) return
+            if (FORCE_REMOTE_CHART) return
             server.middlewares.use((req, res, next) => {
                 const url = (req.url || '').split('?')[0]
                 const file = localChartFileForUrl(url)
@@ -65,6 +68,7 @@ function localChartModulesPlugin() {
                     if (fs.existsSync(file) && fs.statSync(file).isFile()) {
                         const type = MIME_TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream'
                         res.setHeader('Content-Type', type)
+                        res.setHeader('Cache-Control', 'no-cache')
                         fs.createReadStream(file).pipe(res)
                         return
                     }
@@ -132,6 +136,11 @@ export default defineConfig({
             '/ws':   { target: BACKEND, changeOrigin: true, ws: true },
             // Auth endpoints chart.js may hit
             '/auth': { target: BACKEND, changeOrigin: true },
+            // Without these, Vite SPA-falls /login back to live/index.html and the
+            // auth bootstrap 401→/login loop reloads forever on localhost.
+            '/login': { target: BACKEND, changeOrigin: true },
+            '/logout': { target: BACKEND, changeOrigin: true },
+            '/register': { target: BACKEND, changeOrigin: true },
         },
     },
 

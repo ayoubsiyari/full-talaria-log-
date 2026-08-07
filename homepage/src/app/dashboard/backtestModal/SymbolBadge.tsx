@@ -91,7 +91,7 @@ export function SymbolBadge({
   asset,
   w = 11,
   h = 10,
-  fontFamily = "'Exo 2', sans-serif",
+  fontFamily = '"Helvetica Now","Helvetica Neue",Helvetica,Arial,sans-serif',
 }: {
   sym: string;
   asset?: string;

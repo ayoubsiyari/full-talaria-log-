@@ -1,7 +1,7 @@
-/* BacktestOS analytics — aligned with dashboard BacktestView (Exo 2, blue accent, #07080E) */
+/* BacktestOS analytics — aligned with dashboard BacktestView (Exo 2, blue accent, #000000) */
 
 .bt-os-dashboard {
-  --bt-bg: #0a0c14;
+  --bt-bg: var(--bg);
   --bt-bg-elevated: #12151c;
   --bt-bg-panel: #151921;
   --bt-quant-cyan: #00f2ff;
@@ -15,9 +15,9 @@
   --bt-text: rgba(255, 255, 255, 0.92);
   --bt-text-secondary: rgba(255, 255, 255, 0.7);
   --bt-text-dim: rgba(255, 255, 255, 0.5);
-  --bt-accent: #4a6aff;
+  --bt-accent: var(--accent);
   --bt-accent-soft: rgba(74, 106, 255, 0.12);
-  --bt-accent-strong: #6b84ff;
+  --bt-accent-strong: #4AA0FF;
   --bt-green: #00d4a1;
   --bt-green-muted: rgba(0, 212, 161, 0.12);
   --bt-red: #ff5068;
@@ -259,7 +259,7 @@
   text-transform: uppercase;
   border-radius: var(--bt-radius-sm);
   border: none;
-  background: linear-gradient(135deg, #1e38e8, #4a6aff);
+  background: linear-gradient(135deg, #3090FF, #3090FF);
   color: rgba(255, 255, 255, 0.96);
   box-shadow: 0 2px 10px rgba(38, 67, 247, 0.35);
   cursor: default;
@@ -1614,7 +1614,7 @@
   min-width: 118px;
   background: var(--bt-bg-panel);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 8px;
+  border-radius: 6px;
   padding: 10px 10px 8px;
   display: flex;
   flex-direction: column;
@@ -1711,7 +1711,7 @@
   align-items: center;
   background: var(--bt-bg-panel);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 10px;
+  border-radius: 6px;
   padding: 20px 22px;
 }
 
