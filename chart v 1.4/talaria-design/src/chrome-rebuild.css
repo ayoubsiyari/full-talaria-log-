@@ -397,16 +397,16 @@
   color: var(--text) !important;
 }
 
-/* ═══════════ ORDER PANEL (ticket stack) ═══════════ */
-[data-order-v2="1"] {
+/* ═══════════ ORDER PANEL (legacy v2 only — v4 lives in chrome-order-ticket.css) ═══════════ */
+[data-order-v2="1"]:not([data-order-v4]) {
   background: var(--surface) !important;
 }
-[data-order-v2="1"] [data-order-hero] {
+[data-order-v2="1"]:not([data-order-v4]) [data-order-hero] {
   padding: 14px 14px 10px;
   border-bottom: 1px solid var(--line);
   background: var(--surface-sunken);
 }
-[data-order-v2="1"] [data-order-hero] [data-order-sym] {
+[data-order-v2="1"]:not([data-order-v4]) [data-order-hero] [data-order-sym] {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -420,22 +420,22 @@
   color: var(--text);
   cursor: default;
 }
-[data-order-v2="1"] [data-order-metrics] {
+[data-order-v2="1"]:not([data-order-v4]) [data-order-metrics] {
   display: flex;
   gap: 10px;
   margin-top: 10px;
   flex-wrap: wrap;
 }
-[data-order-v2="1"] [data-order-metrics] span {
+[data-order-v2="1"]:not([data-order-v4]) [data-order-metrics] span {
   font-size: 10px;
   color: var(--text-faint);
   font-variant-numeric: tabular-nums;
 }
-[data-order-v2="1"] [data-order-metrics] b {
+[data-order-v2="1"]:not([data-order-v4]) [data-order-metrics] b {
   color: var(--text-muted);
   font-weight: 650;
 }
-[data-order-v2="1"] [data-order-stack] {
+[data-order-v2="1"]:not([data-order-v4]) [data-order-stack] {
   padding: 12px 14px;
   display: flex;
   flex-direction: column;
@@ -444,13 +444,13 @@
   min-height: 0;
   overflow-y: auto;
 }
-[data-order-v2="1"] [data-order-block] {
+[data-order-v2="1"]:not([data-order-v4]) [data-order-block] {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
   padding: 12px;
 }
-[data-order-v2="1"] [data-order-block] > [data-order-block-title] {
+[data-order-v2="1"]:not([data-order-v4]) [data-order-block] > [data-order-block-title] {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -458,12 +458,12 @@
   color: var(--text-faint);
   margin-bottom: 10px;
 }
-[data-order-v2="1"] [data-order-side] {
+[data-order-v2="1"]:not([data-order-v4]) [data-order-side] {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
-[data-order-v2="1"] [data-order-side] button {
+[data-order-v2="1"]:not([data-order-v4]) [data-order-side] button {
   height: 42px !important;
   border-radius: 6px !important;
   font-size: 13px !important;
@@ -473,23 +473,23 @@
   background: var(--surface-sunken) !important;
   color: var(--text-muted) !important;
 }
-[data-order-v2="1"] [data-order-side] button[data-active="1"][data-side="buy"] {
+[data-order-v2="1"]:not([data-order-v4]) [data-order-side] button[data-active="1"][data-side="buy"] {
   background: color-mix(in oklab, var(--up) 22%, var(--surface)) !important;
   color: var(--up) !important;
   border-color: color-mix(in oklab, var(--up) 55%, transparent) !important;
 }
-[data-order-v2="1"] [data-order-side] button[data-active="1"][data-side="sell"] {
+[data-order-v2="1"]:not([data-order-v4]) [data-order-side] button[data-active="1"][data-side="sell"] {
   background: color-mix(in oklab, var(--down) 22%, var(--surface)) !important;
   color: var(--down) !important;
   border-color: color-mix(in oklab, var(--down) 55%, transparent) !important;
 }
-[data-order-v2="1"] [data-order-foot] {
+[data-order-v2="1"]:not([data-order-v4]) [data-order-foot] {
   padding: 12px 14px 14px;
   border-top: 1px solid var(--line);
   background: var(--surface);
   flex-shrink: 0;
 }
-[data-order-v2="1"] [data-order-foot] [data-brand-btn="primary"] {
+[data-order-v2="1"]:not([data-order-v4]) [data-order-foot] [data-brand-btn="primary"] {
   width: 100%;
   height: 44px !important;
   border-radius: 6px !important;
@@ -1381,6 +1381,8 @@
   height: 12px;
   margin-top: -6px;
   border-radius: 50%;
+  border: 2px solid var(--surface);
+  box-shadow: none;
 }
 [data-tlr-cp="1"] [data-tlr-cp-hex] {
   display: flex;

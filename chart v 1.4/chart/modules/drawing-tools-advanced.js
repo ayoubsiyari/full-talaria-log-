@@ -966,17 +966,73 @@ const RR_EXTRA_ENTRY_OFFSET_FRAC = 0.00002;
 /** Match order-manager default ladder step when OM does not seed multi-entry (tool-only fallback). */
 const RR_EXTRA_ENTRY_MIN_TICK_MULT = 20;
 
+/**
+ * Dual paint (React overlay + SVG) stacked two RR chromes on select.
+ * Default OFF — SVG is the only visual. Opt in: `window.__V9_RR_REACT_CHROME__ = true`.
+ */
+function v9RrReactChromeEnabled() {
+    if (typeof window === 'undefined') return false;
+    return window.__V9_RR_REACT_CHROME__ === true;
+}
+
+function v9PublishRrOverlaySnapshot(meta) {
+    if (typeof window === 'undefined') return;
+    window.__v9RrOverlaySnapshot = meta || null;
+    try {
+        window.dispatchEvent(new CustomEvent('v9-rr-overlay-snapshot', { detail: meta || null }));
+    } catch (_e) { /* ignore */ }
+}
+
+function v9CollectRrOverlaySnapshotFromManagers() {
+    if (typeof window === 'undefined') return null;
+    const managers = [];
+    try {
+        if (window.chart?.drawingManager) managers.push(window.chart.drawingManager);
+        const grid = window.__multichartGrid;
+        if (grid && typeof grid.forEachPanel === 'function') {
+            grid.forEachPanel((panel) => {
+                const dm = panel?.chart?.drawingManager || panel?.drawingManager;
+                if (dm) managers.push(dm);
+            });
+        } else if (Array.isArray(grid?.panels)) {
+            grid.panels.forEach((panel) => {
+                const dm = panel?.chart?.drawingManager || panel?.drawingManager;
+                if (dm) managers.push(dm);
+            });
+        }
+    } catch (_e) { /* ignore */ }
+    for (const dm of managers) {
+        const drawings = dm?.drawings || dm?.getDrawings?.() || [];
+        const list = Array.isArray(drawings) ? drawings : [];
+        for (const d of list) {
+            if (!d || !d.selected) continue;
+            if (d.type !== 'long-position' && d.type !== 'short-position') continue;
+            if (d.lastRenderMeta) return d.lastRenderMeta;
+        }
+        const sel = dm?.selectedDrawing;
+        if (sel && (sel.type === 'long-position' || sel.type === 'short-position') && sel.lastRenderMeta) {
+            return sel.lastRenderMeta;
+        }
+    }
+    return window.__v9RrOverlaySnapshot || null;
+}
+
+if (typeof window !== 'undefined') {
+    window.__v9GetRrOverlaySnapshot = v9CollectRrOverlaySnapshotFromManagers;
+}
+
 class BaseRiskRewardTool extends BaseDrawing {
     constructor(type, points = [], style = {}) {
         super(type, points, style);
         this.requiredPoints = 3; // Entry, Stop, Target
-        this.style.riskColor = style.riskColor || 'rgba(242, 54, 69, 0.25)';
-        this.style.rewardColor = style.rewardColor || 'rgba(8, 153, 129, 0.25)';
-        this.style.entryColor = style.entryColor || '#787b86';
-        this.style.textColor = style.textColor || style.labelTextColor || '#FFFFFF';
+        // Obsidian zone fills — quiet tint (TV-like see-through, not neon)
+        this.style.riskColor = style.riskColor || 'rgba(242, 54, 69, 0.12)';
+        this.style.rewardColor = style.rewardColor || 'rgba(8, 153, 129, 0.12)';
+        this.style.entryColor = style.entryColor || '#787B86';
+        this.style.textColor = style.textColor || style.labelTextColor || '#f4f4f5';
         this.style.fontSize = Number.isFinite(style.fontSize)
             ? style.fontSize
-            : (Number.isFinite(style.labelFontSize) ? style.labelFontSize : 11);
+            : (Number.isFinite(style.labelFontSize) ? style.labelFontSize : 10);
         this.style.labelTextColor = style.labelTextColor || this.style.textColor;
         this.style.labelFontSize = Number.isFinite(style.labelFontSize) ? style.labelFontSize : this.style.fontSize;
         this.meta.orientation = style.orientation || 'long';
@@ -987,8 +1043,65 @@ class BaseRiskRewardTool extends BaseDrawing {
             this.meta.zoneWidthRatio = null;
         }
         this.lastRenderMeta = null;
+        this._v9ReactChrome = false;
         this._ensureExtraLevelMeta();
         this.ensureRiskSettings();
+    }
+
+    _useReactRrChrome() {
+        return v9RrReactChromeEnabled() && !!this.selected;
+    }
+
+    /** Hide SVG paint chrome when React overlay owns visuals; keep hit layers interactive. */
+    _hideSvgVisualChromeForReact() {
+        if (!this.group || !this._useReactRrChrome()) {
+            this._v9ReactChrome = false;
+            return;
+        }
+        this._v9ReactChrome = true;
+        const visual = [
+            '.position-zone',
+            '.rr-avg-zone-edge',
+            '.rr-avg-tp-zone-edge',
+            '.rr-entry-stroke',
+            '.rr-extra-line',
+            '.shape-border.rr-entry-stroke',
+            '.target-label',
+            '.stop-label',
+            '.center-info',
+            '.rr-mini-level-badge',
+            '.rr-order-panel-style-row',
+        ].join(',');
+        this.group.selectAll(visual)
+            .style('opacity', 0)
+            .attr('data-v9-react-hidden', '1');
+        // Visual handle rings only — React draws solid TV dots; keep hit circles interactive.
+        this.group.selectAll('.custom-handle-group .custom-handle')
+            .attr('stroke', 'transparent')
+            .attr('fill', 'transparent')
+            .attr('data-v9-react-hidden', '1');
+        this.group.selectAll('.resize-handle, .rr-extra-handle-ring')
+            .style('opacity', 0)
+            .attr('stroke', 'transparent')
+            .attr('fill', 'transparent')
+            .attr('data-v9-react-hidden', '1');
+    }
+
+    _buildSvgHostRect() {
+        try {
+            const svgSel = this.chart?.svg;
+            const node = svgSel && typeof svgSel.node === 'function' ? svgSel.node() : null;
+            if (!node || typeof node.getBoundingClientRect !== 'function') return null;
+            const r = node.getBoundingClientRect();
+            return {
+                left: r.left,
+                top: r.top,
+                width: r.width,
+                height: r.height,
+            };
+        } catch (_e) {
+            return null;
+        }
     }
 
     get isLong() {
@@ -2049,6 +2162,10 @@ class BaseRiskRewardTool extends BaseDrawing {
 
         const xRange = scales.xScale.range();
         const chartWidth = Math.abs(xRange[1] - xRange[0]);
+        const yRange = scales.yScale && typeof scales.yScale.range === 'function'
+            ? scales.yScale.range()
+            : [0, 0];
+        const chartHeight = Math.abs((yRange[1] ?? 0) - (yRange[0] ?? 0));
         const defaultWidth = Math.min(chartWidth * 0.25, 320);
         const minWidth = 24;
         const toPixel = (index) => (scales.chart && scales.chart.dataIndexToPixel)
@@ -2153,26 +2270,28 @@ class BaseRiskRewardTool extends BaseDrawing {
         const dashExtra = '6 4';
 
         this.group.insert('rect', ':first-child')
-            .attr('class', 'position-zone')
+            .attr('class', 'position-zone rr-zone-risk')
             .attr('x', zoneX1)
             .attr('y', riskTop)
             .attr('width', zoneWidth)
             .attr('height', Math.max(0, riskHeight))
             .attr('fill', this.style.riskColor)
-            .attr('stroke', 'none')
+            .attr('stroke', 'rgba(242, 54, 69, 0.12)')
+            .attr('stroke-width', 1)
             // When selected, zones must not steal events — whole-tool drag uses .rr-body-drag instead
             // so the entry hit strip (painted later) wins on the middle row.
             .style('pointer-events', this.selected ? 'none' : 'all')
             .style('cursor', 'move');
 
         this.group.insert('rect', ':first-child')
-            .attr('class', 'position-zone')
+            .attr('class', 'position-zone rr-zone-reward')
             .attr('x', zoneX1)
             .attr('y', rewTop)
             .attr('width', zoneWidth)
             .attr('height', Math.max(0, rewardHeight))
             .attr('fill', this.style.rewardColor)
-            .attr('stroke', 'none')
+            .attr('stroke', 'rgba(8, 153, 129, 0.12)')
+            .attr('stroke-width', 1)
             .style('pointer-events', this.selected ? 'none' : 'all')
             .style('cursor', 'move');
 
@@ -2211,8 +2330,8 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('y1', avgEntryYpx)
                 .attr('x2', zoneX2)
                 .attr('y2', avgEntryYpx)
-                .attr('stroke', this.style.entryColor || '#565656ff')
-                .attr('stroke-width', 2)
+                .attr('stroke', this.style.entryColor || '#787B86')
+                .attr('stroke-width', 1)
                 .style('pointer-events', 'none')
                 .style('cursor', 'inherit');
             this.group.append('line')
@@ -2221,9 +2340,10 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('y1', entryY)
                 .attr('x2', zoneX2)
                 .attr('y2', entryY)
-                .attr('stroke', this.style.entryColor || '#3090FF')
+                .attr('stroke', '#787B86')
                 .attr('stroke-width', 1)
                 .attr('stroke-dasharray', dashExtra)
+                .attr('opacity', 0.65)
                 .style('pointer-events', 'none');
         } else {
             this.group.append('line')
@@ -2232,8 +2352,8 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('y1', entryY)
                 .attr('x2', zoneX2)
                 .attr('y2', entryY)
-                .attr('stroke', this.style.entryColor || '#565656ff')
-                .attr('stroke-width', 1.5)
+                .attr('stroke', this.style.entryColor || '#787B86')
+                .attr('stroke-width', 1)
                 .style('pointer-events', 'none')
                 .style('cursor', 'inherit');
         }
@@ -2353,21 +2473,21 @@ class BaseRiskRewardTool extends BaseDrawing {
         // Recalculate lot size from risk before rendering labels
         this.recalculateLotSizeFromRisk();
 
-        // Order-level chrome (STOP BUY / SL / TP toasts) must stay painted while the
-        // Long/Short Position tool is armed or Place Order is open. setTool() deselects
-        // the drawing, and gating on `selected` alone made the order vanish until click.
+        // Full label chrome only for the active RR (selected / placement preview / Execute-linked).
+        // Do NOT fan out to every RR when long/short tool is armed — that stacked two tools'
+        // Stop/Target pills on top of each other when adding a second position.
         const showDetails = (() => {
             if (this.selected || isPreview) return true;
             try {
-                const dm = (typeof this._drawingManager === 'function' ? this._drawingManager() : null)
-                    || this.chart?.drawingManager
-                    || (typeof window !== 'undefined' ? window.chart?.drawingManager : null);
-                if (dm && (dm.currentTool === 'long-position' || dm.currentTool === 'short-position')) {
+                const omShow = (typeof window !== 'undefined' ? window.chart?.orderManager : null) || null;
+                if (!omShow) return false;
+                // After Execute, setTool() deselects — keep chrome on the linked RR only.
+                if (omShow._rrExecuteArmed && omShow._linkedRrDrawingId != null
+                    && String(omShow._linkedRrDrawingId) === String(this.id)) {
                     return true;
                 }
-                const omShow = (typeof window !== 'undefined' ? window.chart?.orderManager : null) || null;
-                if (omShow && typeof omShow._isDraftOrderPreviewActive === 'function'
-                    && omShow._isDraftOrderPreviewActive()) {
+                if (typeof omShow._getSelectedRiskRewardDrawing === 'function'
+                    && omShow._getSelectedRiskRewardDrawing() === this) {
                     return true;
                 }
             } catch (_e) { /* ignore */ }
@@ -2458,34 +2578,53 @@ class BaseRiskRewardTool extends BaseDrawing {
                 riskUSD = (accountSize * (this.meta.risk.riskPercent || 1)) / 100;
             }
 
-            const labelPaddingX = 10;
-            const labelPaddingY = 4;
+            // Minimal Obsidian + TV: borderless soft plates, muted tone text, compact copy.
+            const RR_CHIP = {
+                bg: 'rgba(10, 10, 11, 0.72)',
+                border: 'transparent',
+                text: this.style.textColor || this.style.labelTextColor || 'rgba(209, 212, 220, 0.92)',
+                muted: 'rgba(209, 212, 220, 0.48)',
+                tp: 'rgba(8, 153, 129, 0.92)',
+                sl: 'rgba(242, 54, 69, 0.88)',
+                entry: 'rgba(209, 212, 220, 0.88)',
+                accent: '#2962FF',
+            };
+            const labelPaddingX = 5;
+            const labelPaddingY = 2;
+            const railW = 0;
             const rawLabelFontSize = Number(this.style.fontSize ?? this.style.labelFontSize);
             const labelFontSize = Number.isFinite(rawLabelFontSize)
-                ? Math.max(8, Math.min(24, rawLabelFontSize))
-                : 11;
+                ? Math.max(8, Math.min(22, rawLabelFontSize))
+                : 10;
             const labelFontWeight = '500';
-            const labelFontFamily = '"JetBrains Mono", ui-monospace, monospace';
-            const labelTextColor = this.style.textColor || this.style.labelTextColor || '#FFFFFF';
-            const edgeLabelRadius = 8;
-            const edgeSnapGap = 0;
-            const compressedGap = 18;
+            const labelFontFamily = '-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif';
+            const labelTextColor = RR_CHIP.text;
+            const edgeLabelRadius = 3;
+            const edgeSnapGap = 2;
+            const compressedGap = 12;
             const wideSnapThreshold = 260;
+            const fmtPct = (n) => {
+                const v = parseFloat(n);
+                return Number.isFinite(v) ? v.toFixed(1) : String(n ?? '—');
+            };
 
-            const createEdgeLabel = ({ className, text, lineY, fill, side, extraEdgeGap = 0 }) => {
-                // Outer group: className only. Inner `rr-no-hit` holds pill + text so drags pass through.
+            const createEdgeLabel = ({ className, text, lineY, tone = 'entry', side, extraEdgeGap = 0 }) => {
+                // Outer group: className only. Inner `rr-no-hit` holds chip + text so drags pass through.
                 const labelOuter = this.group.append('g').attr('class', className);
                 const hitBlock = labelOuter.append('g').attr('class', 'rr-no-hit');
+                const toneFill =
+                    tone === 'tp' ? RR_CHIP.tp : tone === 'sl' ? RR_CHIP.sl : RR_CHIP.entry;
 
                 const textNode = hitBlock.append('text')
                     .attr('x', 0)
                     .attr('y', 0)
                     .attr('text-anchor', 'middle')
                     .attr('dominant-baseline', 'hanging')
-                    .attr('fill', labelTextColor)
+                    .attr('fill', toneFill)
                     .attr('font-size', `${labelFontSize}px`)
                     .attr('font-weight', labelFontWeight)
                     .attr('font-family', labelFontFamily)
+                    .attr('letter-spacing', '0.01em')
                     .text(text);
 
                 const textBBox = textNode.node().getBBox();
@@ -2497,15 +2636,16 @@ class BaseRiskRewardTool extends BaseDrawing {
                 const rectTop = side === 'top'
                     ? lineY - labelHeight - offset
                     : lineY + offset;
-                const centeredRectX = (zoneX1 + (zoneWidth / 2)) - (labelWidth / 2);
-                const rectX = centeredRectX;
+                const rectX = (zoneX1 + (zoneWidth / 2)) - (labelWidth / 2);
 
                 hitBlock.insert('rect', 'text')
+                    .attr('class', 'rr-chip-bg')
                     .attr('x', rectX)
                     .attr('y', rectTop)
                     .attr('width', labelWidth)
                     .attr('height', labelHeight)
-                    .attr('fill', fill)
+                    .attr('fill', RR_CHIP.bg)
+                    .attr('stroke', 'none')
                     .attr('rx', edgeLabelRadius)
                     .style('pointer-events', 'none');
 
@@ -2514,9 +2654,6 @@ class BaseRiskRewardTool extends BaseDrawing {
                     .attr('y', rectTop + labelPaddingY)
                     .style('pointer-events', 'none');
             };
-
-            const targetLabelFill = '#22c55e';
-            const stopLabelFill = '#ef4444';
 
             const tpDistPanel = document.getElementById('tpDistanceDisplay')?.textContent?.trim() || '';
             const slDistPanel = document.getElementById('slPipsDisplay')?.textContent?.trim() || '';
@@ -2574,28 +2711,28 @@ class BaseRiskRewardTool extends BaseDrawing {
                 }
             }
 
-            // Target / Stop labels — same distance + $ readouts as order panel (TP/SL cards + summary).
-            // TP leg (TPn · %) is shown as a separate mini-badge on the line, like other TP levels.
-            const targetLabelText = `Target: ${tpPriceStr} (${targetPercent}%) ${tpDistSeg}, Amount: ${targetAmountStrForLabel}`;
+            // TV-tight copy: amount · % (price omitted — keeps the plate quiet).
+            // TP leg (TPn) stays as a separate mini-badge on multi-TP lines.
+            const targetLabelText = `Target  ${targetAmountStrForLabel}  ·  ${fmtPct(targetPercent)}%`;
             const targetSide = targetY <= avgEntryYpx ? 'top' : 'bottom';
             // Multi-TP: TP mini-badge sits on the same price line — nudge the Target pill farther from the line so it does not overlap.
-            const targetLabelExtraGap = (mtOnForTargetLabel && om?.tpTargets?.length > 1) ? 22 : 0;
+            const targetLabelExtraGap = (mtOnForTargetLabel && om?.tpTargets?.length > 1) ? 20 : 0;
             createEdgeLabel({
                 className: 'target-label',
                 text: targetLabelText,
                 lineY: targetY,
-                fill: targetLabelFill,
+                tone: 'tp',
                 side: targetSide,
                 extraEdgeGap: targetLabelExtraGap
             });
 
-            const stopLabelText = `Stop: ${slPriceStr} (${stopPercent}%) ${slDistSeg}, Amount: ${stopAmountStr}`;
+            const stopLabelText = `Stop  ${stopAmountStr}  ·  ${fmtPct(stopPercent)}%`;
             const stopSide = stopY <= avgEntryYpx ? 'top' : 'bottom';
             createEdgeLabel({
                 className: 'stop-label',
                 text: stopLabelText,
                 lineY: stopY,
-                fill: stopLabelFill,
+                tone: 'sl',
                 side: stopSide
             });
 
@@ -2619,8 +2756,10 @@ class BaseRiskRewardTool extends BaseDrawing {
                 } else {
                     const rewUsd = parseMoneyReadout(document.getElementById('rewardAmount'));
                     const riskUsd = parseMoneyReadout(document.getElementById('riskAmount'));
-                    if (rewUsd != null && riskUsd != null && riskUsd > 0 && rewUsd >= 0) {
-                        const rv = rewUsd / riskUsd;
+                    const riskMag = riskUsd != null ? Math.abs(riskUsd) : null;
+                    const rewMag = rewUsd != null ? Math.abs(rewUsd) : null;
+                    if (rewMag != null && riskMag != null && riskMag > 0 && rewMag >= 0) {
+                        const rv = rewMag / riskMag;
                         if (Number.isFinite(rv) && rv > 0) panelRRLabel = rv.toFixed(1);
                     }
                 }
@@ -2630,11 +2769,12 @@ class BaseRiskRewardTool extends BaseDrawing {
             const avgEntryStr = typeof om?.formatPrice === 'function'
                 ? om.formatPrice(zoneEntryPrice)
                 : (Number.isFinite(zoneEntryPrice) ? zoneEntryPrice.toFixed(rrPrec) : '—');
-            const centerInfoLine0 = hasMultiEntry && Number.isFinite(zoneEntryPrice)
-                ? `Avg entry: ${avgEntryStr}`
-                : null;
-            const centerInfoLine1 = `Qty: ${quantity.toFixed(2)}`;
-            const centerInfoLine2 = `Risk/Reward Ratio: ${panelRRLabel}`;
+            // Single-line center readout (TV): qty · R — optional Avg prefix when multi-entry.
+            const centerInfoLine0 = null;
+            const centerInfoLine1 = hasMultiEntry && Number.isFinite(zoneEntryPrice)
+                ? `Avg ${avgEntryStr}  ·  ${quantity.toFixed(2)}  ·  ${panelRRLabel} R`
+                : `${quantity.toFixed(2)}  ·  ${panelRRLabel} R`;
+            const centerInfoLine2 = null;
             // Multi-entry: pill on weighted-avg (middle) line; draggable = whole-tool move so E1/E2/SL/TP follow (avg moves with ladder).
             const centerInfo = this.group.append('g')
                 .attr('class', hasMultiEntry ? 'center-info rr-multi-pill-drag' : 'center-info rr-no-hit')
@@ -2651,27 +2791,33 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('fill', labelTextColor)
                 .attr('font-size', `${labelFontSize}px`)
                 .attr('font-weight', labelFontWeight)
-                .attr('font-family', labelFontFamily);
+                .attr('font-family', labelFontFamily)
+                .attr('letter-spacing', '0');
 
-            const centerLineHeight = Math.round(labelFontSize * 1.15);
+            const centerLineHeight = Math.round(labelFontSize * 1.2);
 
             let centerLine0 = null;
             if (centerInfoLine0) {
                 centerLine0 = centerTextNode.append('tspan')
                     .attr('x', 0)
                     .attr('y', 0)
+                    .attr('fill', RR_CHIP.muted)
                     .text(centerInfoLine0);
             }
 
             const centerLine1 = centerTextNode.append('tspan')
                 .attr('x', 0)
                 .attr('y', 0)
+                .attr('fill', RR_CHIP.text)
                 .text(centerInfoLine1);
 
-            const centerLine2 = centerTextNode.append('tspan')
-                .attr('x', 0)
-                .attr('y', centerLineHeight)
-                .text(centerInfoLine2);
+            const centerLine2 = centerInfoLine2
+                ? centerTextNode.append('tspan')
+                    .attr('x', 0)
+                    .attr('y', centerLineHeight)
+                    .attr('fill', RR_CHIP.accent)
+                    .text(centerInfoLine2)
+                : null;
 
             const centerTextBBox = centerTextNode.node().getBBox();
             const centerPaddingX = labelPaddingX;
@@ -2697,16 +2843,14 @@ class BaseRiskRewardTool extends BaseDrawing {
                 centerRectY = centerLineYpx - (centerHeight / 2);
             }
 
-            const centerInfoFill = this.isLong ? stopLabelFill : targetLabelFill;
-
             const centerPillRect = centerInfo.insert('rect', 'text')
+                .attr('class', 'rr-chip-bg')
                 .attr('x', centerRectX)
                 .attr('y', centerRectY)
                 .attr('width', centerWidth)
                 .attr('height', centerHeight)
-                .attr('fill', centerInfoFill)
-                .attr('stroke', 'rgba(255,255,255,0.35)')
-                .attr('stroke-width', 1)
+                .attr('fill', RR_CHIP.bg)
+                .attr('stroke', 'none')
                 .attr('rx', edgeLabelRadius);
             if (hasMultiEntry) {
                 centerPillRect.style('pointer-events', 'all').style('cursor', 'move');
@@ -2729,25 +2873,31 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('x', centerTextX)
                 .attr('y', y1);
 
-            centerLine2
-                .attr('x', centerTextX)
-                .attr('y', y2);
+            if (centerLine2) {
+                centerLine2
+                    .attr('x', centerTextX)
+                    .attr('y', y2);
+            }
 
-            /** Right-edge mini badges: one horizontal line (e.g. "BE 1.56R", "E1 0.05 lot"). Optional handleRole = same drag as price line. */
-            const appendRrMiniBadge = (lineYpx, lineTexts, bgFill, handleRole = null) => {
+            /** Right-edge mini badges — minimal (no rail). Optional handleRole = same drag as price line. */
+            const appendRrMiniBadge = (lineYpx, lineTexts, bgFill, handleRole = null, railTone = null) => {
                 const parts = (lineTexts || []).filter((x) => x != null && String(x).length > 0);
                 if (!parts.length) return;
                 const line = parts.join(' ');
-                const padX = 6;
-                const padY = 3;
+                const padX = 5;
+                const padY = 2;
                 const edgePad = 4;
+                const toneFill = railTone === 'tp' ? RR_CHIP.tp
+                    : railTone === 'sl' ? RR_CHIP.sl
+                    : railTone === 'be' ? '#E8A84A'
+                    : RR_CHIP.text;
                 const g = this.group.append('g').attr('class', 'rr-mini-level-badge').style('pointer-events', 'none');
                 const tmp = g.append('text')
                     .attr('x', 0)
                     .attr('y', 0)
                     .attr('dominant-baseline', 'hanging')
-                    .attr('font-size', '10px')
-                    .attr('font-weight', '600')
+                    .attr('font-size', '9px')
+                    .attr('font-weight', '500')
                     .attr('font-family', labelFontFamily)
                     .attr('opacity', 0)
                     .text(line);
@@ -2762,16 +2912,16 @@ class BaseRiskRewardTool extends BaseDrawing {
                     .attr('y', by)
                     .attr('width', bw)
                     .attr('height', bh)
-                    .attr('rx', 4)
-                    .attr('fill', bgFill)
-                    .attr('stroke', 'rgba(255,255,255,0.14)');
+                    .attr('rx', 3)
+                    .attr('fill', bgFill || RR_CHIP.bg)
+                    .attr('stroke', 'none');
                 g.append('text')
                     .attr('x', bx + padX)
                     .attr('y', by + padY)
                     .attr('dominant-baseline', 'hanging')
-                    .attr('fill', '#f1f5f9')
-                    .attr('font-size', '10px')
-                    .attr('font-weight', '600')
+                    .attr('fill', toneFill)
+                    .attr('font-size', '9px')
+                    .attr('font-weight', '500')
                     .attr('font-family', labelFontFamily)
                     .text(line);
                 if (this.selected && handleRole) {
@@ -2802,12 +2952,12 @@ class BaseRiskRewardTool extends BaseDrawing {
                 if (psm === 'risk-percent') return `${a.toFixed(1)}%`;
                 return `${a.toFixed(2)} lot`;
             };
-            const entryFill = 'rgba(30, 64, 175, 0.92)';
-            const tpInnerFill = 'rgba(22, 101, 52, 0.92)';
-            const beFill = 'rgba(120, 53, 15, 0.92)';
-            const slExtraFill = 'rgba(127, 29, 29, 0.88)';
-            const entryLineColor = sideStr === 'BUY' ? '#3090FF' : '#f23645';
-            const tpLineColor = '#089981';
+            const entryFill = 'rgba(10, 10, 11, 0.92)';
+            const tpInnerFill = 'rgba(10, 10, 11, 0.92)';
+            const beFill = 'rgba(10, 10, 11, 0.92)';
+            const slExtraFill = 'rgba(10, 10, 11, 0.92)';
+            const entryLineColor = sideStr === 'BUY' ? '#3090FF' : '#FF5068';
+            const tpLineColor = '#00D4A1';
 
             const rerenderRrAfterOm = () => {
                 if (typeof om.syncSelectedRiskRewardDrawingFromPanel === 'function') {
@@ -3598,14 +3748,83 @@ class BaseRiskRewardTool extends BaseDrawing {
         const upperY = Math.min(entrySpanMinPx, bestTargetPx, worstStopPx, beLinePx != null ? beLinePx : entrySpanMinPx);
         const lowerY = Math.max(entrySpanMaxPx, bestTargetPx, worstStopPx, beLinePx != null ? beLinePx : entrySpanMaxPx);
 
+        const extraEntriesPx = (this.meta.extraEntries || [])
+            .filter((row) => row && Number.isFinite(row.y))
+            .map((row, i) => ({ i, y: scales.yScale(row.y), price: row.y }));
+        const extraTargetsPx = (this.meta.extraTargets || [])
+            .filter((row) => row && Number.isFinite(row.y))
+            .map((row, i) => ({ i, y: scales.yScale(row.y), price: row.y }));
+        const qtyForSnap = Number.isFinite(this.meta.risk?.lotSize) ? this.meta.risk.lotSize : null;
+        const omSnap = typeof window !== 'undefined' ? window.chart?.orderManager : null;
+        let lotsLabel = Number.isFinite(qtyForSnap) ? Number(qtyForSnap).toFixed(2) : null;
+        try {
+            const panelLots = parseFloat(document.getElementById('orderQuantity')?.value || '');
+            if (Number.isFinite(panelLots) && panelLots > 0) lotsLabel = panelLots.toFixed(2);
+        } catch (_e) { /* ignore */ }
+        let rrLabel = String(rrRatio);
+        try {
+            const tpRRParsed = parseFloat(document.getElementById('tpRRInput')?.value || '');
+            if (Number.isFinite(tpRRParsed) && tpRRParsed > 0) rrLabel = tpRRParsed.toFixed(1);
+        } catch (_e) { /* ignore */ }
+        const fmtPx = (p) => {
+            if (!Number.isFinite(p)) return null;
+            if (typeof omSnap?.formatPrice === 'function') return omSnap.formatPrice(p);
+            return Number(p).toFixed(5);
+        };
+
         this.lastRenderMeta = {
+            id: this.id,
+            type: this.type,
+            orientation: this.meta.orientation || (this.isLong ? 'long' : 'short'),
+            selected: !!this.selected,
+            reactChrome: this._useReactRrChrome(),
             entryX,
             minWidth,
             chartWidth,
+            chartHeight,
             zoneX1,
             zoneX2,
+            zoneWidth,
             upperY,
-            lowerY
+            lowerY,
+            entryY,
+            stopY,
+            targetY,
+            avgEntryY: avgEntryYpx,
+            avgTpY: Number.isFinite(avgTpYpx) ? avgTpYpx : null,
+            riskTop,
+            riskBot,
+            rewTop,
+            rewBot,
+            beY: beLinePx,
+            entry: entry.y,
+            stop: stop.y,
+            target: target.y,
+            avgEntry: zoneEntryPrice,
+            avgTp: Number.isFinite(avgTpPrice) ? avgTpPrice : null,
+            be: this.meta.rrBreakevenLine && Number.isFinite(this.meta.rrBreakevenLine.y)
+                ? this.meta.rrBreakevenLine.y
+                : null,
+            extraEntries: extraEntriesPx,
+            extraTargets: extraTargetsPx,
+            rrRatio: rrLabel,
+            quantity: lotsLabel,
+            labels: {
+                entryPrice: fmtPx(hasMultiEntry ? zoneEntryPrice : entry.y),
+                stopPrice: fmtPx(stop.y),
+                targetPrice: fmtPx(target.y),
+                lots: lotsLabel != null ? `${lotsLabel} lots` : null,
+                rr: rrLabel != null ? `R  ${rrLabel}` : null,
+                avgEntry: hasMultiEntry ? `Avg  ${fmtPx(zoneEntryPrice)}` : null,
+                avgTp: hasMultiTP && Number.isFinite(avgTpPrice) ? `Avg TP` : null,
+            },
+            style: {
+                riskColor: this.style.riskColor,
+                rewardColor: this.style.rewardColor,
+                entryColor: this.style.entryColor || '#3090FF',
+            },
+            hostRect: this._buildSvgHostRect(),
+            ts: Date.now(),
         };
 
         if (this._shouldCreateHandles(renderOpts)) {
@@ -3769,6 +3988,22 @@ class BaseRiskRewardTool extends BaseDrawing {
             requestAnimationFrame(() => {
                 try { omHover._refreshLevelCtrlHoverIfNeeded(this.chart); } catch (_e) { /* ignore */ }
             });
+        }
+
+        // React overlay owns paint for selected RR; keep SVG hit layers only.
+        this._hideSvgVisualChromeForReact();
+        if (this.lastRenderMeta) {
+            this.lastRenderMeta.reactChrome = !!this._v9ReactChrome;
+            this.lastRenderMeta.hostRect = this._buildSvgHostRect();
+            if (this.selected) {
+                v9PublishRrOverlaySnapshot(this.lastRenderMeta);
+            } else if (
+                typeof window !== 'undefined'
+                && window.__v9RrOverlaySnapshot
+                && window.__v9RrOverlaySnapshot.id === this.id
+            ) {
+                v9PublishRrOverlaySnapshot(null);
+            }
         }
 
         return this.group;
@@ -4098,13 +4333,14 @@ class BaseRiskRewardTool extends BaseDrawing {
         });
     }
 
-    // Match default drawing handle visuals (same size/style as other tools)
+    // TV-style filled dots — small + quiet (hit target stays larger)
     createHandles(group, scales) {
-        const handleRadius = 3;
-        const hitRadius = 5;
-        const entryLineHitRadius = 8;
-        const handleStroke = '#3090FF';
-        const handleStrokeWidth = 2;
+        const handleRadius = 2.5;
+        const hitRadius = 7;
+        const entryLineHitRadius = 9;
+        const handleFill = '#2962FF';
+        const handleStroke = 'none';
+        const handleStrokeWidth = 0;
         
         // Remove existing handles
         group.selectAll('.resize-handle').remove();
@@ -4148,7 +4384,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('cx', entryX)
                 .attr('cy', y)
                 .attr('r', handleRadius)
-                .attr('fill', 'transparent')
+                .attr('fill', handleFill)
                 .attr('stroke', handleStroke)
                 .attr('stroke-width', handleStrokeWidth)
                 .style('cursor', 'ns-resize')
@@ -4170,9 +4406,9 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('cx', entryX)
                 .attr('cy', yy)
                 .attr('r', handleRadius)
-                .attr('fill', 'transparent')
-                .attr('stroke', handleStroke)
-                .attr('stroke-width', handleStrokeWidth)
+                .attr('fill', handleFill)
+                .attr('stroke', 'none')
+                .attr('stroke-width', 0)
                 .style('pointer-events', 'none')
                 .style('opacity', this.selected ? 1 : 0);
             // Rings were visual-only; without hit targets, TP2/SL2/BE relied on a thin line strip for drags.
@@ -4212,9 +4448,10 @@ class BaseRiskRewardTool extends BaseDrawing {
     }
 
     createCornerHandles(scales, zoneX1, zoneX2, upperY, lowerY) {
-        const handleRadius = 3;
-        const handleStroke = '#3090FF';
-        const handleStrokeWidth = 2;
+        const handleRadius = 2.5;
+        const handleFill = '#2962FF';
+        const handleStroke = 'none';
+        const handleStrokeWidth = 0;
 
         if (this.group) {
             this.group.selectAll('.custom-handle-group').remove();
@@ -4253,13 +4490,14 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('class', 'custom-handle-group')
                 .attr('data-handle-role', pos.role);
 
+            const reactChrome = this._useReactRrChrome();
             const handle = group.append('circle')
                 .attr('class', 'custom-handle')
                 .attr('data-handle-role', pos.role)
                 .attr('cx', pos.x)
                 .attr('cy', pos.y)
                 .attr('r', handleRadius)
-                .attr('fill', 'transparent')
+                .attr('fill', reactChrome ? 'transparent' : handleFill)
                 .attr('stroke', handleStroke)
                 .attr('stroke-width', handleStrokeWidth)
                 .style('pointer-events', 'all')

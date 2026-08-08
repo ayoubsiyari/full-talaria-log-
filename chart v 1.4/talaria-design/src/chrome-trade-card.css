@@ -655,11 +655,11 @@
 }
 
 [data-tc-block][data-kind="pre"] {
-  border-color: color-mix(in oklab, #e0b040 28%, var(--line));
+  border-color: color-mix(in oklab, var(--warn) 28%, var(--line));
 }
 
 [data-tc-block][data-kind="post"] {
-  border-color: color-mix(in oklab, #b48cff 28%, var(--line));
+  border-color: color-mix(in oklab, var(--accent) 28%, var(--line));
 }
 
 [data-tc-block][data-locked="1"] {
@@ -681,8 +681,8 @@
   color: var(--text);
 }
 
-[data-tc-block][data-kind="pre"] [data-tc-block-h] > span { color: #e0b040; }
-[data-tc-block][data-kind="post"] [data-tc-block-h] > span { color: #b48cff; }
+[data-tc-block][data-kind="pre"] [data-tc-block-h] > span { color: var(--warn); }
+[data-tc-block][data-kind="post"] [data-tc-block-h] > span { color: var(--accent); }
 
 [data-tc-block-h] > em {
   margin-left: auto;
@@ -699,7 +699,7 @@
 }
 
 [data-tc-block][data-kind="post"] [data-tc-block-h] > em[data-on="1"] {
-  color: #b48cff;
+  color: var(--accent);
 }
 
 [data-tc-rows] {
@@ -757,15 +757,15 @@
 }
 
 [data-tc-block][data-kind="pre"] [data-tc-chips] > button[data-on="1"] {
-  color: #e0b040;
-  background: color-mix(in oklab, #e0b040 14%, var(--surface));
-  border-color: color-mix(in oklab, #e0b040 36%, var(--line));
+  color: var(--warn);
+  background: color-mix(in oklab, var(--warn) 14%, var(--surface));
+  border-color: color-mix(in oklab, var(--warn) 36%, var(--line));
 }
 
 [data-tc-block][data-kind="post"] [data-tc-chips] > button[data-on="1"] {
-  color: #b48cff;
-  background: color-mix(in oklab, #b48cff 14%, var(--surface));
-  border-color: color-mix(in oklab, #b48cff 36%, var(--line));
+  color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 14%, var(--surface));
+  border-color: color-mix(in oklab, var(--accent) 36%, var(--line));
 }
 
 [data-tc-seg] {
@@ -802,13 +802,13 @@
 }
 
 [data-tc-block][data-kind="pre"] [data-tc-seg] > button[data-on="1"] {
-  color: #e0b040;
-  background: color-mix(in oklab, #e0b040 16%, var(--surface));
+  color: var(--warn);
+  background: color-mix(in oklab, var(--warn) 16%, var(--surface));
 }
 
 [data-tc-block][data-kind="post"] [data-tc-seg] > button[data-on="1"] {
-  color: #b48cff;
-  background: color-mix(in oklab, #b48cff 16%, var(--surface));
+  color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 16%, var(--surface));
 }
 
 [data-tc-block][data-readonly="1"] [data-tc-chips] > button,
@@ -823,8 +823,8 @@
   gap: 10px;
   padding: 10px 11px;
   border-radius: 7px;
-  border: 1px dashed color-mix(in oklab, #b48cff 28%, var(--line));
-  background: color-mix(in oklab, #b48cff 6%, var(--surface-sunken));
+  border: 1px dashed color-mix(in oklab, var(--accent) 28%, var(--line));
+  background: color-mix(in oklab, var(--accent) 6%, var(--surface-sunken));
   color: var(--text-muted);
 }
 
@@ -832,7 +832,7 @@
 [data-tc-locked] > [data-tc-locked-ico] {
   flex-shrink: 0;
   margin-top: 1px;
-  color: #b48cff;
+  color: var(--accent);
   opacity: 0.85;
 }
 

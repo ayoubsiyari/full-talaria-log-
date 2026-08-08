@@ -33,6 +33,8 @@
   --up: oklch(0.72 0.14 155);
   --down: oklch(0.63 0.18 25);
   --warn: oklch(0.78 0.14 85);
+  --impact-med: oklch(0.76 0.15 55);
+  --impact-low: oklch(0.82 0.12 95);
   /* Supporting / context symbols (session picker) — warm accent, not gold hex in CSS */
   --support: var(--warn);
 
@@ -46,65 +48,73 @@
   color-scheme: dark;
 }
 
-/* True light — mist paper, black ink (preset 1–3 light mode) */
+/*
+ * Obsidian light — mist paper, black ink.
+ * Never use pure #fff on large chrome planes: it glares against the black chart.
+ * Surfaces stay in the mist / slate family so windows, rails, and lists feel one system.
+ */
 [data-chrome-theme="light"] {
-  --bg: #f7f6ff;
-  --surface: #ffffff;
-  --surface-raised: #f0effa;
-  --surface-sunken: #ebe9fe;
+  --bg: #e4e6f0;
+  --surface: #eceef6;
+  --surface-raised: #f3f4f9;
+  --surface-sunken: #dde0ec;
 
-  --line: color-mix(in oklab, var(--brand-slate) 18%, transparent);
-  --line-strong: color-mix(in oklab, var(--brand-slate) 34%, transparent);
+  --line: color-mix(in oklab, var(--brand-slate) 22%, transparent);
+  --line-strong: color-mix(in oklab, var(--brand-slate) 40%, transparent);
 
-  --text: #0a0a0b;
-  --text-muted: color-mix(in oklab, #0a0a0b 62%, var(--brand-slate));
-  --text-faint: color-mix(in oklab, #0a0a0b 42%, var(--brand-slate));
+  --text: #12141a;
+  --text-muted: color-mix(in oklab, #12141a 58%, var(--brand-slate));
+  --text-faint: color-mix(in oklab, #12141a 40%, var(--brand-slate));
 
-  --accent: #1f7ae6;
-  --accent-hover: #3090ff;
-  --accent-quiet: color-mix(in oklab, #3090ff 14%, transparent);
+  --accent: #1f6fd4;
+  --accent-hover: #2a7de8;
+  --accent-quiet: color-mix(in oklab, #3090ff 12%, transparent);
 
-  --up: oklch(0.55 0.14 155);
-  --down: oklch(0.55 0.18 25);
-  --warn: oklch(0.62 0.14 85);
+  --up: oklch(0.48 0.12 155);
+  --down: oklch(0.50 0.16 25);
+  --warn: oklch(0.55 0.12 85);
+  --impact-med: oklch(0.55 0.13 55);
+  --impact-low: oklch(0.58 0.10 95);
   --support: var(--warn);
 
   --cta-bg: var(--brand-black);
   --cta-fg: var(--brand-white);
-  --cta-hover: #1a1a1a;
+  --cta-hover: #22242a;
 
-  --overlay: color-mix(in oklab, #0a0a0b 28%, transparent);
+  --overlay: color-mix(in oklab, #12141a 32%, transparent);
   color-scheme: light;
 }
 
-/* Soft gray light — low-glare day mode (preset 4 light) */
+/* Soft gray light — even lower glare (preset 4) */
 [data-chrome-theme="light-soft"] {
-  --bg: #eef0f3;
-  --surface: #f6f7f9;
-  --surface-raised: #ffffff;
-  --surface-sunken: #e4e7ec;
+  --bg: #dde0e6;
+  --surface: #e6e8ed;
+  --surface-raised: #eef0f3;
+  --surface-sunken: #d2d5dc;
 
-  --line: color-mix(in oklab, #2c537a 16%, transparent);
-  --line-strong: color-mix(in oklab, #2c537a 30%, transparent);
+  --line: color-mix(in oklab, #2c537a 20%, transparent);
+  --line-strong: color-mix(in oklab, #2c537a 36%, transparent);
 
   --text: #12141a;
-  --text-muted: color-mix(in oklab, #12141a 58%, #2c537a);
-  --text-faint: color-mix(in oklab, #12141a 40%, #2c537a);
+  --text-muted: color-mix(in oklab, #12141a 56%, #2c537a);
+  --text-faint: color-mix(in oklab, #12141a 38%, #2c537a);
 
-  --accent: #2a7de8;
-  --accent-hover: #3090ff;
-  --accent-quiet: color-mix(in oklab, #3090ff 12%, transparent);
+  --accent: #1f6fd4;
+  --accent-hover: #2a7de8;
+  --accent-quiet: color-mix(in oklab, #3090ff 11%, transparent);
 
-  --up: oklch(0.55 0.14 155);
-  --down: oklch(0.55 0.18 25);
-  --warn: oklch(0.62 0.14 85);
+  --up: oklch(0.48 0.12 155);
+  --down: oklch(0.50 0.16 25);
+  --warn: oklch(0.55 0.12 85);
+  --impact-med: oklch(0.55 0.13 55);
+  --impact-low: oklch(0.58 0.10 95);
   --support: var(--warn);
 
   --cta-bg: var(--brand-black);
   --cta-fg: var(--brand-white);
-  --cta-hover: #222;
+  --cta-hover: #22242a;
 
-  --overlay: color-mix(in oklab, #12141a 24%, transparent);
+  --overlay: color-mix(in oklab, #12141a 28%, transparent);
   color-scheme: light;
 }
 
@@ -129,6 +139,14 @@
   --pad-panel: 14px;
   --motion: 140ms ease-out;
   --motion-menu: 160ms ease-out;
+
+  /* Mirror V9_CHROME_Z in TalariaV8bLive.jsx */
+  --z-chrome-rail: 30;
+  --z-chrome-topbar-drop: 9000;
+  --z-chrome-modal: 9002;
+  --z-chrome-support: 9999;
+  --z-chrome-nested-drop: 10120;
+  --z-chrome-tip: 99999;
 }
 
 /* Preset 2 — order-first: wider ticket, slightly tighter chrome */
@@ -225,19 +243,55 @@
 [data-v9-app] .time-axis-zone {
   cursor: ew-resize !important;
 }
-[data-v9-app] input:not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+[data-v9-app] input:not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]),
 [data-v9-app] textarea,
 [data-v9-app] [contenteditable="true"],
-[data-v9-chrome] input:not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+[data-v9-chrome] input:not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]),
 [data-v9-chrome] textarea,
 [data-v9-chrome] [contenteditable="true"],
 [data-v9-app] [data-win-search],
 [data-v9-app] [data-ind-search],
 [data-v9-chrome] [data-win-search],
 [data-v9-chrome] [data-ind-search],
-[data-win-header] input,
+[data-win-header] input:not([type="range"]),
 [data-win-header] textarea {
   cursor: text !important;
+}
+
+/* Range / scrubbers — grab hand, never I-beam (tokens text rule used to win on specificity) */
+[data-v9-app] input[type="range"],
+[data-v9-chrome] input[type="range"],
+[data-v9-app] [data-sett-slider],
+[data-v9-chrome] [data-sett-slider],
+[data-v9-app] [data-sett-slider] *,
+[data-v9-chrome] [data-sett-slider] *,
+[data-v9-app] [data-sett-slider-hit],
+[data-v9-chrome] [data-sett-slider-hit],
+[data-v9-app] [data-sett-vis-range],
+[data-v9-chrome] [data-sett-vis-range],
+[data-v9-app] [data-rp-speed-track],
+[data-v9-chrome] [data-rp-speed-track] {
+  cursor: grab !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+[data-v9-app] input[type="range"]:active,
+[data-v9-chrome] input[type="range"]:active,
+[data-v9-app] [data-sett-slider]:active,
+[data-v9-chrome] [data-sett-slider]:active,
+[data-v9-app] [data-sett-slider][data-dragging="1"],
+[data-v9-chrome] [data-sett-slider][data-dragging="1"],
+[data-v9-app] [data-sett-slider][data-dragging="1"] *,
+[data-v9-chrome] [data-sett-slider][data-dragging="1"] *,
+[data-v9-app] [data-sett-slider-hit]:active,
+[data-v9-chrome] [data-sett-slider-hit]:active,
+[data-v9-app] [data-sett-vis-range]:active,
+[data-v9-chrome] [data-sett-vis-range]:active,
+[data-v9-app] [data-rp-speed-track][data-dragging="1"],
+[data-v9-chrome] [data-rp-speed-track][data-dragging="1"],
+html[data-sett-slider-grabbing="1"],
+html[data-sett-slider-grabbing="1"] * {
+  cursor: grabbing !important;
 }
 
 [data-v9-chrome] {
@@ -573,4 +627,133 @@
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* ── Obsidian light — glare + lavender wash discipline ──
+ * Large planes stay mist/slate paper. Selection uses raised/sunken tones,
+ * not brand-mist fills. CTAs stay black↔white invert via --cta-*. */
+[data-chrome-theme="light"] [data-v9-chrome],
+[data-chrome-theme="light-soft"] [data-v9-chrome],
+[data-v9-app][data-chrome-theme="light"],
+[data-v9-app][data-chrome-theme="light-soft"] {
+  background: var(--bg);
+  color: var(--text);
+}
+
+[data-chrome-theme="light"] [data-brand-panel="1"],
+[data-chrome-theme="light-soft"] [data-brand-panel="1"],
+[data-chrome-theme="light"] [data-ind-v2="1"],
+[data-chrome-theme="light-soft"] [data-ind-v2="1"],
+[data-chrome-theme="light"] [data-tool-sett-v2="1"],
+[data-chrome-theme="light-soft"] [data-tool-sett-v2="1"],
+[data-chrome-theme="light"] [data-sett-v2="1"],
+[data-chrome-theme="light-soft"] [data-sett-v2="1"],
+[data-chrome-theme="light"] [data-chrome-win],
+[data-chrome-theme="light-soft"] [data-chrome-win] {
+  background: var(--surface) !important;
+  border-color: var(--line) !important;
+  box-shadow: none !important;
+}
+
+[data-chrome-theme="light"] [data-brand-seg="1"],
+[data-chrome-theme="light-soft"] [data-brand-seg="1"] {
+  background: var(--surface-sunken);
+  border-color: var(--line);
+}
+[data-chrome-theme="light"] [data-brand-seg="1"] [data-brand-seg-item][aria-pressed="true"],
+[data-chrome-theme="light"] [data-brand-seg="1"] [data-brand-seg-item][data-active="1"],
+[data-chrome-theme="light-soft"] [data-brand-seg="1"] [data-brand-seg-item][aria-pressed="true"],
+[data-chrome-theme="light-soft"] [data-brand-seg="1"] [data-brand-seg-item][data-active="1"] {
+  background: var(--surface-raised);
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+[data-chrome-theme="light"] [data-brand-btn="secondary"]:hover,
+[data-chrome-theme="light-soft"] [data-brand-btn="secondary"]:hover,
+[data-v9-app][data-chrome-theme="light"] [data-brand-btn="secondary"]:hover,
+[data-v9-app][data-chrome-theme="light-soft"] [data-brand-btn="secondary"]:hover {
+  background: color-mix(in oklab, var(--brand-slate) 82%, var(--surface-raised)) !important;
+}
+
+[data-chrome-theme="light"] [data-brand-btn="primary"]:hover,
+[data-chrome-theme="light-soft"] [data-brand-btn="primary"]:hover,
+[data-v9-app][data-chrome-theme="light"] [data-brand-btn="primary"]:hover,
+[data-v9-app][data-chrome-theme="light-soft"] [data-brand-btn="primary"]:hover {
+  background: var(--cta-hover) !important;
+  color: var(--cta-fg) !important;
+}
+
+/* Icon rails — quieter ink on mist paper */
+[data-chrome-theme="light"] [data-brand-icon="1"],
+[data-chrome-theme="light-soft"] [data-brand-icon="1"],
+[data-chrome-theme="light"] [data-v9-rail] button,
+[data-chrome-theme="light-soft"] [data-v9-rail] button,
+[data-chrome-theme="light"] [data-v9-topbar] [data-tb-util],
+[data-chrome-theme="light-soft"] [data-v9-topbar] [data-tb-util] {
+  color: var(--text-muted);
+}
+[data-chrome-theme="light"] [data-brand-icon="1"]:hover,
+[data-chrome-theme="light-soft"] [data-brand-icon="1"]:hover,
+[data-chrome-theme="light"] [data-v9-rail] button:hover,
+[data-chrome-theme="light-soft"] [data-v9-rail] button:hover {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+[data-chrome-theme="light"] [data-brand-icon="1"][data-active="1"],
+[data-chrome-theme="light"] [data-brand-icon="1"][aria-pressed="true"],
+[data-chrome-theme="light-soft"] [data-brand-icon="1"][data-active="1"],
+[data-chrome-theme="light-soft"] [data-brand-icon="1"][aria-pressed="true"] {
+  background: var(--accent-quiet);
+  color: var(--accent);
+}
+
+/* Lists / tables — soft zebra, no pure-white rows */
+[data-chrome-theme="light"] [data-ind-row]:nth-child(even),
+[data-chrome-theme="light-soft"] [data-ind-row]:nth-child(even) {
+  background: color-mix(in oklab, var(--surface-sunken) 55%, var(--surface));
+}
+[data-chrome-theme="light"] [data-ind-row]:hover,
+[data-chrome-theme="light-soft"] [data-ind-row]:hover {
+  background: var(--surface-raised) !important;
+}
+[data-chrome-theme="light"] [data-trades-table] [data-trades-row]:nth-child(even),
+[data-chrome-theme="light-soft"] [data-trades-table] [data-trades-row]:nth-child(even) {
+  background: color-mix(in oklab, var(--surface-sunken) 45%, var(--surface));
+}
+[data-chrome-theme="light"] [data-trades-table] [data-trades-row]:hover,
+[data-chrome-theme="light-soft"] [data-trades-table] [data-trades-row]:hover {
+  background: var(--surface-raised);
+}
+[data-chrome-theme="light"] [data-trades-v2="1"],
+[data-chrome-theme="light-soft"] [data-trades-v2="1"],
+[data-chrome-theme="light"] [data-v9-topbar],
+[data-chrome-theme="light-soft"] [data-v9-topbar],
+[data-chrome-theme="light"] [data-v9-rail],
+[data-chrome-theme="light-soft"] [data-v9-rail],
+[data-chrome-theme="light"] [data-v9-replaybar],
+[data-chrome-theme="light-soft"] [data-v9-replaybar] {
+  background: var(--surface);
+  border-color: var(--line);
+}
+
+/* Fields — sunken wells stay a step below paper */
+[data-chrome-theme="light"] [data-brand-field="1"],
+[data-chrome-theme="light-soft"] [data-brand-field="1"],
+[data-chrome-theme="light"] [data-win-search],
+[data-chrome-theme="light-soft"] [data-win-search],
+[data-chrome-theme="light"] [data-ind-search],
+[data-chrome-theme="light-soft"] [data-ind-search] {
+  background: var(--surface-sunken);
+  border-color: var(--line);
+}
+[data-chrome-theme="light"] [data-brand-field="1"]:focus,
+[data-chrome-theme="light-soft"] [data-brand-field="1"]:focus {
+  background: var(--surface-raised);
+  border-color: var(--accent);
+}
+
+body.light-mode {
+  background: var(--bg, #e4e6f0);
+  color-scheme: light;
 }

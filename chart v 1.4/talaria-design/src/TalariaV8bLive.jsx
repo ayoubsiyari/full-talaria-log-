@@ -29,6 +29,7 @@ import { loadPanelStates, readPanelStateBlob, updatePanelStateBlob } from "./pan
 import { loadTfPinned, saveTfPinned, loadTfCustom, saveTfCustom, loadToolPinned, saveToolPinned, TF_PINNED_MAX } from "./toolbarPinStorage.js";
 import TradePathCloudPanel from "./TradePathCloudPanel.jsx";
 import V9AlertModal from "./V9AlertModal.jsx";
+import V9RrToolOverlay from "./V9RrToolOverlay.jsx";
 import { extractPathFieldsFromJournal } from "./tradePathCloudUtils.js";
 import {
   deleteV9ChartTemplateAtIndex,
@@ -1373,13 +1374,79 @@ function v9MeasureDropAnchor(el, estH = 220) {
 const V9_SETT_WIN_Z = 2147483646;
 /** Portaled sett dropdowns — must beat V9_SETT_WIN_Z (same max as color picker). */
 const V9_SETT_DROP_Z = 2147483647;
+/** Named chrome z-ladder (app modals / topbar / rail / support). Sett shells keep near-max ints. */
+const V9_CHROME_Z = {
+  rail: 30,
+  topbarDrop: 9000,
+  modal: 9002,
+  support: 9999,
+  nestedDrop: 10120,
+  tip: 99999,
+};
 
-/** Portaled settings dropdown — escapes overflow:hidden panes; always above sett windows. */
+/** Arrow/Enter keyboard for topbar listboxes (Symbols / Candles / Interval). Esc peels via ladder. */
+function v9ChromeListboxKeyDown(e, { onEsc } = {}) {
+  if (!e || !e.currentTarget) return;
+  if (e.key === "Escape") {
+    e.preventDefault();
+    e.stopPropagation();
+    try { onEsc?.(); } catch (_) {}
+    return;
+  }
+  if (e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "Enter" && e.key !== " ") return;
+  const root = e.currentTarget;
+  const rows = Array.from(root.querySelectorAll('[data-menu-row], [role="option"]'));
+  if (!rows.length) return;
+  const idx = rows.findIndex((r) => r === document.activeElement || r.contains(document.activeElement) || r.getAttribute("data-kb") === "1");
+  if (e.key === "Enter" || e.key === " ") {
+    const cur = (idx >= 0 ? rows[idx] : null)
+      || rows.find((r) => r.getAttribute("data-active") === "1")
+      || rows[0];
+    if (cur) {
+      e.preventDefault();
+      try { cur.click(); } catch (_) {}
+    }
+    return;
+  }
+  e.preventDefault();
+  let next = idx;
+  if (next < 0) next = e.key === "ArrowDown" ? 0 : rows.length - 1;
+  else next = e.key === "ArrowDown" ? Math.min(rows.length - 1, idx + 1) : Math.max(0, idx - 1);
+  rows.forEach((r) => r.removeAttribute("data-kb"));
+  const el = rows[next];
+  if (!el) return;
+  el.setAttribute("data-kb", "1");
+  if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
+  try { el.focus(); } catch (_) {}
+  try { el.scrollIntoView({ block: "nearest" }); } catch (_) {}
+}
+
+/** Portaled settings dropdown — escapes overflow:hidden panes; always above sett windows.
+ *  Default rule: flush-LEFT under the trigger face (grow right). `rightAlign` is only for
+ *  trailing icon-sized controls. Viewport clamp must not yank the menu left of the trigger
+ *  unless the menu literally cannot fit. */
 function v9PortalSettDropMenu({ anchor, width, rightAlign = false, children, attrs = {} }) {
   if (!anchor || typeof document === "undefined") return null;
-  const menuW = Math.max(44, Number(width) || anchor.triggerW || 56);
-  let left = rightAlign ? anchor.right - menuW : anchor.left;
-  left = Math.max(8, Math.min(left, window.innerWidth - menuW - 8));
+  const triggerW = Number(anchor.triggerW) || 0;
+  const fallbackW = Number(width) || 0;
+  // Prefer the wider of trigger vs content estimate — a crushed trigger (old 74px face bug)
+  // must not shrink the menu below the longest option label.
+  const menuW = Math.max(44, triggerW, fallbackW, 56);
+  const pad = 8;
+  const vpR = window.innerWidth - pad;
+  const anchorLeft = Number(anchor.left) || 0;
+  const anchorRight = Number(anchor.right) || (anchorLeft + triggerW);
+  let left;
+  if (rightAlign) {
+    left = anchorRight - menuW;
+    if (left < pad) left = pad;
+    if (left + menuW > vpR) left = Math.max(pad, vpR - menuW);
+  } else {
+    // Flush left with the button; only slide when the menu would clip the viewport.
+    left = anchorLeft;
+    if (left + menuW > vpR) left = Math.max(pad, vpR - menuW);
+    if (left < pad) left = pad;
+  }
   const node = (
     <div
       data-sett-drop=""
@@ -1387,6 +1454,7 @@ function v9PortalSettDropMenu({ anchor, width, rightAlign = false, children, att
       data-sdrop="1"
       data-v9-chrome="1"
       data-sett-drop-portal="1"
+      data-drop-align={rightAlign ? "right" : "left"}
       className="tlr-scroll"
       {...attrs}
       onPointerDown={(e) => { e.stopPropagation(); attrs.onPointerDown?.(e); }}
@@ -1407,7 +1475,9 @@ function v9PortalSettDropMenu({ anchor, width, rightAlign = false, children, att
         padding: "4px 0",
         boxShadow: "none",
         fontFamily: "var(--font-ui)",
-        animation: "tlrDropIn 0.12s ease",
+        fontSize: 12,
+        // No inline enter animation — React re-applying `animation` on hover/parent
+        // re-renders restarts tlrDropIn and the menu visibly shakes.
         pointerEvents: "auto",
         boxSizing: "border-box",
       }}
@@ -1459,6 +1529,17 @@ function v9ClampFloatingWindowPos(x, y, winW, winH, zz = 1, panelW = 0) {
   return { x: nx, y: ny };
 }
 
+/** First-open default: center the window in the chart’s available drag bounds. */
+function v9CenterFloatingWindowPos(winW, winH, zz = 1, panelW = 0) {
+  const Z = zz || 1;
+  const w = Math.max(120, Number(winW) || 448);
+  const h = Math.max(120, Number(winH) || 420);
+  const { minX, minY, maxX, maxY } = v9FloatingUiDragBounds(Z, w, h, panelW || 0);
+  const x = (minX + Math.max(minX, maxX)) / 2;
+  const y = (minY + Math.max(minY, maxY)) / 2;
+  return v9ClampFloatingWindowPos(x, y, w, h, Z, panelW);
+}
+
 /** Measure a mounted floating window, cap its height to the chart, clamp left/top. */
 function v9ClampFloatingWindowEl(el, zz = 1, panelW = 0) {
   if (!el || typeof el.getBoundingClientRect !== "function") return null;
@@ -1470,8 +1551,13 @@ function v9ClampFloatingWindowEl(el, zz = 1, panelW = 0) {
   }
   const Z = zz || 1;
   const avail = v9FloatingWindowAvail(Z, panelW || 0);
+  // Only write when the value changes — setting --v9-sett-max-h every RO tick can
+  // retrigger ResizeObserver (max-height) and shake the shell under an open dropdown.
   try {
-    el.style.setProperty("--v9-sett-max-h", Math.floor(avail.availH) + "px");
+    const mh = `${Math.floor(avail.availH)}px`;
+    if (el.style.getPropertyValue("--v9-sett-max-h") !== mh) {
+      el.style.setProperty("--v9-sett-max-h", mh);
+    }
   } catch (_) { /* ignore */ }
   const r = el.getBoundingClientRect();
   const w = r.width / Z;
@@ -3808,15 +3894,31 @@ function v9VisDragNextRange(nv, curMin, curMax, hm, mode, anchor) {
   return { min: n, max: n };
 }
 
+/** Thumb rides the inset rail (same grammar as [data-sett-slider-thumb]). */
 function V9VisRangeThumb({ leftPct, hot }) {
   return (
     <i
       data-sett-vis-thumb=""
       data-hot={hot ? "1" : undefined}
-      style={{ left: `${leftPct}%` }}
+      style={{
+        left: `calc(var(--sett-vis-inset) + (100% - (var(--sett-vis-inset) * 2)) * ${leftPct} / 100)`,
+      }}
       aria-hidden="true"
     />
   );
+}
+
+function v9VisRangeTrackMetrics(trackEl) {
+  const rect = trackEl.getBoundingClientRect();
+  let inset = 12;
+  try {
+    const raw = getComputedStyle(trackEl).getPropertyValue("--sett-vis-inset").trim();
+    const n = parseFloat(raw);
+    if (Number.isFinite(n)) inset = n;
+  } catch (_) {}
+  const left = rect.left + inset;
+  const width = Math.max(1, rect.width - inset * 2);
+  return { left, width, inset };
 }
 
 function V9VisTimeframeRangeRow({
@@ -3844,8 +3946,8 @@ function V9VisTimeframeRangeRow({
 
   const mkDrag = (e, mode, trackEl) => {
     e.stopPropagation();
-    const rect = trackEl.getBoundingClientRect();
-    const getVal = (cx) => Math.round(1 + Math.max(0, Math.min(1, (cx - rect.left) / rect.width)) * (hm - 1));
+    const { left, width } = v9VisRangeTrackMetrics(trackEl);
+    const getVal = (cx) => Math.round(1 + Math.max(0, Math.min(1, (cx - left) / width)) * (hm - 1));
     const anchor = v.min;
     if (mode === "merged") setHov(hkMerged);
     else setHov(mode === "min" ? hkMin : hkMax);
@@ -3863,6 +3965,9 @@ function V9VisTimeframeRangeRow({
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
   };
+
+  const thumbHitLeft = (pct) =>
+    `calc(var(--sett-vis-inset) + (100% - (var(--sett-vis-inset) * 2)) * ${pct} / 100 - 14px)`;
 
   const inputStyle = inputMode === "ind-text"
     ? v9IndNumericInputStyle({
@@ -3950,7 +4055,7 @@ function V9VisTimeframeRangeRow({
             onPointerDown={(e) => mkDrag(e, "merged", e.currentTarget.parentElement)}
             onMouseEnter={() => setHov(hkMerged)}
             onMouseLeave={() => setHov(null)}
-            style={{ left: `calc(${pctMin}% - 14px)` }}
+            style={{ left: thumbHitLeft(pctMin) }}
           />
         ) : (
           <>
@@ -3959,8 +4064,8 @@ function V9VisTimeframeRangeRow({
               data-full=""
               onPointerDown={(e) => {
                 const t = e.currentTarget.parentElement;
-                const r = t.getBoundingClientRect();
-                const cv = Math.round(1 + Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * (hm - 1));
+                const { left, width } = v9VisRangeTrackMetrics(t);
+                const cv = Math.round(1 + Math.max(0, Math.min(1, (e.clientX - left) / width)) * (hm - 1));
                 mkDrag(e, Math.abs(cv - v.min) <= Math.abs(cv - v.max) ? "min" : "max", t);
               }}
             />
@@ -3969,14 +4074,14 @@ function V9VisTimeframeRangeRow({
               onPointerDown={(e) => mkDrag(e, "min", e.currentTarget.parentElement)}
               onMouseEnter={() => setHov(hkMin)}
               onMouseLeave={() => setHov(null)}
-              style={{ left: `calc(${pctMin}% - 14px)`, zIndex: 2 }}
+              style={{ left: thumbHitLeft(pctMin), zIndex: 2 }}
             />
             <div
               data-sett-vis-hit=""
               onPointerDown={(e) => mkDrag(e, "max", e.currentTarget.parentElement)}
               onMouseEnter={() => setHov(hkMax)}
               onMouseLeave={() => setHov(null)}
-              style={{ left: `calc(${pctMax}% - 14px)`, zIndex: 2 }}
+              style={{ left: thumbHitLeft(pctMax), zIndex: 2 }}
             />
           </>
         )}
@@ -10462,13 +10567,32 @@ function normalizeStrategyVarOptions(options) {
   return out;
 }
 
+/** Normalize Strategies Lab timing → `pre` | `post` | "" (order ticket tags are PRE only). */
+function strategyVarTimingKind(v) {
+  const t = String(v?.timing ?? v?.when ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  if (t === "pre" || t === "pre_trade" || t === "entry") return "pre";
+  if (t === "post" || t === "post_trade" || t === "exit") return "post";
+  return "";
+}
+
+function isPreTradeStrategyVar(v) {
+  return !!(v && v.type === "variable" && strategyVarTimingKind(v) === "pre");
+}
+
+function isPostTradeStrategyVar(v) {
+  return !!(v && v.type === "variable" && strategyVarTimingKind(v) === "post");
+}
+
 /** PRE variables from `chart.backtestingSession` — same filter as order-manager.js `_getPreTradeVariableDefs`. */
 function getPreTradeVariablesFromSession(chart) {
   try {
     const sess = chart?.backtestingSession || {};
     const raw = sess.strategy_variables;
     const list = Array.isArray(raw) ? raw : (sess.strategy_definition?.variables || []);
-    return list.filter((v) => v && v.type === 'variable' && v.timing === 'pre');
+    return list.filter(isPreTradeStrategyVar);
   } catch (_) {
     return [];
   }
@@ -10519,7 +10643,7 @@ function getPostTradeVariablesFromSession(chart) {
     const sess = chart?.backtestingSession || {};
     const raw = sess.strategy_variables;
     const list = Array.isArray(raw) ? raw : (sess.strategy_definition?.variables || []);
-    return list.filter((v) => v && v.type === 'variable' && v.timing === 'post');
+    return list.filter(isPostTradeStrategyVar);
   } catch (_) {
     return [];
   }
@@ -12538,11 +12662,29 @@ function v9GetCurrentMarketPrice(om) {
   }
 }
 
-/** Entry anchor for mirroring SL/TP when toggling BUY ↔ SELL. */
+/** Entry anchor for mirroring SL/TP when toggling BUY ↔ SELL (weighted avg when multi-entry). */
 function v9ResolveDraftEntryPriceForMirror(om, entryRows) {
+  if (Array.isArray(entryRows) && entryRows.length > 1) {
+    const priced = entryRows.filter((r) => parseFloat(r?.price) > 0);
+    if (priced.length > 1) {
+      let wSum = 0;
+      let pSum = 0;
+      for (const r of priced) {
+        const px = parseFloat(r.price) || 0;
+        const w = Math.max(0, parseFloat(r.risk) || 0) || 1;
+        pSum += px * w;
+        wSum += w;
+      }
+      if (wSum > 0 && pSum > 0) return pSum / wSum;
+      const mean = priced.reduce((s, r) => s + (parseFloat(r.price) || 0), 0) / priced.length;
+      if (mean > 0) return mean;
+    }
+  }
   const fromRow = parseFloat(entryRows?.[0]?.price ?? "0");
   if (Number.isFinite(fromRow) && fromRow > 0) return fromRow;
   if (typeof document !== "undefined") {
+    const avgEl = parseFloat(document.getElementById("multiEntryAvgPrice")?.textContent ?? "0");
+    if (Number.isFinite(avgEl) && avgEl > 0) return avgEl;
     const h = parseFloat(document.getElementById("orderEntryPrice")?.value ?? "0");
     if (Number.isFinite(h) && h > 0) return h;
   }
@@ -12601,6 +12743,9 @@ function v9ApplyOrderTypeToOm(inferred, om) {
 /** Session Advanced-order gate (split entry / multi-TP / BE / trailing). */
 function v9SessionAdvancedOrderAllowed() {
   try {
+    // Local / design chrome preview — always unlock advanced ladder so we can review UI.
+    if (v9PreviewFixturesEnabled()) return true;
+    if (typeof window !== "undefined" && window.__V9_FORCE_ADVANCED_ORDER__ === true) return true;
     const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
     if (om && typeof om._isAdvancedOrderAllowed === "function") {
       return !!om._isAdvancedOrderAllowed();
@@ -12621,9 +12766,10 @@ function v9SessionAdvancedOrderAllowed() {
 }
 
 /**
- * Demo / teaching ladder: 3 entries, fixed SL, break-even arm, 3 TPs.
+ * Demo / teaching ladder: 5 entries, fixed SL, break-even arm, 5 TPs.
  * Trailing params are prefilled so switching Stop → Trailing shows a ready trail.
  * BE and Trail stay mutually exclusive modes (pick one on the Stop card).
+ * Caps: entries ≤ 5, take-profits ≤ 5.
  */
 function v9BuildAdvancedOrderExample({ side = "buy", entryPrice, sizeMode = "$", riskVal = "100", om = null } = {}) {
   const isBuy = String(side).toLowerCase() !== "sell";
@@ -12653,31 +12799,45 @@ function v9BuildAdvancedOrderExample({ side = "buy", entryPrice, sizeMode = "$",
   const off = (k) => (isBuy ? base + k * step : base - k * step);
   const t0 = Date.now();
   const riskTotal = Math.max(1, parseFloat(riskVal) || 100);
-  let r1, r2, r3;
-  if (sizeMode === "%") {
-    r1 = "40"; r2 = "35"; r3 = "25";
-  } else if (sizeMode === "#") {
-    const each = Math.max(0.01, riskTotal / 3);
-    r1 = each.toFixed(2); r2 = each.toFixed(2); r3 = (riskTotal - 2 * each).toFixed(2);
-  } else {
-    const a = Math.round(riskTotal * 0.4);
-    const b = Math.round(riskTotal * 0.35);
-    const c = Math.max(0, Math.round(riskTotal) - a - b);
-    r1 = String(a); r2 = String(b); r3 = String(c);
-  }
+  const nLegs = 5;
+  const splitRisk = () => {
+    if (sizeMode === "%") {
+      const basePct = Math.floor(100 / nLegs);
+      const last = 100 - basePct * (nLegs - 1);
+      return Array.from({ length: nLegs }, (_, i) => String(i < nLegs - 1 ? basePct : last));
+    }
+    if (sizeMode === "#") {
+      const each = Math.max(0.01, riskTotal / nLegs);
+      const parts = Array.from({ length: nLegs - 1 }, () => each.toFixed(2));
+      const last = (riskTotal - each * (nLegs - 1)).toFixed(2);
+      return [...parts, last];
+    }
+    const share = Math.max(1, Math.floor(riskTotal / nLegs));
+    const parts = Array.from({ length: nLegs - 1 }, () => String(share));
+    parts.push(String(Math.max(0, Math.round(riskTotal) - share * (nLegs - 1))));
+    return parts;
+  };
+  const risks = splitRisk();
+  const tpShares = (() => {
+    const basePct = Math.floor(100 / nLegs);
+    const last = 100 - basePct * (nLegs - 1);
+    return Array.from({ length: nLegs }, (_, i) => String(i < nLegs - 1 ? basePct : last));
+  })();
+  // Entry offsets: scale into the book (0, −1…−4 for buy). TP offsets: +2…+10.
   return {
     orderType: "limit",
-    entryRows: [
-      { id: t0, price: fmt(off(0)), risk: r1 },
-      { id: t0 + 1, price: fmt(off(isBuy ? -1 : 1)), risk: r2 },
-      { id: t0 + 2, price: fmt(off(isBuy ? -2 : 2)), risk: r3 },
-    ],
-    slRows: [{ id: 0, price: fmt(off(isBuy ? -3.5 : 3.5)) }],
-    tpRows: [
-      { id: t0 + 10, price: fmt(off(isBuy ? 2 : -2)), qty: "40", enabled: true },
-      { id: t0 + 11, price: fmt(off(isBuy ? 4 : -4)), qty: "35", enabled: true },
-      { id: t0 + 12, price: fmt(off(isBuy ? 6 : -6)), qty: "25", enabled: true },
-    ],
+    entryRows: risks.map((risk, i) => ({
+      id: t0 + i,
+      price: fmt(off(isBuy ? -i : i)),
+      risk,
+    })),
+    slRows: [{ id: 0, price: fmt(off(isBuy ? -5.5 : 5.5)) }],
+    tpRows: tpShares.map((qty, i) => ({
+      id: t0 + 20 + i,
+      price: fmt(off(isBuy ? (i + 1) * 2 : -(i + 1) * 2)),
+      qty,
+      enabled: true,
+    })),
     slEnabled: true,
     slAdvMode: "breakeven",
     slBeUnit: "rr",
@@ -12861,6 +13021,9 @@ const TalariaV8bLive = () => {
   const [btmResizing, setBtmResizing] = useState(false);
   const btmDragRef = useRef({startY:0, startH:0, curH:Math.round((window.innerHeight/1.05-92)*0.25)});
   const btmPanelRef = useRef(null);
+  /** Live trade rows in the open tab — keyboard ↑↓ / Enter / Esc. */
+  const btmDisplayRowsRef = useRef([]);
+  const openTradeCardByRowIdRef = useRef((/** @type {string|null} */ _id) => {});
   const focusTapTagInput = () => requestAnimationFrame(() => tapTagInputRef.current?.focus());
   const addTapCustomTag = () => {
     const nextTag = tapTagInput.trim();
@@ -12884,6 +13047,7 @@ const TalariaV8bLive = () => {
   const [riskVal, setRiskVal] = useState("100");
   const [riskBasis, setRiskBasis] = useState("balance");
   const [slEnabled, setSlEnabled] = useState(true);
+  const [tpEnabled, setTpEnabled] = useState(true);
   const [entryRows, setEntryRows] = useState([{ id:0, price:"0", risk:"100" }]);
   const entryScrollRef = useRef(null);
   const [slRows, setSlRows] = useState([{ id:0, price:"0" }]);
@@ -12896,6 +13060,8 @@ const TalariaV8bLive = () => {
   const [omSlDistTxt, setOmSlDistTxt] = useState("—");
   const [omTpDistTxt, setOmTpDistTxt] = useState("—");
   const [omPlaceButtonTxt, setOmPlaceButtonTxt] = useState("");
+  const [omCanPlace, setOmCanPlace] = useState(false);
+  const [journalBodyOpen, setJournalBodyOpen] = useState(false);
   /** Refusal text mirrored out of the hidden panel's #orderValidation, "" when clear. */
   const [omValidationTxt, setOmValidationTxt] = useState("");
   const [omOrderQtyTxt, setOmOrderQtyTxt] = useState("0");
@@ -12920,6 +13086,7 @@ const TalariaV8bLive = () => {
   const preTradeStrategySigRef = useRef("");
   const postTradeStrategySigRef = useRef("");
   const preTradeDomHydratedRef = useRef(false);
+  /** Order-ticket Journal tags = Strategies Lab PRE vars only (never POST / exit). */
   const tagDefs = useMemo(() => {
     const live = sessionPreTradeVarsToTagDefs(typeof window !== "undefined" ? window.chart : null);
     if (live.length) return live;
@@ -12931,10 +13098,26 @@ const TalariaV8bLive = () => {
     return v9PreviewFixturesEnabled() ? v9FixturePostTagDefs() : [];
   }, [preTradeDefRevision]);
   const [tagSels, setTagSels] = useState({});
+  // Drop any selection that is not a current PRE def (stale ids / never show POST here).
+  useEffect(() => {
+    const allow = new Set(tagDefs.map((d) => d.id));
+    setTagSels((prev) => {
+      let changed = false;
+      const next = {};
+      for (const [k, v] of Object.entries(prev || {})) {
+        if (!allow.has(k)) {
+          changed = true;
+          continue;
+        }
+        next[k] = v;
+      }
+      return changed ? next : prev;
+    });
+  }, [tagDefs]);
   const [tagDropOpen, setTagDropOpen] = useState(null);
-  const [tagsOpen, setTagsOpen] = useState(true);
+  /** Journal rail tab: tags | shots | notes — exclusive panels. */
+  const [journalTab, setJournalTab] = useState("tags");
   const [notesText, setNotesText] = useState("");
-  const [notesOpen, setNotesOpen] = useState(false);
   const [tradeNotes, setTradeNotes] = useState({});
   const tradeNotesRef = useRef({});
   /** Latest `c` theme for listeners registered before `const c` exists (avoids TDZ on `c`). */
@@ -12957,7 +13140,6 @@ const TalariaV8bLive = () => {
   }, [btmTab, tradeTagOverrides]);
   const [tradeScreenshots, setTradeScreenshots] = useState({});
   const [screenshots, setScreenshots] = useState([]);
-  const [ssOpen, setSsOpen] = useState(true);
   const [replaceTargetId, setReplaceTargetId] = useState(null);
   const fileInputRef = useRef(null);
 
@@ -12973,6 +13155,7 @@ const TalariaV8bLive = () => {
     const onResetDraft = () => {
       markOrderControlBridge();
       setSlEnabled(true);
+      setTpEnabled(true);
       setSlRows([{ id: Date.now(), price: "0" }]);
       setTpRows([{ id: Date.now(), price: "0", qty: "100", enabled: true }]);
       setEntryRows((rows) => [
@@ -13230,6 +13413,7 @@ const TalariaV8bLive = () => {
   });
   const chartTypeHydratedRef = useRef(false);
   const [chartTypeDropL, setChartTypeDropL] = useState(185);
+  const [symbolDropL, setSymbolDropL] = useState(48);
   const [layoutSync, setLayoutSync] = useState({ crosshair: true, time: false, drawings: true, symbol: false, interval: false, dateRange: false, indicators: false, chartType: false });
   const [tfOpen, setTfOpen] = useState(false);
   // Independent open categories (not accordion) — multiple groups can stay expanded.
@@ -15438,6 +15622,39 @@ const TalariaV8bLive = () => {
   const avSettOpenRef = useRef(false);
   const indSettOpenRef = useRef(false);
   const v9AnyDrawingSettingsOpenRef = useRef(false);
+  /** After the user drags a settings window, reopen at that spot (else center on canvas). */
+  const settPosPinnedRef = useRef({
+    tl: false, txt: false, vwap: false, vp: false, av: false, ind: false,
+    settings: false, profile: false, help: false, screenshot: false, indCatalog: false,
+  });
+  const settPosLiveRef = useRef({
+    tl: { x: 200, y: 90 },
+    txt: { x: 200, y: 90 },
+    vwap: { x: 200, y: 90 },
+    vp: { x: 200, y: 90 },
+    av: { x: 200, y: 90 },
+    ind: { x: 120, y: 80 },
+    settings: { x: 0, y: 0 },
+    profile: { x: 0, y: 0 },
+    help: { x: 0, y: 0 },
+    screenshot: { x: 0, y: 0 },
+    indCatalog: { x: 0, y: 0 },
+  });
+  /** Chrome modals use center+offset coords (not absolute left/top like drawing sett). */
+  const resolveChromeWinOpenPos = (kind) => {
+    if (settPosPinnedRef.current[kind]) {
+      return settPosLiveRef.current[kind] || { x: 0, y: 0 };
+    }
+    return { x: 0, y: 0 };
+  };
+  const resolveSettOpenPosRef = useRef((kind, winW = 448, winH = 520) => {
+    const z = (typeof window !== "undefined" && Number(window.__v9Zoom)) || 1;
+    if (settPosPinnedRef.current[kind]) {
+      const cur = settPosLiveRef.current[kind] || { x: 200, y: 90 };
+      return v9ClampFloatingWindowPos(cur.x, cur.y, winW, winH, z);
+    }
+    return v9CenterFloatingWindowPos(winW, winH, z);
+  });
   const v9SettingsChartDismissLockUntilRef = useRef(0);
   const v9LastSelectedDrawingTypeRef = useRef(null);
   const v9TxtStyleOwnerTypeRef = useRef(null);
@@ -15451,8 +15668,13 @@ const TalariaV8bLive = () => {
   const [tlSettTab, setTlSettTab] = useState("style");
   const [tlLocked, setTlLocked] = useState(false);
   const [rrStyle, setRrStyle] = useState({
-    profitColor:"rgba(0,180,100,0.25)", lossColor:"rgba(220,50,50,0.25)", entryColor:"rgba(180,180,180,0.9)",
-    labelFontSize:"11", labelColor:"#ffffff", showPriceLabels:true, showTimeLabels:false,
+    profitColor: "rgba(0, 212, 161, 0.12)",
+    lossColor: "rgba(255, 80, 104, 0.14)",
+    entryColor: "#3090FF",
+    labelFontSize: "10",
+    labelColor: "#f4f4f5",
+    showPriceLabels: true,
+    showTimeLabels: false,
   });
   const rrHydratedStyleRef = useRef(null);
   const [rrInputs, setRrInputs] = useState({ riskAmount:"100", qty:"1" });
@@ -15720,6 +15942,12 @@ const TalariaV8bLive = () => {
   v9AnyDrawingSettingsOpenRef.current = !!(
     tlSettOpen || txtSettOpen || vwapSettOpen || vpSettOpen || avSettOpen || indSettOpen
   );
+  settPosLiveRef.current.tl = tlSettPos;
+  settPosLiveRef.current.txt = txtSettPos;
+  settPosLiveRef.current.vwap = vwapSettPos;
+  settPosLiveRef.current.vp = vpSettPos;
+  settPosLiveRef.current.av = avSettPos;
+  settPosLiveRef.current.ind = indSettPos;
   const [indSettTab, setIndSettTab] = useState("style");
   const [indSettDraft, setIndSettDraft] = useState({});
   /** Latest indicator settings draft — updated synchronously so Apply / pointerdown picks never read stale React state. */
@@ -15755,6 +15983,12 @@ const TalariaV8bLive = () => {
   const [opSavedTemplates, setOpSavedTemplates] = useState([]);
   const [opDotsOpen, setOpDotsOpen] = useState(false);
   const [opDotsPos, setOpDotsPos] = useState({ top: 0, left: 0 });
+  /** Multi-entry ladder editor — anchored popover (legs stay off the ticket). */
+  const [opEntryLegsOpen, setOpEntryLegsOpen] = useState(false);
+  const [opEntryLegsPos, setOpEntryLegsPos] = useState({ top: 0, left: 0 });
+  /** Multi-TP ladder editor — same pattern as entry legs. */
+  const [opTpLegsOpen, setOpTpLegsOpen] = useState(false);
+  const [opTpLegsPos, setOpTpLegsPos] = useState({ top: 0, left: 0 });
   const [panelDetached, setPanelDetached] = useState(false);
   const [detachPos, setDetachPos] = useState({ x: 900, y: 80 });
   const [detachSize, setDetachSize] = useState({ w: 336, h: 560 });
@@ -15788,6 +16022,12 @@ const TalariaV8bLive = () => {
       } catch (_e) { /* ignore */ }
     };
     const syncAdv = (enabled) => {
+      // Design preview / force flag: never collapse back to basic from session events.
+      if (v9PreviewFixturesEnabled() || (typeof window !== "undefined" && window.__V9_FORCE_ADVANCED_ORDER__ === true)) {
+        setSessionAdvancedAllowed(true);
+        setPanelMode("advanced");
+        return;
+      }
       const next = enabled == null ? v9SessionAdvancedOrderAllowed() : !!enabled;
       setSessionAdvancedAllowed(next);
       if (!next) {
@@ -15799,6 +16039,10 @@ const TalariaV8bLive = () => {
     };
     const onSession = (e) => syncAdv(e?.detail?.enabled);
     const onToggle = (e) => {
+      if (v9PreviewFixturesEnabled() || (typeof window !== "undefined" && window.__V9_FORCE_ADVANCED_ORDER__ === true)) {
+        setSessionAdvancedAllowed(true);
+        return;
+      }
       // Toggle sync only locks when advanced is off; don't override user's Basic Mode choice.
       const next = e?.detail?.enabled == null ? v9SessionAdvancedOrderAllowed() : !!e.detail.enabled;
       setSessionAdvancedAllowed(next);
@@ -15819,10 +16063,19 @@ const TalariaV8bLive = () => {
   const opOrderDotsBtnRef = useRef(null);
   const opOrderTplBtnRef = useRef(null);
   const opOrderSymBtnRef = useRef(null);
-  const orderDropdownOpenRef = useRef({ size: false, dots: false, tpl: false, sym: false });
+  const opEntryLegsBtnRef = useRef(null);
+  const opTpLegsBtnRef = useRef(null);
+  const orderDropdownOpenRef = useRef({ size: false, dots: false, tpl: false, sym: false, entryLegs: false, tpLegs: false });
   useEffect(() => {
-    orderDropdownOpenRef.current = { size: opSizeOpen, dots: opDotsOpen, tpl: opTplOpen, sym: opSymOpen };
-  }, [opSizeOpen, opDotsOpen, opTplOpen, opSymOpen]);
+    orderDropdownOpenRef.current = {
+      size: opSizeOpen,
+      dots: opDotsOpen,
+      tpl: opTplOpen,
+      sym: opSymOpen,
+      entryLegs: opEntryLegsOpen,
+      tpLegs: opTpLegsOpen,
+    };
+  }, [opSizeOpen, opDotsOpen, opTplOpen, opSymOpen, opEntryLegsOpen, opTpLegsOpen]);
 
   const syncOrderPanelAnchoredDropdowns = useCallback(() => {
     const o = orderDropdownOpenRef.current;
@@ -15830,7 +16083,7 @@ const TalariaV8bLive = () => {
       if (o.dots && opOrderDotsBtnRef.current) {
         const r = opOrderDotsBtnRef.current.getBoundingClientRect();
         const mw = 152;
-        setOpDotsPos({ top: r.bottom + 4, left: Math.max(4, Math.min(r.right - mw, window.innerWidth - mw - 4)) });
+        setOpDotsPos({ top: r.bottom + 4, left: Math.max(4, Math.min(r.left, window.innerWidth - mw - 4)) });
       }
       if (o.size && opOrderSizeBtnRef.current) {
         const r = opOrderSizeBtnRef.current.getBoundingClientRect();
@@ -15838,13 +16091,40 @@ const TalariaV8bLive = () => {
       }
       if (o.tpl && opOrderTplBtnRef.current) {
         const r = opOrderTplBtnRef.current.getBoundingClientRect();
-        setOpTplPos({ top: r.bottom + 4, left: r.right - 160 });
+        setOpTplPos({ top: r.bottom + 4, left: Math.max(4, Math.min(r.left, window.innerWidth - 160 - 4)) });
       }
       if (o.sym && opOrderSymBtnRef.current) {
         const r = opOrderSymBtnRef.current.getBoundingClientRect();
         const symZ =
           typeof window !== "undefined" && Number(window.__v9Zoom) > 0 ? Number(window.__v9Zoom) : 1;
         setOpSymPos({ top: r.bottom / symZ + 2, left: r.left / symZ });
+      }
+      if (o.entryLegs && opEntryLegsBtnRef.current) {
+        const r = opEntryLegsBtnRef.current.getBoundingClientRect();
+        const mw = Math.min(300, Math.max(260, window.innerWidth - 16));
+        // Anchor directly under Edit legs — left-align to the button, clamp to viewport.
+        let left = r.left;
+        if (left + mw > window.innerWidth - 4) left = Math.max(4, window.innerWidth - mw - 4);
+        if (left < 4) left = 4;
+        let top = r.bottom + 4;
+        const maxH = Math.min(window.innerHeight * 0.52, 420);
+        if (top + 160 > window.innerHeight - 4) {
+          top = Math.max(4, r.top - 4 - Math.min(maxH, 280));
+        }
+        setOpEntryLegsPos({ top, left });
+      }
+      if (o.tpLegs && opTpLegsBtnRef.current) {
+        const r = opTpLegsBtnRef.current.getBoundingClientRect();
+        const mw = Math.min(300, Math.max(260, window.innerWidth - 16));
+        let left = r.left;
+        if (left + mw > window.innerWidth - 4) left = Math.max(4, window.innerWidth - mw - 4);
+        if (left < 4) left = 4;
+        let top = r.bottom + 4;
+        const maxH = Math.min(window.innerHeight * 0.52, 420);
+        if (top + 160 > window.innerHeight - 4) {
+          top = Math.max(4, r.top - 4 - Math.min(maxH, 280));
+        }
+        setOpTpLegsPos({ top, left });
       }
     } catch (_) {
       /* ignore */
@@ -15855,16 +16135,31 @@ const TalariaV8bLive = () => {
   syncOrderDropdownsRef.current = syncOrderPanelAnchoredDropdowns;
 
   useLayoutEffect(() => {
-    if (!opDotsOpen && !opSizeOpen && !opSymOpen && !opTplOpen) return;
+    if (!opDotsOpen && !opSizeOpen && !opSymOpen && !opTplOpen && !opEntryLegsOpen && !opTpLegsOpen) return;
     syncOrderPanelAnchoredDropdowns();
-  }, [opDotsOpen, opSizeOpen, opSymOpen, opTplOpen, detachPos, detachSize, panelDetached, syncOrderPanelAnchoredDropdowns]);
+  }, [opDotsOpen, opSizeOpen, opSymOpen, opTplOpen, opEntryLegsOpen, opTpLegsOpen, detachPos, detachSize, panelDetached, syncOrderPanelAnchoredDropdowns]);
 
   useEffect(() => {
-    if (!opDotsOpen && !opSizeOpen && !opSymOpen && !opTplOpen) return undefined;
+    if (!opDotsOpen && !opSizeOpen && !opSymOpen && !opTplOpen && !opEntryLegsOpen && !opTpLegsOpen) return undefined;
     const onResize = () => syncOrderPanelAnchoredDropdowns();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, [opDotsOpen, opSizeOpen, opSymOpen, opTplOpen, syncOrderPanelAnchoredDropdowns]);
+  }, [opDotsOpen, opSizeOpen, opSymOpen, opTplOpen, opEntryLegsOpen, opTpLegsOpen, syncOrderPanelAnchoredDropdowns]);
+
+  useEffect(() => {
+    if (!orderPanelOpen) {
+      setOpEntryLegsOpen(false);
+      setOpTpLegsOpen(false);
+    }
+  }, [orderPanelOpen]);
+
+  useEffect(() => {
+    if (entryRows.length <= 1) setOpEntryLegsOpen(false);
+  }, [entryRows.length]);
+
+  useEffect(() => {
+    if (tpRows.length <= 1) setOpTpLegsOpen(false);
+  }, [tpRows.length]);
 
   /** Short windows where React row counts intentionally lead OM (panel add/delete) so reverse poll must not fight the forward bridge. */
   const omPanelBridgeRef = useRef({ entryAdd: 0, entryDel: 0, tpAdd: 0, tpDel: 0, control: 0 });
@@ -15981,16 +16276,42 @@ const TalariaV8bLive = () => {
     setSlTslActivation(ex.slTslActivation);
     setSlTslTrail(ex.slTslTrail);
     setSlTslStep(ex.slTslStep);
+    setJournalTab("tags");
+    setTagSels((prev) => ({
+      ...prev,
+      fx_style: prev.fx_style || "Fade",
+      fx_grade: prev.fx_grade || "B",
+      fx_session: prev.fx_session || "Asia",
+      fx_confluence: prev.fx_confluence === undefined ? true : prev.fx_confluence,
+    }));
     if (sizeMode === "$" || sizeMode === "%") {
       setRiskVal(String(riskVal || "100"));
     }
   };
+  /** Design preview: unlock Adv + seed the 5×5 Example ladder once so the UI is visible. */
+  const v9PreviewAdvSeededRef = useRef(false);
+  useEffect(() => {
+    if (v9PreviewAdvSeededRef.current) return;
+    const force =
+      v9PreviewFixturesEnabled() ||
+      (typeof window !== "undefined" && window.__V9_FORCE_ADVANCED_ORDER__ === true);
+    if (!force) return;
+    v9PreviewAdvSeededRef.current = true;
+    setSessionAdvancedAllowed(true);
+    setPanelMode("advanced");
+    const t = window.setTimeout(() => {
+      try {
+        loadAdvancedOrderExample();
+      } catch (_) {}
+    }, 120);
+    return () => window.clearTimeout(t);
+    // Intentionally once per mount for chrome preview — not re-run on ladder edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const isWide = panelDetached && detachSize.w >= 520;
   const opTemplates = ["Default","Scalp — Trend","Swing Trade","Breakout","Reversal"];
   const [rightPanel, setRightPanel] = useState(null);
   const [screenshotPos, setScreenshotPos] = useState({ x: 0, y: 0 });
-  const [layersOpen, setLayersOpen] = useState(false);
-  const [layersPos, setLayersPos] = useState({ x: 0, y: 0 });
   // Independent open sections — Indicators / Drawings can both stay expanded.
   // Populated from chart.js drawingManager.drawings — see the
   // "Objects Tree sync" effect below. Initially empty until chart.js loads.
@@ -15998,8 +16319,6 @@ const TalariaV8bLive = () => {
   const [layersVis, setLayersVis] = useState({});
   const [layersSearch, setLayersSearch] = useState("");
   const [layersSelectionRevision, setLayersSelectionRevision] = useState(0);
-  const [newsOpen, setNewsOpen] = useState(false);
-  const [newsPos, setNewsPos] = useState({ x: 0, y: 0 });
   const [newsTab, setNewsTab] = useState("upcoming");
   const [newsSearch, setNewsSearch] = useState("");
   // Axis markers off until user enables High/Medium/Low (matches economic-news-sidebar defaults).
@@ -16011,8 +16330,6 @@ const TalariaV8bLive = () => {
   const [newsSecsCollapsed, setNewsSecsCollapsed] = useState([]);
   // Trades "All" view: independent status-section collapse.
   const [newsCntSel, setNewsCntSel] = useState({US:1,EU:1,GB:1,JP:1,AU:1,CA:1,DE:1,FR:1,IT:1,CN:1,CH:1});
-  const [layoutOpen, setLayoutOpen] = useState(false);
-  const [layoutPos, setLayoutPos] = useState({ x: 0, y: 0 });
   const [layoutPanels, setLayoutPanels] = useState({n:1,li:0});
   // Phase 7.2.2: which iframe in <MultichartGrid> currently has focus.
   // Single-chart layouts ignore this; multi-panel layouts highlight the
@@ -17058,6 +17375,45 @@ const TalariaV8bLive = () => {
   useEffect(() => {
     if (!btmOpen) setTagDrop(null);
   }, [btmOpen]);
+
+  // Trades grid keyboard: ↑↓ select, Enter open card, Esc clear (scoped to trades chrome or an active selection).
+  useEffect(() => {
+    if (!btmOpen || btmTab === "analytics") return;
+    const onKey = (e) => {
+      if (!e || !["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) return;
+      const t = e.target;
+      if (t && typeof t.closest === "function") {
+        if (t.closest("input, textarea, select, [contenteditable='true']")) return;
+        if (t.closest("[data-trades-tag-menu]")) return;
+      }
+      const inTrades = !!(t && typeof t.closest === "function" && t.closest('[data-trades-v2="1"]'));
+      if (e.key === "Escape") {
+        if (selRow) {
+          e.preventDefault();
+          setSelRow(null);
+        }
+        return;
+      }
+      if (!inTrades && !selRow) return;
+      const rows = btmDisplayRowsRef.current || [];
+      if (!rows.length) return;
+      if (e.key === "Enter") {
+        if (!selRow) return;
+        e.preventDefault();
+        try { openTradeCardByRowIdRef.current?.(selRow); } catch (_) {}
+        return;
+      }
+      e.preventDefault();
+      const idx = Math.max(0, rows.findIndex((r) => r && r.id === selRow));
+      const next = e.key === "ArrowDown"
+        ? (selRow ? Math.min(rows.length - 1, idx + 1) : 0)
+        : (selRow ? Math.max(0, idx - 1) : rows.length - 1);
+      const id = rows[next]?.id;
+      if (id != null) setSelRow(id);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [btmOpen, btmTab, selRow]);
   useEffect(() => {
     setTagDrop(null);
   }, [btmTab]);
@@ -18498,10 +18854,9 @@ const TalariaV8bLive = () => {
       indSettDraftRef.current = draft;
       v9SettingsChartDismissLockUntilRef.current = Date.now() + 700;
       v9SuppressNextChartDeselect();
-      const zForPos = (typeof window !== "undefined" && Number(window.__v9Zoom)) || 1;
-      const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
-      const halfW = indicatorType === "custom" ? 270 : (indicatorType === "icteverything" || indicatorType === "talariafvg" || indicatorType === "talariaratiogap" || indicatorType === "talariaweeklymap" || indicatorType === "talariasmc") ? 260 : 210;
-      setIndSettPos({ x: Math.max(8, vw / zForPos / 2 - halfW), y: 72 });
+      const panelW0 = indicatorType === "custom" ? 540 : (indicatorType === "icteverything" || indicatorType === "talariafvg" || indicatorType === "talariaratiogap" || indicatorType === "talariaweeklymap" || indicatorType === "talariasmc") ? 520 : 420;
+      const resolvePos = resolveSettOpenPosRef.current || ((k, w, h) => v9CenterFloatingWindowPos(w, h));
+      setIndSettPos(resolvePos("ind", panelW0, 520));
       flushSync(() => {
         setIndSettDraft(draft);
         setIndSettTab(first);
@@ -18535,6 +18890,7 @@ const TalariaV8bLive = () => {
     setClosing((s) => new Set([...s, "tlInfoDrop"]));
     setTlStyleDrop(null);
     setTimeout(() => {
+      setTlInfoDropAnchor(null);
       setClosing((s) => {
         const n = new Set(s);
         n.delete("tlInfoDrop");
@@ -18620,10 +18976,10 @@ const TalariaV8bLive = () => {
 
   const allSymbols = SYMBOLS_DATA.flatMap(c => c.items);
   const currentSymbol = resolveSessionChartSymbol(symbol, allSymbols);
-  /** Matches order-manager: hide Entry/TP “add level” + when DISABLE_ORDER_ENTRY_PLUS_UI is not false, or session Advanced off. */
+  /** Hide Entry/TP (+) only when Advanced is off, or env opt-out is explicitly true. */
   const chartEntryPlusSplitUiOff =
     !sessionAdvancedAllowed ||
-    (typeof window !== "undefined" && window.__CHART_ENV?.DISABLE_ORDER_ENTRY_PLUS_UI !== false);
+    (typeof window !== "undefined" && window.__CHART_ENV?.DISABLE_ORDER_ENTRY_PLUS_UI === true);
   /** Show Entry/TP (+): futures need ≥1 whole contract; spot/forex/etc. allow fractional lots (>0). */
   const v9OrderQtyForSplitUi = Math.max(
     0,
@@ -18635,7 +18991,7 @@ const TalariaV8bLive = () => {
     (currentSymbol.type === "futures"
       ? Math.floor(v9OrderQtyForSplitUi) >= 1
       : v9OrderQtyForSplitUi > 0);
-  const v9EntryPlusVisible = v9EntryTpPlusVisible && entryRows.length < 4;
+  const v9EntryPlusVisible = v9EntryTpPlusVisible && entryRows.length < 5;
   const v9TpPlusVisible = v9EntryTpPlusVisible && tpRows.length < 5;
 
   // Futures: when there is no contract size yet, collapse to a single TP row. With ≥1 contract,
@@ -18877,46 +19233,27 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260808-vp-drops";
+    if (typeof window !== "undefined") {
+      // One RR visual by default (SVG). React overlay is opt-in only.
+      if (window.__V9_RR_REACT_CHROME__ == null) window.__V9_RR_REACT_CHROME__ = false;
+      window.__TALARIA_V9_UI_REV__ = "20260808-vis-range-v71";
+    }
   }, []);
 
+  const peelChromeDismissRef = useRef(() => false);
   useEffect(() => {
     const onKey = (e) => {
       if (e.key !== "Escape") return;
-      // Settings / Profile own Escape (capture) while open — restore dirty edits.
+      // Settings / Profile own Escape (capture) while open — restore dirty edits via their handlers.
       if (settingsOpenRef.current) return;
       if (profileOpen || closing.has("profile")) return;
-      if (faqOpen || closing.has("faq")) {
-        e.preventDefault();
-        animClose(setFaqOpen, "faq");
-        setFaqExpand(null);
-        setFaqSearch("");
-        return;
-      }
       if (v9Confirm) {
         e.preventDefault();
         dismissV9Confirm();
         return;
       }
-      if (indOpen || closing.has("ind")) {
-        e.preventDefault();
-        if (indTplOpen) {
-          setIndTplOpen(false);
-          setIndTplSaveMode(false);
-          setIndTplName("");
-          return;
-        }
-        animClose(setIndOpen, "ind");
-        setIndSearch("");
-        setIndSelectedId(null);
-        return;
-      }
-      if (screenshotOpen || closing.has("screenshot")) {
-        e.preventDefault();
-        if (scLinkOpen) { setScLinkOpen(false); setScLinkSearch(""); return; }
-        animClose(setScreenshotOpen, "screenshot");
-        return;
-      }
+      e.preventDefault();
+      if (peelChromeDismissRef.current?.()) return;
       closeWindows();
       setTlSettOpen(false);
       setTradeCard(null);
@@ -18927,7 +19264,7 @@ const TalariaV8bLive = () => {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [faqOpen, indOpen, indTplOpen, v9Confirm, profileOpen, screenshotOpen, scLinkOpen, closing]);
+  }, [v9Confirm, profileOpen, closing]);
 
   useEffect(() => {
     const eventTargetEl = (e) => {
@@ -18971,6 +19308,35 @@ const TalariaV8bLive = () => {
       const el = eventTargetEl(e);
       dismissColorPickerIfOutside(el);
     };
+    const isInsideOpenSettChrome = (el) => {
+      if (!el || typeof el.closest !== "function") return false;
+      return !!(
+        el.closest('[data-chrome-win="tool-sett"]') ||
+        el.closest('[data-chrome-win="txt-sett"]') ||
+        el.closest('[data-chrome-win="vwap-sett"]') ||
+        el.closest('[data-chrome-win="vp-sett"]') ||
+        el.closest('[data-chrome-win="av-sett"]') ||
+        el.closest('[data-chrome-win="ind-sett"]') ||
+        el.closest("[data-sett-drop]") ||
+        el.closest("[data-sett-drop-shell]") ||
+        el.closest("[data-sett-drop-portal]") ||
+        el.closest("[data-sett-dd]") ||
+        el.closest("[data-tl-style-drop]") ||
+        el.closest("[data-v9-ind-select-root]") ||
+        el.closest("[data-v9-ind-select-panel]") ||
+        // Gear buttons: open runs on pointerdown and unmounts the quick bar; the
+        // trailing mousedown retargets to the chart — never treat the gear as outside.
+        el.closest('[data-v9-tl-btn="tl-sett"]') ||
+        el.closest('[data-v9-tl-btn="txt-sett"]') ||
+        el.closest('[data-v9-tl-btn="vpb-sett"]') ||
+        el.closest('[data-v9-tl-btn="avb-sett"]') ||
+        el.closest('[data-v9-tl-btn="vb-sett"]') ||
+        el.closest("#tl-sett") ||
+        el.closest("#txt-sett") ||
+        el.closest(".tlr-cp") ||
+        el.closest("[data-tlr-cp]")
+      );
+    };
     const tryDismissDrawingSettingsOnChart = (e) => {
       const el = eventTargetEl(e);
       if (!el) return false;
@@ -18980,11 +19346,8 @@ const TalariaV8bLive = () => {
           return false;
         }
       } catch (_) {}
-      if (!isOutsideUiChrome(el)) return false;
-      const onChartSurface =
-        el.closest("#chart-container") ||
-        el.closest("#panels-container");
-      if (!onChartSurface) return false;
+      if (!v9AnyDrawingSettingsOpenRef.current) return false;
+      if (isInsideOpenSettChrome(el)) return false;
       return closeDrawingSettingsOnChartClickRef.current?.() === true;
     };
     const chartSettingsDismissCapture = (e) => {
@@ -19019,20 +19382,24 @@ const TalariaV8bLive = () => {
         const ae = document.activeElement;
         if (ae && ae.tagName === "SELECT" && typeof ae.closest === "function" && ae.closest("[data-v9-ind-sett=\"1\"]")) return;
       } catch (_) {}
-      // IMPORTANT: return BEFORE tlBar / chart dismiss setState. Presses inside [data-sdrop] must not
-      // clear tlBar on first press ("needs many taps").
-      if (!isOutsideUiChrome(el)) return;
-
+      // Drawing / indicator settings: dismiss on any press outside the open shell (toolbar included).
       if (tryDismissDrawingSettingsOnChart(e)) {
         setTlBarDrop(null);
+        setTxtBarSizeOpen(false);
+        setTxtBarDrop(null);
         setTlSaveAsMode(false);
         setTlNewTplName("");
         setVwapBarDrop(null);
         setTlSettTplDrop(false);
         return;
       }
+      // IMPORTANT: return BEFORE tlBar / chart dismiss setState. Presses inside [data-sdrop] must not
+      // clear tlBar on first press ("needs many taps").
+      if (!isOutsideUiChrome(el)) return;
 
       setTlBarDrop(null);
+      setTxtBarSizeOpen(false);
+      setTxtBarDrop(null);
       setTlSaveAsMode(false);
       setTlNewTplName("");
       setVwapBarDrop(null);
@@ -19145,6 +19512,12 @@ const TalariaV8bLive = () => {
 
   // Keep every open drawing/indicator settings window fully inside the chart —
   // after open, tab changes, content resize, and viewport resize. Drag uses the same clamp.
+  // While a portaled sett dropdown is open, do NOT move the shell — menus are fixed to the
+  // trigger at open time; clamp/RO + tlrPopIn transform fights that and shakes the UI.
+  const settStyleMenuOpen = !!(
+    tlStyleDrop || indStyleDrop || vpStyleDrop || avStyleDrop || vwapStyleDrop
+    || volDropAnchor || txtSizeOpen || v9IndSelectMenu || tlSettTplDrop || txtSettTplDrop
+  );
   useLayoutEffect(() => {
     if (typeof document === "undefined") return undefined;
     const z = typeof Z === "number" && Z > 0 ? Z : 1;
@@ -19158,6 +19531,7 @@ const TalariaV8bLive = () => {
     ];
     const anyOpen = specs.some((s) => s.open);
     if (!anyOpen) return undefined;
+    if (settStyleMenuOpen) return undefined;
     const sync = () => {
       for (const s of specs) {
         if (!s.open) continue;
@@ -19190,7 +19564,7 @@ const TalariaV8bLive = () => {
       window.removeEventListener("resize", sync);
       try { ro && ro.disconnect(); } catch (_) { /* ignore */ }
     };
-  }, [tlSettOpen, txtSettOpen, vwapSettOpen, vpSettOpen, avSettOpen, indSettOpen, tlSettTab, txtSettTab, vwapSettTab, vpSettTab, avSettTab, indSettTab]);
+  }, [tlSettOpen, txtSettOpen, vwapSettOpen, vpSettOpen, avSettOpen, indSettOpen, tlSettTab, txtSettTab, vwapSettTab, vpSettTab, avSettTab, indSettTab, settStyleMenuOpen]);
 
   useEffect(() => {
     return () => {
@@ -19206,7 +19580,7 @@ const TalariaV8bLive = () => {
       const sbH = "var(--accent-quiet)";
       // No finger on controls; leave resize/move/grab/crosshair/text alone (no * cursor:!important).
       // Exclude range from the text-input rule — cursor:text + user-select:text breaks scrubbers.
-      style.textContent = `*{user-select:none!important;-webkit-user-select:none!important}a,button,label,summary,[role=button],[role=tab],[role=menuitem],[role=option],[role=switch],[role=link]{cursor:default!important}input:not([type=button]):not([type=submit]):not([type=reset]):not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]),textarea,[contenteditable=true],[data-win-search],[data-ind-search],[data-brand-field]{user-select:text!important;-webkit-user-select:text!important;cursor:text!important}input[type=range]{cursor:ew-resize!important;user-select:none!important;-webkit-user-select:none!important}select{user-select:auto!important;-webkit-user-select:auto!important;cursor:default!important}.tl-drag,.tl-drag *{cursor:move!important}[data-sett-resize=e]{cursor:ew-resize!important}[data-sett-resize=s]{cursor:ns-resize!important}[data-sett-resize=se]{cursor:nwse-resize!important}.axis-cursor-zone.price-axis-zone,#priceAxisZone{cursor:ns-resize!important}.axis-cursor-zone.time-axis-zone,#timeAxisZone{cursor:ew-resize!important}[data-v9-chrome] .tabular,[data-v9-chrome] [data-numeric],[data-v9-replaybar] span{font-variant-numeric:tabular-nums}.tlr-ind-select{-webkit-appearance:none;appearance:none;color-scheme:dark;forced-color-adjust:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%238d93a1' d='M0 1l5 4 5-4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;background-size:10px 6px;padding-right:26px!important}.tlr-ind-select option,.tlr-ind-select optgroup{background-color:var(--surface-raised)!important;color:var(--text)!important}.tlr-scroll::-webkit-scrollbar{width:3px;height:3px}.tlr-scroll::-webkit-scrollbar-track{background:transparent}.tlr-scroll::-webkit-scrollbar-thumb{background:${sbC};border-radius:2px}.tlr-scroll::-webkit-scrollbar-thumb:hover{background:${sbH}}.tlr-scroll{scrollbar-width:thin;scrollbar-color:${sbC} transparent}`;
+      style.textContent = `*{user-select:none!important;-webkit-user-select:none!important}a,button,label,summary,[role=button],[role=tab],[role=menuitem],[role=option],[role=switch],[role=link]{cursor:default!important}input:not([type=button]):not([type=submit]):not([type=reset]):not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]),textarea,[contenteditable=true],[data-win-search],[data-ind-search],[data-brand-field]{user-select:text!important;-webkit-user-select:text!important;cursor:text!important}input[type=range],[data-sett-slider],[data-sett-slider] *,[data-sett-slider-hit],[data-sett-vis-range],[data-sett-vis-hit]{cursor:grab!important;user-select:none!important;-webkit-user-select:none!important}input[type=range]:active,[data-sett-slider]:active,[data-sett-slider]:active *,[data-sett-slider-hit]:active,[data-sett-vis-range]:active,[data-sett-vis-hit]:active{cursor:grabbing!important}select{user-select:auto!important;-webkit-user-select:auto!important;cursor:default!important}.tl-drag,.tl-drag *{cursor:move!important}[data-sett-resize=e]{cursor:ew-resize!important}[data-sett-resize=s]{cursor:ns-resize!important}[data-sett-resize=se]{cursor:nwse-resize!important}.axis-cursor-zone.price-axis-zone,#priceAxisZone{cursor:ns-resize!important}.axis-cursor-zone.time-axis-zone,#timeAxisZone{cursor:ew-resize!important}[data-v9-chrome] .tabular,[data-v9-chrome] [data-numeric],[data-v9-replaybar] span{font-variant-numeric:tabular-nums}.tlr-ind-select{-webkit-appearance:none;appearance:none;color-scheme:dark;forced-color-adjust:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%238d93a1' d='M0 1l5 4 5-4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;background-size:10px 6px;padding-right:26px!important}.tlr-ind-select option,.tlr-ind-select optgroup{background-color:var(--surface-raised)!important;color:var(--text)!important}.tlr-scroll::-webkit-scrollbar{width:3px;height:3px}.tlr-scroll::-webkit-scrollbar-track{background:transparent}.tlr-scroll::-webkit-scrollbar-thumb{background:${sbC};border-radius:2px}.tlr-scroll::-webkit-scrollbar-thumb:hover{background:${sbH}}.tlr-scroll{scrollbar-width:thin;scrollbar-color:${sbC} transparent}`;
     }
   }, [darkMode]);
 
@@ -20070,6 +20444,13 @@ const TalariaV8bLive = () => {
           el.dispatchEvent(new Event("change", { bubbles: true }));
         };
 
+        // Keep hidden OM advanced gate aligned with the React Adv rail — otherwise
+        // setEntryMode(true) / addMultiEntryLevel() no-op when #advancedOrderToggle is off.
+        if (sessionAdvancedAllowed && panelMode === "advanced") {
+          setChk("advancedOrderToggle", true);
+          if (om && om.advancedOrderEnabled === false) om.advancedOrderEnabled = true;
+        }
+
         const skipPosSync = !!om?.isDraggingPreviewLine || v9IsRrSelectedWithoutExecute(om);
 
         const fillLiveEntryFromFocusedMultichartTile = async () => {
@@ -20450,7 +20831,7 @@ const TalariaV8bLive = () => {
 
         const tp0 = tpRowsForOm[0] ?? tpRows[0];
         setChk("enableSL", slEnabled);
-        setChk("enableTP", !!tp0?.enabled);
+        setChk("enableTP", tpEnabled);
 
         v9SyncSlAdvToHiddenOrderPanel({
           slAdvMode,
@@ -20500,6 +20881,7 @@ const TalariaV8bLive = () => {
           if (
             !tpMultiActive &&
             tpActive.length <= 1 &&
+            tpEnabled &&
             tp0?.enabled !== false &&
             (tpPx > 0 || tpTyping || v9IsPartialDecimalInput(tpRowPx))
           ) {
@@ -20517,7 +20899,7 @@ const TalariaV8bLive = () => {
               setIn("tpPrice", tpRowPx === "" ? "0" : tpRowPx);
               if (om && tpPx > 0) om.tpManuallyPositioned = true;
             }
-          } else if (!tpMultiActive && tpActive.length <= 1 && tp0?.enabled === false) {
+          } else if (!tpMultiActive && tpActive.length <= 1 && (!tpEnabled || tp0?.enabled === false)) {
             setIn("tpPrice", "0");
           }
 
@@ -20633,6 +21015,7 @@ const TalariaV8bLive = () => {
     riskVal,
     riskBasis,
     slEnabled,
+    tpEnabled,
     slRows,
     entryRows,
     tpRows,
@@ -20788,23 +21171,24 @@ const TalariaV8bLive = () => {
       // After place, rail waits for "Make new order" — do not paint a draft yet.
       if (om && om._orderPlacedAwaitingReset) return;
 
-      // On panel focus, re-anchor to that tile's live market price. Forwarding a
-      // stale EUR limit onto GBP leaves the draft line off-scale / invisible.
-      const ensureMarketType = () => {
+      // Re-anchor entry to the focused tile's live price. Preserve Limit/Stop —
+      // only Market drafts follow the live print; do not force Market on focus.
+      const reanchorForFocus = () => {
         try {
-          if (om) om.orderType = "market";
-          document.querySelectorAll("#orderPanel .order-type-btn").forEach((b) => {
-            b.classList.toggle("active", b.getAttribute("data-type") === "market");
-          });
-          setOrderType("market");
+          const ot = String(om?.orderType || orderType || "market").toLowerCase();
+          if (ot === "market") {
+            syncMarketEntryFromActiveChart();
+          } else {
+            // Still refresh live reference for that tile without flipping type.
+            try { om?.updateOrderPanelPrice?.(); } catch (_) {}
+          }
         } catch (_) {}
       };
 
       // Host focused: re-anchor market entry + redraw host preview SVG.
       if (fid == null || String(fid) === String(hid)) {
         try {
-          ensureMarketType();
-          syncMarketEntryFromActiveChart();
+          reanchorForFocus();
           if (om && typeof om.updatePreviewLines === "function") {
             om.updatePreviewLines();
           }
@@ -20815,8 +21199,7 @@ const TalariaV8bLive = () => {
       // setDraftPreview so the draft appears on panel B/C (not host A).
       try {
         if (multichartDraftDragBusyRef.current) return;
-        ensureMarketType();
-        syncMarketEntryFromActiveChart();
+        reanchorForFocus();
         grid.runCommand("setDraftPreview", collectDraftArgs(), { panelId: fid }).catch(() => {});
       } catch (_) {}
     };
@@ -21058,12 +21441,14 @@ const TalariaV8bLive = () => {
         const pm = document.querySelector("#orderPanel .position-mode-tab.active")?.dataset?.mode;
         const mirrorSizeMode =
           pm === "risk-percent" ? "%" : pm === "lot-size" ? "#" : "$";
+        const tpOnMirror = !!document.getElementById("enableTP")?.checked;
         const nextTp = om.tpTargets.map((t, ti) => ({
           id: t.id,
           price: v9SnapPositivePriceStr(t.price, om) || String(t.price ?? "0"),
           qty: v9OmTpTargetToReactQty(om, ti, mirrorSizeMode, om.marketType === "futures" ? "futures" : "forex"),
-          enabled: true,
+          enabled: tpOnMirror,
         }));
+        setTpEnabled((prev) => (prev === tpOnMirror ? prev : tpOnMirror));
         const tpSame = (a, b) =>
           Math.abs((parseFloat(a.price) || 0) - (parseFloat(b.price) || 0)) < 1e-8 &&
           Math.abs((parseFloat(a.qty) || 0) - (parseFloat(b.qty) || 0)) < 1e-6;
@@ -21081,9 +21466,11 @@ const TalariaV8bLive = () => {
         });
         if (nextTp.length > 1 && sessionAdvancedAllowedRef.current) setPanelMode("advanced");
       } else if (!rrLocked) {
+        const tpOnSingle = !!document.getElementById("enableTP")?.checked;
+        setTpEnabled((prev) => (prev === tpOnSingle ? prev : tpOnSingle));
         setTpRows((rows) => {
           if (!rows.length) return rows;
-          const tpOn = !!document.getElementById("enableTP")?.checked;
+          const tpOn = tpOnSingle;
           const tpPos = v9PositivePriceStr(tpp);
           if (rows.length > 1 && !isOmBridgeLead(omPanelBridgeRef.current.tpAdd)) {
             const r0 = rows[0];
@@ -21150,8 +21537,21 @@ const TalariaV8bLive = () => {
       const rwd = document.getElementById("rewardAmount")?.textContent?.trim() || "$0";
       setOmRiskSummaryTxt((prev) => (prev === rsk ? prev : rsk));
       setOmRewardSummaryTxt((prev) => (prev === rwd ? prev : rwd));
-      const pbt = document.getElementById("placeOrderButton")?.textContent?.replace(/\s+/g, " ").trim() || "";
+      const readiness = (() => {
+        try {
+          if (typeof om?.getPlaceReadiness === "function") return om.getPlaceReadiness();
+        } catch (_) { /* ignore */ }
+        return typeof window !== "undefined" ? window.__talariaV9PlaceReadiness : null;
+      })();
+      const placeBtnEl = document.getElementById("placeOrderButton");
+      const pbt = (readiness?.label
+        || placeBtnEl?.textContent?.replace(/\s+/g, " ").trim()
+        || "");
       setOmPlaceButtonTxt((prev) => (prev === pbt ? prev : pbt));
+      const canPlaceNext = readiness != null
+        ? !!readiness.canPlace
+        : !(placeBtnEl && placeBtnEl.disabled);
+      setOmCanPlace((prev) => (prev === canPlaceNext ? prev : canPlaceNext));
       // The engine writes refusals into the native panel's #orderValidation, which
       // is the hidden mount behind this rail — so a blocked order (an analysis-only
       // symbol, for one) had no visible surface here at all.
@@ -21294,8 +21694,20 @@ const TalariaV8bLive = () => {
     };
 
     tick();
-    const id = window.setInterval(tick, 24);
-    return () => clearInterval(id);
+    // Fast while bridge/drag lead is hot; slower when idle (cuts dual-writer churn).
+    let id = 0;
+    const schedule = () => {
+      const hot =
+        isOmBridgeLead(omPanelBridgeRef.current.control) ||
+        !!window.chart?.orderManager?.isDraggingPreviewLine;
+      const ms = hot ? 24 : 120;
+      id = window.setTimeout(() => {
+        tick();
+        schedule();
+      }, ms);
+    };
+    schedule();
+    return () => clearTimeout(id);
   }, [orderPanelOpen, riskBasis]);
 
   // PRE tags ↔ Strategies Lab: hydrate from hidden #orderStrategyVariablesMount, mirror writes back so place-order picks up strategyVariables.
@@ -21622,15 +22034,15 @@ const TalariaV8bLive = () => {
     });
   };
 
-  /** Obsidian checkbox — sunken box + check; label stays muted (never accent). */
+  /** Obsidian checkbox — dense lists only (fib levels, VA rows). Named toggles use SettChip. */
   const SettChkBox = (on, isH) => (
     <span
       data-sett-box=""
       data-on={on ? "1" : undefined}
       aria-hidden="true"
       style={{
-        width: 14,
-        height: 14,
+        width: 16,
+        height: 16,
         borderRadius: 4,
         boxSizing: "border-box",
         border: `1px solid ${on ? "var(--accent)" : isH ? "var(--line-strong, var(--line))" : "var(--line)"}`,
@@ -21643,7 +22055,7 @@ const TalariaV8bLive = () => {
       }}
     >
       {on ? (
-        <svg width={10} height={10} viewBox="0 0 10 10" fill="none" aria-hidden="true">
+        <svg width={11} height={11} viewBox="0 0 10 10" fill="none" aria-hidden="true">
           <path d="M2 5.2 L4.2 7.2 L8 2.8" stroke="var(--cta-fg, #0a0a0a)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       ) : null}
@@ -21727,6 +22139,147 @@ const TalariaV8bLive = () => {
       </div>
     );
   };
+  /** Obsidian opacity / value slider — same scrubber grammar as replay speed. */
+  const SettOpacitySlider = ({
+    pct,
+    value,
+    min = 0,
+    max = 1,
+    step = 0.01,
+    onChange,
+    hovKey,
+    width = 128,
+    disabled = false,
+    grow = false,
+    ariaLabel = "Opacity",
+  }) => {
+    const clampPct = Math.max(0, Math.min(100, Number(pct) || 0));
+    const beginGrab = (el) => {
+      if (hovKey) setHov(hovKey);
+      try { el?.closest?.("[data-sett-slider]")?.setAttribute("data-dragging", "1"); } catch (_) { /* ignore */ }
+      try { document.documentElement.setAttribute("data-sett-slider-grabbing", "1"); } catch (_) { /* ignore */ }
+    };
+    const endGrab = (el) => {
+      setHov(null);
+      try { el?.closest?.("[data-sett-slider]")?.removeAttribute("data-dragging"); } catch (_) { /* ignore */ }
+      try { document.documentElement.removeAttribute("data-sett-slider-grabbing"); } catch (_) { /* ignore */ }
+    };
+    return (
+      <div
+        data-sett-slider=""
+        data-grow={grow ? "1" : undefined}
+        style={{
+          ...(width != null && !grow ? { width } : null),
+          opacity: disabled ? 0.38 : 1,
+          pointerEvents: disabled ? "none" : "auto",
+          ["--sett-slider-pct"]: clampPct,
+        }}
+      >
+        <div data-sett-slider-rail="">
+          <i data-sett-slider-fill="" style={{ width: `${clampPct}%` }} />
+        </div>
+        <i data-sett-slider-thumb="" aria-hidden="true" />
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          aria-label={ariaLabel}
+          onChange={(e) => onChange(+e.target.value)}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            beginGrab(e.currentTarget);
+            const onUp = () => {
+              endGrab(e.currentTarget);
+              window.removeEventListener("pointerup", onUp);
+              window.removeEventListener("pointercancel", onUp);
+            };
+            window.addEventListener("pointerup", onUp);
+            window.addEventListener("pointercancel", onUp);
+          }}
+          onClick={(e) => e.stopPropagation()}
+        />
+      </div>
+    );
+  };
+  /** Named on/off chip — Price/Time/Left/Right/Show; same 30px shell as data-sett-dd. */
+  const SettChip = (on, hKey, label, toggle, opts) => {
+    const run = () => {
+      const now = Date.now();
+      const last = tlChkLastActRef.current[hKey] || 0;
+      if (now - last < 100) return;
+      tlChkLastActRef.current[hKey] = now;
+      flushSync(() => toggle());
+      if (opts?.vpImmediate) vpStyleBridgeFlushRef.current?.();
+      if (opts?.vwapImmediate) vwapStyleBridgeFlushRef.current?.();
+      if (opts?.avImmediate) avStyleBridgeFlushRef.current?.();
+    };
+    const activate = (opts?.vpImmediate || opts?.vwapImmediate || opts?.avImmediate || opts?.immediate)
+      ? modalPointerActivate(run)
+      : modalPointerActivate(() => toggle());
+    return (
+      <button
+        type="button"
+        data-sett-chip=""
+        data-on={on ? "1" : undefined}
+        aria-pressed={!!on}
+        {...activate}
+        onMouseEnter={() => setHov(hKey)}
+        onMouseLeave={() => setHov(null)}
+      >
+        {label}
+      </button>
+    );
+  };
+  /**
+   * Dense level-value stepper (fib / gann / channel rows).
+   * One `data-sett-step` shell — never nest a bordered input under absolute ▲▼ overlays.
+   */
+  const SettLevelStep = ({
+    value,
+    onChange,
+    onBump,
+    width = 72,
+    opacity = 1,
+    pointerEvents,
+    activate = modalPointerActivate,
+    allowPartial = /^[0-9.]*$/,
+  }) => (
+    <div
+      data-sett-step=""
+      data-sett-level-step=""
+      style={{
+        width,
+        flex: "0 0 auto",
+        maxWidth: width,
+        opacity,
+        pointerEvents,
+        transition: "opacity 0.15s",
+      }}
+    >
+      <input
+        value={value}
+        onChange={(e) => {
+          const val = e.target.value;
+          if (!allowPartial.test(val)) return;
+          onChange(val);
+        }}
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        className="tlr-nospinner"
+        style={{ fontFamily: F }}
+      />
+      <div data-sett-step-btns="">
+        {[[+1, "▲"], [-1, "▼"]].map(([delta, chr], i) => (
+          <button type="button" key={i} {...activate(() => onBump(delta))}>
+            {chr}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
   const cpW = 210; // color picker width (inline/legacy; Obsidian shell is 228)
   const CP_SHELL_W = 228; // must match [data-tlr-cp="1"] width in chrome-rebuild.css
   const CP_H = 280; // color picker estimated height
@@ -21762,7 +22315,9 @@ const TalariaV8bLive = () => {
   };
   // Edge-aware position for settDrop popups
   // Returns { top, left } for below or { cssBottom, left } for above — render must handle both
-  // opts.flush: keep left edge glued to the trigger; shrink width instead of shifting left on clamp
+  // Default: flush-LEFT under the trigger (same rule as v9PortalSettDropMenu).
+  // opts.flush: keep left edge glued; shrink width instead of drifting left on clamp.
+  // opts.rightAlign: trailing icon controls only. opts.centerAlign is ignored (legacy).
   const sdPos = (r, opts = {}) => {
     const vpH = window.innerHeight / Z;
     const vpW = window.innerWidth / Z;
@@ -21773,27 +22328,27 @@ const TalariaV8bLive = () => {
     // vertical: open below, flip above if overflow — use cssBottom so actual height doesn't matter
     const flipAbove = bB + gapY + estH > vpH - 8;
     const vert = flipAbove ? { cssBottom: vpH - bT + gapY } : { top: bB + gapY };
-    // horizontal — centerAlign under trigger, else right/left
     let left;
-    if (opts.centerAlign) {
-      left = (bL + bR) / 2 - menuW / 2;
-    } else if (opts.rightAlign) {
+    if (opts.rightAlign) {
       left = bR - menuW;
+      if (left < 8) left = 8;
+      if (left + menuW > vpW - 8) left = Math.max(8, vpW - menuW - 8);
     } else {
+      // Flush left — never center (centerAlign used to yank lists left of the face).
       left = bL;
+      if (left + menuW > vpW - 8) left = Math.max(8, vpW - menuW - 8);
+      if (left < 8) left = 8;
     }
     if (opts.flush) {
-      // Stay flush with the trigger’s left (or right if rightAlign); never drift sideways to “fit”
       if (opts.rightAlign) {
         left = Math.min(bR - menuW, vpW - menuW - 8);
         left = Math.max(8, left);
         menuW = Math.min(menuW, Math.max(80, bR - left));
       } else {
-        left = Math.max(8, Math.min(left, bL));
+        left = bL;
+        if (left < 8) left = 8;
         menuW = Math.min(menuW, Math.max(80, vpW - left - 8));
       }
-    } else {
-      left = Math.max(8, Math.min(left, vpW - menuW - 8));
     }
     return { ...vert, left, ...(opts.w != null || opts.flush ? { w: menuW } : {}) };
   };
@@ -22100,10 +22655,10 @@ const TalariaV8bLive = () => {
           display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box",
           borderRadius: primary ? 12 : 10,
           background: primary
-            ? (isP || isH ? "var(--brand-mist)" : "var(--brand-white)")
+            ? (isP || isH ? "var(--cta-hover)" : "var(--cta-bg)")
             : isP ? "var(--accent-quiet)" : isH ? "var(--surface-raised)" : "transparent",
           border: primary ? "none" : `1px solid ${isH || isP ? "var(--line-strong)" : "var(--line)"}`,
-          color: primary ? "var(--brand-black)" : isH || isP ? "var(--text)" : "var(--text-muted)",
+          color: primary ? "var(--cta-fg)" : isH || isP ? "var(--text)" : "var(--text-muted)",
           fontSize: small ? 11 : 12,
           fontWeight: primary ? 600 : 500,
           fontFamily: F,
@@ -22126,6 +22681,8 @@ const TalariaV8bLive = () => {
     },
     onMouseDown: (e) => e.stopPropagation(),
     onClick: (e) => e.stopPropagation(),
+    /* Row dblclick opens settings — action hits must not bubble into that. */
+    onDoubleClick: (e) => e.stopPropagation(),
   });
 
   const captureTlStyleDropAnchor = useCallback((el, estH = 220) => {
@@ -22133,6 +22690,68 @@ const TalariaV8bLive = () => {
     if (!a) return;
     setTlStyleDropUp(!!a.openUp);
     setTlStyleDropAnchor(a);
+  }, []);
+
+  /** Close every settings-window dropdown (portaled menus freeze if the window moves). */
+  const closeAllSettStyleDrops = useCallback(() => {
+    setTlStyleDrop(null);
+    setTlStyleDropAnchor(null);
+    setTlInfoDropAnchor(null);
+    setVpStyleDrop(null);
+    setAvStyleDrop(null);
+    setVwapStyleDrop(null);
+    setVolDropAnchor(null);
+    setIndStyleDrop(null);
+    setIndStyleDropAnchor(null);
+    setTxtSizeOpen(false);
+    setV9IndSelectMenu(null);
+  }, []);
+
+  /** Portaled sett menus are position:fixed — dismiss on any scroll outside the menu itself. */
+  useEffect(() => {
+    const anyOpen = !!(
+      tlStyleDrop || vpStyleDrop || avStyleDrop || vwapStyleDrop
+      || indStyleDrop || txtSizeOpen || v9IndSelectMenu || volDropAnchor
+      || tlInfoDropAnchor
+    );
+    if (!anyOpen) return undefined;
+    const onScrollOrWheel = (e) => {
+      const t = e && e.target;
+      if (t && typeof t.closest === "function") {
+        if (t.closest("[data-sett-drop-portal],[data-sett-drop][data-v9-chrome]")) return;
+      }
+      closeAllSettStyleDrops();
+    };
+    window.addEventListener("scroll", onScrollOrWheel, true);
+    window.addEventListener("wheel", onScrollOrWheel, { capture: true, passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScrollOrWheel, true);
+      window.removeEventListener("wheel", onScrollOrWheel, true);
+    };
+  }, [
+    tlStyleDrop, vpStyleDrop, avStyleDrop, vwapStyleDrop,
+    indStyleDrop, txtSizeOpen, v9IndSelectMenu, volDropAnchor,
+    tlInfoDropAnchor, closeAllSettStyleDrops,
+  ]);
+
+  /** Only one quick-bar / text-bar menu at a time. */
+  const closeAllQuickBarMenus = useCallback(() => {
+    setTlBarDrop(null);
+    setTxtBarSizeOpen(false);
+    setTxtBarDrop(null);
+    setVwapBarDrop(null);
+    setVpBarDrop(null);
+    setAvBarDrop(null);
+  }, []);
+
+  /** Center on first open; after a user drag, reopen at the pinned spot. */
+  const resolveSettOpenPos = useCallback((kind, winW = 448, winH = 520) => {
+    return resolveSettOpenPosRef.current(kind, winW, winH);
+  }, []);
+
+  const pinSettOpenPos = useCallback((kind, pos) => {
+    if (kind && settPosPinnedRef.current) settPosPinnedRef.current[kind] = true;
+    if (kind && pos) settPosLiveRef.current[kind] = pos;
   }, []);
 
   /** Style/thickness dropdown trigger — pointerdown so one press opens inside modals. */
@@ -22146,17 +22765,40 @@ const TalariaV8bLive = () => {
         setTlStyleDropAnchor(null);
         return;
       }
+      setVpStyleDrop(null);
+      setAvStyleDrop(null);
+      setVwapStyleDrop(null);
+      setVolDropAnchor(null);
       captureTlStyleDropAnchor(e.currentTarget, estH);
       setTlStyleDrop(dropKey);
     }),
   });
 
+  /**
+   * Portaled sett drops apply on pointerdown then unmount. React can commit that unmount
+   * before the trailing mousedown, so the event retargets to the chart and chart-dismiss
+   * closes the whole settings window. Guard + defer the close so that never happens.
+   */
+  const armSettDropPickDismissGuard = () => {
+    v9SettingsChartDismissLockUntilRef.current = Date.now() + 800;
+    try { v9SuppressNextChartDeselect(); } catch (_) {}
+  };
+  const runSettDropPick = (pickFn, closeFn) => {
+    armSettDropPickDismissGuard();
+    pickFn();
+    window.setTimeout(() => {
+      try { closeFn(); } catch (_) {}
+    }, 0);
+  };
+
   /** Style/thickness dropdown menu item — apply on pointerdown for immediate chart sync. */
   const tlStyleDropPick = (pickFn) => ({
     "data-tl-style-drop": "1",
     ...modalPointerActivate(() => {
-      pickFn();
-      setTlStyleDrop(null);
+      runSettDropPick(pickFn, () => {
+        setTlStyleDrop(null);
+        setTlStyleDropAnchor(null);
+      });
     }),
   });
 
@@ -22164,6 +22806,7 @@ const TalariaV8bLive = () => {
   const tlStyleDropPickKeepOpen = (pickFn) => ({
     "data-tl-style-drop": "1",
     ...modalPointerActivate(() => {
+      armSettDropPickDismissGuard();
       pickFn();
     }),
   });
@@ -22186,9 +22829,10 @@ const TalariaV8bLive = () => {
   const indStyleDropPick = (pickFn) => ({
     "data-ind-style-drop": "1",
     ...modalPointerActivate(() => {
-      pickFn();
-      setIndStyleDrop(null);
-      setIndStyleDropAnchor(null);
+      runSettDropPick(pickFn, () => {
+        setIndStyleDrop(null);
+        setIndStyleDropAnchor(null);
+      });
     }),
   });
 
@@ -22220,7 +22864,7 @@ const TalariaV8bLive = () => {
           onMouseEnter={() => !disabled && setHov(hk)}
           onMouseLeave={() => setHov(null)}
           title="Plot style"
-          style={{ width: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "default", position: "relative" }}>
+          style={{cursor:"default", position:"relative"}}>
           <span style={{ flexShrink: 0, display: "inline-flex", opacity: 0.95, transform: "scale(0.48)", transformOrigin: "center" }}>
             <V9PlotStylePreview style={plotStyle} color={isOpen ? "var(--accent)" : "var(--text-muted)"} />
           </span>
@@ -22244,14 +22888,14 @@ const TalariaV8bLive = () => {
           {...indStyleDropTrigger(dropKey, (e) => openIndShapeDropAnchor(e, dropKey, dropH))}
           onMouseEnter={() => !disabled && setHov(hk)}
           onMouseLeave={() => setHov(null)}
-          style={{ width: 56, display: "flex", alignItems: "center", justifyContent: "center", gap: 4, cursor: "default", position: "relative" }}
+          style={{ cursor: "default", position: "relative" }}
         >
-          <svg width={22} height={10} viewBox="0 0 22 10">
-            <line x1={0} y1={5} x2={22} y2={5} stroke={isOpen ? "var(--accent)" : "var(--text-muted)"}
-              strokeWidth={shapeType === "bold" ? 2.5 : 1.5} strokeLinecap="round"
+          <svg data-sett-preview="" width={28} height={12} viewBox="0 0 28 12" aria-hidden="true">
+            <line x1={0} y1={6} x2={28} y2={6} stroke={isOpen ? "var(--accent)" : "var(--text-muted)"}
+              strokeWidth={shapeType === "bold" ? 3 : 2} strokeLinecap="round"
               strokeDasharray={v9IndDashArray(shapeType)} />
           </svg>
-          <I n="chevDown" s={7} cl={isOpen ? "var(--accent)" : "var(--text-muted)"} />
+          <I n="chevDown" s={8} cl={isOpen ? "var(--accent)" : "var(--text-muted)"} />
         </div>
       </div>
     );
@@ -22273,25 +22917,25 @@ const TalariaV8bLive = () => {
           {...indStyleDropTrigger(dropKey, (e) => openIndShapeDropAnchor(e, dropKey, dropH))}
           onMouseEnter={() => !disabled && setHov(hk)}
           onMouseLeave={() => setHov(null)}
-          style={{ width: 56, display: "flex", alignItems: "center", justifyContent: "center", gap: 4, cursor: "default", position: "relative" }}
+          style={{ cursor: "default", position: "relative" }}
         >
-          <svg width={22} height={svgH} viewBox={`0 0 22 ${svgH}`}>
-            <line x1={0} y1={svgH / 2} x2={22} y2={svgH / 2} stroke={isOpen ? "var(--accent)" : "var(--text-muted)"} strokeWidth={wNum} strokeLinecap="round" />
+          <svg data-sett-preview="" width={28} height={Math.max(12, svgH)} viewBox={`0 0 28 ${Math.max(12, svgH)}`} aria-hidden="true">
+            <line x1={0} y1={Math.max(12, svgH) / 2} x2={28} y2={Math.max(12, svgH) / 2} stroke={isOpen ? "var(--accent)" : "var(--text-muted)"} strokeWidth={wNum} strokeLinecap="round" />
           </svg>
-          <I n="chevDown" s={7} cl={isOpen ? "var(--accent)" : "var(--text-muted)"} />
+          <I n="chevDown" s={8} cl={isOpen ? "var(--accent)" : "var(--text-muted)"} />
         </div>
       </div>
     );
   };
 
   const Sel = ({ children, w }) => (
-    <select style={{ background: c.well, border: `1px solid ${c.br}`, color: c.tx, padding: "3px 6px", fontSize: 11, fontFamily: F, outline: "none", boxShadow: "inset 0 1px 2px rgba(0,0,0,0.2)", width: w }}>{children}</select>
+    <select style={{ background: c.well, border: `1px solid ${c.br}`, color: "var(--text)", padding: "3px 6px", fontSize: 11, fontFamily: F, outline: "none", boxShadow: "inset 0 1px 2px rgba(0,0,0,0.2)", width: w }}>{children}</select>
   );
 
   const MiniIn = ({ val, w = 36, pre }) => (
     <div style={{ display: "inline-flex", alignItems: "center", background: c.hv, border: "1px solid rgba(140,160,255,0.22)", padding: "2px 4px", width: w, boxShadow: "inset 0 1px 2px rgba(0,0,0,0.2)" }}>
-      {pre && <span style={{ color: c.ts, fontSize: 10, marginRight: 2 }}>{pre}</span>}
-      <span style={{ flex: 1, textAlign: "right", fontSize: 11, fontWeight: 700, fontFamily: F, fontVariantNumeric: "tabular-nums", color: c.tx }}>{val}</span>
+      {pre && <span style={{ color: "var(--text-muted)", fontSize: 10, marginRight: 2 }}>{pre}</span>}
+      <span style={{ flex: 1, textAlign: "right", fontSize: 11, fontWeight: 700, fontFamily: F, fontVariantNumeric: "tabular-nums", color: "var(--text)" }}>{val}</span>
     </div>
   );
 
@@ -24104,13 +24748,16 @@ const TalariaV8bLive = () => {
           px = Math.max(20, Number(x) / zForPos - 220);
           py = Math.max(60, Number(y) / zForPos - 40);
         }
-        // Never open a settings window off-chart — clamp using a conservative height; a
-        // follow-up layout pass re-clamps to the measured height once mounted.
-        ({ x: px, y: py } = v9ClampFloatingWindowPos(px, py, 448, 520, zForPos));
-
+        // First open: center on canvas. After the user has dragged, reopen at the pinned spot.
+        // (Legacy near-click coords above are ignored once resolveSettOpenPos takes over.)
         if (dropdown) closeDropdown();
-        v9SettingsChartDismissLockUntilRef.current = 0;
+        // Arm BEFORE flushSync open. Gear buttons fire on pointerdown and unmount the quick
+        // bar in the same turn; the trailing mousedown retargets to the chart and would
+        // otherwise instant-dismiss (single-chart used to leave this lock at 0).
+        v9SettingsChartDismissLockUntilRef.current = Date.now() + 900;
+        v9SuppressNextChartDeselect();
         if (group === 'text') {
+          ({ x: px, y: py } = resolveSettOpenPos("txt", 448, 520));
           setTlBarSelected(true);
           setTlBarSelectedType(drawing.type);
           const tp = {
@@ -24127,13 +24774,12 @@ const TalariaV8bLive = () => {
           setTxtSettPos({ x: px, y: py });
           if (drawing.type === 'price-note') setTxtSettTab('style');
           else if (v9TxtIconHasContentTab(legacyChartTextTypeToV9Icon(drawing.type) || 'text')) setTxtSettTab('text');
-          v9SettingsChartDismissLockUntilRef.current = Date.now() + 700;
           flushSync(() => {
             setTxtSettOpen(true);
           });
         } else if (drawing.type === 'anchored-vwap') {
           suppressVwapBridge.current = true;
-          v9SettingsChartDismissLockUntilRef.current = Date.now() + 700;
+          ({ x: px, y: py } = resolveSettOpenPos("vwap", 448, 520));
           flushSync(() => {
             setVwapStyle((prev) => v9VwapStylePatchFromDrawing(drawingForStyle, prev));
             setVwapSettPos({ x: px, y: py });
@@ -24141,6 +24787,7 @@ const TalariaV8bLive = () => {
             setVwapSettTab("style");
           });
         } else if (drawing.type === 'volume-profile' || drawing.type === 'fixed-range-volume-profile') {
+          ({ x: px, y: py } = resolveSettOpenPos("vp", 448, 520));
           suppressVpBridge.current = true;
           suppressCoordBridge.current = true;
           const ds = drawingForStyle.style || drawing.style || {};
@@ -24149,7 +24796,6 @@ const TalariaV8bLive = () => {
           const VOL_R2 = {upDown:"Up/Down",total:"Total",delta:"Delta"};
           const vpCoordVisPatch = v9VpCoordVisPatchFromDrawing(drawingForStyle);
           setVpLocked(!!drawingForStyle.locked);
-          v9SettingsChartDismissLockUntilRef.current = Date.now() + 700;
           flushSync(() => {
             setTlStyle((prev) => ({ ...prev, ...vpCoordVisPatch }));
             setVpStyle((prev) => ({
@@ -24193,24 +24839,19 @@ const TalariaV8bLive = () => {
           });
         } else if (drawing.type === 'anchored-volume-profile') {
           suppressAvBridge.current = true;
+          ({ x: px, y: py } = resolveSettOpenPos("av", 448, 520));
           const ds = drawingForStyle.style || drawing.style || {};
           const PLC_R3 = {left:"Left",right:"Right"};
           const ROW_R3 = {numberOfRows:"Number of Rows",ticksPerRow:"Ticks per Row"};
           const VOL_R3 = {upDown:"Up/Down",total:"Total",delta:"Delta"};
           setAvStyle(prev => ({...prev, valuesOn: ds.showValues !== false, valuesColor: ds.valuesColor||prev.valuesColor, widthPct: String(Math.round((ds.profileWidthRatio??0.3)*100)), placement: PLC_R3[ds.profilePlacement]||prev.placement, zoneBgOn: ds.showBackground !== false, zoneBgColor: ds.fill||prev.zoneBgColor, zoneBgAlpha: Math.round((ds.backgroundOpacity??0.85)*100), upVolColor: ds.buyColor||prev.upVolColor, downVolColor: ds.sellColor||prev.downVolColor, valueAreaUpColor: ds.valueAreaBuyColor||prev.valueAreaUpColor, valueAreaDownColor: ds.valueAreaSellColor||prev.valueAreaDownColor, pocOn: ds.showPOC !== false, pocColor: ds.pocColor||prev.pocColor, vahOn: ds.showVAH !== false, vahColor: ds.VAHColor||prev.vahColor, valOn: ds.showVAL !== false, valColor: ds.VALColor||prev.valColor, devPocOn: !!ds.showDevelopingPOC, devPocColor: ds.developingPOCColor||prev.devPocColor, devVAOn: !!ds.showDevelopingVA, devVAColor: ds.developingVAColor||prev.devVAColor, rowsLayout: ROW_R3[ds.rowsLayout]||prev.rowsLayout, rowSize: String(ds.rowSize??prev.rowSize), volumeOn: ds.showVolume !== false, volumeType: VOL_R3[ds.volumeDisplay]||prev.volumeType, valueAreaVol: String(ds.valueAreaVolume??prev.valueAreaVol), extendRight: !!ds.extendRight, priceLabels: ds.showPriceLabel !== false, timeLabels: ds.showTimeLabel !== false, ...v9AnchorCoordPatchFromDrawing(drawingForStyle) }));
-          v9SettingsChartDismissLockUntilRef.current = Date.now() + 700;
           flushSync(() => {
             setAvSettPos({ x: px, y: py });
             setAvSettOpen(true);
             setAvSettTab("style");
           });
         } else {
-          // Multichart: brief chart-dismiss lock so the same pointer sequence /
-          // deferred peer-clear cannot treat the just-opened panel as an
-          // outside-chart click (single-chart stays unlocked for immediate dismiss).
-          let inMc = false;
-          try { inMc = !!(typeof window !== "undefined" && window.__multichartGrid); } catch (_) {}
-          v9SettingsChartDismissLockUntilRef.current = inMc ? Date.now() + 700 : 0;
+          ({ x: px, y: py } = resolveSettOpenPos("tl", 448, 520));
           flushSync(() => {
             setTlBarSelected(true);
             setTlBarSelectedType(drawing.type);
@@ -26925,8 +27566,6 @@ const TalariaV8bLive = () => {
     }
     setSettingsOpen(false);
     setFaqOpen(false);
-    setNewsOpen(false);
-    setLayoutOpen(false);
     if (indSettOpenRef.current) closeIndSett();
     setIndOpen(false);
     setIndSearch("");
@@ -26935,7 +27574,6 @@ const TalariaV8bLive = () => {
     setColorPicker(null);
     cpAlertAnchorRef.current = null;
     setScreenshotOpen(false);
-    setLayersOpen(false);
     setSettDrop(null);
     setProfileOpen(false);
     // One chrome window at a time — Create/Edit Alert is mutually exclusive with settings/etc.
@@ -26952,20 +27590,317 @@ const TalariaV8bLive = () => {
   };
   closeWindowsRef.current = closeWindows;
 
+  // closeAll is triggered by backdrop/outside clicks (topbar pops + chrome modals).
+  // One floating surface at a time — every peer overlay must die here.
+  // Use dismissPopup (instant) for topbar pops so exit anim cannot stack with a newly opened peer.
+  const closeAll = () => {
+    setDropdown(null); setSymbolSearch(""); setTfCatsOpen([]); setTfUnitOpen(false);
+    setSDrop(null); setColorPicker(null); cpBarAnchorRef.current = null; setSettDrop(null);
+    setFaqOpen(false); setScreenshotOpen(false); setProfileOpen(false);
+    setIndOpen(false); setIndSearch(""); setIndSelectedId(null);
+    dismissPopup(setLogoMenu, "logoMenu");
+    dismissPopup(setReplayOpts, "replayOpts");
+    dismissPopup(setGotoOpen, "goto");
+    dismissPopup(setSymbolOpen, "symbol");
+    dismissPopup(setChartTypeOpen, "chartType");
+    dismissPopup(setTfOpen, "tf");
+    setTagDrop(null); setTlStyleDrop(null); setTlStyleDropAnchor(null);
+    setTlBarDrop(null); setTxtBarSizeOpen(false); setTxtBarDrop(null); setEmojiPanelOpen(false);
+    setVwapBarDrop(null); setVpBarDrop(null); setAvBarDrop(null);
+    setTlSettTplDrop(false); setTxtSettTplDrop(false);
+    setTlSaveAsMode(false); setTlNewTplName("");
+    setTxtSaveAsMode(false); setTxtNewTplName("");
+    setIndSettTplOpen(false); setIndSettTplSaveAs(false); setIndSettTplName("");
+    setOpSymOpen(false); setOpSymSearch(""); setOpSizeOpen(false);
+    setOpEntryLegsOpen(false);
+    setClosing((s) => {
+      if (!s.size) return s;
+      const n = new Set(s);
+      ["tlbardrop", "txtbardrop", "logoMenu", "replayOpts", "goto", "symbol", "chartType", "tf"].forEach((k) => n.delete(k));
+      return n;
+    });
+    try { closeAllSettStyleDrops(); } catch (_) {}
+    try { setV9IndSelectMenu(null); } catch (_) {}
+  };
+  closeAllRef.current = closeAll;
+
+  /** Close every floating chrome peer before opening a new one (Interval vs Templates, etc.). */
+  const beginExclusiveOverlayOpen = () => {
+    closeAll();
+    try {
+      if (tlSettOpenRef.current) closeTlSett();
+      if (txtSettOpenRef.current) closeTxtSett();
+      if (vwapSettOpenRef.current) closeVwapSett();
+      if (vpSettOpenRef.current) closeVpSett();
+      if (avSettOpenRef.current) closeAvSett();
+      if (indSettOpenRef.current) closeIndSett();
+    } catch (_) {}
+  };
+
+  // Safety net: any quick-bar / color / drawing-sett overlay instantly kills topbar pops
+  // (Interval + Templates must never stack — including during closePopup exit anim).
+  useEffect(() => {
+    const anyPeer =
+      !!tlBarDrop || !!txtBarDrop || !!vwapBarDrop || !!vpBarDrop || !!avBarDrop
+      || !!colorPicker || !!txtBarSizeOpen || !!emojiPanelOpen
+      || !!tlSettOpen || !!txtSettOpen || !!vwapSettOpen || !!vpSettOpen || !!avSettOpen || !!indSettOpen;
+    if (!anyPeer) return;
+    dismissPopup(setLogoMenu, "logoMenu");
+    dismissPopup(setReplayOpts, "replayOpts");
+    dismissPopup(setGotoOpen, "goto");
+    dismissPopup(setSymbolOpen, "symbol");
+    dismissPopup(setChartTypeOpen, "chartType");
+    dismissPopup(setTfOpen, "tf");
+  }, [
+    tlBarDrop, txtBarDrop, vwapBarDrop, vpBarDrop, avBarDrop,
+    colorPicker, txtBarSizeOpen, emojiPanelOpen,
+    tlSettOpen, txtSettOpen, vwapSettOpen, vpSettOpen, avSettOpen, indSettOpen,
+  ]);
+
+  /**
+   * Single chrome open policy — closes peers then shows `kind`.
+   * kinds: settings|profile|help|screenshot|indicators|support|symbols|chartType|tf|logo|layout|layers|news
+   */
+  const openChromeSurface = useCallback((kind, opts = {}) => {
+    const railKinds = new Set(["layout", "layers", "news"]);
+    const topbarKinds = new Set(["symbols", "chartType", "tf", "logo"]);
+    const modalKinds = new Set(["settings", "profile", "help", "screenshot", "indicators", "support"]);
+
+    if (railKinds.has(kind)) {
+      try { closeWindows(); } catch (_) {}
+      try { closeAll(); } catch (_) {}
+      setSupportChatOpen(false);
+      setOrderPanelOpen(false);
+      setRightPanel((prev) => (prev === kind ? null : kind));
+      return;
+    }
+
+    if (topbarKinds.has(kind)) {
+      beginExclusiveOverlayOpen();
+      if (kind === "symbols") {
+        if (opts.left != null) setSymbolDropL(opts.left);
+        v9EnsureCompareFilesLoaded();
+        Promise.resolve(v9PurgeCompareForChartSymbol(symbol)).finally(() => setCompareUiTick((n) => n + 1));
+        setSymbolOpen(true);
+        if (opts.focusSearch !== false) {
+          requestAnimationFrame(() => {
+            try {
+              const inp = document.querySelector('[data-tb-drop="symbol"] input');
+              if (inp && typeof inp.focus === "function") inp.focus();
+            } catch (_) {}
+          });
+        }
+        return;
+      }
+      if (kind === "chartType") {
+        if (opts.left != null) setChartTypeDropL(opts.left);
+        setChartTypeOpen(true);
+        requestAnimationFrame(() => {
+          try {
+            const el = document.querySelector('[data-tb-drop="chartType"]');
+            if (el && typeof el.focus === "function") el.focus();
+          } catch (_) {}
+        });
+        return;
+      }
+      if (kind === "tf") {
+        if (opts.left != null) setTfDropL(opts.left);
+        setTfOpen(true);
+        requestAnimationFrame(() => {
+          try {
+            const el = document.querySelector('[data-tb-drop="tf"]');
+            if (el && typeof el.focus === "function") el.focus();
+          } catch (_) {}
+        });
+        return;
+      }
+      if (kind === "logo") {
+        setLogoMenu(true);
+        return;
+      }
+    }
+
+    if (!modalKinds.has(kind)) return;
+
+    try { closeWindows(); } catch (_) {}
+    try { closeAll(); } catch (_) {}
+    setSupportChatOpen(false);
+    if (kind !== "support" && !opts.keepRightPanel) setRightPanel(null);
+
+    if (kind === "settings") {
+      if (typeof opts.tab === "string") {
+        try { setSettingsTab(opts.tab); } catch (_) {}
+      }
+      setSettingsPos(resolveChromeWinOpenPos("settings"));
+      setSettingsOpen(true);
+      return;
+    }
+    if (kind === "profile") {
+      setProfilePos(resolveChromeWinOpenPos("profile"));
+      setProfileOpen(true);
+      return;
+    }
+    if (kind === "help") {
+      setFaqPos(resolveChromeWinOpenPos("help"));
+      setFaqOpen(true);
+      return;
+    }
+    if (kind === "indicators") {
+      setIndSelectedId(null);
+      setIndTplOpen(false);
+      setIndPos(resolveChromeWinOpenPos("indCatalog"));
+      setIndOpen(true);
+      return;
+    }
+    if (kind === "screenshot") {
+      if (opts.canvasDims) setCanvasDims(opts.canvasDims);
+      setScreenshotFlash(true);
+      const delay = Number.isFinite(opts.flashDelay) ? opts.flashDelay : 260;
+      v9SettingsChartDismissLockUntilRef.current = Date.now() + delay + 700;
+      setScreenshotPos(resolveChromeWinOpenPos("screenshot"));
+      setTimeout(() => setScreenshotOpen(true), delay);
+      return;
+    }
+    if (kind === "support") {
+      setOrderPanelOpen(false);
+      setSupportChatOpen(true);
+    }
+  }, [closeAll, closeWindows, beginExclusiveOverlayOpen, symbol]);
+
+  const peelChromeDismiss = useCallback(() => {
+    // 1) nested drops
+    if (settDrop) { setSettDrop(null); return true; }
+    if (settHdrSaveAs) { setSettHdrSaveAs(false); setSettHdrTplName(""); return true; }
+    if (tfUnitOpen) { setTfUnitOpen(false); return true; }
+    if (indTplOpen) { setIndTplOpen(false); setIndTplSaveMode(false); setIndTplName(""); return true; }
+    if (scLinkOpen) { setScLinkOpen(false); setScLinkSearch(""); return true; }
+    if (colorPicker) { setColorPicker(null); cpBarAnchorRef.current = null; return true; }
+    if (v9IndSelectMenu) { setV9IndSelectMenu(null); return true; }
+    // 2) drawing / indicator sett
+    if (v9AnyDrawingSettingsOpenRef.current) {
+      if (closeDrawingSettingsOnChartClickRef.current?.() === true) return true;
+    }
+    // 3) modals
+    if (settingsOpen || closing.has("settings")) { cancelSettingsModal(); return true; }
+    if (profileOpen || closing.has("profile")) { cancelProfileModal(); return true; }
+    if (faqOpen || closing.has("faq")) {
+      animClose(setFaqOpen, "faq");
+      setFaqExpand(null);
+      setFaqSearch("");
+      return true;
+    }
+    if (indOpen || closing.has("ind")) {
+      animClose(setIndOpen, "ind");
+      setIndSearch("");
+      setIndSelectedId(null);
+      setIndTplOpen(false);
+      return true;
+    }
+    if (screenshotOpen || closing.has("screenshot")) {
+      animClose(setScreenshotOpen, "screenshot");
+      return true;
+    }
+    // 4) support
+    if (supportChatOpen) { setSupportChatOpen(false); return true; }
+    // 5) right rail
+    if (rightPanel) { setRightPanel(null); return true; }
+    // 6) topbar pops
+    if (logoMenu) { closePopup(setLogoMenu, "logoMenu"); return true; }
+    if (symbolOpen) { closePopup(setSymbolOpen, "symbol"); return true; }
+    if (chartTypeOpen) { closePopup(setChartTypeOpen, "chartType"); return true; }
+    if (tfOpen) { closePopup(setTfOpen, "tf"); return true; }
+    if (replayOpts) { closePopup(setReplayOpts, "replayOpts"); return true; }
+    if (gotoOpen) { closePopup(setGotoOpen, "goto"); return true; }
+    return false;
+  }, [
+    settDrop, settHdrSaveAs, tfUnitOpen, indTplOpen, scLinkOpen, colorPicker, v9IndSelectMenu,
+    settingsOpen, profileOpen, faqOpen, indOpen, screenshotOpen, supportChatOpen, rightPanel,
+    logoMenu, symbolOpen, chartTypeOpen, tfOpen, replayOpts, gotoOpen, closing,
+    cancelSettingsModal, cancelProfileModal,
+  ]);
+  peelChromeDismissRef.current = peelChromeDismiss;
+
+  // Screenshot: outside-click peels via the shared chrome ladder (Esc / nested first).
+  useEffect(() => {
+    if (!screenshotOpen) return;
+    let armed = false;
+    const armId = requestAnimationFrame(() => { armed = true; });
+    const onPointerDown = (e) => {
+      if (!armed) return;
+      if (isChromeWinGestureLocked()) return;
+      if (Date.now() < v9SettingsChartDismissLockUntilRef.current) return;
+      const el = e && e.target;
+      if (!el || typeof el.closest !== "function") return;
+      if (el.closest('[data-chrome-win="screenshot"]')) return;
+      if (el.closest("[data-sett-drop]") || el.closest("[data-sett-drop-portal]")) return;
+      if (el.closest("[data-v9-resize-layer]") || el.closest("[data-v9-drag-layer]")) return;
+      if (el.closest("[data-v9-confirm-root]")) return;
+      try { peelChromeDismissRef.current?.(); } catch (_) {}
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => {
+      cancelAnimationFrame(armId);
+      document.removeEventListener("pointerdown", onPointerDown, true);
+    };
+  }, [screenshotOpen]);
+
+  // Focus trap for the five chrome modals (Tab cycles; Esc peels via ladder).
+  useEffect(() => {
+    const sel =
+      (settingsOpen && '[data-chrome-win="settings"]') ||
+      (profileOpen && '[data-chrome-win="profile"]') ||
+      (faqOpen && '[data-chrome-win="help"]') ||
+      (indOpen && '[data-chrome-win="indicators"]') ||
+      (screenshotOpen && '[data-chrome-win="screenshot"]') ||
+      null;
+    if (!sel || typeof document === "undefined") return;
+    const root = document.querySelector(sel);
+    if (!root) return;
+    const FOCUSABLE = 'button:not([disabled]),[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+    const getFocusable = () => Array.from(root.querySelectorAll(FOCUSABLE)).filter((el) => {
+      try { return el.offsetParent !== null || el === document.activeElement; } catch (_) { return true; }
+    });
+    const prev = document.activeElement;
+    const focusId = requestAnimationFrame(() => {
+      const list = getFocusable();
+      const prefer = root.querySelector("input:not([disabled])") || list[0];
+      try { prefer?.focus?.(); } catch (_) {}
+    });
+    const onKey = (e) => {
+      if (!e || e.key !== "Tab") return;
+      const list = getFocusable();
+      if (!list.length) return;
+      const first = list[0];
+      const last = list[list.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        try { last.focus(); } catch (_) {}
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        try { first.focus(); } catch (_) {}
+      }
+    };
+    root.addEventListener("keydown", onKey);
+    return () => {
+      cancelAnimationFrame(focusId);
+      root.removeEventListener("keydown", onKey);
+      try {
+        if (prev && typeof prev.focus === "function" && document.contains(prev)) prev.focus();
+      } catch (_) {}
+    };
+  }, [settingsOpen, profileOpen, faqOpen, indOpen, screenshotOpen]);
+
   const toggleSupportChat = () => {
-    closeWindows();
-    setSettingsOpen(false);
-    setRightPanel(null);
-    setOrderPanelOpen(false);
-    setSupportChatOpen((prev) => !prev);
+    if (supportChatOpen) {
+      setSupportChatOpen(false);
+      return;
+    }
+    openChromeSurface("support");
   };
 
   /** Multichart iframe tiles: ask parent to open Settings (full-viewport). Host: open locally. */
   const openV9SettingsModalRef = useRef((/** @type {{ fromLogo?: boolean }} */ _opts) => {});
   openV9SettingsModalRef.current = (opts) => {
-    if (opts && typeof opts.tab === "string") {
-      try { setSettingsTab(opts.tab); } catch (_) {}
-    }
     if (typeof window !== "undefined" && v9IsMultichartIframeEmbed()) {
       if (opts && opts.fromLogo) {
         try { setLogoMenu(false); } catch (_) {}
@@ -26976,27 +27911,8 @@ const TalariaV8bLive = () => {
       } catch (_) {}
       return;
     }
-    try {
-      closeWindows();
-    } catch (_) {}
-    setSettingsOpen(true);
+    openChromeSurface("settings", { tab: opts?.tab });
   };
-  // closeAll is triggered by backdrop/outside clicks.
-  const closeAll = () => {
-    setDropdown(null); setSymbolSearch(""); setTfCatsOpen([]); setTfUnitOpen(false);
-    setSDrop(null); setColorPicker(null); setSettDrop(null);
-    setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setScreenshotOpen(false); setLayersOpen(false); setProfileOpen(false);
-    setIndOpen(false); setIndSearch(""); setIndSelectedId(null);
-    if(logoMenu) closePopup(setLogoMenu, "logoMenu");
-    if(replayOpts) closePopup(setReplayOpts, "replayOpts");
-    if(gotoOpen) closePopup(setGotoOpen, "goto");
-    if(symbolOpen) closePopup(setSymbolOpen, "symbol");
-    if(chartTypeOpen) closePopup(setChartTypeOpen, "chartType");
-    if(tfOpen) closePopup(setTfOpen, "tf");
-    setTagDrop(null); setTlStyleDrop(null); setTlBarDrop(null); setTxtBarSizeOpen(false); setTxtBarDrop(null); setEmojiPanelOpen(false);
-    setOpSymOpen(false); setOpSymSearch(""); setOpSizeOpen(false);
-  };
-  closeAllRef.current = closeAll;
 
   const copyScreenshotPageLink = async () => {
     const url = typeof window !== "undefined" ? window.location.href : "";
@@ -27033,10 +27949,17 @@ const TalariaV8bLive = () => {
     });
   };
 
+  const tipHostRef = useRef(null);
   const showTip = (label, el, side = "top") => {
     clearTimeout(tipTimerRef.current);
     if (!label || !el) return;
+    tipHostRef.current = el;
     tipTimerRef.current = setTimeout(() => {
+      // Host may have been re-rendered away during the delay (order panel OM ticks).
+      if (!el.isConnected) {
+        tipHostRef.current = null;
+        return;
+      }
       const r = el.getBoundingClientRect();
       const vw = window.innerWidth / Z;
       const vh = window.innerHeight / Z;
@@ -27063,39 +27986,109 @@ const TalariaV8bLive = () => {
       setTipData({ label, x: Math.max(40, Math.min(vw - 40, cx)), y, side });
     }, 250);
   };
-  const hideTip = () => { clearTimeout(tipTimerRef.current); setTipData(null); };
+  const hideTip = () => {
+    clearTimeout(tipTimerRef.current);
+    tipTimerRef.current = null;
+    tipHostRef.current = null;
+    setTipData(null);
+  };
   const showTipRef = useRef(showTip);
   const hideTipRef = useRef(hideTip);
   showTipRef.current = showTip;
   hideTipRef.current = hideTip;
 
-  // data-tip hosts (incl. stripped native title=) → Obsidian tip layer
+  // data-tip hosts (incl. stripped native title=) → Obsidian tip layer.
+  // Order panel re-renders often; dismiss must not rely on pointerout alone.
   useEffect(() => {
     let activeHost = null;
+    let moveRaf = 0;
     const tipLabel = (el) => el?.getAttribute?.("data-tip") || el?.getAttribute?.("data-title") || "";
+    const clearTip = () => {
+      activeHost = null;
+      tipHostRef.current = null;
+      hideTipRef.current();
+    };
+    const hostStillHovered = (clientX, clientY) => {
+      const host = activeHost;
+      if (!host || !host.isConnected) return false;
+      try {
+        const under = document.elementFromPoint(clientX, clientY);
+        if (!under) return false;
+        if (host === under || host.contains(under)) return true;
+        // Pointer may sit on the tip itself (pointer-events:none) or a child remount —
+        // fall back to geometry so OM tick remounts don't false-clear mid-hover.
+        const r = host.getBoundingClientRect();
+        return (
+          clientX >= r.left &&
+          clientX <= r.right &&
+          clientY >= r.top &&
+          clientY <= r.bottom
+        );
+      } catch (_) {
+        return false;
+      }
+    };
     const onOver = (e) => {
       const el = e.target?.closest?.("[data-tip], [data-title]");
       if (!el || el.closest("[data-no-tip]")) return;
-      if (el.matches("option")) return;
+      if (el.matches?.("option")) return;
       const label = tipLabel(el);
       if (!label) return;
       activeHost = el;
+      tipHostRef.current = el;
       const side = el.getAttribute("data-tip-side") || "top";
       showTipRef.current(label, el, side);
     };
     const onOut = (e) => {
-      const el = e.target?.closest?.("[data-tip], [data-title]");
-      if (!el || el !== activeHost) return;
+      if (!activeHost) return;
       const to = e.relatedTarget;
-      if (to && el.contains(to)) return;
-      activeHost = null;
-      hideTipRef.current();
+      if (to instanceof Node && activeHost.contains(to)) return;
+      // Leaving the active host tree (or host already gone after React replace).
+      if (
+        !activeHost.isConnected ||
+        e.target === activeHost ||
+        (e.target instanceof Node && activeHost.contains(e.target))
+      ) {
+        clearTip();
+      }
+    };
+    const onPointerDown = () => {
+      // Clicks open menus / remount rows — tip must not linger over the new UI.
+      clearTip();
+    };
+    const onScroll = () => {
+      clearTip();
+    };
+    const onBlur = () => {
+      clearTip();
+    };
+    const onMove = (e) => {
+      if (!activeHost && !tipHostRef.current) return;
+      if (moveRaf) return;
+      const { clientX, clientY } = e;
+      moveRaf = requestAnimationFrame(() => {
+        moveRaf = 0;
+        if (!activeHost) activeHost = tipHostRef.current;
+        if (!activeHost) return;
+        if (!hostStillHovered(clientX, clientY)) clearTip();
+      });
     };
     document.addEventListener("pointerover", onOver, true);
     document.addEventListener("pointerout", onOut, true);
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("pointermove", onMove, true);
+    document.addEventListener("scroll", onScroll, true);
+    window.addEventListener("blur", onBlur);
+    document.addEventListener("visibilitychange", onBlur);
     return () => {
+      if (moveRaf) cancelAnimationFrame(moveRaf);
       document.removeEventListener("pointerover", onOver, true);
       document.removeEventListener("pointerout", onOut, true);
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("pointermove", onMove, true);
+      document.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("blur", onBlur);
+      document.removeEventListener("visibilitychange", onBlur);
     };
   }, []);
 
@@ -27123,9 +28116,11 @@ const TalariaV8bLive = () => {
       } catch (_) {}
       if (d.type === "v9-multichart-open-settings") {
         try {
-          closeWindowsRef.current?.();
-        } catch (_) {}
-        setSettingsOpen(true);
+          openChromeSurface("settings", { tab: d.tab });
+        } catch (_) {
+          try { closeWindowsRef.current?.(); } catch (__) {}
+          setSettingsOpen(true);
+        }
         return;
       }
       if (d.type === "multichart-draft-drag-busy") {
@@ -27855,20 +28850,22 @@ const TalariaV8bLive = () => {
           }}
           style={{ position:"fixed", left:tlSettPos.x, top:tlSettPos.y, zIndex:V9_SETT_WIN_Z,
                    pointerEvents:"auto",
-                   willChange: closing.has("tlsett") ? undefined : "transform, opacity",
-                   animation: closing.has("tlsett") ? "tlrSettOut 0.1s ease both" : "tlrSettIn 0.05s ease-out both" }}>
+                   willChange: undefined,
+                   /* No persistent enter anim — scale/transform + clamp RO shakes under open style drops. */
+                   animation: closing.has("tlsett") ? "tlrSettOut 0.1s ease both" : undefined }}>
           {/* header */}
           <div data-win-header="" onPointerDown={e => {
             if (e.detail >= 2) return; // double-click rename — don't start a drag
             if (typeof e.target?.closest === "function" && e.target.closest("input, textarea, button, [data-sett-rename], [data-sett-rename-btn]")) return;
             e.preventDefault();
+            closeAllSettStyleDrops();
             const settEl=e.currentTarget.parentElement;
             const sx=e.clientX,sy=e.clientY,px=tlSettPos.x,py=tlSettPos.y;
             const cpWasOpen=colorPicker==="tlLineColor"||colorPicker==="tlBgColor"||colorPicker==="tlTextColor"||colorPicker==="rr_profitColor"||colorPicker==="rr_lossColor"||colorPicker==="rr_entryColor"||colorPicker==="rr_labelColor";
             const cpStart={top:cpPos.top,left:cpPos.left};
             let nx=px,ny=py;
             const onMove=ev=>{const dx=(ev.clientX-sx)/Z,dy=(ev.clientY-sy)/Z;const _wh=(settEl.getBoundingClientRect().height/Z)||420;({x:nx,y:ny}=v9ClampFloatingWindowPos(px+dx,py+dy,448,_wh,Z));const adx=nx-px,ady=ny-py;settEl.style.left=nx+'px';settEl.style.top=ny+'px';if(cpWasOpen)setCpPos({top:cpStart.top+ady,left:cpStart.left+adx});};
-            const onUp=()=>{window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);setTlSettPos({x:nx,y:ny});};
+            const onUp=()=>{window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);pinSettOpenPos("tl",{x:nx,y:ny});setTlSettPos({x:nx,y:ny});};
             window.addEventListener('pointermove',onMove); window.addEventListener('pointerup',onUp);
           }}>
             <div data-win-icon=""><I n={tlSubTool.icon} s={16} cl="var(--accent)"/></div>
@@ -28028,7 +29025,7 @@ const TalariaV8bLive = () => {
               {/* Single row: Line label · Color · Style · Thickness · Endpoints */}
               {(()=>{
                 const da = v => v==="dotted"?"2,4":v==="dashed"?"7,4":v==="dashdot"?"7,4,2,4":undefined;
-                const mkBtn = (key, isOpen, preview, btnW, estH) => {
+                const mkBtn = (key, isOpen, preview, _btnW, estH) => {
                   const hk=`tl-btn-${key}`, isH=hov===hk;
                   return (
                   <div
@@ -28036,8 +29033,7 @@ const TalariaV8bLive = () => {
                     data-open={isOpen ? "1" : undefined}
                     {...tlStyleDropTrigger(key, null, estH || 220)}
                     onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
-                    style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:4, cursor:"default", position:"relative",
-                             ...(btnW?{width:btnW, minWidth:btnW}:{}) }}>
+                    style={{ cursor:"default", position:"relative" }}>
                     {preview(isOpen)}
                     <I n="chevDown" s={8} cl={isOpen?"var(--accent)":isH?"var(--text)":"var(--text-muted)"}/>
                   </div>
@@ -28107,7 +29103,7 @@ const TalariaV8bLive = () => {
                         {mkBtn("rrFsz",tlStyleDrop==="rrFsz",(open)=>
                           <span style={{fontSize:12,color:open?"var(--accent)":"var(--text-muted)",fontVariantNumeric:"tabular-nums"}}>{rrStyle.labelFontSize}</span>
                         ,52,280)}
-                        {tlStyleDrop==="rrFsz" && dropShell("rrFsz",52,true,
+                        {tlStyleDrop==="rrFsz" && dropShell("rrFsz", 52, false,
                           ["8","9","10","11","12","13","14","16","18"].map(sz=>{
                             const isA=rrStyle.labelFontSize===sz,isH=hov===`rrfsz-${sz}`;
                             return(<div key={sz} data-pick-on={isA?"1":undefined} {...tlStyleDropPick(() => setRrStyle(s=>({...s,labelFontSize:sz})))}
@@ -28144,20 +29140,20 @@ const TalariaV8bLive = () => {
                       <div>{colorSwatch("tlLineColor",tlStyle.lineColor)}</div>
                       <div style={{position:"relative"}}>
                         {mkBtn("type",tlStyleDrop==="type",(open)=>
-                          <svg width={22} height={10} viewBox="0 0 22 10">
-                            <line x1={0} y1={5} x2={22} y2={5} stroke={open?"var(--accent)":"var(--text-muted)"}
-                              strokeWidth={tlStyle.lineType==="bold"?2.5:1.5} strokeLinecap="round"
+                          <svg data-sett-preview="" width={24} height={12} viewBox="0 0 24 12" aria-hidden="true">
+                            <line x1={0} y1={6} x2={24} y2={6} stroke={open?"var(--accent)":"var(--text-muted)"}
+                              strokeWidth={tlStyle.lineType==="bold"?3:2} strokeLinecap="round"
                               strokeDasharray={da(tlStyle.lineType)}/>
                           </svg>
                         ,56)}
-                        {tlStyleDrop==="type" && dropShell("type",56,false,
-                          [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
+                        {tlStyleDrop==="type" && dropShell("type",72,false,
+                          [["bold",undefined,3],["dotted","2.5,4",2],["dashed","7,4",2],["dashdot","7,4,2.5,4",2]].map(([v,dArr,sw])=>{
                             const isA=tlStyle.lineType===v,isH=hov===`tlt-${v}`;
                             return(<div key={v} data-pick-on={isA?"1":undefined} {...tlStyleDropPick(() => applyTlLineType(v))}
                               onMouseEnter={()=>setHov(`tlt-${v}`)} onMouseLeave={()=>setHov(null)}
-                              style={{padding:"7px 0",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",
+                              style={{padding:"8px 0",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",
                                 background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent",transition:"background 0.1s"}}>
-                              <svg width={28} height={10} viewBox="0 0 28 10"><line x1={0} y1={5} x2={28} y2={5} stroke={isA?"var(--accent)":"var(--text-muted)"} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/></svg>
+                              <svg data-sett-preview="" width={32} height={12} viewBox="0 0 32 12" aria-hidden="true"><line x1={0} y1={6} x2={32} y2={6} stroke={isA?"var(--accent)":"var(--text-muted)"} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/></svg>
                             </div>);
                           })
                         )}
@@ -28169,7 +29165,7 @@ const TalariaV8bLive = () => {
                               stroke={open?"var(--accent)":"var(--text-muted)"} strokeWidth={+tlStyle.lineWidth} strokeLinecap="round"/>
                           </svg>
                         ,56)}
-                        {tlStyleDrop==="width" && dropShell("width",56,true,
+                        {tlStyleDrop==="width" && dropShell("width", 56, false,
                           ["1","2","3","4"].map(w=>{
                             const isA=tlStyle.lineWidth===w,isH=hov===`tlw-${w}`;
                             return(<div key={w} data-pick-on={isA?"1":undefined} {...tlStyleDropPick(() => applyTlLineWidth(w))}
@@ -28214,7 +29210,7 @@ const TalariaV8bLive = () => {
                               stroke={open?"var(--accent)":"var(--text-muted)"} strokeWidth={+tlStyle.borderWidth} strokeLinecap="round"/>
                           </svg>
                         ,56)}
-                        {tlStyleDrop==="borderWidth" && dropShell("borderWidth",56,true,
+                        {tlStyleDrop==="borderWidth" && dropShell("borderWidth", 56, false,
                           ["1","2","3","4"].map(w=>{
                             const isA=tlStyle.borderWidth===w,isH=hov===`tlbw-${w}`;
                             return(<div key={w} data-pick-on={isA?"1":undefined} {...tlStyleDropPick(() => applyTlBorderWidth(w))}
@@ -28247,10 +29243,10 @@ const TalariaV8bLive = () => {
                             closeTlInfoDrop();
                             return;
                           }
-                          const r=e.currentTarget.getBoundingClientRect();
-                          const dropH=210;
-                          const goUp=r.bottom/Z+dropH>window.innerHeight/Z;
-                          setTlInfoDropUp(goUp);
+                          const a = v9MeasureDropAnchor(e.currentTarget, 220);
+                          if (!a) return;
+                          setTlInfoDropUp(!!a.openUp);
+                          setTlInfoDropAnchor(a);
                           setTlStyleDrop("info");
                         })}
                           onMouseEnter={()=>setHov("tlInfoBtn")} onMouseLeave={()=>setHov(null)}
@@ -28260,23 +29256,25 @@ const TalariaV8bLive = () => {
                           </span>
                           <I n="chevDown" s={8} cl={(tlStyleDrop==="info"||closing.has("tlInfoDrop"))?"var(--accent)":"var(--text-muted)"}/>
                         </div>
-                        {(tlStyleDrop==="info"||closing.has("tlInfoDrop"))&&(
-                          <div data-sett-drop="" data-tl-style-drop="1" onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
-                            style={{position:"absolute",zIndex:10,...(tlInfoDropUp?{bottom:"calc(100% + 4px)"}:{top:"calc(100% + 4px)"}),
-                              right:0,width:168,fontFamily:F,
-                              pointerEvents:closing.has("tlInfoDrop")?"none":"auto",
-                              animation:closing.has("tlInfoDrop")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
-                            {["Price range","Percent change","Change in pips","Bars range","Date/time range","Volume"].map(v=>{
-                              const isA=tlStyle.showInfoTypes.includes(v),isH=hov===`tli-${v}`;
-                              return(<div key={v} data-pick-on={isA?"1":undefined} {...tlStyleDropPickKeepOpen(() => applyTlShowInfoTypeToggle(v))}
-                                onMouseEnter={()=>setHov(`tli-${v}`)} onMouseLeave={()=>setHov(null)}
-                                style={{padding:"6px 10px",cursor:"default",display:"flex",alignItems:"center",gap:8,
-                                  background:isH?"var(--surface-raised)":"transparent",transition:"background 0.1s"}}>
-                                <span style={{fontSize:12,color:isA?"var(--accent)":isH?"var(--text)":"var(--text-muted)",fontWeight:isA?700:500}}>{v}</span>
-                              </div>);
-                            })}
-                          </div>
-                        )}
+                        {(tlStyleDrop==="info"||closing.has("tlInfoDrop"))&&tlInfoDropAnchor&&v9PortalSettDropMenu({
+                          anchor: tlInfoDropAnchor,
+                          width: 168,
+                          rightAlign: false,
+                          attrs: {
+                            "data-tl-style-drop": "1",
+                            "data-closing": closing.has("tlInfoDrop") ? "1" : undefined,
+                          },
+                          children: ["Price range","Percent change","Change in pips","Bars range","Date/time range","Volume"].map(v=>{
+                            const isA=tlStyle.showInfoTypes.includes(v),isH=hov===`tli-${v}`;
+                            return(<div key={v} data-pick-on={isA?"1":undefined} {...tlStyleDropPickKeepOpen(() => applyTlShowInfoTypeToggle(v))}
+                              onMouseEnter={()=>setHov(`tli-${v}`)} onMouseLeave={()=>setHov(null)}
+                              style={{padding:"6px 10px",cursor:"default",display:"flex",alignItems:"center",gap:8,
+                                background:isH?"var(--surface-raised)":"transparent",transition:"background 0.1s",
+                                pointerEvents:closing.has("tlInfoDrop")?"none":"auto"}}>
+                              <span style={{fontSize:12,color:isA?"var(--accent)":isH?"var(--text)":"var(--text-muted)",fontWeight:isA?700:500}}>{v}</span>
+                            </div>);
+                          }),
+                        })}
                       </div>
                     </div>
                   </div>
@@ -28288,7 +29286,7 @@ const TalariaV8bLive = () => {
                         {mkBtn("labelSize",tlStyleDrop==="labelSize",(open)=>
                           <span style={{fontSize:12,color:open?"var(--accent)":"var(--text-muted)",fontVariantNumeric:"tabular-nums"}}>{tlStyle.labelFontSize}</span>
                         ,52,280)}
-                        {tlStyleDrop==="labelSize" && dropShell("labelSize",52,true,
+                        {tlStyleDrop==="labelSize" && dropShell("labelSize", 52, false,
                           ["8","10","11","12","13","14","16","18","20","24"].map(sz=>{
                             const isA=tlStyle.labelFontSize===sz,isH=hov===`rngFsz-${sz}`;
                             return(<div key={sz} data-pick-on={isA?"1":undefined} {...tlStyleDropPick(() => applyTlLabelFontSize(sz))}
@@ -28324,22 +29322,22 @@ const TalariaV8bLive = () => {
                     {/* Style */}
                     {showStyle ? <div style={{ position:"relative" }}>
                       {mkBtn("type", tlStyleDrop==="type", (open) =>
-                        <svg width={22} height={10} viewBox="0 0 22 10">
-                          <line x1={0} y1={5} x2={22} y2={5} stroke={open?"var(--accent)":"var(--text-muted)"}
-                            strokeWidth={edgeTypeVal==="bold"?2.5:1.5} strokeLinecap="round"
+                        <svg data-sett-preview="" width={28} height={14} viewBox="0 0 28 14" aria-hidden="true">
+                          <line x1={0} y1={7} x2={28} y2={7} stroke={open?"var(--accent)":"var(--text-muted)"}
+                            strokeWidth={edgeTypeVal==="bold"?3:2} strokeLinecap="round"
                             strokeDasharray={da(edgeTypeVal)}/>
                         </svg>
-                      , 56)}
-                      {tlStyleDrop==="type" && dropShell("type", 56, false,
-                        [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
+                      , 64)}
+                      {tlStyleDrop==="type" && dropShell("type", 72, false,
+                        [["bold",undefined,3],["dotted","2.5,4",2],["dashed","7,4",2],["dashdot","7,4,2.5,4",2]].map(([v,dArr,sw])=>{
                           const isA=edgeTypeVal===v; const isH=hov===`tlt-${v}`;
                           return (
                             <div key={v} data-pick-on={isA?"1":undefined} {...tlStyleDropPick(() => (isShapeBorderUi ? applyTlBorderType(v) : applyTlLineType(v)))}
                               onMouseEnter={()=>setHov(`tlt-${v}`)} onMouseLeave={()=>setHov(null)}
-                              style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center",
+                              style={{ padding:"8px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center",
                                        background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
-                              <svg width={28} height={10} viewBox="0 0 28 10">
-                                <line x1={0} y1={5} x2={28} y2={5} stroke={isA?"var(--accent)":"var(--text-muted)"} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/>
+                              <svg data-sett-preview="" width={36} height={14} viewBox="0 0 36 14" aria-hidden="true">
+                                <line x1={0} y1={7} x2={36} y2={7} stroke={isA?"var(--accent)":"var(--text-muted)"} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/>
                               </svg>
                             </div>
                           );
@@ -28351,7 +29349,7 @@ const TalariaV8bLive = () => {
                       <div data-sett-dd="" data-open={tlStyleDrop==="width"?"1":undefined}
                         onClick={e=>{e.stopPropagation();if(tlStyleDrop==="width"){setTlStyleDrop(null);setTlStyleDropAnchor(null);}else{captureTlStyleDropAnchor(e.currentTarget,240);setTlStyleDrop("width");}}}
                         onMouseEnter={()=>setHov("tl-btn-width")} onMouseLeave={()=>setHov(null)}
-                        style={{ height:30, padding:"0 8px", display:"flex", alignItems:"center", gap:4, cursor:"default" }}>
+                        style={{cursor:"default", position:"relative"}}>
                         <span style={{ fontSize:12, color:tlStyleDrop==="width"?"var(--accent)":"var(--text-muted)" }}>{tlStyle.lineWidth}x</span>
                         <I n="chevDown" s={7} cl={tlStyleDrop==="width"?"var(--accent)":"var(--text-muted)"}/>
                       </div>
@@ -28392,33 +29390,34 @@ const TalariaV8bLive = () => {
                         })
                       )}
                     </div>)}
-                    {showEp && <div style={{ display:"flex", gap:4, alignItems:"center" }}>
-                        {[["ep1",false],["ep2",true]].map(([k,rightAlign])=>{
+                    {showEp && <div style={{ display:"inline-flex", gap:6, alignItems:"center" }}>
+                        {["ep1","ep2"].map((k)=>{
                           const dk=`ep-${k}`; const val=tlStyle[k]||"normal"; const isOpen=tlStyleDrop===dk;
+                          const col = (on) => on ? "var(--accent)" : "var(--text-muted)";
                           const epPrev = (open) => val==="arrow"
-                            ? <svg width={14} height={10} viewBox="0 0 14 10">{k==="ep1"
-                                ?<><path d="M4,2 L1,5 L4,8" stroke={open?"var(--accent)":"var(--text-muted)"} strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/><line x1="1" y1="5" x2="14" y2="5" stroke={open?"var(--accent)":"var(--text-muted)"} strokeWidth="1.5"/></>
-                                :<><line x1="0" y1="5" x2="13" y2="5" stroke={open?"var(--accent)":"var(--text-muted)"} strokeWidth="1.5"/><path d="M10,2 L13,5 L10,8" stroke={open?"var(--accent)":"var(--text-muted)"} strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/></>}</svg>
-                            : <svg width={14} height={10} viewBox="0 0 14 10">{k==="ep1"
-                                ?<><circle cx="2" cy="5" r="2" fill={open?"var(--accent)":"var(--text-muted)"}/><line x1="4" y1="5" x2="14" y2="5" stroke={open?"var(--accent)":"var(--text-muted)"} strokeWidth="1.5"/></>
-                                :<><line x1="0" y1="5" x2="10" y2="5" stroke={open?"var(--accent)":"var(--text-muted)"} strokeWidth="1.5"/><circle cx="12" cy="5" r="2" fill={open?"var(--accent)":"var(--text-muted)"}/></>}</svg>;
+                            ? <svg data-sett-preview="" width={22} height={12} viewBox="0 0 22 12" aria-hidden="true">{k==="ep1"
+                                ?<><path d="M6,2.5 L1.5,6 L6,9.5" stroke={col(open)} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/><line x1="1.5" y1="6" x2="21" y2="6" stroke={col(open)} strokeWidth="2"/></>
+                                :<><line x1="1" y1="6" x2="20.5" y2="6" stroke={col(open)} strokeWidth="2"/><path d="M16,2.5 L20.5,6 L16,9.5" stroke={col(open)} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/></>}</svg>
+                            : <svg data-sett-preview="" width={22} height={12} viewBox="0 0 22 12" aria-hidden="true">{k==="ep1"
+                                ?<><circle cx="3.5" cy="6" r="2.75" fill={col(open)}/><line x1="6.5" y1="6" x2="21" y2="6" stroke={col(open)} strokeWidth="2"/></>
+                                :<><line x1="1" y1="6" x2="15.5" y2="6" stroke={col(open)} strokeWidth="2"/><circle cx="18.5" cy="6" r="2.75" fill={col(open)}/></>}</svg>;
                           return (
                             <div key={k} style={{ position:"relative" }}>
-                              {mkBtn(dk, isOpen, epPrev)}
-                              {isOpen && dropShell(dk, 56, rightAlign,
+                              {mkBtn(dk, isOpen, epPrev, 56)}
+                              {isOpen && dropShell(dk, 72, false,
                                 [["normal",false],["arrow",true]].map(([v,isArrow])=>{
                                   const isAi=tlStyle[k]===v; const isHi=hov===`tl-ep-${k}-${v}`;
                                   const ico = isArrow
-                                    ? <svg width={18} height={10} viewBox="0 0 18 10">{k==="ep1"
-                                        ?<><path d="M5,2 L1,5 L5,8" stroke={isAi?"var(--accent)":"var(--text-muted)"} strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/><line x1="1" y1="5" x2="18" y2="5" stroke={isAi?"var(--accent)":"var(--text-muted)"} strokeWidth="1.5"/></>
-                                        :<><line x1="0" y1="5" x2="17" y2="5" stroke={isAi?"var(--accent)":"var(--text-muted)"} strokeWidth="1.5"/><path d="M13,2 L17,5 L13,8" stroke={isAi?"var(--accent)":"var(--text-muted)"} strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/></>}</svg>
-                                    : <svg width={18} height={10} viewBox="0 0 18 10">{k==="ep1"
-                                        ?<><circle cx="2" cy="5" r="2" fill={isAi?"var(--accent)":"var(--text-muted)"}/><line x1="4" y1="5" x2="18" y2="5" stroke={isAi?"var(--accent)":"var(--text-muted)"} strokeWidth="1.5"/></>
-                                        :<><line x1="0" y1="5" x2="14" y2="5" stroke={isAi?"var(--accent)":"var(--text-muted)"} strokeWidth="1.5"/><circle cx="16" cy="5" r="2" fill={isAi?"var(--accent)":"var(--text-muted)"}/></>}</svg>;
+                                    ? <svg data-sett-preview="" width={28} height={12} viewBox="0 0 28 12" aria-hidden="true">{k==="ep1"
+                                        ?<><path d="M7,2.5 L1.5,6 L7,9.5" stroke={col(isAi)} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/><line x1="1.5" y1="6" x2="27" y2="6" stroke={col(isAi)} strokeWidth="2"/></>
+                                        :<><line x1="1" y1="6" x2="26.5" y2="6" stroke={col(isAi)} strokeWidth="2"/><path d="M21,2.5 L26.5,6 L21,9.5" stroke={col(isAi)} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/></>}</svg>
+                                    : <svg data-sett-preview="" width={28} height={12} viewBox="0 0 28 12" aria-hidden="true">{k==="ep1"
+                                        ?<><circle cx="3.5" cy="6" r="2.75" fill={col(isAi)}/><line x1="6.5" y1="6" x2="27" y2="6" stroke={col(isAi)} strokeWidth="2"/></>
+                                        :<><line x1="1" y1="6" x2="21.5" y2="6" stroke={col(isAi)} strokeWidth="2"/><circle cx="24.5" cy="6" r="2.75" fill={col(isAi)}/></>}</svg>;
                                   return (
                                     <div key={v} data-pick-on={isAi?"1":undefined} {...tlStyleDropPick(() => applyTlEndpointStyle(k, v))}
                                       onMouseEnter={()=>setHov(`tl-ep-${k}-${v}`)} onMouseLeave={()=>setHov(null)}
-                                      style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center",
+                                      style={{ padding:"8px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center",
                                                background:isAi?"var(--accent-quiet)":isHi?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
                                       {ico}
                                     </div>
@@ -28441,11 +29440,11 @@ const TalariaV8bLive = () => {
                           {mkBtn("labSize", tlStyleDrop==="labSize", (open) =>
                             <span style={{ fontSize:12, color:open?"var(--accent)":"var(--text-muted)", fontVariantNumeric:"tabular-nums" }}>{tlStyle.textSize}</span>
                           , 52, 280)}
-                          {tlStyleDrop==="labSize" && dropShell("labSize", 52, true,
+                          {tlStyleDrop==="labSize" && dropShell("labSize", 52, false,
                             [10,12,14,16,18,20,22,24].map(sz=>{
                               const isA=tlStyle.textSize===sz; const isH=hov===`labsz-${sz}`;
                               return (
-                                <div key={sz} data-pick-on={isA?"1":undefined} onClick={()=>{applyTlTextSize(sz);setTlStyleDrop(null);setTlStyleDropAnchor(null);}}
+                                <div key={sz} data-pick-on={isA?"1":undefined} {...tlStyleDropPick(() => applyTlTextSize(sz))}
                                   onMouseEnter={()=>setHov(`labsz-${sz}`)} onMouseLeave={()=>setHov(null)}
                                   style={{ padding:"5px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center",
                                            background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
@@ -28456,19 +29455,12 @@ const TalariaV8bLive = () => {
                           )}
                         </div>
                         <div style={{ display:"flex", gap:4 }}>
-                          {[["lab-bold",tlStyle.textBold,applyTlTextBold,{fontWeight:800,fontSize:14},"B"],
-                            ["lab-italic",tlStyle.textItalic,applyTlTextItalic,{fontStyle:"italic",fontWeight:600,fontSize:14},"I"]
-                          ].map(([hk,isAct,toggle,extra,label])=>{
-                            const isH=hov===hk;
-                            return (
-                              <div key={hk} data-sett-dd="" data-open={isAct?"1":undefined} onClick={toggle}
-                                onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
-                                style={{ width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center",
-                                         cursor:"default", color:isAct?"var(--accent)":isH?"var(--text)":"var(--text-muted)", fontFamily:F, ...extra }}>
-                                {label}
-                              </div>
-                            );
-                          })}
+                          <div data-sett-fmt="" data-on={tlStyle.textBold?"1":undefined} onClick={applyTlTextBold}
+                            onMouseEnter={()=>setHov("lab-bold")} onMouseLeave={()=>setHov(null)}
+                            style={{ fontWeight:800, fontFamily:F }}>B</div>
+                          <div data-sett-fmt="" data-on={tlStyle.textItalic?"1":undefined} onClick={applyTlTextItalic}
+                            onMouseEnter={()=>setHov("lab-italic")} onMouseLeave={()=>setHov(null)}
+                            style={{ fontStyle:"italic", fontWeight:600, fontFamily:F }}>I</div>
                         </div>
                       </div>
                     </div>
@@ -28500,7 +29492,7 @@ const TalariaV8bLive = () => {
                               [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
                                 const isA=tlStyle.midLineType===v; const isH=hov===`tlmt-${v}`;
                                 return (
-                                  <div key={v} data-pick-on={isA?"1":undefined} onClick={()=>{applyTlMidLineType(v);setTlStyleDrop(null);}}
+                                  <div key={v} data-pick-on={isA?"1":undefined} {...tlStyleDropPick(() => applyTlMidLineType(v))}
                                     onMouseEnter={()=>setHov(`tlmt-${v}`)} onMouseLeave={()=>setHov(null)}
                                     style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center",
                                              background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
@@ -28523,7 +29515,7 @@ const TalariaV8bLive = () => {
                               ["1","2","3","4"].map(w=>{
                                 const isA=tlStyle.midLineWidth===w; const isH=hov===`tlmw-${w}`;
                                 return (
-                                  <div key={w} data-pick-on={isA?"1":undefined} onClick={()=>{applyTlMidLineWidth(w);setTlStyleDrop(null);}}
+                                  <div key={w} data-pick-on={isA?"1":undefined} {...tlStyleDropPick(() => applyTlMidLineWidth(w))}
                                     onMouseEnter={()=>setHov(`tlmw-${w}`)} onMouseLeave={()=>setHov(null)}
                                     style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center",
                                              background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
@@ -28602,24 +29594,23 @@ const TalariaV8bLive = () => {
                           <div style={{ padding:"5px 0", opacity:midOp, pointerEvents:midPE, transition:"opacity 0.15s", position:"relative" }}>
                             <div data-sett-dd="" onClick={e=>{e.stopPropagation();if(tlStyleDrop==="midType"){setTlStyleDrop(null);setTlStyleDropAnchor(null);}else{captureTlStyleDropAnchor(e.currentTarget,150);setTlStyleDrop("midType");}}}
                               onMouseEnter={()=>setHov("tl-btn-midType")} onMouseLeave={()=>setHov(null)}
-                              style={{ padding:"0 6px", display:"flex", alignItems:"center", justifyContent:"center", gap:3, cursor:"default", position:"relative",
-                                       background:"transparent", transition:"background 0.12s" }}>
+                              style={{cursor:"default", position:"relative"}}>
                               <svg width={22} height={10} viewBox="0 0 22 10">
-                                <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop==="midType"?c.acL:c.ts}
+                                <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop==="midType"?"var(--accent)":"var(--text-muted)"}
                                   strokeWidth={tlStyle.midLineType==="bold"?2.5:1.5} strokeLinecap="round" strokeDasharray={midDa(tlStyle.midLineType)}/>
                               </svg>
-                              <I n="chevDown" s={7} cl={tlStyleDrop==="midType"?c.acL:c.ts}/>
+                              <I n="chevDown" s={7} cl={tlStyleDrop==="midType"?"var(--accent)":"var(--text-muted)"}/>
                             </div>
                             {tlStyleDrop==="midType" && dropShell("midType", 56, false,
                               [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
                                 const isA=tlStyle.midLineType===v; const isH=hov===`tlmt-${v}`;
                                 return (
-                                  <div key={v} onClick={()=>{applyTlMidLineType(v);setTlStyleDrop(null);}}
+                                  <div key={v} {...tlStyleDropPick(() => applyTlMidLineType(v))}
                                     onMouseEnter={()=>setHov(`tlmt-${v}`)} onMouseLeave={()=>setHov(null)}
                                     style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
-                                             background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
+                                             background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
                                     <svg width={28} height={10} viewBox="0 0 28 10">
-                                      <line x1={0} y1={5} x2={28} y2={5} stroke={isA?c.acL:c.ts} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/>
+                                      <line x1={0} y1={5} x2={28} y2={5} stroke={isA?"var(--accent)":"var(--text-muted)"} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/>
                                     </svg>
                                   </div>
                                 );
@@ -28629,24 +29620,23 @@ const TalariaV8bLive = () => {
                           <div style={{ padding:"5px 0", opacity:midOp, pointerEvents:midPE, transition:"opacity 0.15s", position:"relative" }}>
                             <div data-sett-dd="" onClick={e=>{e.stopPropagation();if(tlStyleDrop==="midWidth"){setTlStyleDrop(null);setTlStyleDropAnchor(null);}else{captureTlStyleDropAnchor(e.currentTarget,150);setTlStyleDrop("midWidth");}}}
                               onMouseEnter={()=>setHov("tl-btn-midWidth")} onMouseLeave={()=>setHov(null)}
-                              style={{ padding:"0 6px", display:"flex", alignItems:"center", justifyContent:"center", gap:3, cursor:"default", position:"relative",
-                                       background:"transparent", transition:"background 0.12s" }}>
+                              style={{cursor:"default", position:"relative"}}>
                               <svg width={22} height={Math.max(8,+tlStyle.midLineWidth+4)} viewBox={`0 0 22 ${Math.max(8,+tlStyle.midLineWidth+4)}`}>
                                 <line x1={0} y1={Math.max(8,+tlStyle.midLineWidth+4)/2} x2={22} y2={Math.max(8,+tlStyle.midLineWidth+4)/2}
-                                  stroke={tlStyleDrop==="midWidth"?c.acL:c.ts} strokeWidth={+tlStyle.midLineWidth} strokeLinecap="round"/>
+                                  stroke={tlStyleDrop==="midWidth"?"var(--accent)":"var(--text-muted)"} strokeWidth={+tlStyle.midLineWidth} strokeLinecap="round"/>
                               </svg>
-                              <I n="chevDown" s={7} cl={tlStyleDrop==="midWidth"?c.acL:c.ts}/>
+                              <I n="chevDown" s={7} cl={tlStyleDrop==="midWidth"?"var(--accent)":"var(--text-muted)"}/>
                             </div>
                             {tlStyleDrop==="midWidth" && dropShell("midWidth", 56, false,
                               ["1","2","3","4"].map(w=>{
                                 const isA=tlStyle.midLineWidth===w; const isH=hov===`tlmw-${w}`;
                                 return (
-                                  <div key={w} onClick={()=>{applyTlMidLineWidth(w);setTlStyleDrop(null);}}
+                                  <div key={w} {...tlStyleDropPick(() => applyTlMidLineWidth(w))}
                                     onMouseEnter={()=>setHov(`tlmw-${w}`)} onMouseLeave={()=>setHov(null)}
                                     style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
-                                             background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
+                                             background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
                                     <svg width={28} height={Math.max(8,+w+4)} viewBox={`0 0 28 ${Math.max(8,+w+4)}`}>
-                                      <line x1={0} y1={Math.max(8,+w+4)/2} x2={28} y2={Math.max(8,+w+4)/2} stroke={isA?c.acL:c.ts} strokeWidth={+w} strokeLinecap="round"/>
+                                      <line x1={0} y1={Math.max(8,+w+4)/2} x2={28} y2={Math.max(8,+w+4)/2} stroke={isA?"var(--accent)":"var(--text-muted)"} strokeWidth={+w} strokeLinecap="round"/>
                                     </svg>
                                   </div>
                                 );
@@ -28703,26 +29693,15 @@ const TalariaV8bLive = () => {
                                       : { ...s, [stKey]: nextLines };
                                   }))}
                                 </div>
-                                <div style={{ position:"relative", width:68, opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>
-                                  <input value={ln.value}
-                                    onChange={e=>{const val=e.target.value;if(!V9_PARTIAL_LEVEL_VALUE_RE.test(val))return;setTlStyle(s=>v9PatchChLinesRowValue(s,srcIdx,val,stKey,editDrawing));}}
-                                    onClick={e=>e.stopPropagation()}
-                                    className="tlr-nospinner"
-                                    style={{ width:"100%", height:24, background:"var(--surface-sunken)", border:"1px solid var(--line)",
-                                             color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 6px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
-                                  <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
-                                    {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                                      <button type="button" key={i} {...v9ChLineStepPointerActivate(() => setTlStyle(s => v9BumpChLinesRowValueOnce(s, srcIdx, delta, stKey, editDrawing)))}
-                                        onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
-                                        style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
-                                                 display:"flex", alignItems:"center", justifyContent:"center",
-                                                 fontSize:7, lineHeight:1, fontFamily:F, padding:0,
-                                                 borderBottom:i===0?`1px solid ${c.br}`:"none", transition:"color 0.1s" }}>
-                                        {chr}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
+                                {SettLevelStep({
+                                  value: ln.value,
+                                  opacity: op,
+                                  pointerEvents: pe,
+                                  allowPartial: V9_PARTIAL_LEVEL_VALUE_RE,
+                                  activate: v9ChLineStepPointerActivate,
+                                  onChange: (val) => setTlStyle((s) => v9PatchChLinesRowValue(s, srcIdx, val, stKey, editDrawing)),
+                                  onBump: (delta) => setTlStyle((s) => v9BumpChLinesRowValueOnce(s, srcIdx, delta, stKey, editDrawing)),
+                                })}
                               </div>
                             )
                           }
@@ -28732,25 +29711,23 @@ const TalariaV8bLive = () => {
                           <div style={{ padding:"5px 0", opacity:op, pointerEvents:pe, transition:"opacity 0.15s", position:"relative" }}>
                             <div data-sett-dd="" onClick={e=>{e.stopPropagation();if(tlStyleDrop===chDk){setTlStyleDrop(null);setTlStyleDropAnchor(null);}else{captureTlStyleDropAnchor(e.currentTarget,150);setTlStyleDrop(chDk);}}}
                               onMouseEnter={()=>setHov(`tl-btn-${chDk}`)} onMouseLeave={()=>setHov(null)}
-                              style={{ padding:"0 6px", display:"flex", alignItems:"center", justifyContent:"center", gap:3, cursor:"default", position:"relative",
-                                       background:"transparent",
-                                       transition:"background 0.12s" }}>
+                              style={{cursor:"default", position:"relative"}}>
                               <svg width={22} height={10} viewBox="0 0 22 10">
-                                <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop===chDk?c.acL:c.ts}
+                                <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop===chDk?"var(--accent)":"var(--text-muted)"}
                                   strokeWidth={ln.type==="bold"?2.5:1.5} strokeLinecap="round" strokeDasharray={da(ln.type)}/>
                               </svg>
-                              <I n="chevDown" s={7} cl={tlStyleDrop===chDk?c.acL:c.ts}/>
+                              <I n="chevDown" s={7} cl={tlStyleDrop===chDk?"var(--accent)":"var(--text-muted)"}/>
                             </div>
                             {tlStyleDrop===chDk && dropShell(chDk, 56, false,
                               [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
                                 const isA=ln.type===v; const isH=hov===`${cpKey}t-${srcIdx}-${v}`;
                                 return (
-                                  <div key={v} onClick={()=>{if(isParCh){applyParallelChannelTlPatch(s=>({...s,chLines:v9SortParallelChannelChLines(s.chLines.map((l,i)=>i===srcIdx?{...l,type:v}:l))}));}else if(isRegCh){applyRegressionChannelTlPatch(s=>({...s,regLines:(s.regLines||[]).map((l,i)=>i===srcIdx?{...l,type:v}:l)}));}else{setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===srcIdx?{...l,type:v}:l)}));}setTlStyleDrop(null);}}
+                                  <div key={v} {...tlStyleDropPick(() => {if(isParCh){applyParallelChannelTlPatch(s=>({...s,chLines:v9SortParallelChannelChLines(s.chLines.map((l,i)=>i===srcIdx?{...l,type:v}:l))}));}else if(isRegCh){applyRegressionChannelTlPatch(s=>({...s,regLines:(s.regLines||[]).map((l,i)=>i===srcIdx?{...l,type:v}:l)}));}else{setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===srcIdx?{...l,type:v}:l)}));}})}
                                     onMouseEnter={()=>setHov(`${cpKey}t-${srcIdx}-${v}`)} onMouseLeave={()=>setHov(null)}
                                     style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
-                                             background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
+                                             background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
                                     <svg width={28} height={10} viewBox="0 0 28 10">
-                                      <line x1={0} y1={5} x2={28} y2={5} stroke={isA?c.acL:c.ts} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/>
+                                      <line x1={0} y1={5} x2={28} y2={5} stroke={isA?"var(--accent)":"var(--text-muted)"} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/>
                                     </svg>
                                   </div>
                                 );
@@ -28760,25 +29737,23 @@ const TalariaV8bLive = () => {
                           <div style={{ padding:"5px 0", opacity:op, pointerEvents:pe, transition:"opacity 0.15s", position:"relative" }}>
                             <div data-sett-dd="" onClick={e=>{e.stopPropagation();if(tlStyleDrop===chWk){setTlStyleDrop(null);setTlStyleDropAnchor(null);}else{captureTlStyleDropAnchor(e.currentTarget,150);setTlStyleDrop(chWk);}}}
                               onMouseEnter={()=>setHov(`tl-btn-${chWk}`)} onMouseLeave={()=>setHov(null)}
-                              style={{ padding:"0 6px", display:"flex", alignItems:"center", justifyContent:"center", gap:3, cursor:"default", position:"relative",
-                                       background:"transparent",
-                                       transition:"background 0.12s" }}>
+                              style={{cursor:"default", position:"relative"}}>
                               <svg width={22} height={Math.max(8,+ln.width+4)} viewBox={`0 0 22 ${Math.max(8,+ln.width+4)}`}>
                                 <line x1={0} y1={Math.max(8,+ln.width+4)/2} x2={22} y2={Math.max(8,+ln.width+4)/2}
-                                  stroke={tlStyleDrop===chWk?c.acL:c.ts} strokeWidth={+ln.width} strokeLinecap="round"/>
+                                  stroke={tlStyleDrop===chWk?"var(--accent)":"var(--text-muted)"} strokeWidth={+ln.width} strokeLinecap="round"/>
                               </svg>
-                              <I n="chevDown" s={7} cl={tlStyleDrop===chWk?c.acL:c.ts}/>
+                              <I n="chevDown" s={7} cl={tlStyleDrop===chWk?"var(--accent)":"var(--text-muted)"}/>
                             </div>
                             {tlStyleDrop===chWk && dropShell(chWk, 56, false,
                               ["1","2","3","4"].map(w=>{
                                 const isA=ln.width===w; const isH=hov===`${cpKey}w-${srcIdx}-${w}`;
                                 return (
-                                  <div key={w} onClick={()=>{if(isParCh){applyParallelChannelTlPatch(s=>({...s,chLines:v9SortParallelChannelChLines(s.chLines.map((l,i)=>i===srcIdx?{...l,width:w}:l))}));}else if(isRegCh){applyRegressionChannelTlPatch(s=>({...s,regLines:(s.regLines||[]).map((l,i)=>i===srcIdx?{...l,width:w}:l)}));}else{setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===srcIdx?{...l,width:w}:l)}));}setTlStyleDrop(null);}}
+                                  <div key={w} {...tlStyleDropPick(() => {if(isParCh){applyParallelChannelTlPatch(s=>({...s,chLines:v9SortParallelChannelChLines(s.chLines.map((l,i)=>i===srcIdx?{...l,width:w}:l))}));}else if(isRegCh){applyRegressionChannelTlPatch(s=>({...s,regLines:(s.regLines||[]).map((l,i)=>i===srcIdx?{...l,width:w}:l)}));}else{setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===srcIdx?{...l,width:w}:l)}));}})}
                                     onMouseEnter={()=>setHov(`${cpKey}w-${srcIdx}-${w}`)} onMouseLeave={()=>setHov(null)}
                                     style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
-                                             background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
+                                             background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
                                     <svg width={28} height={Math.max(8,+w+4)} viewBox={`0 0 28 ${Math.max(8,+w+4)}`}>
-                                      <line x1={0} y1={Math.max(8,+w+4)/2} x2={28} y2={Math.max(8,+w+4)/2} stroke={isA?c.acL:c.ts} strokeWidth={+w} strokeLinecap="round"/>
+                                      <line x1={0} y1={Math.max(8,+w+4)/2} x2={28} y2={Math.max(8,+w+4)/2} stroke={isA?"var(--accent)":"var(--text-muted)"} strokeWidth={+w} strokeLinecap="round"/>
                                     </svg>
                                   </div>
                                 );
@@ -28820,44 +29795,39 @@ const TalariaV8bLive = () => {
                   {/* ── Pitchfork section (type + levels on Input tab) ── */}
                   {isPitchfork && (()=>{
                     const da = v => v==="dotted"?"2,4":v==="dashed"?"7,4":v==="dashdot"?"7,4,2,4":undefined;
+                    const midOn = tlStyle.pfMiddleLine !== false;
+                    const bgOn = tlStyle.pfBackground !== false;
                     return <>
-                      {/* Middle Line grid — Color / Style / Thickness */}
-                      <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto auto", columnGap:12, rowGap:0, alignItems:"end" }}>
-                        <div/><div/>
-                        <div style={{ display:"flex", justifyContent:"center", padding:"0 0 4px" }}><span data-sett-col-lbl="">Style</span></div>
-                        <div style={{ display:"flex", justifyContent:"center", padding:"0 0 4px" }}><span data-sett-col-lbl="">Width</span></div>
-                        {/* Middle Line row */}
-                        <div style={{ padding:"8px 0", alignSelf:"center" }}>
-                          {TlChk(tlStyle.pfMiddleLine !== false, "tlchk-pfMiddle", "Middle Line", applyPfMiddleLineToggle)}
+                      <div data-sett-control-grid="">
+                        <div data-sett-chk-label="">
+                          {TlChk(midOn, "tlchk-pfMiddle", "Middle Line", applyPfMiddleLineToggle)}
                         </div>
-                        <div style={{ padding:"8px 0", opacity:tlStyle.pfMiddleLine !== false ? 1 : 0.38, pointerEvents:tlStyle.pfMiddleLine !== false ? "auto" : "none", transition:"opacity 0.15s" }}>
+                        <div style={{ opacity: midOn ? 1 : 0.38, pointerEvents: midOn ? "auto" : "none", transition: "opacity 0.15s", display: "flex", justifyContent: "center" }}>
                           {colorSwatch("pfMedianColor", tlStyle.pfMedianColor || tlStyle.lineColor)}
                         </div>
-                        <div style={{ padding:"8px 0", position:"relative" }}>
+                        <div style={{ opacity: midOn ? 1 : 0.38, pointerEvents: midOn ? "auto" : "none", transition: "opacity 0.15s", position: "relative" }}>
                           {(()=>{
                             const dk = "pfMidType";
                             return <>
                               <div data-sett-dd="" onClick={e=>{e.stopPropagation();if(tlStyleDrop===dk){setTlStyleDrop(null);setTlStyleDropAnchor(null);}else{captureTlStyleDropAnchor(e.currentTarget,150);setTlStyleDrop(dk);}}}
                                 onMouseEnter={()=>setHov(`tl-btn-${dk}`)} onMouseLeave={()=>setHov(null)}
-                                style={{ padding:"0 6px", display:"flex", alignItems:"center", justifyContent:"center", gap:3, cursor:"default", position:"relative",
-                                         background:"transparent",
-                                         transition:"background 0.12s" }}>
+                                style={{cursor:"default", position:"relative"}}>
                                 <svg width={22} height={10} viewBox="0 0 22 10">
-                                  <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop===dk?c.acL:c.ts}
+                                  <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop===dk?"var(--accent)":"var(--text-muted)"}
                                     strokeWidth={tlStyle.pfMedianType==="bold"?2.5:1.5} strokeLinecap="round" strokeDasharray={da(tlStyle.pfMedianType)}/>
                                 </svg>
-                                <I n="chevDown" s={7} cl={tlStyleDrop===dk?c.acL:c.ts}/>
+                                <I n="chevDown" s={7} cl={tlStyleDrop===dk?"var(--accent)":"var(--text-muted)"}/>
                               </div>
                               {tlStyleDrop===dk && dropShell(dk, 56, false,
                                 [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
                                   const isA=tlStyle.pfMedianType===v; const isH=hov===`pfmt-${v}`;
                                   return (
-                                    <div key={v} onClick={()=>{applyPfMedianType(v);setTlStyleDrop(null);}}
+                                    <div key={v} {...tlStyleDropPick(() => applyPfMedianType(v))}
                                       onMouseEnter={()=>setHov(`pfmt-${v}`)} onMouseLeave={()=>setHov(null)}
                                       style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
-                                               background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
+                                               background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
                                       <svg width={28} height={10} viewBox="0 0 28 10">
-                                        <line x1={0} y1={5} x2={28} y2={5} stroke={isA?c.acL:c.ts} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/>
+                                        <line x1={0} y1={5} x2={28} y2={5} stroke={isA?"var(--accent)":"var(--text-muted)"} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/>
                                       </svg>
                                     </div>
                                   );
@@ -28866,31 +29836,29 @@ const TalariaV8bLive = () => {
                             </>;
                           })()}
                         </div>
-                        <div style={{ padding:"8px 0", position:"relative" }}>
+                        <div style={{ opacity: midOn ? 1 : 0.38, pointerEvents: midOn ? "auto" : "none", transition: "opacity 0.15s", position: "relative" }}>
                           {(()=>{
                             const dk = "pfMidWidth";
                             return <>
                               <div data-sett-dd="" onClick={e=>{e.stopPropagation();if(tlStyleDrop===dk){setTlStyleDrop(null);setTlStyleDropAnchor(null);}else{captureTlStyleDropAnchor(e.currentTarget,150);setTlStyleDrop(dk);}}}
                                 onMouseEnter={()=>setHov(`tl-btn-${dk}`)} onMouseLeave={()=>setHov(null)}
-                                style={{ padding:"0 6px", display:"flex", alignItems:"center", justifyContent:"center", gap:3, cursor:"default", position:"relative",
-                                         background:"transparent",
-                                         transition:"background 0.12s" }}>
+                                style={{cursor:"default", position:"relative"}}>
                                 <svg width={22} height={Math.max(8,+tlStyle.pfMedianWidth+4)} viewBox={`0 0 22 ${Math.max(8,+tlStyle.pfMedianWidth+4)}`}>
                                   <line x1={0} y1={Math.max(8,+tlStyle.pfMedianWidth+4)/2} x2={22} y2={Math.max(8,+tlStyle.pfMedianWidth+4)/2}
-                                    stroke={tlStyleDrop===dk?c.acL:c.ts} strokeWidth={+tlStyle.pfMedianWidth} strokeLinecap="round"/>
+                                    stroke={tlStyleDrop===dk?"var(--accent)":"var(--text-muted)"} strokeWidth={+tlStyle.pfMedianWidth} strokeLinecap="round"/>
                                 </svg>
-                                <I n="chevDown" s={7} cl={tlStyleDrop===dk?c.acL:c.ts}/>
+                                <I n="chevDown" s={7} cl={tlStyleDrop===dk?"var(--accent)":"var(--text-muted)"}/>
                               </div>
                               {tlStyleDrop===dk && dropShell(dk, 56, false,
                                 ["1","2","3","4"].map(w=>{
                                   const isA=tlStyle.pfMedianWidth===w; const isH=hov===`pfmw-${w}`;
                                   return (
-                                    <div key={w} onClick={()=>{applyPfMedianWidth(w);setTlStyleDrop(null);}}
+                                    <div key={w} {...tlStyleDropPick(() => applyPfMedianWidth(w))}
                                       onMouseEnter={()=>setHov(`pfmw-${w}`)} onMouseLeave={()=>setHov(null)}
                                       style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
-                                               background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
+                                               background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
                                       <svg width={28} height={Math.max(8,+w+4)} viewBox={`0 0 28 ${Math.max(8,+w+4)}`}>
-                                        <line x1={0} y1={Math.max(8,+w+4)/2} x2={28} y2={Math.max(8,+w+4)/2} stroke={isA?c.acL:c.ts} strokeWidth={+w} strokeLinecap="round"/>
+                                        <line x1={0} y1={Math.max(8,+w+4)/2} x2={28} y2={Math.max(8,+w+4)/2} stroke={isA?"var(--accent)":"var(--text-muted)"} strokeWidth={+w} strokeLinecap="round"/>
                                       </svg>
                                     </div>
                                   );
@@ -28899,145 +29867,146 @@ const TalariaV8bLive = () => {
                             </>;
                           })()}
                         </div>
-                        {/* Background row inside grid */}
                       </div>
-                      {/* Background checkbox + color + opacity slider */}
-                      <div style={{ display:"flex", alignItems:"center", padding:"8px 0" }}>
-                        <div style={{ width:130 }}>{TlChk(tlStyle.pfBackground !== false,"tlchk-pfBackground","Background",applyPfBackgroundToggle)}</div>
-                        <div style={{ marginLeft:20, opacity:tlStyle.pfBackground !== false ? 1 : 0.38, pointerEvents:tlStyle.pfBackground !== false ? "auto" : "none", transition:"opacity 0.15s" }}>
+                      <div data-sett-control-grid="">
+                        <div data-sett-chk-label="">
+                          {TlChk(bgOn, "tlchk-pfBackground", "Background", applyPfBackgroundToggle)}
+                        </div>
+                        <div style={{ opacity: bgOn ? 1 : 0.38, pointerEvents: bgOn ? "auto" : "none", transition: "opacity 0.15s", display: "flex", justifyContent: "center" }}>
                           {colorSwatch("pfBgColor", tlStyle.pfBgColor || "#3090FF")}
                         </div>
-                        {(()=>{const pct=(tlStyle.pfBgOpacity??0.5)*100;const on=tlStyle.pfBackground !== false;return(
-                        <div style={{ marginLeft:20, display:"flex", alignItems:"center", opacity:on?1:0.38, pointerEvents:on?"auto":"none", transition:"opacity 0.15s" }}>
-                          <div style={{ position:"relative", width:100, height:20, display:"flex", alignItems:"center" }}>
-                            <div style={{ position:"absolute", left:0, right:0, height:3, top:"50%", transform:"translateY(-50%)", borderRadius:99, background:c.trk }}>
-                              <div style={{ width:`${pct}%`, height:"100%", borderRadius:99, background:"color-mix(in oklab, var(--accent) 55%, transparent)" }}/>
-                            </div>
-                            <div data-sett-alpha-thumb="" style={{ position:"absolute", left:`${pct}%`, top:"50%", width:12, height:12, marginLeft:-6, marginTop:-6, borderRadius:"50%", background:"var(--accent)", border:"2px solid var(--surface)", boxSizing:"border-box", pointerEvents:"none" }}/>
-                            <input type="range" min="0" max="1" step="0.01" value={tlStyle.pfBgOpacity??0.5}
-                              onChange={e=>{const v=+e.target.value;flushSync(()=>setTlStyle(s=>({...s,pfBgOpacity:v})));v9FlushTlStyleToChartTargets({...tlStyleLiveRef.current,pfBgOpacity:v},{editingRefDrawing:editingDrawingRef.current?.drawing??null,resolveLegacyTool});}}
-                              onPointerDown={()=>setHov("pf-bg-sl")} onPointerUp={()=>setHov(null)} onPointerLeave={()=>setHov(null)}
-                              onClick={e=>e.stopPropagation()}
-                              style={{ position:"absolute", left:-6, right:-6, width:"calc(100% + 12px)", height:"100%", opacity:0, cursor:"default", margin:0 }}/>
-                          </div>
-                        </div>);})()}
-                      </div>
-                      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 0 6px" }}>
-                        <div data-sett-sec="">Level colors</div>
-                        <div onClick={e=>{e.stopPropagation();applyPitchforkTlPatch(s=>({...s,pfLevels:v9DefaultPfLevelsTl()}));}}
-                          onMouseEnter={()=>setHov("pfReset")} onMouseLeave={()=>setHov(null)}
-                          style={{ height:24, padding:"0 10px", display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
-                                   border:`1px solid rgba(140,160,255,0.15)`, background:hov==="pfReset"?c.hv2:"transparent",
-                                   transition:"background 0.1s" }}>
-                          <span style={{ fontSize:10, color:c.ts }}>Reset</span>
+                        <div data-sett-slider-slot="" style={{ opacity: bgOn ? 1 : 0.38, pointerEvents: bgOn ? "auto" : "none", transition: "opacity 0.15s" }}>
+                          {SettOpacitySlider({
+                            pct: (tlStyle.pfBgOpacity ?? 0.5) * 100,
+                            value: tlStyle.pfBgOpacity ?? 0.5,
+                            disabled: !bgOn,
+                            grow: true,
+                            hovKey: "pf-bg-sl",
+                            onChange: (v) => {
+                              flushSync(() => setTlStyle((s) => ({ ...s, pfBgOpacity: v })));
+                              v9FlushTlStyleToChartTargets(
+                                { ...tlStyleLiveRef.current, pfBgOpacity: v },
+                                { editingRefDrawing: editingDrawingRef.current?.drawing ?? null, resolveLegacyTool },
+                              );
+                            },
+                          })}
                         </div>
                       </div>
-                      <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto auto", columnGap:12, rowGap:10, alignItems:"center" }}>
-                        <div/><div/>
-                        <div style={{ display:"flex", justifyContent:"center" }}><span data-sett-col-lbl="">Style</span></div>
-                        <div style={{ display:"flex", justifyContent:"center" }}><span data-sett-col-lbl="">Width</span></div>
-                        {(tlStyle.pfLevels || []).map((lv, idx) => {
-                          const op = lv.on ? 1 : 0.38;
-                          const pe = lv.on ? "auto" : "none";
-                          const typeDk = `pfLvlType-${idx}`;
-                          const widDk = `pfLvlWidth-${idx}`;
-                          return (
-                            <React.Fragment key={`${lv.value}-${idx}`}>
-                              <span style={{ fontSize:11, color:c.ts, fontVariantNumeric:"tabular-nums", opacity:op }}>{lv.value}</span>
-                              <div style={{ opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>
-                                {colorSwatch(`pfLevel-${idx}`, lv.color)}
-                              </div>
-                              <div style={{ position:"relative", opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>
-                                <div data-sett-dd="" onClick={e=>{e.stopPropagation();if(tlStyleDrop===typeDk){setTlStyleDrop(null);setTlStyleDropAnchor(null);}else{captureTlStyleDropAnchor(e.currentTarget,220);setTlStyleDrop(typeDk);}}}
-                                  onMouseEnter={()=>setHov(`tl-btn-${typeDk}`)} onMouseLeave={()=>setHov(null)}
-                                  style={{ padding:"0 6px", display:"flex", alignItems:"center", justifyContent:"center", gap:3, cursor:"default", position:"relative",
-                                           background:"transparent",
-                                           transition:"background 0.12s" }}>
-                                  <svg width={22} height={10} viewBox="0 0 22 10">
-                                    <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop===typeDk?c.acL:c.ts}
-                                      strokeWidth={lv.type==="bold"?2.5:1.5} strokeLinecap="round" strokeDasharray={da(lv.type)}/>
-                                  </svg>
-                                  <I n="chevDown" s={7} cl={tlStyleDrop===typeDk?c.acL:c.ts}/>
-                                </div>
-                                {tlStyleDrop===typeDk && dropShell(typeDk, 56, false,
-                                  [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
-                                    const isA=lv.type===v; const isH=hov===`pflvt-${idx}-${v}`;
-                                    return (
-                                      <div key={v} onClick={()=>{applyPitchforkTlPatch(s=>({...s,pfLevels:s.pfLevels.map((l,i)=>i===idx?{...l,type:v}:l)}));setTlStyleDrop(null);}}
-                                        onMouseEnter={()=>setHov(`pflvt-${idx}-${v}`)} onMouseLeave={()=>setHov(null)}
-                                        style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
-                                                 background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
-                                        <svg width={28} height={10} viewBox="0 0 28 10">
-                                          <line x1={0} y1={5} x2={28} y2={5} stroke={isA?c.acL:c.ts} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/>
-                                        </svg>
-                                      </div>
-                                    );
-                                  })
-                                )}
-                              </div>
-                              <div style={{ position:"relative", opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>
-                                <div data-sett-dd="" onClick={e=>{e.stopPropagation();if(tlStyleDrop===widDk){setTlStyleDrop(null);setTlStyleDropAnchor(null);}else{captureTlStyleDropAnchor(e.currentTarget,220);setTlStyleDrop(widDk);}}}
-                                  onMouseEnter={()=>setHov(`tl-btn-${widDk}`)} onMouseLeave={()=>setHov(null)}
-                                  style={{ padding:"0 6px", display:"flex", alignItems:"center", justifyContent:"center", gap:3, cursor:"default", position:"relative",
-                                           background:"transparent",
-                                           transition:"background 0.12s" }}>
-                                  <svg width={22} height={Math.max(8,+lv.width+4)} viewBox={`0 0 22 ${Math.max(8,+lv.width+4)}`}>
-                                    <line x1={0} y1={Math.max(8,+lv.width+4)/2} x2={22} y2={Math.max(8,+lv.width+4)/2}
-                                      stroke={tlStyleDrop===widDk?c.acL:c.ts} strokeWidth={+lv.width} strokeLinecap="round"/>
-                                  </svg>
-                                  <I n="chevDown" s={7} cl={tlStyleDrop===widDk?c.acL:c.ts}/>
-                                </div>
-                                {tlStyleDrop===widDk && dropShell(widDk, 56, false,
-                                  ["1","2","3","4"].map(w=>{
-                                    const isA=String(lv.width)===w; const isH=hov===`pflvw-${idx}-${w}`;
-                                    return (
-                                      <div key={w} onClick={()=>{applyPitchforkTlPatch(s=>({...s,pfLevels:s.pfLevels.map((l,i)=>i===idx?{...l,width:w}:l)}));setTlStyleDrop(null);}}
-                                        onMouseEnter={()=>setHov(`pflvw-${idx}-${w}`)} onMouseLeave={()=>setHov(null)}
-                                        style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
-                                                 background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
-                                        <svg width={28} height={Math.max(8,+w+4)} viewBox={`0 0 28 ${Math.max(8,+w+4)}`}>
-                                          <line x1={0} y1={Math.max(8,+w+4)/2} x2={28} y2={Math.max(8,+w+4)/2} stroke={isA?c.acL:c.ts} strokeWidth={+w} strokeLinecap="round"/>
-                                        </svg>
-                                      </div>
-                                    );
-                                  })
-                                )}
-                              </div>
-                            </React.Fragment>
-                          );
-                        })}
+                      <div data-sett-control-grid="" style={{ marginTop: 8 }}>
+                        <div data-sett-chk-label=""><div data-sett-sec="" style={{ padding: 0 }}>Level colors</div></div>
+                        <div/>
+                        <div data-sett-chips="">
+                          <div onClick={e=>{e.stopPropagation();applyPitchforkTlPatch(s=>({...s,pfLevels:v9DefaultPfLevelsTl()}));}}
+                            onMouseEnter={()=>setHov("pfReset")} onMouseLeave={()=>setHov(null)}
+                            style={{ height:30, padding:"0 12px", display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
+                                     border:"1px solid var(--line)", borderRadius:6, background:hov==="pfReset"?"var(--surface-raised)":"var(--surface-sunken)", transition:"background 0.1s, border-color 0.1s" }}>
+                            <span style={{ fontSize:11, color:"var(--text-muted)" }}>Reset</span>
+                          </div>
+                        </div>
                       </div>
+                      {(tlStyle.pfLevels || []).map((lv, idx) => {
+                        const op = lv.on ? 1 : 0.38;
+                        const pe = lv.on ? "auto" : "none";
+                        const typeDk = `pfLvlType-${idx}`;
+                        const widDk = `pfLvlWidth-${idx}`;
+                        return (
+                          <div key={`${lv.value}-${idx}`} data-sett-control-grid="">
+                            <div data-sett-chk-label="">
+                              <span style={{ fontSize:12, color:"var(--text-muted)", fontVariantNumeric:"tabular-nums", opacity:op }}>{lv.value}</span>
+                            </div>
+                            <div style={{ opacity:op, pointerEvents:pe, transition:"opacity 0.15s", display:"flex", justifyContent:"center" }}>
+                              {colorSwatch(`pfLevel-${idx}`, lv.color)}
+                            </div>
+                            <div style={{ position:"relative", opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>
+                              <div data-sett-dd="" onClick={e=>{e.stopPropagation();if(tlStyleDrop===typeDk){setTlStyleDrop(null);setTlStyleDropAnchor(null);}else{captureTlStyleDropAnchor(e.currentTarget,220);setTlStyleDrop(typeDk);}}}
+                                onMouseEnter={()=>setHov(`tl-btn-${typeDk}`)} onMouseLeave={()=>setHov(null)}
+                                style={{cursor:"default", position:"relative"}}>
+                                <svg width={22} height={10} viewBox="0 0 22 10">
+                                  <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop===typeDk?"var(--accent)":"var(--text-muted)"}
+                                    strokeWidth={lv.type==="bold"?2.5:1.5} strokeLinecap="round" strokeDasharray={da(lv.type)}/>
+                                </svg>
+                                <I n="chevDown" s={7} cl={tlStyleDrop===typeDk?"var(--accent)":"var(--text-muted)"}/>
+                              </div>
+                              {tlStyleDrop===typeDk && dropShell(typeDk, 56, false,
+                                [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
+                                  const isA=lv.type===v; const isH=hov===`pflvt-${idx}-${v}`;
+                                  return (
+                                    <div key={v} {...tlStyleDropPick(() => applyPitchforkTlPatch(s=>({...s,pfLevels:s.pfLevels.map((l,i)=>i===idx?{...l,type:v}:l)})))}
+                                      onMouseEnter={()=>setHov(`pflvt-${idx}-${v}`)} onMouseLeave={()=>setHov(null)}
+                                      style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
+                                               background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
+                                      <svg width={28} height={10} viewBox="0 0 28 10">
+                                        <line x1={0} y1={5} x2={28} y2={5} stroke={isA?"var(--accent)":"var(--text-muted)"} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/>
+                                      </svg>
+                                    </div>
+                                  );
+                                })
+                              )}
+                            </div>
+                            <div style={{ position:"relative", opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>
+                              <div data-sett-dd="" onClick={e=>{e.stopPropagation();if(tlStyleDrop===widDk){setTlStyleDrop(null);setTlStyleDropAnchor(null);}else{captureTlStyleDropAnchor(e.currentTarget,220);setTlStyleDrop(widDk);}}}
+                                onMouseEnter={()=>setHov(`tl-btn-${widDk}`)} onMouseLeave={()=>setHov(null)}
+                                style={{cursor:"default", position:"relative"}}>
+                                <svg width={22} height={Math.max(8,+lv.width+4)} viewBox={`0 0 22 ${Math.max(8,+lv.width+4)}`}>
+                                  <line x1={0} y1={Math.max(8,+lv.width+4)/2} x2={22} y2={Math.max(8,+lv.width+4)/2}
+                                    stroke={tlStyleDrop===widDk?"var(--accent)":"var(--text-muted)"} strokeWidth={+lv.width} strokeLinecap="round"/>
+                                </svg>
+                                <I n="chevDown" s={7} cl={tlStyleDrop===widDk?"var(--accent)":"var(--text-muted)"}/>
+                              </div>
+                              {tlStyleDrop===widDk && dropShell(widDk, 56, false,
+                                ["1","2","3","4"].map(w=>{
+                                  const isA=String(lv.width)===w; const isH=hov===`pflvw-${idx}-${w}`;
+                                  return (
+                                    <div key={w} {...tlStyleDropPick(() => applyPitchforkTlPatch(s=>({...s,pfLevels:s.pfLevels.map((l,i)=>i===idx?{...l,width:w}:l)})))}
+                                      onMouseEnter={()=>setHov(`pflvw-${idx}-${w}`)} onMouseLeave={()=>setHov(null)}
+                                      style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
+                                               background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
+                                      <svg width={28} height={Math.max(8,+w+4)} viewBox={`0 0 28 ${Math.max(8,+w+4)}`}>
+                                        <line x1={0} y1={Math.max(8,+w+4)/2} x2={28} y2={Math.max(8,+w+4)/2} stroke={isA?"var(--accent)":"var(--text-muted)"} strokeWidth={+w} strokeLinecap="round"/>
+                                      </svg>
+                                    </div>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </>;
                   })()}
                   {/* ── Fib Style section ── */}
                   {isFibTool && tlSubTool.icon !== "fibCircles" && tlSubTool.icon !== "fibSpiral" && (()=>{
                     return <>
                       {/* Trend line checkbox + color */}
-                      {tlSubTool.icon !== "fibChannel" && tlSubTool.icon !== "fibFan" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && <div style={{ display:"flex", alignItems:"center", padding:"8px 0" }}>
-                        <div style={{ width:130 }}>{TlChk(tlStyle.fibTrendLine,"tlchk-fibTrend","Trend line",()=>setTlStyle(s=>({...s,fibTrendLine:!s.fibTrendLine})))}</div>
-                        <div style={{ marginLeft:100, opacity:tlStyle.fibTrendLine?1:0.38, pointerEvents:tlStyle.fibTrendLine?"auto":"none", transition:"opacity 0.15s" }}>
-                          {colorSwatch("fibTrendColor", tlStyle.lineColor)}
+                      {tlSubTool.icon !== "fibChannel" && tlSubTool.icon !== "fibFan" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && (
+                        <div data-sett-control-grid="">
+                          <div data-sett-chk-label="">
+                            {TlChk(tlStyle.fibTrendLine,"tlchk-fibTrend","Trend line",()=>setTlStyle(s=>({...s,fibTrendLine:!s.fibTrendLine})))}
+                          </div>
+                          <div style={{ opacity:tlStyle.fibTrendLine?1:0.38, pointerEvents:tlStyle.fibTrendLine?"auto":"none", transition:"opacity 0.15s", display:"flex", justifyContent:"center" }}>
+                            {colorSwatch("fibTrendColor", tlStyle.lineColor)}
+                          </div>
+                          <div/><div/>
                         </div>
-                      </div>}
+                      )}
                       {/* FIBONACCI STYLE */}
                       <div data-sett-sec="">Fibonacci style</div>
                       {/* Background + opacity slider */}
-                      <div style={{ display:"flex", alignItems:"center", padding:"6px 0" }}>
-                        <div style={{ width:130 }}>{TlChk(tlStyle.fibBackground,"tlchk-fibBg","Background",()=>setTlStyle(s=>({...s,fibBackground:!s.fibBackground})))}</div>
-                        {(()=>{const pct=tlStyle.fibBgOpacity*100;return(
-                        <div style={{ marginLeft:78, display:"flex", alignItems:"center", opacity:tlStyle.fibBackground?1:0.38, pointerEvents:tlStyle.fibBackground?"auto":"none", transition:"opacity 0.15s" }}>
-                          <div style={{ position:"relative", width:100, height:20, display:"flex", alignItems:"center" }}>
-                            <div style={{ position:"absolute", left:0, right:0, height:3, top:"50%", transform:"translateY(-50%)", borderRadius:99, background:c.trk }}>
-                              <div style={{ width:`${pct}%`, height:"100%", borderRadius:99, background:"color-mix(in oklab, var(--accent) 55%, transparent)" }}/>
-                            </div>
-                            <div data-sett-alpha-thumb="" style={{ position:"absolute", left:`${pct}%`, top:"50%", width:12, height:12, marginLeft:-6, marginTop:-6, borderRadius:"50%", background:"var(--accent)", border:"2px solid var(--surface)", boxSizing:"border-box", pointerEvents:"none" }}/>
-                            <input type="range" min="0" max="1" step="0.01" value={tlStyle.fibBgOpacity}
-                              onChange={e=>setTlStyle(s=>({...s,fibBgOpacity:+e.target.value}))}
-                              onPointerDown={()=>setHov("fib-bg-sl")} onPointerUp={()=>setHov(null)} onPointerLeave={()=>setHov(null)}
-                              onClick={e=>e.stopPropagation()}
-                              style={{ position:"absolute", left:-6, right:-6, width:"calc(100% + 12px)", height:"100%", opacity:0, cursor:"default", margin:0 }}/>
-                          </div>
-                        </div>);})()}
+                      <div data-sett-control-grid="">
+                        <div data-sett-chk-label="">
+                          {TlChk(tlStyle.fibBackground,"tlchk-fibBg","Background",()=>setTlStyle(s=>({...s,fibBackground:!s.fibBackground})))}
+                        </div>
+                        <div/>
+                        <div data-sett-slider-slot="">
+                          {SettOpacitySlider({
+                            pct: (tlStyle.fibBgOpacity ?? 0) * 100,
+                            value: tlStyle.fibBgOpacity ?? 0,
+                            disabled: !tlStyle.fibBackground,
+                            grow: true,
+                            hovKey: "fib-bg-sl",
+                            onChange: (v) => setTlStyle((s) => ({ ...s, fibBgOpacity: v })),
+                          })}
+                        </div>
                       </div>
                       {/* Reverse */}
                       {tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibTimeZone" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && <div style={{ padding:"6px 0" }}>
@@ -29055,66 +30024,64 @@ const TalariaV8bLive = () => {
                         const typeDk = "fibGridType";
                         const widDk = "fibGridWidth";
                         return (
-                          <div style={{ display:"flex", alignItems:"center", padding:"6px 0", gap:8 }}>
-                            <div style={{ width:130 }}>{TlChk(on,"tlchk-fibGrid","Grid",()=>setTlStyle(s=>({...s,fibGrid:!s.fibGrid})))}</div>
-                            <div style={{ display:"flex", alignItems:"center", gap:8, marginLeft:20, opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>
+                          <div data-sett-control-grid="">
+                            <div data-sett-chk-label="">
+                              {TlChk(on,"tlchk-fibGrid","Grid",()=>setTlStyle(s=>({...s,fibGrid:!s.fibGrid})))}
+                            </div>
+                            <div style={{ opacity:op, pointerEvents:pe, transition:"opacity 0.15s", display:"flex", justifyContent:"center" }}>
                               {colorSwatch("fibGridColor", tlStyle.fibGridColor)}
-                              {/* Style */}
-                              <div style={{ position:"relative" }}>
-                                <div data-sett-dd="" onClick={e=>{e.stopPropagation();if(tlStyleDrop===typeDk){setTlStyleDrop(null);setTlStyleDropAnchor(null);}else{captureTlStyleDropAnchor(e.currentTarget,220);setTlStyleDrop(typeDk);}}}
-                                  onMouseEnter={()=>setHov(`tl-btn-${typeDk}`)} onMouseLeave={()=>setHov(null)}
-                                  style={{ padding:"0 6px", display:"flex", alignItems:"center", gap:3, cursor:"default", position:"relative",
-                                           background:"transparent", transition:"background 0.12s" }}>
-                                  <svg width={22} height={10} viewBox="0 0 22 10">
-                                    <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop===typeDk?c.acL:c.ts}
-                                      strokeWidth={tlStyle.fibGridType==="bold"?2.5:1.5} strokeLinecap="round" strokeDasharray={da(tlStyle.fibGridType)}/>
-                                  </svg>
-                                  <I n="chevDown" s={7} cl={tlStyleDrop===typeDk?c.acL:c.ts}/>
-                                </div>
-                                {tlStyleDrop===typeDk && dropShell(typeDk, 56, false,
-                                  [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
-                                    const isA=tlStyle.fibGridType===v; const isH=hov===`fibGt-${v}`;
-                                    return (
-                                      <div key={v} onClick={()=>{setTlStyle(s=>({...s,fibGridType:v}));setTlStyleDrop(null);}}
-                                        onMouseEnter={()=>setHov(`fibGt-${v}`)} onMouseLeave={()=>setHov(null)}
-                                        style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
-                                                 background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
-                                        <svg width={28} height={10} viewBox="0 0 28 10">
-                                          <line x1={0} y1={5} x2={28} y2={5} stroke={isA?c.acL:c.ts} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/>
-                                        </svg>
-                                      </div>
-                                    );
-                                  })
-                                )}
+                            </div>
+                            <div style={{ position:"relative", opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>
+                              <div data-sett-dd="" onClick={e=>{e.stopPropagation();if(tlStyleDrop===typeDk){setTlStyleDrop(null);setTlStyleDropAnchor(null);}else{captureTlStyleDropAnchor(e.currentTarget,220);setTlStyleDrop(typeDk);}}}
+                                onMouseEnter={()=>setHov(`tl-btn-${typeDk}`)} onMouseLeave={()=>setHov(null)}
+                                style={{cursor:"default", position:"relative"}}>
+                                <svg width={22} height={10} viewBox="0 0 22 10">
+                                  <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop===typeDk?"var(--accent)":"var(--text-muted)"}
+                                    strokeWidth={tlStyle.fibGridType==="bold"?2.5:1.5} strokeLinecap="round" strokeDasharray={da(tlStyle.fibGridType)}/>
+                                </svg>
+                                <I n="chevDown" s={7} cl={tlStyleDrop===typeDk?"var(--accent)":"var(--text-muted)"}/>
                               </div>
-                              {/* Thickness */}
-                              <div style={{ position:"relative" }}>
-                                <div data-sett-dd="" onClick={e=>{e.stopPropagation();if(tlStyleDrop===widDk){setTlStyleDrop(null);setTlStyleDropAnchor(null);}else{captureTlStyleDropAnchor(e.currentTarget,220);setTlStyleDrop(widDk);}}}
-                                  onMouseEnter={()=>setHov(`tl-btn-${widDk}`)} onMouseLeave={()=>setHov(null)}
-                                  style={{ padding:"0 6px", display:"flex", alignItems:"center", gap:3, cursor:"default", position:"relative",
-                                           background:"transparent", transition:"background 0.12s" }}>
-                                  <svg width={22} height={Math.max(8,+tlStyle.fibGridWidth+4)} viewBox={`0 0 22 ${Math.max(8,+tlStyle.fibGridWidth+4)}`}>
-                                    <line x1={0} y1={Math.max(8,+tlStyle.fibGridWidth+4)/2} x2={22} y2={Math.max(8,+tlStyle.fibGridWidth+4)/2}
-                                      stroke={tlStyleDrop===widDk?c.acL:c.ts} strokeWidth={+tlStyle.fibGridWidth} strokeLinecap="round"/>
-                                  </svg>
-                                  <I n="chevDown" s={7} cl={tlStyleDrop===widDk?c.acL:c.ts}/>
-                                </div>
-                                {tlStyleDrop===widDk && dropShell(widDk, 56, false,
-                                  ["1","2","3","4"].map(w=>{
-                                    const isA=tlStyle.fibGridWidth===w; const isH=hov===`fibGw-${w}`;
-                                    return (
-                                      <div key={w} onClick={()=>{setTlStyle(s=>({...s,fibGridWidth:w}));setTlStyleDrop(null);}}
-                                        onMouseEnter={()=>setHov(`fibGw-${w}`)} onMouseLeave={()=>setHov(null)}
-                                        style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
-                                                 background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
-                                        <svg width={28} height={Math.max(8,+w+4)} viewBox={`0 0 28 ${Math.max(8,+w+4)}`}>
-                                          <line x1={0} y1={Math.max(8,+w+4)/2} x2={28} y2={Math.max(8,+w+4)/2} stroke={isA?c.acL:c.ts} strokeWidth={+w} strokeLinecap="round"/>
-                                        </svg>
-                                      </div>
-                                    );
-                                  })
-                                )}
+                              {tlStyleDrop===typeDk && dropShell(typeDk, 56, false,
+                                [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
+                                  const isA=tlStyle.fibGridType===v; const isH=hov===`fibGt-${v}`;
+                                  return (
+                                    <div key={v} {...tlStyleDropPick(() => setTlStyle(s=>({...s,fibGridType:v})))}
+                                      onMouseEnter={()=>setHov(`fibGt-${v}`)} onMouseLeave={()=>setHov(null)}
+                                      style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
+                                               background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
+                                      <svg width={28} height={10} viewBox="0 0 28 10">
+                                        <line x1={0} y1={5} x2={28} y2={5} stroke={isA?"var(--accent)":"var(--text-muted)"} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/>
+                                      </svg>
+                                    </div>
+                                  );
+                                })
+                              )}
+                            </div>
+                            <div style={{ position:"relative", opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>
+                              <div data-sett-dd="" onClick={e=>{e.stopPropagation();if(tlStyleDrop===widDk){setTlStyleDrop(null);setTlStyleDropAnchor(null);}else{captureTlStyleDropAnchor(e.currentTarget,220);setTlStyleDrop(widDk);}}}
+                                onMouseEnter={()=>setHov(`tl-btn-${widDk}`)} onMouseLeave={()=>setHov(null)}
+                                style={{cursor:"default", position:"relative"}}>
+                                <svg width={22} height={Math.max(8,+tlStyle.fibGridWidth+4)} viewBox={`0 0 22 ${Math.max(8,+tlStyle.fibGridWidth+4)}`}>
+                                  <line x1={0} y1={Math.max(8,+tlStyle.fibGridWidth+4)/2} x2={22} y2={Math.max(8,+tlStyle.fibGridWidth+4)/2}
+                                    stroke={tlStyleDrop===widDk?"var(--accent)":"var(--text-muted)"} strokeWidth={+tlStyle.fibGridWidth} strokeLinecap="round"/>
+                                </svg>
+                                <I n="chevDown" s={7} cl={tlStyleDrop===widDk?"var(--accent)":"var(--text-muted)"}/>
                               </div>
+                              {tlStyleDrop===widDk && dropShell(widDk, 56, false,
+                                ["1","2","3","4"].map(w=>{
+                                  const isA=tlStyle.fibGridWidth===w; const isH=hov===`fibGw-${w}`;
+                                  return (
+                                    <div key={w} {...tlStyleDropPick(() => setTlStyle(s=>({...s,fibGridWidth:w})))}
+                                      onMouseEnter={()=>setHov(`fibGw-${w}`)} onMouseLeave={()=>setHov(null)}
+                                      style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
+                                               background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
+                                      <svg width={28} height={Math.max(8,+w+4)} viewBox={`0 0 28 ${Math.max(8,+w+4)}`}>
+                                        <line x1={0} y1={Math.max(8,+w+4)/2} x2={28} y2={Math.max(8,+w+4)/2} stroke={isA?"var(--accent)":"var(--text-muted)"} strokeWidth={+w} strokeLinecap="round"/>
+                                      </svg>
+                                    </div>
+                                  );
+                                })
+                              )}
                             </div>
                           </div>
                         );
@@ -29137,31 +30104,24 @@ const TalariaV8bLive = () => {
                           <div style={{ display:"flex", alignItems:"center", padding:"6px 0" }}>
                             <div style={{ width:130 }}>{TlChk(fibLevelsOn,"tlchk-fibLvl","Level values",()=>applyTlFibLevelsOn(!fibLevelsOn))}</div>
                             <div style={{ position:"relative", marginLeft:78, opacity:fibLevelsOn?1:0.38, pointerEvents:fibLevelsOn?"auto":"none", transition:"opacity 0.15s" }}>
-                              <div data-sett-dd="" onClick={e=>{e.stopPropagation();if(tlStyleDrop===dk){setTlStyleDrop(null);setTlStyleDropAnchor(null);}else{captureTlStyleDropAnchor(e.currentTarget,220);setTlStyleDrop(dk);}}}
+                              <div data-sett-dd="" data-open={tlStyleDrop===dk?"1":undefined} {...tlStyleDropTrigger(dk, null, 160)}
                                 onMouseEnter={()=>setHov(`tl-btn-${dk}`)} onMouseLeave={()=>setHov(null)}
-                                style={{ padding:"0 10px", display:"flex", alignItems:"center", gap:5, cursor:"default", position:"relative",
-                                         background:"transparent",
-                                         transition:"background 0.12s" }}>
-                                <span style={{ fontSize:12, color:tlStyleDrop===dk?c.acL:c.ts }}>{val}</span>
-                                <I n="chevDown" s={7} cl={tlStyleDrop===dk?c.acL:c.ts}/>
+                                style={{cursor:"default", position:"relative", minWidth:130}}>
+                                <span style={{ fontSize:12, color:tlStyleDrop===dk?"var(--accent)":"var(--text-muted)" }}>{val}</span>
+                                <I n="chevDown" s={7} cl={tlStyleDrop===dk?"var(--accent)":"var(--text-muted)"}/>
                               </div>
-                              {tlStyleDrop===dk && (
-                                <div onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
-                                  style={{ position:"absolute", top:"calc(100% + 4px)", right:0, zIndex:10, minWidth:130,
-                                           background:"var(--surface)", border:"1px solid var(--line)", boxShadow:"none" }}>
-                                  <div style={{ height:2, background:"rgba(255,255,255,0.18)" }}/>
-                                  {options.map(opt=>{
-                                    const isA=val===opt; const isH=hov===`fibLM-${opt}`;
-                                    return (
-                                      <div key={opt} onClick={()=>{applyTlFibLevelsMode(opt);setTlStyleDrop(null);}}
-                                        onMouseEnter={()=>setHov(`fibLM-${opt}`)} onMouseLeave={()=>setHov(null)}
-                                        style={{ padding:"6px 12px", cursor:"default", position:"relative",
-                                                 background:isA?c.acD:isH?c.hv2:"transparent", transition:"background 0.1s" }}>
-                                        <span style={{ fontSize:13, color:isA?c.acL:isH?c.tx:c.ts, fontWeight:isA?700:500 }}>{opt}</span>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
+                              {tlStyleDrop===dk && dropShell(dk, 160, false,
+                                options.map(opt=>{
+                                  const isA=val===opt; const isH=hov===`fibLM-${opt}`;
+                                  return (
+                                    <div key={opt} data-pick-on={isA?"1":undefined} {...tlStyleDropPick(() => applyTlFibLevelsMode(opt))}
+                                      onMouseEnter={()=>setHov(`fibLM-${opt}`)} onMouseLeave={()=>setHov(null)}
+                                      style={{ padding:"7px 12px", cursor:"default",
+                                               background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
+                                      <span style={{ fontSize:12, color:isA?"var(--accent)":isH?"var(--text)":"var(--text-muted)", fontWeight:isA?700:550 }}>{opt}</span>
+                                    </div>
+                                  );
+                                })
                               )}
                             </div>
                           </div>
@@ -29180,56 +30140,50 @@ const TalariaV8bLive = () => {
                       : v9FibLevelPositionChartToUi(v9FibLevelPositionUiToChart(valRaw), { vertical: verticalLevels });
                     return (
                       <div style={{ display:"flex", alignItems:"center", padding:"6px 0" }}>
-                        <span style={{ width:130, fontSize:12, color:c.ts }}>Level position</span>
+                        <span style={{ width:130, fontSize:12, color:"var(--text-muted)" }}>Level position</span>
                         <div style={{ position:"relative", marginLeft:78 }}>
-                          <div data-sett-dd="" onClick={e=>{e.stopPropagation();if(tlStyleDrop===dk){setTlStyleDrop(null);setTlStyleDropAnchor(null);}else{captureTlStyleDropAnchor(e.currentTarget,220);setTlStyleDrop(dk);}}}
+                          <div data-sett-dd="" data-open={tlStyleDrop===dk?"1":undefined} {...tlStyleDropTrigger(dk, null, 140)}
                             onMouseEnter={()=>setHov(`tl-btn-${dk}`)} onMouseLeave={()=>setHov(null)}
-                            style={{ padding:"0 10px", display:"flex", alignItems:"center", gap:5, cursor:"default", position:"relative",
-                                     background:"transparent",
-                                     transition:"background 0.12s" }}>
-                            <span style={{ fontSize:12, color:tlStyleDrop===dk?c.acL:c.ts }}>{val}</span>
-                            <I n="chevDown" s={7} cl={tlStyleDrop===dk?c.acL:c.ts}/>
+                            style={{cursor:"default", position:"relative", minWidth:100}}>
+                            <span style={{ fontSize:12, color:tlStyleDrop===dk?"var(--accent)":"var(--text-muted)" }}>{val}</span>
+                            <I n="chevDown" s={7} cl={tlStyleDrop===dk?"var(--accent)":"var(--text-muted)"}/>
                           </div>
-                          {tlStyleDrop===dk && (
-                            <div onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
-                              style={{ position:"absolute", top:"calc(100% + 4px)", right:0, zIndex:10, minWidth:100,
-                                       background:"var(--surface)", border:"1px solid var(--line)", boxShadow:"none" }}>
-                              <div style={{ height:2, background:"rgba(255,255,255,0.18)" }}/>
-                              {options.map(opt=>{
-                                const isA=val===opt; const isH=hov===`fibLP-${opt}`;
-                                return (
-                                  <div key={opt} onClick={()=>{applyTlFibLevelPosition(opt);setTlStyleDrop(null);}}
-                                    onMouseEnter={()=>setHov(`fibLP-${opt}`)} onMouseLeave={()=>setHov(null)}
-                                    style={{ padding:"6px 12px", cursor:"default", position:"relative",
-                                             background:isA?c.acD:isH?c.hv2:"transparent", transition:"background 0.1s" }}>
-                                    <span style={{ fontSize:13, color:isA?c.acL:isH?c.tx:c.ts, fontWeight:isA?700:500 }}>{opt}</span>
-                                  </div>
-                                );
-                              })}
-                            </div>
+                          {tlStyleDrop===dk && dropShell(dk, 120, false,
+                            options.map(opt=>{
+                              const isA=val===opt; const isH=hov===`fibLP-${opt}`;
+                              return (
+                                <div key={opt} data-pick-on={isA?"1":undefined} {...tlStyleDropPick(() => applyTlFibLevelPosition(opt))}
+                                  onMouseEnter={()=>setHov(`fibLP-${opt}`)} onMouseLeave={()=>setHov(null)}
+                                  style={{ padding:"7px 12px", cursor:"default",
+                                           background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
+                                  <span style={{ fontSize:12, color:isA?"var(--accent)":isH?"var(--text)":"var(--text-muted)", fontWeight:isA?700:550 }}>{opt}</span>
+                                </div>
+                              );
+                            })
                           )}
                         </div>
                       </div>
                     );
                   })()}
                   {/* ── fibCircles background ── */}
-                  {tlSubTool.icon === "fibCircles" && <div style={{ display:"flex", alignItems:"center", padding:"6px 0" }}>
-                    <div style={{ width:130 }}>{TlChk(tlStyle.fibBackground,"tlchk-fibBg","Background",()=>setTlStyle(s=>({...s,fibBackground:!s.fibBackground})))}</div>
-                    {(()=>{const pct=tlStyle.fibBgOpacity*100;return(
-                    <div style={{ marginLeft:78, display:"flex", alignItems:"center", opacity:tlStyle.fibBackground?1:0.38, pointerEvents:tlStyle.fibBackground?"auto":"none", transition:"opacity 0.15s" }}>
-                      <div style={{ position:"relative", width:100, height:20, display:"flex", alignItems:"center" }}>
-                        <div style={{ position:"absolute", left:0, right:0, height:3, top:"50%", transform:"translateY(-50%)", borderRadius:99, background:c.trk }}>
-                          <div style={{ width:`${pct}%`, height:"100%", borderRadius:99, background:"color-mix(in oklab, var(--accent) 55%, transparent)" }}/>
-                        </div>
-                        <div data-sett-alpha-thumb="" style={{ position:"absolute", left:`${pct}%`, top:"50%", width:12, height:12, marginLeft:-6, marginTop:-6, borderRadius:"50%", background:"var(--accent)", border:"2px solid var(--surface)", boxSizing:"border-box", pointerEvents:"none" }}/>
-                        <input type="range" min="0" max="1" step="0.01" value={tlStyle.fibBgOpacity}
-                          onChange={e=>setTlStyle(s=>({...s,fibBgOpacity:+e.target.value}))}
-                          onPointerDown={()=>setHov("fibC-bg-sl")} onPointerUp={()=>setHov(null)} onPointerLeave={()=>setHov(null)}
-                          onClick={e=>e.stopPropagation()}
-                          style={{ position:"absolute", left:-6, right:-6, width:"calc(100% + 12px)", height:"100%", opacity:0, cursor:"default", margin:0 }}/>
+                  {tlSubTool.icon === "fibCircles" && (
+                    <div data-sett-control-grid="">
+                      <div data-sett-chk-label="">
+                        {TlChk(tlStyle.fibBackground,"tlchk-fibBg","Background",()=>setTlStyle(s=>({...s,fibBackground:!s.fibBackground})))}
                       </div>
-                    </div>);})()}
-                  </div>}
+                      <div/>
+                      <div data-sett-slider-slot="">
+                        {SettOpacitySlider({
+                          pct: (tlStyle.fibBgOpacity ?? 0) * 100,
+                          value: tlStyle.fibBgOpacity ?? 0,
+                          disabled: !tlStyle.fibBackground,
+                          grow: true,
+                          hovKey: "fibC-bg-sl",
+                          onChange: (v) => setTlStyle((s) => ({ ...s, fibBgOpacity: v })),
+                        })}
+                      </div>
+                    </div>
+                  )}
                   {/* ── fibSpiral counter clockwise ── */}
                   {tlSubTool.icon === "fibSpiral" && <div style={{ padding:"6px 0" }}>
                     {TlChk(tlStyle.fibSpiralCCW ?? false,"tlchk-fibSpiralCCW","Counter Clockwise",()=>setTlStyle(s=>({...s,fibSpiralCCW:!(s.fibSpiralCCW??false)})))}
@@ -29245,22 +30199,22 @@ const TalariaV8bLive = () => {
                     const gannBorderWidth = tlStyle.gannBorderWidth || tlStyle.lineWidth || "1";
                     return <>
                       {showGannBorderRow && (
-                        <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto auto", columnGap:12, alignItems:"end", padding:"6px 0 4px" }}>
-                          <span style={{ fontSize:12, color:c.ts, padding:"4px 0" }}>Border</span>
-                          <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
+                        <div data-sett-control-grid="">
+                          <div data-sett-chk-label="">
+                            <span style={{ fontSize:12, color:"var(--text-muted)" }}>Border</span>
+                          </div>
+                          <div style={{ display:"flex", justifyContent:"center" }}>
                             {colorSwatch("gannBorder", gannBorderColor)}
                           </div>
                           <div style={{ position:"relative" }}>
                             <div data-sett-dd="" {...tlStyleDropTrigger("gannBdType")}
                               onMouseEnter={()=>setHov("tl-btn-gannBdType")} onMouseLeave={()=>setHov(null)}
-                              style={{ padding:"0 8px", display:"flex", alignItems:"center", gap:4, cursor:"default", position:"relative",
-                                       background:"transparent",
-                                       transition:"background 0.12s" }}>
+                              style={{cursor:"default", position:"relative"}}>
                               <svg width={34} height={10} viewBox="0 0 34 10">
-                                <line x1={0} y1={5} x2={34} y2={5} stroke={tlStyleDrop==="gannBdType"?c.acL:c.ts}
+                                <line x1={0} y1={5} x2={34} y2={5} stroke={tlStyleDrop==="gannBdType"?"var(--accent)":"var(--text-muted)"}
                                   strokeWidth={gannBorderType==="bold"?2.5:1.5} strokeLinecap="round" strokeDasharray={gannBorderDa(gannBorderType)}/>
                               </svg>
-                              <I n="chevDown" s={7} cl={tlStyleDrop==="gannBdType"?c.acL:c.ts}/>
+                              <I n="chevDown" s={7} cl={tlStyleDrop==="gannBdType"?"var(--accent)":"var(--text-muted)"}/>
                             </div>
                             {tlStyleDrop==="gannBdType" && dropShell("gannBdType", 56, false,
                               [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
@@ -29269,9 +30223,9 @@ const TalariaV8bLive = () => {
                                   <div key={v} {...tlStyleDropPick(() => applyTlGannBorderType(v))}
                                     onMouseEnter={()=>setHov(`gannbdt-${v}`)} onMouseLeave={()=>setHov(null)}
                                     style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
-                                             background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
+                                             background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
                                     <svg width={28} height={10} viewBox="0 0 28 10">
-                                      <line x1={0} y1={5} x2={28} y2={5} stroke={isA?c.acL:c.ts} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/>
+                                      <line x1={0} y1={5} x2={28} y2={5} stroke={isA?"var(--accent)":"var(--text-muted)"} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/>
                                     </svg>
                                   </div>
                                 );
@@ -29281,14 +30235,12 @@ const TalariaV8bLive = () => {
                           <div style={{ position:"relative" }}>
                             <div data-sett-dd="" {...tlStyleDropTrigger("gannBdWidth")}
                               onMouseEnter={()=>setHov("tl-btn-gannBdWidth")} onMouseLeave={()=>setHov(null)}
-                              style={{ padding:"0 6px", display:"flex", alignItems:"center", gap:4, cursor:"default", position:"relative",
-                                       background:"transparent",
-                                       transition:"background 0.12s" }}>
+                              style={{cursor:"default", position:"relative"}}>
                               <svg width={22} height={Math.max(8,+gannBorderWidth+4)} viewBox={`0 0 22 ${Math.max(8,+gannBorderWidth+4)}`}>
                                 <line x1={0} y1={Math.max(8,+gannBorderWidth+4)/2} x2={22} y2={Math.max(8,+gannBorderWidth+4)/2}
-                                  stroke={tlStyleDrop==="gannBdWidth"?c.acL:c.ts} strokeWidth={+gannBorderWidth} strokeLinecap="round"/>
+                                  stroke={tlStyleDrop==="gannBdWidth"?"var(--accent)":"var(--text-muted)"} strokeWidth={+gannBorderWidth} strokeLinecap="round"/>
                               </svg>
-                              <I n="chevDown" s={7} cl={tlStyleDrop==="gannBdWidth"?c.acL:c.ts}/>
+                              <I n="chevDown" s={7} cl={tlStyleDrop==="gannBdWidth"?"var(--accent)":"var(--text-muted)"}/>
                             </div>
                             {tlStyleDrop==="gannBdWidth" && dropShell("gannBdWidth", 56, false,
                               ["1","2","3","4"].map(w=>{
@@ -29297,9 +30249,9 @@ const TalariaV8bLive = () => {
                                   <div key={w} {...tlStyleDropPick(() => applyTlGannBorderWidth(w))}
                                     onMouseEnter={()=>setHov(`gannbdw-${w}`)} onMouseLeave={()=>setHov(null)}
                                     style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
-                                             background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
+                                             background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
                                     <svg width={28} height={Math.max(8,+w+4)} viewBox={`0 0 28 ${Math.max(8,+w+4)}`}>
-                                      <line x1={0} y1={Math.max(8,+w+4)/2} x2={28} y2={Math.max(8,+w+4)/2} stroke={isA?c.acL:c.ts} strokeWidth={+w} strokeLinecap="round"/>
+                                      <line x1={0} y1={Math.max(8,+w+4)/2} x2={28} y2={Math.max(8,+w+4)/2} stroke={isA?"var(--accent)":"var(--text-muted)"} strokeWidth={+w} strokeLinecap="round"/>
                                     </svg>
                                   </div>
                                 );
@@ -29308,20 +30260,20 @@ const TalariaV8bLive = () => {
                           </div>
                         </div>
                       )}
-                      <div style={{ display:"flex", alignItems:"center", padding:"6px 0" }}>
-                        <div style={{ width:130 }}>{TlChk(!!tlStyle.gannBackground,"tlchk-gannBg","Background",toggleTlGannBackground,{ immediate:true })}</div>
-                        <div style={{ marginLeft:78, display:"flex", alignItems:"center", opacity:tlStyle.gannBackground?1:0.38, pointerEvents:tlStyle.gannBackground?"auto":"none", transition:"opacity 0.15s" }}>
-                          <div style={{ position:"relative", width:100, height:20, display:"flex", alignItems:"center" }}>
-                            <div style={{ position:"absolute", left:0, right:0, height:3, top:"50%", transform:"translateY(-50%)", borderRadius:99, background:c.trk }}>
-                              <div style={{ width:`${pct}%`, height:"100%", borderRadius:99, background:"color-mix(in oklab, var(--accent) 55%, transparent)" }}/>
-                            </div>
-                            <div data-sett-alpha-thumb="" style={{ position:"absolute", left:`${pct}%`, top:"50%", width:12, height:12, marginLeft:-6, marginTop:-6, borderRadius:"50%", background:"var(--accent)", border:"2px solid var(--surface)", boxSizing:"border-box", pointerEvents:"none" }}/>
-                            <input type="range" min="0" max="1" step="0.01" value={gannBgOp}
-                              onChange={e=>applyTlGannBgOpacity(+e.target.value)}
-                              onPointerDown={()=>setHov("gann-bg-sl")} onPointerUp={()=>setHov(null)} onPointerLeave={()=>setHov(null)}
-                              onClick={e=>e.stopPropagation()}
-                              style={{ position:"absolute", left:-6, right:-6, width:"calc(100% + 12px)", height:"100%", opacity:0, cursor:"default", margin:0 }}/>
-                          </div>
+                      <div data-sett-control-grid="">
+                        <div data-sett-chk-label="">
+                          {TlChk(!!tlStyle.gannBackground,"tlchk-gannBg","Background",toggleTlGannBackground,{ immediate:true })}
+                        </div>
+                        <div/>
+                        <div data-sett-slider-slot="">
+                          {SettOpacitySlider({
+                            pct,
+                            value: gannBgOp,
+                            disabled: !tlStyle.gannBackground,
+                            grow: true,
+                            hovKey: "gann-bg-sl",
+                            onChange: (v) => applyTlGannBgOpacity(v),
+                          })}
                         </div>
                       </div>
                       <div style={{ padding:"6px 0" }}>
@@ -29419,71 +30371,66 @@ const TalariaV8bLive = () => {
                   </div>
                 </div>
               ))}
-                            {/* Show Info row — dropdown always visible, dimmed when off (hidden for hline) */}
-              {!isRRTool && tlSubTool.icon !== "measure" && !isFibTool && !isGannTool && !isPatternTool && !["hline","hray","vline","ray","extendedLine","crossLine","polyline","pathTool","curve","doubleCurve","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowUp","arrowDn","channel","regressionCh","flatChannel","disjointCh","pitchfork","draw","brush"].includes(tlSubTool.icon) && <div style={{ display:"flex", alignItems:"center", padding:"8px 0" }}>
-                <div
+                            {/* Show Info — same Obsidian dd grammar as measure Stats */}
+              {!isRRTool && tlSubTool.icon !== "measure" && !isFibTool && !isGannTool && !isPatternTool && !["hline","hray","vline","ray","extendedLine","crossLine","polyline","pathTool","curve","doubleCurve","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowUp","arrowDn","channel","regressionCh","flatChannel","disjointCh","pitchfork","draw","brush"].includes(tlSubTool.icon) && (
+              <div data-sett-row="">
+                <div data-sett-label=""
                   onPointerDown={(e) => { e.stopPropagation(); tlShowInfoChkGuardRef.current = true; }}
                   onMouseDown={(e) => e.stopPropagation()}
                   onClick={(e) => e.stopPropagation()}
-                  style={{ flexShrink: 0 }}
                 >
                   {TlChk(tlStyle.showInfo,"tlchk-showInfo","Show Info",applyTlShowInfoToggle,{ immediate: true })}
                 </div>
-                <div data-tl-style-drop="1" style={{ position:"relative", marginLeft:"auto" }}>
-                  <div data-tl-style-drop="1" {...modalPointerActivate((e) => {
-                          if (tlShowInfoChkGuardRef.current) return;
-                          e.stopPropagation();
-                          if (!tlStyle.showInfo) return;
-                          if (tlStyleDrop==="info"||closing.has("tlInfoDrop")) {
-                            closeTlInfoDrop();
-                            return;
-                          }
-                          const r=e.currentTarget.getBoundingClientRect();
-                          const dropH=210;
-                          const goUp=r.bottom/Z+dropH>window.innerHeight/Z;
-                          setTlInfoDropUp(goUp);
-                          setTlStyleDrop("info");
-                        })}
-                    onMouseEnter={()=>setHov("tlInfoBtn")} onMouseLeave={()=>setHov(null)}
-                    style={{ padding:"0 8px", display:"flex", alignItems:"center", gap:5, position:"relative",
-                             background:"transparent",
-                             cursor:tlStyle.showInfo?"default":"not-allowed",
-                             opacity:tlStyle.showInfo?1:0.38, transition:"background 0.12s, opacity 0.15s" }}>
-                    <span style={{ fontSize:12, color:(tlStyleDrop==="info"||closing.has("tlInfoDrop"))?c.acL:c.ts }}>{(() => { const types = Array.isArray(tlStyle.showInfoTypes) ? tlStyle.showInfoTypes : []; return types.length===0?"None":types.length===1?types[0]:`${types.length} selected`; })()}</span>
-                    <I n="chevDown" s={8} cl={(tlStyleDrop==="info"||closing.has("tlInfoDrop"))?c.acL:c.ts}/>
-                  </div>
-                  {(tlStyleDrop==="info" || closing.has("tlInfoDrop")) && (
-                    <div data-tl-style-drop="1" onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()} style={{ position:"absolute", zIndex:10,
-                      ...(tlInfoDropUp?{bottom:"calc(100% + 4px)"}:{top:"calc(100% + 4px)"}),
-                      right:0, width:148,
-                      background:"var(--surface)", border:"1px solid var(--line)", boxShadow:"none", fontFamily:F,
-                      pointerEvents:closing.has("tlInfoDrop")?"none":"auto",
-                      animation:closing.has("tlInfoDrop")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease" }}>
-                      <div style={{ height:2, background:"rgba(255,255,255,0.18)" }}/>
-                      {["Price range","Percent change","Change in pips","Bars range","Date/time range","Distance","Angle"].map(v=>{
-                        const types = Array.isArray(tlStyle.showInfoTypes) ? tlStyle.showInfoTypes : [];
-                        const isA=types.includes(v); const isH=hov===`tli-${v}`;
-                        return (
-                          <div key={v} {...tlStyleDropPickKeepOpen(() => applyTlShowInfoTypeToggle(v))}
-                            onMouseEnter={()=>setHov(`tli-${v}`)} onMouseLeave={()=>setHov(null)}
-                            style={{ padding:"6px 10px", cursor:"default", display:"flex", alignItems:"center", gap:8, position:"relative",
-                                     background:isH?c.hv2:"transparent", transition:"background 0.1s" }}>
-                            <svg width={10} height={10} style={{display:"block",overflow:"visible",flexShrink:0}}>
-                              {(()=>{const bCol=isA?c.acL:isH?c.ts:"rgba(140,160,255,0.22)";return(<>
-                                <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                                <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                                {!isA&&isH&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(48,144,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(48,144,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/></>}
-                                {isA&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/><circle cx={5} cy={5} r={2.8} fill={c.acL} opacity={0.12}/><circle cx={5} cy={5} r={1.6} fill={c.acL}/></>}
-                              </>);})()}
-                            </svg>
-                            <span style={{ fontSize:12, color:isA?c.acL:isH?c.tx:c.ts, fontWeight:isA?700:500 }}>{v}</span>
-                          </div>
-                        );
+                <div data-sett-acts="" data-tl-style-drop="1" style={{opacity:tlStyle.showInfo?1:0.38,pointerEvents:tlStyle.showInfo?"auto":"none",transition:"opacity 0.15s"}}>
+                  <div style={{position:"relative"}}>
+                    <div data-sett-dd="" data-tl-style-drop="1" data-open={(tlStyleDrop==="info"||closing.has("tlInfoDrop"))?"1":undefined}
+                      {...modalPointerActivate((e) => {
+                        if (tlShowInfoChkGuardRef.current) return;
+                        if (!tlStyle.showInfo) return;
+                        if (tlStyleDrop==="info"||closing.has("tlInfoDrop")) {
+                          closeTlInfoDrop();
+                          return;
+                        }
+                        const a = v9MeasureDropAnchor(e.currentTarget, 240);
+                        if (!a) return;
+                        setTlInfoDropUp(!!a.openUp);
+                        setTlInfoDropAnchor(a);
+                        setTlStyleDrop("info");
                       })}
+                      onMouseEnter={()=>setHov("tlInfoBtn")} onMouseLeave={()=>setHov(null)}
+                      style={{height:30,padding:"0 10px",display:"flex",alignItems:"center",gap:5,cursor:"default"}}>
+                      <span style={{fontSize:12,color:(tlStyleDrop==="info"||closing.has("tlInfoDrop"))?"var(--accent)":"var(--text-muted)"}}>
+                        {(() => {
+                          const types = Array.isArray(tlStyle.showInfoTypes) ? tlStyle.showInfoTypes : [];
+                          return types.length===0?"None":types.length===1?types[0]:`${types.length} selected`;
+                        })()}
+                      </span>
+                      <I n="chevDown" s={8} cl={(tlStyleDrop==="info"||closing.has("tlInfoDrop"))?"var(--accent)":"var(--text-muted)"}/>
                     </div>
-                  )}
+                    {(tlStyleDrop==="info"||closing.has("tlInfoDrop"))&&tlInfoDropAnchor&&v9PortalSettDropMenu({
+                      anchor: tlInfoDropAnchor,
+                      width: 168,
+                      rightAlign: false,
+                      attrs: {
+                        "data-tl-style-drop": "1",
+                        "data-closing": closing.has("tlInfoDrop") ? "1" : undefined,
+                      },
+                      children: ["Price range","Percent change","Change in pips","Bars range","Date/time range","Distance","Angle"].map(v=>{
+                        const types = Array.isArray(tlStyle.showInfoTypes) ? tlStyle.showInfoTypes : [];
+                        const isA=types.includes(v),isH=hov===`tli-${v}`;
+                        return(<div key={v} data-pick-on={isA?"1":undefined} {...tlStyleDropPickKeepOpen(() => applyTlShowInfoTypeToggle(v))}
+                          onMouseEnter={()=>setHov(`tli-${v}`)} onMouseLeave={()=>setHov(null)}
+                          style={{padding:"6px 10px",cursor:"default",display:"flex",alignItems:"center",gap:8,
+                            background:isH?"var(--surface-raised)":"transparent",transition:"background 0.1s",
+                            pointerEvents:closing.has("tlInfoDrop")?"none":"auto"}}>
+                          <span style={{fontSize:12,color:isA?"var(--accent)":isH?"var(--text)":"var(--text-muted)",fontWeight:isA?700:500}}>{v}</span>
+                        </div>);
+                      }),
+                    })}
+                  </div>
                 </div>
-              </div>}
+              </div>
+              )}
             </>}
 
             {/* ── TEXT TAB ── */}
@@ -29518,12 +30465,17 @@ const TalariaV8bLive = () => {
                     {(tlStyleDrop==="textSize" || closing.has("tlFontSizeDrop")) && v9PortalSettDropMenu({
                       anchor: tlStyleDropAnchor,
                       width: 52,
-                      rightAlign: true,
+                      rightAlign: false,
                       attrs: { "data-tl-style-drop": "1" },
                       children: [10,12,14,16,18,20,22,24].map(sz=>{
                         const isA=tlStyle.textSize===sz; const isH=hov===`tlsz-${sz}`;
                         return (
-                          <div key={sz} data-pick-on={isA?"1":undefined} onClick={()=>{applyTlTextSize(sz);closeFontSizeDrop();setTlStyleDropAnchor(null);}}
+                          <div key={sz} data-pick-on={isA?"1":undefined} {...modalPointerActivate(() => {
+                            runSettDropPick(() => applyTlTextSize(sz), () => {
+                              closeFontSizeDrop();
+                              setTlStyleDropAnchor(null);
+                            });
+                          })}
                             onMouseEnter={()=>setHov(`tlsz-${sz}`)} onMouseLeave={()=>setHov(null)}
                             style={{ padding:"5px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center",
                                      background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
@@ -29635,26 +30587,13 @@ const TalariaV8bLive = () => {
                       {/* Level: checkbox + value input */}
                       <div style={{ display:"flex", alignItems:"center", gap:6, padding:"5px 0" }}>
                         <div style={{ width:18, flexShrink:0 }}>{TlChk(lv.on, `tlchk-fibTz-${idx}`, "", ()=>applyFibTzLevelsPatch((rows)=>rows.map((l,i)=>i===idx?{...l,on:!l.on}:l)))}</div>
-                        <div style={{ position:"relative", width:54, opacity:op, transition:"opacity 0.15s" }}>
-                          <input value={lv.value}
-                            onChange={e=>{const val=e.target.value;if(/^[0-9]*$/.test(val))applyFibTzLevelsPatch((rows)=>rows.map((l,i)=>i===idx?{...l,value:val}:l));}}
-                            onClick={e=>e.stopPropagation()}
-                            className="tlr-nospinner"
-                            style={{ width:"100%", height:24, background:"var(--surface-sunken)", border:"1px solid var(--line)",
-                                     color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
-                          <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
-                            {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                              <button type="button" key={i} {...modalPointerActivate(() => applyFibTzLevelsPatch((rows)=>rows.map((l,j)=>j===idx?{...l,value:String(Math.max(0,+l.value+delta))}:l)))}
-                                onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
-                                style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
-                                         display:"flex", alignItems:"center", justifyContent:"center",
-                                         fontSize:7, lineHeight:1, fontFamily:F, padding:0,
-                                         borderBottom:i===0?`1px solid ${c.br}`:"none", transition:"color 0.1s" }}>
-                                {chr}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
+                        {SettLevelStep({
+                          value: lv.value,
+                          opacity: op,
+                          allowPartial: /^[0-9]*$/,
+                          onChange: (val) => applyFibTzLevelsPatch((rows) => rows.map((l, i) => (i === idx ? { ...l, value: val } : l))),
+                          onBump: (delta) => applyFibTzLevelsPatch((rows) => rows.map((l, j) => (j === idx ? { ...l, value: String(Math.max(0, +l.value + delta)) } : l))),
+                        })}
                       </div>
                       {/* Color swatch */}
                       <div style={{ padding:"5px 0", opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>{fibColorSwatch(`fibTzLevel-${idx}`, lv.color)}</div>
@@ -29664,13 +30603,12 @@ const TalariaV8bLive = () => {
                           captureTlStyleDropAnchor(e.currentTarget, 220);
                         })}
                           onMouseEnter={()=>setHov(`tl-btn-${typeDk}`)} onMouseLeave={()=>setHov(null)}
-                          style={{ padding:"0 6px", display:"flex", alignItems:"center", gap:3, cursor:"default", position:"relative",
-                                   background:"transparent", transition:"background 0.12s" }}>
+                          style={{cursor:"default", position:"relative"}}>
                           <svg width={22} height={10} viewBox="0 0 22 10">
-                            <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop===typeDk?c.acL:c.ts}
+                            <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop===typeDk?"var(--accent)":"var(--text-muted)"}
                               strokeWidth={lv.type==="bold"?2.5:1.5} strokeLinecap="round" strokeDasharray={da(lv.type)}/>
                           </svg>
-                          <I n="chevDown" s={7} cl={tlStyleDrop===typeDk?c.acL:c.ts}/>
+                          <I n="chevDown" s={7} cl={tlStyleDrop===typeDk?"var(--accent)":"var(--text-muted)"}/>
                         </div>
                         {tlStyleDrop===typeDk && dropShellFib(typeDk, 56, false,
                           [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
@@ -29679,9 +30617,9 @@ const TalariaV8bLive = () => {
                               <div key={v} {...tlStyleDropPick(() => applyFibTzLevelsPatch((rows)=>rows.map((l,i)=>i===idx?{...l,type:v}:l)))}
                                 onMouseEnter={()=>setHov(`fibTzt-${idx}-${v}`)} onMouseLeave={()=>setHov(null)}
                                 style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
-                                         background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
+                                         background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
                                 <svg width={28} height={10} viewBox="0 0 28 10">
-                                  <line x1={0} y1={5} x2={28} y2={5} stroke={isA?c.acL:c.ts} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/>
+                                  <line x1={0} y1={5} x2={28} y2={5} stroke={isA?"var(--accent)":"var(--text-muted)"} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/>
                                 </svg>
                               </div>
                             );
@@ -29694,13 +30632,12 @@ const TalariaV8bLive = () => {
                           captureTlStyleDropAnchor(e.currentTarget, 220);
                         })}
                           onMouseEnter={()=>setHov(`tl-btn-${widDk}`)} onMouseLeave={()=>setHov(null)}
-                          style={{ padding:"0 6px", display:"flex", alignItems:"center", gap:3, cursor:"default", position:"relative",
-                                   background:"transparent", transition:"background 0.12s" }}>
+                          style={{cursor:"default", position:"relative"}}>
                           <svg width={22} height={Math.max(8,+lv.width+4)} viewBox={`0 0 22 ${Math.max(8,+lv.width+4)}`}>
                             <line x1={0} y1={Math.max(8,+lv.width+4)/2} x2={22} y2={Math.max(8,+lv.width+4)/2}
-                              stroke={tlStyleDrop===widDk?c.acL:c.ts} strokeWidth={+lv.width} strokeLinecap="round"/>
+                              stroke={tlStyleDrop===widDk?"var(--accent)":"var(--text-muted)"} strokeWidth={+lv.width} strokeLinecap="round"/>
                           </svg>
-                          <I n="chevDown" s={7} cl={tlStyleDrop===widDk?c.acL:c.ts}/>
+                          <I n="chevDown" s={7} cl={tlStyleDrop===widDk?"var(--accent)":"var(--text-muted)"}/>
                         </div>
                         {tlStyleDrop===widDk && dropShellFib(widDk, 56, false,
                           ["1","2","3","4"].map(w=>{
@@ -29709,9 +30646,9 @@ const TalariaV8bLive = () => {
                               <div key={w} {...tlStyleDropPick(() => applyFibTzLevelsPatch((rows)=>rows.map((l,i)=>i===idx?{...l,width:w}:l)))}
                                 onMouseEnter={()=>setHov(`fibTzw-${idx}-${w}`)} onMouseLeave={()=>setHov(null)}
                                 style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
-                                         background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
+                                         background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
                                 <svg width={28} height={Math.max(8,+w+4)} viewBox={`0 0 28 ${Math.max(8,+w+4)}`}>
-                                  <line x1={0} y1={Math.max(8,+w+4)/2} x2={28} y2={Math.max(8,+w+4)/2} stroke={isA?c.acL:c.ts} strokeWidth={+w} strokeLinecap="round"/>
+                                  <line x1={0} y1={Math.max(8,+w+4)/2} x2={28} y2={Math.max(8,+w+4)/2} stroke={isA?"var(--accent)":"var(--text-muted)"} strokeWidth={+w} strokeLinecap="round"/>
                                 </svg>
                               </div>
                             );
@@ -29725,23 +30662,21 @@ const TalariaV8bLive = () => {
                   <div {...modalPointerActivate(() => applyFibTzLevelsPatch((rows)=>[...rows,{on:true,value:String(rows.length),color:"#787B86",type:"solid",width:"1"}]))}
                     onMouseEnter={()=>setHov("fibTzAdd")} onMouseLeave={()=>setHov(null)}
                     style={{ flex:1, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
-                             border:`1px solid rgba(140,160,255,0.15)`, background:hov==="fibTzAdd"?c.hv2:"transparent",
-                             transition:"background 0.1s" }}>
-                    <span style={{ fontSize:11, color:c.ts }}>+ Add Level</span>
+                             border:"1px solid var(--line)", borderRadius:6, background:hov==="fibTzAdd"?"var(--surface-raised)":"var(--surface-sunken)", transition:"background 0.1s, border-color 0.1s" }}>
+                    <span style={{ fontSize:11, color:"var(--text-muted)" }}>+ Add Level</span>
                   </div>
                   <div {...modalPointerActivate(() => flushSync(()=>{setTlStyle((s)=>{const next={...s,fibTzLevels:v9FibTzDefaultLevelsTl()};v9FlushTlStyleToChartTargets(next,{editingRefDrawing:editingDrawingRef.current?.drawing??null,resolveLegacyTool});return next;});}))}
                     onMouseEnter={()=>setHov("fibTzReset")} onMouseLeave={()=>setHov(null)}
                     style={{ width:60, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
-                             border:`1px solid rgba(140,160,255,0.15)`, background:hov==="fibTzReset"?c.hv2:"transparent",
-                             transition:"background 0.1s" }}>
-                    <span style={{ fontSize:11, color:c.ts }}>Reset</span>
+                             border:"1px solid var(--line)", borderRadius:6, background:hov==="fibTzReset"?"var(--surface-raised)":"var(--surface-sunken)", transition:"background 0.1s, border-color 0.1s" }}>
+                    <span style={{ fontSize:11, color:"var(--text-muted)" }}>Reset</span>
                   </div>
                 </div>
-                <div style={{ display:"flex", alignItems:"center", padding:"10px 0 4px" }}>
-                  <span style={{ fontSize:12, color:c.ts }}>Labels</span>
-                  <div style={{ display:"flex", alignItems:"center", marginLeft:"auto" }}>
-                    <div style={{ width:66 }}>{TlChk(tlStyle.priceLabels,"tlchk-priceLabels","Price",()=>setTlStyle(s=>({...s,priceLabels:!s.priceLabels})))}</div>
-                    <div style={{ width:66 }}>{TlChk(tlStyle.timeLabels,"tlchk-timeLabels","Time",()=>setTlStyle(s=>({...s,timeLabels:!s.timeLabels})))}</div>
+                <div data-sett-row="">
+                  <span data-sett-label="">Labels</span>
+                  <div data-sett-acts="">
+                    {SettChip(!!tlStyle.priceLabels,"tlchk-priceLabels","Price",()=>setTlStyle(s=>({...s,priceLabels:!s.priceLabels})))}
+                    {SettChip(!!tlStyle.timeLabels,"tlchk-timeLabels","Time",()=>setTlStyle(s=>({...s,timeLabels:!s.timeLabels})))}
                   </div>
                 </div>
               </>;
@@ -29761,35 +30696,20 @@ const TalariaV8bLive = () => {
                           <div style={{ width:18, flexShrink:0 }}>
                             {TlChk(lv.on, `tlchk-${hkPrefix}-${idx}`, "", () => applyFibFanLevelsPatch(stateKey, (rows) => rows.map((l, i) => (i === idx ? { ...l, on: !l.on } : l))))}
                           </div>
-                          <div style={{ position:"relative", width:54, opacity:op, transition:"opacity 0.15s" }}>
-                            <input value={lv.value}
-                              onChange={e=>{const val=e.target.value;if(/^[0-9.]*$/.test(val))applyFibFanLevelsPatch(stateKey,(rows)=>rows.map((l,i)=>i===idx?{...l,value:val}:l));}}
-                              onClick={e=>e.stopPropagation()}
-                              onMouseDown={e=>e.stopPropagation()}
-                              className="tlr-nospinner"
-                              style={{ width:"100%", height:24, background:"var(--surface-sunken)", border:"1px solid var(--line)",
-                                       color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
-                            <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
-                              {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                                <button type="button" key={i} {...modalPointerActivate(() => applyFibFanLevelsPatch(stateKey, (rows) => rows.map((l, j) => (j === idx ? {
-                                  ...l,
-                                  value: (Math.max(0, +(+(+l.value + delta * 0.001).toFixed(3)))).toFixed(3).replace(/\.?0+$/, "") || "0",
-                                } : l))))}
-                                  onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={()=>e.currentTarget.style.color=c.ts}
-                                  style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
-                                           display:"flex", alignItems:"center", justifyContent:"center",
-                                           fontSize:7, lineHeight:1, fontFamily:F, padding:0,
-                                           borderBottom:i===0?`1px solid ${c.br}`:"none", transition:"color 0.1s" }}>
-                                  {chr}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
+                          {SettLevelStep({
+                            value: lv.value,
+                            opacity: op,
+                            onChange: (val) => applyFibFanLevelsPatch(stateKey, (rows) => rows.map((l, i) => (i === idx ? { ...l, value: val } : l))),
+                            onBump: (delta) => applyFibFanLevelsPatch(stateKey, (rows) => rows.map((l, j) => (j === idx ? {
+                              ...l,
+                              value: (Math.max(0, +(+(+l.value + delta * 0.001).toFixed(3)))).toFixed(3).replace(/\.?0+$/, "") || "0",
+                            } : l))),
+                          })}
                           <div style={{ opacity:op, transition:"opacity 0.15s" }}>{fibColorSwatch(`${swatchPrefix}-${idx}`, lv.color)}</div>
                           {idx >= 2 && <div {...modalPointerActivate(() => applyFibFanLevelsPatch(stateKey, (rows) => rows.filter((_, i) => i !== idx)))}
                             onMouseEnter={()=>setHov(`${hkPrefix}Del-${idx}`)} onMouseLeave={()=>setHov(null)}
                             style={{ cursor:"default", padding:"0 2px" }}>
-                            <I n="x" s={9} cl={hov===`${hkPrefix}Del-${idx}`?c.rd:c.tm}/>
+                            <I n="x" s={9} cl={hov===`${hkPrefix}Del-${idx}`?"var(--down)":"var(--text-faint)"}/>
                           </div>}
                         </div>
                       );
@@ -29802,14 +30722,14 @@ const TalariaV8bLive = () => {
                     ]))}
                       onMouseEnter={()=>setHov(addHk)} onMouseLeave={()=>setHov(null)}
                       style={{ flex:1, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
-                               border:`1px solid rgba(140,160,255,0.15)`, background:hov===addHk?c.hv2:"transparent", transition:"background 0.1s" }}>
-                      <span style={{ fontSize:11, color:c.ts }}>+ Add Level</span>
+                               border:"1px solid var(--line)", background:hov===addHk?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
+                      <span style={{ fontSize:11, color:"var(--text-muted)" }}>+ Add Level</span>
                     </div>
                     <div {...modalPointerActivate(() => applyFibFanLevelsPatch(stateKey, () => defaultLevels.map((r) => ({ ...r }))))}
                       onMouseEnter={()=>setHov(resetHk)} onMouseLeave={()=>setHov(null)}
                       style={{ width:60, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
-                               border:`1px solid rgba(140,160,255,0.15)`, background:hov===resetHk?c.hv2:"transparent", transition:"background 0.1s" }}>
-                      <span style={{ fontSize:11, color:c.ts }}>Reset</span>
+                               border:"1px solid var(--line)", background:hov===resetHk?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
+                      <span style={{ fontSize:11, color:"var(--text-muted)" }}>Reset</span>
                     </div>
                   </div>
                 </>;
@@ -29833,13 +30753,12 @@ const TalariaV8bLive = () => {
                       <div style={{ position:"relative" }}>
                         <div data-sett-dd="" {...tlStyleDropTrigger(typeDk)}
                           onMouseEnter={()=>setHov(`tl-btn-${typeDk}`)} onMouseLeave={()=>setHov(null)}
-                          style={{ padding:"0 6px", display:"flex", alignItems:"center", gap:3, cursor:"default", position:"relative",
-                                   background:"transparent", transition:"background 0.12s" }}>
+                          style={{cursor:"default", position:"relative"}}>
                           <svg width={22} height={10} viewBox="0 0 22 10">
-                            <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop===typeDk?c.acL:c.ts}
+                            <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop===typeDk?"var(--accent)":"var(--text-muted)"}
                               strokeWidth={tlStyle.fibTimeTrendType==="bold"?2.5:1.5} strokeLinecap="round" strokeDasharray={da(tlStyle.fibTimeTrendType)}/>
                           </svg>
-                          <I n="chevDown" s={7} cl={tlStyleDrop===typeDk?c.acL:c.ts}/>
+                          <I n="chevDown" s={7} cl={tlStyleDrop===typeDk?"var(--accent)":"var(--text-muted)"}/>
                         </div>
                         {tlStyleDrop===typeDk && dropShellFib(typeDk, 56, false,
                           [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
@@ -29848,9 +30767,9 @@ const TalariaV8bLive = () => {
                               <div key={v} {...tlStyleDropPick(() => applyTlFibTrendStyleField({ fibTimeTrendType: v }))}
                                 onMouseEnter={()=>setHov(`fibTTt-${v}`)} onMouseLeave={()=>setHov(null)}
                                 style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
-                                         background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
+                                         background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
                                 <svg width={28} height={10} viewBox="0 0 28 10">
-                                  <line x1={0} y1={5} x2={28} y2={5} stroke={isA?c.acL:c.ts} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/>
+                                  <line x1={0} y1={5} x2={28} y2={5} stroke={isA?"var(--accent)":"var(--text-muted)"} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/>
                                 </svg>
                               </div>
                             );
@@ -29861,13 +30780,12 @@ const TalariaV8bLive = () => {
                       <div style={{ position:"relative" }}>
                         <div data-sett-dd="" {...tlStyleDropTrigger(widDk)}
                           onMouseEnter={()=>setHov(`tl-btn-${widDk}`)} onMouseLeave={()=>setHov(null)}
-                          style={{ padding:"0 6px", display:"flex", alignItems:"center", gap:3, cursor:"default", position:"relative",
-                                   background:"transparent", transition:"background 0.12s" }}>
+                          style={{cursor:"default", position:"relative"}}>
                           <svg width={22} height={Math.max(8,+tlStyle.fibTimeTrendWidth+4)} viewBox={`0 0 22 ${Math.max(8,+tlStyle.fibTimeTrendWidth+4)}`}>
                             <line x1={0} y1={Math.max(8,+tlStyle.fibTimeTrendWidth+4)/2} x2={22} y2={Math.max(8,+tlStyle.fibTimeTrendWidth+4)/2}
-                              stroke={tlStyleDrop===widDk?c.acL:c.ts} strokeWidth={+tlStyle.fibTimeTrendWidth} strokeLinecap="round"/>
+                              stroke={tlStyleDrop===widDk?"var(--accent)":"var(--text-muted)"} strokeWidth={+tlStyle.fibTimeTrendWidth} strokeLinecap="round"/>
                           </svg>
-                          <I n="chevDown" s={7} cl={tlStyleDrop===widDk?c.acL:c.ts}/>
+                          <I n="chevDown" s={7} cl={tlStyleDrop===widDk?"var(--accent)":"var(--text-muted)"}/>
                         </div>
                         {tlStyleDrop===widDk && dropShellFib(widDk, 56, false,
                           ["1","2","3","4"].map(w=>{
@@ -29876,9 +30794,9 @@ const TalariaV8bLive = () => {
                               <div key={w} {...tlStyleDropPick(() => applyTlFibTrendStyleField({ fibTimeTrendWidth: w }))}
                                 onMouseEnter={()=>setHov(`fibTTw-${w}`)} onMouseLeave={()=>setHov(null)}
                                 style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
-                                         background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
+                                         background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
                                 <svg width={28} height={Math.max(8,+w+4)} viewBox={`0 0 28 ${Math.max(8,+w+4)}`}>
-                                  <line x1={0} y1={Math.max(8,+w+4)/2} x2={28} y2={Math.max(8,+w+4)/2} stroke={isA?c.acL:c.ts} strokeWidth={+w} strokeLinecap="round"/>
+                                  <line x1={0} y1={Math.max(8,+w+4)/2} x2={28} y2={Math.max(8,+w+4)/2} stroke={isA?"var(--accent)":"var(--text-muted)"} strokeWidth={+w} strokeLinecap="round"/>
                                 </svg>
                               </div>
                             );
@@ -29908,13 +30826,12 @@ const TalariaV8bLive = () => {
                       <div style={{ position:"relative" }}>
                         <div data-sett-dd="" {...tlStyleDropTrigger(typeDk)}
                           onMouseEnter={()=>setHov(`tl-btn-${typeDk}`)} onMouseLeave={()=>setHov(null)}
-                          style={{ padding:"0 6px", display:"flex", alignItems:"center", gap:3, cursor:"default", position:"relative",
-                                   background:"transparent", transition:"background 0.12s" }}>
+                          style={{cursor:"default", position:"relative"}}>
                           <svg width={22} height={10} viewBox="0 0 22 10">
-                            <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop===typeDk?c.acL:c.ts}
+                            <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop===typeDk?"var(--accent)":"var(--text-muted)"}
                               strokeWidth={typeVal==="bold"?2.5:1.5} strokeLinecap="round" strokeDasharray={da(typeVal)}/>
                           </svg>
-                          <I n="chevDown" s={7} cl={tlStyleDrop===typeDk?c.acL:c.ts}/>
+                          <I n="chevDown" s={7} cl={tlStyleDrop===typeDk?"var(--accent)":"var(--text-muted)"}/>
                         </div>
                         {tlStyleDrop===typeDk && dropShellFib(typeDk, 56, false,
                           [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
@@ -29926,9 +30843,9 @@ const TalariaV8bLive = () => {
                               })}
                                 onMouseEnter={()=>setHov(`${hkPfx}-${v}`)} onMouseLeave={()=>setHov(null)}
                                 style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
-                                         background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
+                                         background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
                                 <svg width={28} height={10} viewBox="0 0 28 10">
-                                  <line x1={0} y1={5} x2={28} y2={5} stroke={isA?c.acL:c.ts} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/>
+                                  <line x1={0} y1={5} x2={28} y2={5} stroke={isA?"var(--accent)":"var(--text-muted)"} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/>
                                 </svg>
                               </div>
                             );
@@ -29939,13 +30856,12 @@ const TalariaV8bLive = () => {
                       <div style={{ position:"relative" }}>
                         <div data-sett-dd="" {...tlStyleDropTrigger(widDk)}
                           onMouseEnter={()=>setHov(`tl-btn-${widDk}`)} onMouseLeave={()=>setHov(null)}
-                          style={{ padding:"0 6px", display:"flex", alignItems:"center", gap:3, cursor:"default", position:"relative",
-                                   background:"transparent", transition:"background 0.12s" }}>
+                          style={{cursor:"default", position:"relative"}}>
                           <svg width={22} height={Math.max(8,+widVal+4)} viewBox={`0 0 22 ${Math.max(8,+widVal+4)}`}>
                             <line x1={0} y1={Math.max(8,+widVal+4)/2} x2={22} y2={Math.max(8,+widVal+4)/2}
-                              stroke={tlStyleDrop===widDk?c.acL:c.ts} strokeWidth={+widVal} strokeLinecap="round"/>
+                              stroke={tlStyleDrop===widDk?"var(--accent)":"var(--text-muted)"} strokeWidth={+widVal} strokeLinecap="round"/>
                           </svg>
-                          <I n="chevDown" s={7} cl={tlStyleDrop===widDk?c.acL:c.ts}/>
+                          <I n="chevDown" s={7} cl={tlStyleDrop===widDk?"var(--accent)":"var(--text-muted)"}/>
                         </div>
                         {tlStyleDrop===widDk && dropShellFib(widDk, 56, false,
                           ["1","2","3","4"].map(w=>{
@@ -29957,9 +30873,9 @@ const TalariaV8bLive = () => {
                               })}
                                 onMouseEnter={()=>setHov(`${hkWPfx}-${w}`)} onMouseLeave={()=>setHov(null)}
                                 style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
-                                         background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
+                                         background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
                                 <svg width={28} height={Math.max(8,+w+4)} viewBox={`0 0 28 ${Math.max(8,+w+4)}`}>
-                                  <line x1={0} y1={Math.max(8,+w+4)/2} x2={28} y2={Math.max(8,+w+4)/2} stroke={isA?c.acL:c.ts} strokeWidth={+w} strokeLinecap="round"/>
+                                  <line x1={0} y1={Math.max(8,+w+4)/2} x2={28} y2={Math.max(8,+w+4)/2} stroke={isA?"var(--accent)":"var(--text-muted)"} strokeWidth={+w} strokeLinecap="round"/>
                                 </svg>
                               </div>
                             );
@@ -29976,19 +30892,17 @@ const TalariaV8bLive = () => {
                   <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}><span data-sett-col-lbl="">Width</span></div>
                   <div/>
                   {/* Levels label + buttons */}
-                  <span style={{ fontSize:12, color:c.ts, padding:"4px 0" }}>Levels</span>
+                  <span style={{ fontSize:12, color:"var(--text-muted)", padding:"4px 0" }}>Levels</span>
                   {/* Style button */}
                   <div style={{ position:"relative" }}>
                     <div data-sett-dd="" {...tlStyleDropTrigger("fibLnType")}
                       onMouseEnter={()=>setHov("tl-btn-fibLnType")} onMouseLeave={()=>setHov(null)}
-                      style={{ padding:"0 8px", display:"flex", alignItems:"center", gap:4, cursor:"default", position:"relative",
-                               background:"transparent",
-                               transition:"background 0.12s" }}>
+                      style={{cursor:"default", position:"relative"}}>
                       <svg width={22} height={10} viewBox="0 0 22 10">
-                        <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop==="fibLnType"?c.acL:c.ts}
+                        <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop==="fibLnType"?"var(--accent)":"var(--text-muted)"}
                           strokeWidth={tlStyle.fibLineType==="bold"?2.5:1.5} strokeLinecap="round" strokeDasharray={da(tlStyle.fibLineType)}/>
                       </svg>
-                      <I n="chevDown" s={7} cl={tlStyleDrop==="fibLnType"?c.acL:c.ts}/>
+                      <I n="chevDown" s={7} cl={tlStyleDrop==="fibLnType"?"var(--accent)":"var(--text-muted)"}/>
                     </div>
                     {tlStyleDrop==="fibLnType" && dropShellFib("fibLnType", 56, false,
                       [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
@@ -29997,9 +30911,9 @@ const TalariaV8bLive = () => {
                           <div key={v} {...tlStyleDropPick(() => applyTlFibLineType(v))}
                             onMouseEnter={()=>setHov(`fiblt-${v}`)} onMouseLeave={()=>setHov(null)}
                             style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
-                                     background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
+                                     background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
                             <svg width={28} height={10} viewBox="0 0 28 10">
-                              <line x1={0} y1={5} x2={28} y2={5} stroke={isA?c.acL:c.ts} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/>
+                              <line x1={0} y1={5} x2={28} y2={5} stroke={isA?"var(--accent)":"var(--text-muted)"} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/>
                             </svg>
                           </div>
                         );
@@ -30010,20 +30924,18 @@ const TalariaV8bLive = () => {
                   <div style={{ position:"relative" }}>
                     <div data-sett-dd="" {...tlStyleDropTrigger("fibLnWidth")}
                       onMouseEnter={()=>setHov("tl-btn-fibLnWidth")} onMouseLeave={()=>setHov(null)}
-                      style={{ padding:"0 8px", display:"flex", alignItems:"center", gap:4, cursor:"default", position:"relative",
-                               background:"transparent",
-                               transition:"background 0.12s" }}>
+                      style={{cursor:"default", position:"relative"}}>
                       {(() => {
                         const fibLw = parseInt(String(tlStyle.fibLineWidth), 10) || 2;
                         const fibH = Math.max(8, fibLw + 4);
                         return (
                       <svg width={22} height={fibH} viewBox={`0 0 22 ${fibH}`}>
                         <line x1={0} y1={fibH / 2} x2={22} y2={fibH / 2}
-                          stroke={tlStyleDrop==="fibLnWidth"?c.acL:c.ts} strokeWidth={fibLw} strokeLinecap="round"/>
+                          stroke={tlStyleDrop==="fibLnWidth"?"var(--accent)":"var(--text-muted)"} strokeWidth={fibLw} strokeLinecap="round"/>
                       </svg>
                         );
                       })()}
-                      <I n="chevDown" s={7} cl={tlStyleDrop==="fibLnWidth"?c.acL:c.ts}/>
+                      <I n="chevDown" s={7} cl={tlStyleDrop==="fibLnWidth"?"var(--accent)":"var(--text-muted)"}/>
                     </div>
                     {tlStyleDrop==="fibLnWidth" && dropShellFib("fibLnWidth", 56, false,
                       ["1","2","3","4"].map(w=>{
@@ -30032,9 +30944,9 @@ const TalariaV8bLive = () => {
                           <div key={w} {...tlStyleDropPick(() => applyTlFibLineWidth(w))}
                             onMouseEnter={()=>setHov(`fiblw-${w}`)} onMouseLeave={()=>setHov(null)}
                             style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
-                                     background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
+                                     background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
                             <svg width={28} height={Math.max(8,+w+4)} viewBox={`0 0 28 ${Math.max(8,+w+4)}`}>
-                              <line x1={0} y1={Math.max(8,+w+4)/2} x2={28} y2={Math.max(8,+w+4)/2} stroke={isA?c.acL:c.ts} strokeWidth={+w} strokeLinecap="round"/>
+                              <line x1={0} y1={Math.max(8,+w+4)/2} x2={28} y2={Math.max(8,+w+4)/2} stroke={isA?"var(--accent)":"var(--text-muted)"} strokeWidth={+w} strokeLinecap="round"/>
                             </svg>
                           </div>
                         );
@@ -30052,33 +30964,20 @@ const TalariaV8bLive = () => {
                         <div style={{ width:18, flexShrink:0 }}>
                           {TlChk(lv.on, `tlchk-fib-${idx}`, "", () => applyTlFibLevelsPatch(fi, (rows) => rows.map((l, i) => (i === idx ? { ...l, on: !l.on } : l))), { immediate: true })}
                         </div>
-                        <div style={{ position:"relative", width:54, opacity:op, transition:"opacity 0.15s" }}>
-                          <input value={lv.value}
-                            onChange={e=>{const val=e.target.value;if(/^[0-9.]*$/.test(val))applyTlFibLevelsPatch(fi, rows=>rows.map((l,i)=>i===idx?{...l,value:val}:l));}}
-                            onPointerDown={e=>e.stopPropagation()}
-                            onMouseDown={e=>e.stopPropagation()}
-                            onClick={e=>e.stopPropagation()}
-                            className="tlr-nospinner"
-                            style={{ width:"100%", height:24, background:"var(--surface-sunken)", border:"1px solid var(--line)",
-                                     color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
-                          <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
-                            {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                              <button type="button" key={i} {...modalPointerActivate(() => applyTlFibLevelsPatch(fi, rows=>rows.map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)))}
-                                onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
-                                style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
-                                         display:"flex", alignItems:"center", justifyContent:"center",
-                                         fontSize:7, lineHeight:1, fontFamily:F, padding:0,
-                                         borderBottom:i===0?`1px solid ${c.br}`:"none", transition:"color 0.1s" }}>
-                                {chr}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
+                        {SettLevelStep({
+                          value: lv.value,
+                          opacity: op,
+                          onChange: (val) => applyTlFibLevelsPatch(fi, (rows) => rows.map((l, i) => (i === idx ? { ...l, value: val } : l))),
+                          onBump: (delta) => applyTlFibLevelsPatch(fi, (rows) => rows.map((l, j) => (j === idx ? {
+                            ...l,
+                            value: (Math.max(0, +(+l.value + delta * 0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/, "") || "0",
+                          } : l))),
+                        })}
                         <div style={{ opacity:op, transition:"opacity 0.15s" }}>{fibColorSwatch(`fibLevel-${idx}`, lv.color)}</div>
                         {idx >= 2 && <div {...modalPointerActivate(() => applyTlFibLevelsPatch(fi, rows=>rows.filter((_,i)=>i!==idx)))}
                           onMouseEnter={()=>setHov(`fibDel-${idx}`)} onMouseLeave={()=>setHov(null)}
                           style={{ cursor:"default", padding:"0 2px" }}>
-                          <I n="x" s={9} cl={hov===`fibDel-${idx}`?c.rd:c.tm}/>
+                          <I n="x" s={9} cl={hov===`fibDel-${idx}`?"var(--down)":"var(--text-faint)"}/>
                         </div>}
                       </div>
                     );
@@ -30092,18 +30991,16 @@ const TalariaV8bLive = () => {
                   ]))}
                     onMouseEnter={()=>setHov("fibAdd")} onMouseLeave={()=>setHov(null)}
                     style={{ flex:1, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
-                             border:`1px solid rgba(140,160,255,0.15)`, background:hov==="fibAdd"?c.hv2:"transparent",
-                             transition:"background 0.1s" }}>
-                    <span style={{ fontSize:11, color:c.ts }}>+ Add Level</span>
+                             border:"1px solid var(--line)", borderRadius:6, background:hov==="fibAdd"?"var(--surface-raised)":"var(--surface-sunken)", transition:"background 0.1s, border-color 0.1s" }}>
+                    <span style={{ fontSize:11, color:"var(--text-muted)" }}>+ Add Level</span>
                   </div>
                   <div {...modalPointerActivate(() => applyTlFibLevelsPatch(fi, () =>
                     (fi === "fibChannel" ? v9FibChannelDefaultLevelsTl() : fi === "fibTime" ? v9TrendFibTimeDefaultLevelsTl() : (fi === "fibCircles" || fi === "fibSpiral") ? v9FibCirclesDefaultLevelsTl() : fi === "fibArcs" ? v9FibArcsDefaultLevelsTl() : fi === "fibWedge" ? v9FibWedgeDefaultLevelsTl() : v9ClassicFibDefaultLevelsTlForLegacy(fi === "fibExtension" ? "fibonacci-extension" : "fibonacci-retracement")).map((l) => ({ ...l }))
                   ))}
                     onMouseEnter={()=>setHov("fibReset")} onMouseLeave={()=>setHov(null)}
                     style={{ width:60, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
-                             border:`1px solid rgba(140,160,255,0.15)`, background:hov==="fibReset"?c.hv2:"transparent",
-                             transition:"background 0.1s" }}>
-                    <span style={{ fontSize:11, color:c.ts }}>Reset</span>
+                             border:"1px solid var(--line)", borderRadius:6, background:hov==="fibReset"?"var(--surface-raised)":"var(--surface-sunken)", transition:"background 0.1s, border-color 0.1s" }}>
+                    <span style={{ fontSize:11, color:"var(--text-muted)" }}>Reset</span>
                   </div>
                 </div>
               </>;
@@ -30140,31 +31037,20 @@ const TalariaV8bLive = () => {
                     <div style={{ width:18, flexShrink:0 }}>
                       {TlChk(lv.on, `tlchk-${levelKey}-${idx}`, "", ()=>applyTlGannLevelsPatch(levelKey, (rows)=>rows.map((l,i)=>i===idx?{...l,on:!l.on}:l)), { immediate:true })}
                     </div>
-                    <div style={{ position:"relative", width:54, opacity:op, transition:"opacity 0.15s" }}>
-                      <input value={lv.value}
-                        onChange={e=>{const val=e.target.value;if(/^[0-9.]*$/.test(val))applyTlGannLevelsPatch(levelKey, (rows)=>rows.map((l,i)=>i===idx?{...l,value:val}:l));}}
-                        onClick={e=>e.stopPropagation()}
-                        className="tlr-nospinner"
-                        style={{ width:"100%", height:24, background:"var(--surface-sunken)", border:"1px solid var(--line)",
-                                 color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
-                      <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
-                        {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                          <button type="button" key={i} {...modalPointerActivate(() => applyTlGannLevelsPatch(levelKey, (rows)=>rows.map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)))}
-                            onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
-                            style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
-                                     display:"flex", alignItems:"center", justifyContent:"center",
-                                     fontSize:7, lineHeight:1, fontFamily:F, padding:0,
-                                     borderBottom:i===0?`1px solid ${c.br}`:"none", transition:"color 0.1s" }}>
-                            {chr}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                    {SettLevelStep({
+                      value: lv.value,
+                      opacity: op,
+                      onChange: (val) => applyTlGannLevelsPatch(levelKey, (rows) => rows.map((l, i) => (i === idx ? { ...l, value: val } : l))),
+                      onBump: (delta) => applyTlGannLevelsPatch(levelKey, (rows) => rows.map((l, j) => (j === idx ? {
+                        ...l,
+                        value: (Math.max(0, +(+l.value + delta * 0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/, "") || "0",
+                      } : l))),
+                    })}
                     <div style={{ opacity:op, transition:"opacity 0.15s" }}>{gannColorSwatch(swatchKey, lv.color)}</div>
                     <div {...modalPointerActivate(() => applyTlGannLevelsPatch(levelKey, (rows)=>rows.filter((_,i)=>i!==idx)))}
                       onMouseEnter={()=>setHov(`gannDel-${levelKey}-${idx}`)} onMouseLeave={()=>setHov(null)}
                       style={{ cursor:"default", padding:"0 2px" }}>
-                      <I n="x" s={9} cl={hov===`gannDel-${levelKey}-${idx}`?c.rd:c.tm}/>
+                      <I n="x" s={9} cl={hov===`gannDel-${levelKey}-${idx}`?"var(--down)":"var(--text-faint)"}/>
                     </div>
                   </div>
                 );
@@ -30175,18 +31061,16 @@ const TalariaV8bLive = () => {
                   <div/>
                   <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}><span data-sett-col-lbl="">Style</span></div>
                   <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}><span data-sett-col-lbl="">Width</span></div>
-                  <span style={{ fontSize:12, color:c.ts, padding:"4px 0" }}>Levels</span>
+                  <span style={{ fontSize:12, color:"var(--text-muted)", padding:"4px 0" }}>Levels</span>
                   <div style={{ position:"relative" }}>
                     <div data-sett-dd="" {...tlStyleDropTrigger("gannLnType")}
                       onMouseEnter={()=>setHov("tl-btn-gannLnType")} onMouseLeave={()=>setHov(null)}
-                      style={{ padding:"0 8px", display:"flex", alignItems:"center", gap:4, cursor:"default", position:"relative",
-                               background:"transparent",
-                               transition:"background 0.12s" }}>
+                      style={{cursor:"default", position:"relative"}}>
                       <svg width={34} height={10} viewBox="0 0 34 10">
-                        <line x1={0} y1={5} x2={34} y2={5} stroke={tlStyleDrop==="gannLnType"?c.acL:c.ts}
+                        <line x1={0} y1={5} x2={34} y2={5} stroke={tlStyleDrop==="gannLnType"?"var(--accent)":"var(--text-muted)"}
                           strokeWidth={tlStyle.gannLineType==="bold"?2.5:1.5} strokeLinecap="round" strokeDasharray={da(tlStyle.gannLineType)}/>
                       </svg>
-                      <I n="chevDown" s={7} cl={tlStyleDrop==="gannLnType"?c.acL:c.ts}/>
+                      <I n="chevDown" s={7} cl={tlStyleDrop==="gannLnType"?"var(--accent)":"var(--text-muted)"}/>
                     </div>
                     {tlStyleDrop==="gannLnType" && dropShellGann("gannLnType", 56,
                       [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
@@ -30195,9 +31079,9 @@ const TalariaV8bLive = () => {
                           <div key={v} {...tlStyleDropPick(() => applyTlGannLineType(v))}
                             onMouseEnter={()=>setHov(`gannlt-${v}`)} onMouseLeave={()=>setHov(null)}
                             style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
-                                     background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
+                                     background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
                             <svg width={28} height={10} viewBox="0 0 28 10">
-                              <line x1={0} y1={5} x2={28} y2={5} stroke={isA?c.acL:c.ts} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/>
+                              <line x1={0} y1={5} x2={28} y2={5} stroke={isA?"var(--accent)":"var(--text-muted)"} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/>
                             </svg>
                           </div>
                         );
@@ -30207,14 +31091,12 @@ const TalariaV8bLive = () => {
                   <div style={{ position:"relative" }}>
                     <div data-sett-dd="" {...tlStyleDropTrigger("gannLnWidth")}
                       onMouseEnter={()=>setHov("tl-btn-gannLnWidth")} onMouseLeave={()=>setHov(null)}
-                      style={{ padding:"0 6px", display:"flex", alignItems:"center", gap:4, cursor:"default", position:"relative",
-                               background:"transparent",
-                               transition:"background 0.12s" }}>
+                      style={{cursor:"default", position:"relative"}}>
                       <svg width={22} height={Math.max(8,+tlStyle.gannLineWidth+4)} viewBox={`0 0 22 ${Math.max(8,+tlStyle.gannLineWidth+4)}`}>
                         <line x1={0} y1={Math.max(8,+tlStyle.gannLineWidth+4)/2} x2={22} y2={Math.max(8,+tlStyle.gannLineWidth+4)/2}
-                          stroke={tlStyleDrop==="gannLnWidth"?c.acL:c.ts} strokeWidth={+tlStyle.gannLineWidth} strokeLinecap="round"/>
+                          stroke={tlStyleDrop==="gannLnWidth"?"var(--accent)":"var(--text-muted)"} strokeWidth={+tlStyle.gannLineWidth} strokeLinecap="round"/>
                       </svg>
-                      <I n="chevDown" s={7} cl={tlStyleDrop==="gannLnWidth"?c.acL:c.ts}/>
+                      <I n="chevDown" s={7} cl={tlStyleDrop==="gannLnWidth"?"var(--accent)":"var(--text-muted)"}/>
                     </div>
                     {tlStyleDrop==="gannLnWidth" && dropShellGann("gannLnWidth", 56,
                       ["1","2","3","4"].map(w=>{
@@ -30223,9 +31105,9 @@ const TalariaV8bLive = () => {
                           <div key={w} {...tlStyleDropPick(() => applyTlGannLineWidth(w))}
                             onMouseEnter={()=>setHov(`gannlw-${w}`)} onMouseLeave={()=>setHov(null)}
                             style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
-                                     background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
+                                     background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
                             <svg width={28} height={Math.max(8,+w+4)} viewBox={`0 0 28 ${Math.max(8,+w+4)}`}>
-                              <line x1={0} y1={Math.max(8,+w+4)/2} x2={28} y2={Math.max(8,+w+4)/2} stroke={isA?c.acL:c.ts} strokeWidth={+w} strokeLinecap="round"/>
+                              <line x1={0} y1={Math.max(8,+w+4)/2} x2={28} y2={Math.max(8,+w+4)/2} stroke={isA?"var(--accent)":"var(--text-muted)"} strokeWidth={+w} strokeLinecap="round"/>
                             </svg>
                           </div>
                         );
@@ -30245,14 +31127,14 @@ const TalariaV8bLive = () => {
                     <div {...modalPointerActivate(() => applyTlGannLevelsPatch(levelKey, (rows)=>[...rows,{on:true,value:(rows.length*0.1).toFixed(3).replace(/\.?0+$/,""),color:"#787B86"}]))}
                       onMouseEnter={()=>setHov(`gannAdd-${levelKey}`)} onMouseLeave={()=>setHov(null)}
                       style={{ flex:1, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
-                               border:`1px solid rgba(140,160,255,0.15)`, background:hov===`gannAdd-${levelKey}`?c.hv2:"transparent", transition:"background 0.1s" }}>
-                      <span style={{ fontSize:11, color:c.ts }}>+ Add Level</span>
+                               border:"1px solid var(--line)", background:hov===`gannAdd-${levelKey}`?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
+                      <span style={{ fontSize:11, color:"var(--text-muted)" }}>+ Add Level</span>
                     </div>
                     <div {...modalPointerActivate(() => applyTlGannLevelsPatch(levelKey, ()=>addDefault.map((l)=>({...l}))))}
                       onMouseEnter={()=>setHov(`gannReset-${levelKey}`)} onMouseLeave={()=>setHov(null)}
                       style={{ width:60, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
-                               border:`1px solid rgba(140,160,255,0.15)`, background:hov===`gannReset-${levelKey}`?c.hv2:"transparent", transition:"background 0.1s" }}>
-                      <span style={{ fontSize:11, color:c.ts }}>Reset</span>
+                               border:"1px solid var(--line)", background:hov===`gannReset-${levelKey}`?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
+                      <span style={{ fontSize:11, color:"var(--text-muted)" }}>Reset</span>
                     </div>
                   </div>
                 </>
@@ -30313,37 +31195,29 @@ const TalariaV8bLive = () => {
                           : s.regLines),
                       };
                     }))}</div>
-                    <div style={{ position:"relative", width:68, marginRight:40, opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>
-                      <input value={val}
-                        onChange={e=>{const v=e.target.value;if(/^[0-9.]*$/.test(v))setTlStyle(s=>({...s,[key]:{...s[key],value:v}}));}}
-                        onClick={e=>e.stopPropagation()}
-                        className="tlr-nospinner"
-                        style={{ width:"100%", height:24, background:"var(--surface-sunken)", border:"1px solid var(--line)",
-                                 color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 6px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
-                      <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
-                        {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                          <button type="button" key={i} {...v9ChLineStepPointerActivate(() => setTlStyle(s => v9BumpRegDevValueOnce(s, key, delta)))}
-                            onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
-                            style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
-                                     display:"flex", alignItems:"center", justifyContent:"center",
-                                     fontSize:7, lineHeight:1, fontFamily:F, padding:0,
-                                     borderBottom:i===0?`1px solid ${c.br}`:"none", transition:"color 0.1s" }}>
-                            {chr}
-                          </button>
-                        ))}
-                      </div>
+                    <div style={{ marginRight: 40 }}>
+                      {SettLevelStep({
+                        value: val,
+                        opacity: op,
+                        pointerEvents: pe,
+                        activate: v9ChLineStepPointerActivate,
+                        onChange: (v) => setTlStyle((s) => ({ ...s, [key]: { ...s[key], value: v } })),
+                        onBump: (delta) => setTlStyle((s) => v9BumpRegDevValueOnce(s, key, delta)),
+                      })}
                     </div>
                   </div>
                 );
               })}
-              {/* Extend Right — uses shared tlStyle.extendRight (same as Style tab; drives chart.style.extendRight) */}
-              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0" }}>
-                <span style={{ fontSize:12, color:c.ts }}>Extend Right</span>
-                <div style={{ marginRight:40 }}>{TlChk(!!tlStyle.extendRight, "tlchk-regExtRight", "", ()=>setTlStyle(s=>({ ...s, extendRight:!s.extendRight })))}</div>
+              {/* Extend Right — chip grammar matches Style tab Left/Right */}
+              <div data-sett-row="">
+                <span data-sett-label="">Extend</span>
+                <div data-sett-acts="">
+                  {SettChip(!!tlStyle.extendRight, "tlchk-regExtRight", "Right", ()=>setTlStyle(s=>({ ...s, extendRight:!s.extendRight })))}
+                </div>
               </div>
               {/* Pearson's R */}
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0" }}>
-                <span style={{ fontSize:12, color:c.ts }}>Pearson's R</span>
+                <span style={{ fontSize:12, color:"var(--text-muted)" }}>Pearson's R</span>
                 <div style={{ marginRight:40 }}>{TlChk(!!tlStyle.regPearsonR, "tlchk-regPearsonR", "", ()=>setTlStyle(s=>({ ...s, regPearsonR:!s.regPearsonR })))}</div>
               </div>
               {/* Source — dropdown */}
@@ -30353,29 +31227,26 @@ const TalariaV8bLive = () => {
                 const options = ["Open","Close","High","Low"];
                 return (
                   <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0" }}>
-                    <span style={{ fontSize:12, color:c.ts }}>Source</span>
+                    <span style={{ fontSize:12, color:"var(--text-muted)" }}>Source</span>
                     <div style={{ position:"relative", marginRight:40 }}>
-                      <div data-sett-dd="" onClick={e=>{e.stopPropagation();if(tlStyleDrop===dk){setTlStyleDrop(null);setTlStyleDropAnchor(null);}else{captureTlStyleDropAnchor(e.currentTarget,220);setTlStyleDrop(dk);}}}
+                      <div data-sett-dd="" data-open={tlStyleDrop===dk?"1":undefined} onClick={e=>{e.stopPropagation();if(tlStyleDrop===dk){setTlStyleDrop(null);setTlStyleDropAnchor(null);}else{captureTlStyleDropAnchor(e.currentTarget,220);setTlStyleDrop(dk);}}}
                         onMouseEnter={()=>setHov(`tl-btn-${dk}`)} onMouseLeave={()=>setHov(null)}
-                        style={{ padding:"0 10px", display:"flex", alignItems:"center", gap:5, cursor:"default", position:"relative",
-                                 background:"transparent",
-                                 transition:"background 0.12s" }}>
-                        <span style={{ fontSize:12, color:tlStyleDrop===dk?c.acL:c.ts }}>{val}</span>
-                        <I n="chevDown" s={7} cl={tlStyleDrop===dk?c.acL:c.ts}/>
+                        style={{cursor:"default", position:"relative"}}>
+                        <span style={{ fontSize:12, color:tlStyleDrop===dk?"var(--accent)":"var(--text-muted)" }}>{val}</span>
+                        <I n="chevDown" s={7} cl={tlStyleDrop===dk?"var(--accent)":"var(--text-muted)"}/>
                       </div>
                       {tlStyleDrop===dk && (
-                        <div onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
-                          style={{ position:"absolute", top:"calc(100% + 4px)", right:0, zIndex:10, minWidth:80,
-                                   background:"var(--surface)", border:"1px solid var(--line)", boxShadow:"none" }}>
-                          <div style={{ height:2, background:"rgba(255,255,255,0.18)" }}/>
+                        <div data-sett-drop="" data-tl-style-drop="1" onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
+                          style={{ position:"absolute", top:"calc(100% + 4px)", right:0, zIndex:10, minWidth:96, fontFamily:F,
+                                   background:"var(--surface)", border:"1px solid var(--line)", borderRadius:8, boxShadow:"none" }}>
                           {options.map(opt=>{
                             const isA=val===opt; const isH=hov===`regSrc-${opt}`;
                             return (
-                              <div key={opt} onClick={()=>{setTlStyle(s=>({...s,source:opt}));setTlStyleDrop(null);}}
+                              <div key={opt} data-pick-on={isA?"1":undefined} {...tlStyleDropPick(() => setTlStyle(s=>({...s,source:opt})))}
                                 onMouseEnter={()=>setHov(`regSrc-${opt}`)} onMouseLeave={()=>setHov(null)}
-                                style={{ padding:"6px 12px", cursor:"default", position:"relative",
-                                         background:isA?c.acD:isH?c.hv2:"transparent", transition:"background 0.1s" }}>
-                                <span style={{ fontSize:13, color:isA?c.acL:isH?c.tx:c.ts, fontWeight:isA?700:500 }}>{opt}</span>
+                                style={{ padding:"6px 12px", cursor:"default",
+                                         background:isH&&!isA?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
+                                <span style={{ fontSize:12, color:isA?"var(--accent)":isH?"var(--text)":"var(--text-muted)", fontWeight:isA?700:500 }}>{opt}</span>
                               </div>
                             );
                           })}
@@ -30424,25 +31295,16 @@ const TalariaV8bLive = () => {
                             }
                           })}
                         </div>
-                        <div style={{ position:"relative", width:68, marginRight:40, opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>
-                          <input value={ln.value}
-                            onChange={e => { const val = e.target.value; if (!V9_PARTIAL_LEVEL_VALUE_RE.test(val)) return; applyParallelChannelTlPatch(s => v9PatchChLinesRowValue(s, idx, val, stKey, editDrawing)); }}
-                            onClick={e => e.stopPropagation()}
-                            className="tlr-nospinner"
-                            style={{ width:"100%", height:24, background:"var(--surface-sunken)", border:"1px solid var(--line)",
-                                     color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 6px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
-                          <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
-                            {[[+1,"▲"],[-1,"▼"]].map(([delta, chr], i) => (
-                              <button type="button" key={i} {...v9ChLineStepPointerActivate(() => applyParallelChannelTlPatch(s => v9BumpChLinesRowValueOnce(s, idx, delta, stKey, editDrawing)))}
-                                onMouseEnter={e => e.currentTarget.style.color = c.acL} onMouseLeave={e => e.currentTarget.style.color = c.ts}
-                                style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
-                                         display:"flex", alignItems:"center", justifyContent:"center",
-                                         fontSize:7, lineHeight:1, fontFamily:F, padding:0,
-                                         borderBottom:i === 0 ? `1px solid ${c.br}` : "none", transition:"color 0.1s" }}>
-                                {chr}
-                              </button>
-                            ))}
-                          </div>
+                        <div style={{ marginRight: 40 }}>
+                          {SettLevelStep({
+                            value: ln.value,
+                            opacity: op,
+                            pointerEvents: pe,
+                            allowPartial: V9_PARTIAL_LEVEL_VALUE_RE,
+                            activate: v9ChLineStepPointerActivate,
+                            onChange: (val) => applyParallelChannelTlPatch((s) => v9PatchChLinesRowValue(s, idx, val, stKey, editDrawing)),
+                            onBump: (delta) => applyParallelChannelTlPatch((s) => v9BumpChLinesRowValueOnce(s, idx, delta, stKey, editDrawing)),
+                          })}
                         </div>
                       </div>
                     );
@@ -30460,12 +31322,12 @@ const TalariaV8bLive = () => {
               return (
                 <>
                   <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0" }}>
-                    <span style={{ fontSize:12, color:c.ts }}>Type</span>
+                    <span style={{ fontSize:12, color:"var(--text-muted)" }}>Type</span>
                     <div style={{ position:"relative", marginRight:40 }}>
                       <div data-sett-dd="" data-open={tlStyleDrop === pfDk ? "1" : undefined}
                         onClick={e => { e.stopPropagation(); setTlStyleDrop(tlStyleDrop === pfDk ? null : pfDk); }}
                         onMouseEnter={() => setHov(`tl-btn-${pfDk}`)} onMouseLeave={() => setHov(null)}
-                        style={{ padding:"0 10px", display:"flex", alignItems:"center", gap:5, cursor:"default" }}>
+                        style={{cursor:"default", position:"relative"}}>
                         <span style={{ fontSize:12, color:tlStyleDrop === pfDk ? "var(--accent)" : "var(--text-muted)", whiteSpace:"nowrap" }}>{tlStyle.pitchforkStyle || "Original"}</span>
                         <I n="chevDown" s={7} cl={tlStyleDrop === pfDk ? "var(--accent)" : "var(--text-muted)"}/>
                       </div>
@@ -30477,7 +31339,7 @@ const TalariaV8bLive = () => {
                             const isH = hov === `pfInSty-${opt}`;
                             return (
                               <div key={opt} data-pick-on={isA ? "1" : undefined}
-                                onClick={() => { applyPitchforkTlPatch(s => ({ ...s, pitchforkStyle: opt })); setTlStyleDrop(null); }}
+                                {...tlStyleDropPick(() => applyPitchforkTlPatch(s => ({ ...s, pitchforkStyle: opt })))}
                                 onMouseEnter={() => setHov(`pfInSty-${opt}`)} onMouseLeave={() => setHov(null)}
                                 style={{ padding:"7px 12px", cursor:"default",
                                          background:isH && !isA ? "var(--surface-raised)" : "transparent" }}>
@@ -30506,26 +31368,12 @@ const TalariaV8bLive = () => {
                               return { ...s, pfLevels: next };
                             }))}
                           </div>
-                          <div style={{ position:"relative", width:58, opacity:op, transition:"opacity 0.15s" }}>
-                            <input value={lv.value}
-                              onChange={e => { const val = e.target.value; if (/^[0-9.]*$/.test(val)) applyPitchforkTlPatch(s => v9PatchPfLevelsRowValue(s, idx, val, editDrawing)); }}
-                              onClick={e => e.stopPropagation()}
-                              className="tlr-nospinner"
-                              style={{ width:"100%", height:24, background:"var(--surface-sunken)", border:"1px solid var(--line)",
-                                       color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
-                            <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
-                              {[[+1,"▲"],[-1,"▼"]].map(([delta, chr], i) => (
-                                <button type="button" key={i} {...modalPointerActivate(() => applyPitchforkTlPatch(s => v9BumpPfLevelsRowValueOnce(s, idx, delta, editDrawing)))}
-                                  onMouseEnter={e => e.currentTarget.style.color = c.acL} onMouseLeave={e => e.currentTarget.style.color = c.ts}
-                                  style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
-                                           display:"flex", alignItems:"center", justifyContent:"center",
-                                           fontSize:7, lineHeight:1, fontFamily:F, padding:0,
-                                           borderBottom:i === 0 ? `1px solid ${c.br}` : "none", transition:"color 0.1s" }}>
-                                  {chr}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
+                          {SettLevelStep({
+                            value: lv.value,
+                            opacity: op,
+                            onChange: (val) => applyPitchforkTlPatch((s) => v9PatchPfLevelsRowValue(s, idx, val, editDrawing)),
+                            onBump: (delta) => applyPitchforkTlPatch((s) => v9BumpPfLevelsRowValueOnce(s, idx, delta, editDrawing)),
+                          })}
                         </div>
                       );
                     })}
@@ -30539,11 +31387,14 @@ const TalariaV8bLive = () => {
               const priceLabelColor = tlStyle.flatChPriceColor || tlStyle.lineColor;
               return (
                 <>
-                  <div style={{ display:"flex", alignItems:"center", padding:"8px 0" }}>
-                    {TlChk(tlStyle.flatChPrices, "tlchk-flatChPrices-in", "Show Prices", applyFlatChPricesToggle)}
+                  <div data-sett-row="">
+                    <span data-sett-label="">Prices</span>
+                    <div data-sett-acts="">
+                      {SettChip(!!tlStyle.flatChPrices, "tlchk-flatChPrices-in", "Show", applyFlatChPricesToggle, { immediate: true })}
+                    </div>
                   </div>
                   <div style={{ display:"flex", alignItems:"center", padding:"4px 0 8px", gap:10 }}>
-                    <span style={{ fontSize:12, color:c.ts, flex:1 }}>Price label color</span>
+                    <span style={{ fontSize:12, color:"var(--text-muted)", flex:1 }}>Price label color</span>
                     <div data-v9-color-swatch="1" {...modalPointerActivate((e) => openCP(e, "tlFlatChPriceColor", priceLabelColor))}
                       onMouseEnter={()=>setSwHov("tlFlatChPriceColor")} onMouseLeave={()=>setSwHov(null)}
                       style={v9TlColorSwatchBoxStyle(priceLabelColor, {
@@ -30562,10 +31413,10 @@ const TalariaV8bLive = () => {
               const slDist = Math.abs(entry - sl), tpDist = Math.abs(tp - entry);
               const rrRatio = slDist > 0 ? tpDist / slDist : 0;
               const tpAmt = slDist > 0 ? riskAmt * rrRatio : 0;
-              const lbl = {fontSize:12,color:c.ts,flex:1};
-              const val = {fontSize:12,fontWeight:700,color:c.tx,fontVariantNumeric:"tabular-nums"};
-              const inpStyle = {width:70,height:24,background:c.well,border:`1px solid ${c.br}`,outline:"none",
-                color:c.tx,fontSize:12,fontFamily:F,padding:"0 6px",boxSizing:"border-box",
+              const lbl = {fontSize:12,color:"var(--text-muted)",flex:1};
+              const val = {fontSize:12,fontWeight:700,color:"var(--text)",fontVariantNumeric:"tabular-nums"};
+              const inpStyle = {width:70,height:24,background:"var(--surface-sunken)",border:`1px solid var(--line)`,outline:"none",
+                color:"var(--text)",fontSize:12,fontFamily:F,padding:"0 6px",boxSizing:"border-box",
                 fontVariantNumeric:"tabular-nums",textAlign:"right",boxShadow:"inset 0 1px 2px rgba(0,0,0,0.2)",
                 transition:"border-color 0.15s"};
               return (<>
@@ -30574,11 +31425,11 @@ const TalariaV8bLive = () => {
                 <div style={{display:"flex",alignItems:"center",marginBottom:6}}>
                   <span style={lbl}>Risk Amount</span>
                   <div style={{display:"flex",alignItems:"center",gap:4}}>
-                    <span style={{fontSize:11,color:c.ts}}>$</span>
+                    <span style={{fontSize:11,color:"var(--text-muted)"}}>$</span>
                     <input type="number" value={rrInputs.riskAmount}
                       onChange={e=>setRrInputs(s=>({...s,riskAmount:e.target.value}))}
                       onClick={e=>e.stopPropagation()} className="tlr-nospinner" style={inpStyle}
-                      onFocus={e=>e.target.style.borderColor=c.acB} onBlur={e=>e.target.style.borderColor=c.br}/>
+                      onFocus={e=>e.target.style.borderColor="var(--accent)"} onBlur={e=>e.target.style.borderColor="var(--line)"}/>
                   </div>
                 </div>
                 <div style={{display:"flex",alignItems:"center",marginBottom:4}}>
@@ -30586,10 +31437,10 @@ const TalariaV8bLive = () => {
                   <input type="number" value={rrInputs.qty}
                     onChange={e=>setRrInputs(s=>({...s,qty:e.target.value}))}
                     onClick={e=>e.stopPropagation()} className="tlr-nospinner" style={inpStyle}
-                    onFocus={e=>e.target.style.borderColor=c.acB} onBlur={e=>e.target.style.borderColor=c.br}/>
+                    onFocus={e=>e.target.style.borderColor="var(--accent)"} onBlur={e=>e.target.style.borderColor="var(--line)"}/>
                 </div>
                 {/* Divider */}
-                <div style={{height:1,background:c.br,margin:"6px 0"}}/>
+                <div style={{height:1,background:"var(--line)",margin:"6px 0"}}/>
                 {/* Position Details */}
                 <div data-sett-sec="">Position details</div>
                 <div style={{display:"flex",alignItems:"center",marginBottom:4}}>
@@ -30599,12 +31450,12 @@ const TalariaV8bLive = () => {
                 <div style={{marginBottom:4}}>
                   <div style={{display:"flex",alignItems:"center",marginBottom:2}}>
                     <span style={lbl}>Stop Loss</span>
-                    <span style={{...val,color:c.rd}}>{sl.toFixed(5)}</span>
+                    <span style={{...val,color:"var(--down)"}}>{sl.toFixed(5)}</span>
                   </div>
                   <div style={{display:"flex",gap:10,paddingLeft:0}}>
-                    <span style={{fontSize:10,color:c.tm}}>{(slDist/entry*100).toFixed(3)}%</span>
-                    <span style={{fontSize:10,color:c.tm}}>{(slDist*10000).toFixed(1)} pips</span>
-                    <span style={{fontSize:10,color:c.tm}}>— ${riskAmt.toFixed(0)}</span>
+                    <span style={{fontSize:10,color:"var(--text-faint)"}}>{(slDist/entry*100).toFixed(3)}%</span>
+                    <span style={{fontSize:10,color:"var(--text-faint)"}}>{(slDist*10000).toFixed(1)} pips</span>
+                    <span style={{fontSize:10,color:"var(--text-faint)"}}>— ${riskAmt.toFixed(0)}</span>
                   </div>
                 </div>
                 <div style={{marginBottom:6}}>
@@ -30613,42 +31464,39 @@ const TalariaV8bLive = () => {
                     <span style={{...val,color:c.gn}}>{tp.toFixed(5)}</span>
                   </div>
                   <div style={{display:"flex",gap:10}}>
-                    <span style={{fontSize:10,color:c.tm}}>{(tpDist/entry*100).toFixed(3)}%</span>
-                    <span style={{fontSize:10,color:c.tm}}>{(tpDist*10000).toFixed(1)} pips</span>
+                    <span style={{fontSize:10,color:"var(--text-faint)"}}>{(tpDist/entry*100).toFixed(3)}%</span>
+                    <span style={{fontSize:10,color:"var(--text-faint)"}}>{(tpDist*10000).toFixed(1)} pips</span>
                     <span style={{fontSize:10,color:c.gn}}>+${tpAmt.toFixed(0)}</span>
                   </div>
                 </div>
-                <div style={{display:"flex",alignItems:"center",padding:"5px 8px",background:c.hv2,border:`1px solid ${c.br}`}}>
+                <div style={{display:"flex",alignItems:"center",padding:"5px 8px",background:"var(--surface-raised)",border:"1px solid var(--line)"}}>
                   <span style={lbl}>R:R Ratio</span>
-                  <span style={{...val,color:rrRatio>=1?c.acL:c.rd,fontSize:14}}>{rrRatio.toFixed(2)}R</span>
+                  <span style={{...val,color:rrRatio>=1?"var(--accent)":"var(--down)",fontSize:14}}>{rrRatio.toFixed(2)}R</span>
                 </div>
               </>);
             })()}
             {/* ── INPUT TAB (measure / range tool) ── */}
             {tlSettTab==="input" && tlSubTool.icon === "measure" && <>
               <div style={{ display:"flex", alignItems:"center", padding:"8px 0" }}>
-                <span style={{ fontSize:12, color:c.ts }}>Range Type</span>
+                <span style={{ fontSize:12, color:"var(--text-muted)" }}>Range Type</span>
                 <div style={{ position:"relative", marginLeft:"auto" }}>
-                  <div data-sett-dd="" {...tlStyleDropTrigger("rangeType")}
+                  <div data-sett-dd="" data-open={tlStyleDrop==="rangeType"?"1":undefined} {...tlStyleDropTrigger("rangeType")}
                     onMouseEnter={()=>setHov("rngTypeBtn")} onMouseLeave={()=>setHov(null)}
-                    style={{ padding:"0 8px", display:"flex", alignItems:"center", gap:4, cursor:"default", position:"relative",
-                      background:"transparent",
-                      transition:"background 0.12s" }}>
-                    <span style={{ fontSize:12, color:tlStyleDrop==="rangeType"?c.acL:c.ts }}>{tlStyle.rangeType}</span>
-                    <I n="chevDown" s={7} cl={tlStyleDrop==="rangeType"?c.acL:c.ts}/>
+                    style={{cursor:"default", position:"relative"}}>
+                    <span style={{ fontSize:12, color:tlStyleDrop==="rangeType"?"var(--accent)":"var(--text-muted)" }}>{tlStyle.rangeType}</span>
+                    <I n="chevDown" s={7} cl={tlStyleDrop==="rangeType"?"var(--accent)":"var(--text-muted)"}/>
                   </div>
                   {tlStyleDrop==="rangeType"&&(
-                    <div onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
-                      style={{ position:"absolute", top:"calc(100% + 4px)", right:0, zIndex:10, width:120,
-                        background:"var(--surface)", border:"1px solid var(--line)", boxShadow:"none" }}>
-                      <div style={{ height:2, background:"rgba(255,255,255,0.18)" }}/>
+                    <div data-sett-drop="" data-tl-style-drop="1" onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
+                      style={{ position:"absolute", top:"calc(100% + 4px)", right:0, zIndex:10, width:140, fontFamily:F,
+                        background:"var(--surface)", border:"1px solid var(--line)", borderRadius:8, boxShadow:"none" }}>
                       {["Date & Price","Price","Date and time"].map(v=>{
                         const isA=tlStyle.rangeType===v,isH=hov===`rngType-${v}`;
-                        return(<div key={v} {...tlStyleDropPick(() => applyTlRangeType(v))}
+                        return(<div key={v} data-pick-on={isA?"1":undefined} {...tlStyleDropPick(() => applyTlRangeType(v))}
                           onMouseEnter={()=>setHov(`rngType-${v}`)} onMouseLeave={()=>setHov(null)}
-                          style={{ padding:"5px 12px", cursor:"default", display:"flex", alignItems:"center", position:"relative",
-                            background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
-                          <span style={{ fontSize:13, fontWeight:isA?700:500, color:isA?c.acL:isH?c.tx:c.ts }}>{v}</span>
+                          style={{ padding:"6px 12px", cursor:"default", display:"flex", alignItems:"center",
+                            background:isH&&!isA?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
+                          <span style={{ fontSize:12, fontWeight:isA?700:500, color:isA?"var(--accent)":isH?"var(--text)":"var(--text-muted)" }}>{v}</span>
                         </div>);
                       })}
                     </div>
@@ -30695,7 +31543,7 @@ const TalariaV8bLive = () => {
                   </div>
                   {["Start","Control","End"].map((lbl, i)=>(
                     <div key={lbl} style={{ display:"grid", gridTemplateColumns:"80px 1fr 1fr", alignItems:"center" }}>
-                      <span style={{ fontSize:12, color:c.ts, padding:"8px 12px" }}>{lbl}</span>
+                      <span style={{ fontSize:12, color:"var(--text-muted)", padding:"8px 12px" }}>{lbl}</span>
                       <div data-sett-coord-cell="" style={{ padding:"6px 8px" }}>{spinInput(`pt${i+1}Price`,"price")}</div>
                       <div data-sett-coord-cell="" style={{ padding:"6px 8px" }}>{spinInput(`pt${i+1}Bar`,"bar")}</div>
                     </div>
@@ -30717,7 +31565,7 @@ const TalariaV8bLive = () => {
                     { lbl: "End", price: "pt2Price", bar: "pt2Bar" },
                   ].map(({ lbl, price, bar })=>(
                     <div key={lbl} style={{ display:"grid", gridTemplateColumns:"80px 1fr 1fr", alignItems:"center" }}>
-                      <span style={{ fontSize:12, color:c.ts, padding:"8px 12px" }}>{lbl}</span>
+                      <span style={{ fontSize:12, color:"var(--text-muted)", padding:"8px 12px" }}>{lbl}</span>
                       <div data-sett-coord-cell="" style={{ padding:"6px 8px" }}>{spinInput(price,"price")}</div>
                       <div data-sett-coord-cell="" style={{ padding:"6px 8px" }}>{spinInput(bar,"bar")}</div>
                     </div>
@@ -30737,7 +31585,7 @@ const TalariaV8bLive = () => {
                   </div>
                   {Array.from({length:multiPtCount},(_,i)=>(
                     <div key={i} style={{ display:"grid", gridTemplateColumns:"80px 1fr 1fr", alignItems:"center" }}>
-                      <span style={{ fontSize:12, color:c.ts, padding:"8px 12px" }}>Point {i+1}</span>
+                      <span style={{ fontSize:12, color:"var(--text-muted)", padding:"8px 12px" }}>Point {i+1}</span>
                       <div data-sett-coord-cell="" style={{ padding:"6px 8px" }}>{spinInput(`pt${i+1}Price`,"price")}</div>
                       <div data-sett-coord-cell="" style={{ padding:"6px 8px" }}>{spinInput(`pt${i+1}Bar`,"bar")}</div>
                     </div>
@@ -30759,22 +31607,22 @@ const TalariaV8bLive = () => {
                   </div>}
                   {/* Price row (hidden for vline and regressionCh) */}
                   {!isVline && tlSubTool.icon !== "regressionCh" && <div style={{ display:"flex", alignItems:"center" }}>
-                    <span style={{ fontSize:12, color:c.ts, padding:"8px 12px", width:80, flexShrink:0 }}>Price</span>
+                    <span style={{ fontSize:12, color:"var(--text-muted)", padding:"8px 12px", width:80, flexShrink:0 }}>Price</span>
                     {priceKeys.map(k=>(
                       <div data-sett-coord-cell="" key={k} style={{ padding:"6px 8px", flex:1, maxWidth:(isSimpleLine||isSinglePoint)?160:undefined }}>{spinInput(k,"price")}</div>
                     ))}
                   </div>}
                   {/* Bar row */}
                   {(isVline || isCrossLine || isSinglePoint) ? <div style={{ display:"flex", alignItems:"center" }}>
-                    <span style={{ fontSize:12, color:c.ts, padding:"8px 12px", width:80, flexShrink:0 }}>Bar</span>
+                    <span style={{ fontSize:12, color:"var(--text-muted)", padding:"8px 12px", width:80, flexShrink:0 }}>Bar</span>
                     <div data-sett-coord-cell="" style={{ padding:"6px 8px", flex:1, maxWidth:160 }}>{spinInput("pt1Bar","bar")}</div>
                   </div>
                   : tlSubTool.icon === "hray" ? <div style={{ display:"flex", alignItems:"center" }}>
-                    <span style={{ fontSize:12, color:c.ts, padding:"8px 12px", width:80, flexShrink:0 }}>Bar</span>
+                    <span style={{ fontSize:12, color:"var(--text-muted)", padding:"8px 12px", width:80, flexShrink:0 }}>Bar</span>
                     <div data-sett-coord-cell="" style={{ padding:"6px 8px", flex:1, maxWidth:160 }}>{spinInput("pt1Bar","bar")}</div>
                   </div>
                   : !isSimpleLine && <div style={{ display:"flex", alignItems:"center" }}>
-                    <span style={{ fontSize:12, color:c.ts, padding:"8px 12px", width:80, flexShrink:0 }}>Bar</span>
+                    <span style={{ fontSize:12, color:"var(--text-muted)", padding:"8px 12px", width:80, flexShrink:0 }}>Bar</span>
                     {barKeys.map(k=>(
                       <div data-sett-coord-cell="" key={k} style={{ padding:"6px 8px", flex:1 }}>{spinInput(k,"bar")}</div>
                     ))}
@@ -30902,9 +31750,8 @@ const TalariaV8bLive = () => {
             <TxBtn id="txt-tmpl" tip="Templates" isAct={txtBarDrop==="template"}
               onClick={(e) => {
                 e.stopPropagation();
-                setColorPicker(null);
-                setTxtBarSizeOpen(false);
                 if (txtBarDrop === "template") { setTxtBarDrop(null); return; }
+                beginExclusiveOverlayOpen();
                 const r = e.currentTarget.getBoundingClientRect();
                 setTxtBarDropAnchor({ btnTop: r.top, btnBottom: r.bottom, left: r.left, right: r.right, barX: tlBarPos.x, barY: tlBarPos.y });
                 setTxtBarDrop("template");
@@ -30913,29 +31760,27 @@ const TalariaV8bLive = () => {
             </TxBtn>
           </div>}
           {/* Border + background swatches for note / priceNote */}
-          {(txtQuickIcon === "note" || txtQuickIcon === "priceNote") && <TxBtn id="txt-toolcol" tip="Border color" isAct={colorPicker==="txtBorderColor"} w={60}
+          {(txtQuickIcon === "note" || txtQuickIcon === "priceNote") && <TxBtn id="txt-toolcol" tip="Border" isAct={colorPicker==="txtBorderColor"} w={32}
             onClick={e=>{e.stopPropagation();if(colorPicker==="txtBorderColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.borderColor||'#787B86');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("txtBorderColor");}}}>
             {()=>(
               <div data-qb-color="" data-qb-role="stroke">
                 <TxSwatch color={txtStyle.borderOn?txtStyle.borderColor:"rgba(120,123,134,0.38)"} empty={!txtStyle.borderOn} shape="square" role="stroke" />
-                <em data-qb-color-lbl="">Border</em>
               </div>
             )}
           </TxBtn>}
-          {(txtQuickIcon === "note" || txtQuickIcon === "priceNote") && <TxBtn id="txt-bgcol-note" tip="Background color" isAct={colorPicker==="txtBgColor"} w={84}
+          {(txtQuickIcon === "note" || txtQuickIcon === "priceNote") && <TxBtn id="txt-bgcol-note" tip="Background" isAct={colorPicker==="txtBgColor"} w={32}
             onClick={e=>{e.stopPropagation();if(colorPicker==="txtBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.bgColor||'#000000');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("txtBgColor");}}}>
             {()=>(
               <div data-qb-color="" data-qb-role="fill">
                 <TxSwatch color={txtStyle.bgOn?txtStyle.bgColor:undefined} empty={!txtStyle.bgOn} shape="square" role="fill" />
-                <em data-qb-color-lbl="">Background</em>
               </div>
             )}
           </TxBtn>}
-          {txtQuickIcon === "priceNote" && <TxBtn id="txt-linecol" tip="Line color" isAct={colorPicker==="txtLineColor"} w={32}
+          {txtQuickIcon === "priceNote" && <TxBtn id="txt-linecol" tip="Line" isAct={colorPicker==="txtLineColor"} w={32}
             onClick={e=>{e.stopPropagation();if(colorPicker==="txtLineColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.lineColor||'#787B86');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("txtLineColor");}}}>
             {(_,isAct,col)=>(
-              <div data-qb-color="">
-                <TxSwatch color={txtStyle.lineColor||'#787B86'} shape="square" />
+              <div data-qb-color="" data-qb-role="stroke">
+                <TxSwatch color={txtStyle.lineColor||'#787B86'} shape="square" role="stroke" />
               </div>
             )}
           </TxBtn>}
@@ -30981,6 +31826,7 @@ const TalariaV8bLive = () => {
               onClick={(e)=>{
                 e.stopPropagation();
                 if (txtBarSizeOpen) { setTxtBarSizeOpen(false); return; }
+                beginExclusiveOverlayOpen();
                 const r = e.currentTarget.getBoundingClientRect();
                 setTxtBarSizeAnchor({ btnTop: r.top, btnBottom: r.bottom, left: r.left, right: r.right, barX: tlBarPos.x, barY: tlBarPos.y });
                 setTxtBarSizeOpen(true);
@@ -30988,8 +31834,8 @@ const TalariaV8bLive = () => {
               }}
               style={{height:32,padding:"0 7px",display:"flex",alignItems:"center",gap:3,position:"relative",cursor:"default",
                       background:"transparent",transition:"background 0.12s"}}>
-              <span style={{fontSize:12,color:txtBarSizeOpen?c.acL:c.ts,minWidth:16,textAlign:"center"}}>{txtStyle.fontSize}</span>
-              <I n="chevDown" s={9} cl={txtBarSizeOpen?c.acL:c.ts}/>
+              <span style={{fontSize:12,color:txtBarSizeOpen?"var(--accent)":"var(--text-muted)",minWidth:16,textAlign:"center"}}>{txtStyle.fontSize}</span>
+              <I n="chevDown" s={9} cl={txtBarSizeOpen?"var(--accent)":"var(--text-muted)"}/>
             </div>
           </div>}
           {/* Bold / Italic — same as settings Text tab; stay visible when locked */}
@@ -31007,13 +31853,13 @@ const TalariaV8bLive = () => {
                   style={{width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",flexShrink:0,
                           background:"transparent",
                           cursor:"default",transition:"background 0.12s",
-                          color:isAct?c.acL:isH?c.tx:c.ts,fontFamily:F,...extra}}>
+                          color:isAct?"var(--accent)":isH?"var(--text)":"var(--text-muted)",fontFamily:F,...extra}}>
                   {label}
                 </div>
               );
             })}
           </>}
-          <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>
+          <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"var(--line)",flexShrink:0}}/>
           <TxBtn id="txt-lock" tip={v9QuickBarLockIsActive(txtLocked) ? "Unlock" : "Lock"} isAct={v9QuickBarLockIsActive(txtLocked)} onClick={()=>{
             setColorPicker(null);setTxtBarSizeOpen(false);setTxtBarDrop(null);
             const textEntries = v9GetLockTargetEntries("text");
@@ -31061,7 +31907,7 @@ const TalariaV8bLive = () => {
           }}>
             {(_,isAct,col)=><I n="trash" s={16} cl={col}/>}
           </TxBtn>
-          <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>
+          <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"var(--line)",flexShrink:0}}/>
           <TxBtn id="txt-sett" tip="Settings" isAct={txtSettOpen||closing.has("txtsett")} onClick={e=>{e.stopPropagation();v9SuppressNextChartDeselect();if(dropdown)closeDropdown();setColorPicker(null);setTxtBarSizeOpen(false);setTxtBarDrop(null);if(txtSettOpen||closing.has("txtsett")){closeTxtSett();}else{if(tlSettOpen)closeTlSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();if(avSettOpen)closeAvSett();if(indSettOpen)closeIndSett();const r=e.currentTarget.getBoundingClientRect();const anchorX=r.left+r.width/2;const anchorY=r.bottom+8;let d=getSelectedDrawingForTemplate();if(!d){try{d=getSelectedDrawingAcrossCharts(null);}catch(_){}}if(v9QuickBarPanelSettingsDisabledForMultichartDrawing(d))return;if(v9OpenQuickBarSettingsViaEditDrawing(d,anchorX,anchorY))return;try{const grid=typeof window!=="undefined"?window.__multichartGrid:null;if(grid&&typeof grid.openDrawingSettingsForPanel==="function"&&d){const panelId=typeof grid.getFocusedPanelId==="function"?(grid.getFocusedPanelId()||grid.hostPanelId||"A"):"A";grid.openDrawingSettingsForPanel(panelId,d,anchorX,anchorY).catch(()=>{});return;}}catch(_){}const hook=v9ResolveOpenDrawingSettingsHook();if(d&&hook){try{if(hook(d,anchorX,anchorY))return;}catch(_){}}const vpW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW-398));const y=r.bottom/Z+8;if(d&&v9DrawingTypeToPanelGroup(d.type)==="text"){suppressTxtForwardBridge.current=true;suppressTxtCoordBridge.current=true;v9MarkTxtStyleOwnerType(v9TxtStyleOwnerTypeRef,d);flushSync(()=>setTxtStyle(v9BuildFullTxtStyleFromDrawing(d)));const icon=legacyChartTextTypeToV9Icon(d.type)||"text";if(v9TxtIconHasContentTab(icon))setTxtSettTab("text");else if(d.type==="price-note")setTxtSettTab("style");}setTxtSettPos({x,y});setTxtSettOpen(true);}}}>
             {(_,isAct,col)=><I n="settings" s={16} cl={col}/>}
           </TxBtn>
@@ -31070,9 +31916,8 @@ const TalariaV8bLive = () => {
             <TxBtn id="txt-more" tip="More" isAct={txtBarDrop==="more"}
               onClick={(e) => {
                 e.stopPropagation();
-                setColorPicker(null);
-                setTxtBarSizeOpen(false);
                 if (txtBarDrop === "more") { setTxtBarDrop(null); return; }
+                beginExclusiveOverlayOpen();
                 const r = e.currentTarget.getBoundingClientRect();
                 setTxtBarDropAnchor({ btnTop: r.top, btnBottom: r.bottom, left: r.left, right: r.right, barX: tlBarPos.x, barY: tlBarPos.y });
                 setTxtBarDrop("more");
@@ -31140,24 +31985,27 @@ const TalariaV8bLive = () => {
           onMouseDown={e=>e.stopPropagation()}
           onClick={e=>{e.stopPropagation();setTxtSizeOpen(false);}}
           style={{position:"fixed",left:txtSettPos.x,top:txtSettPos.y,zIndex:11000,width:440,
-                  animation:closing.has("txtsett")?"tlrPopOut 0.155s ease both":"tlrPopIn 0.15s ease"}}>
+                  animation:closing.has("txtsett")?"tlrPopOut 0.155s ease both":undefined}}>
           <div data-win-header="" onPointerDown={e=>{
             if (e.detail >= 2) return;
             if (typeof e.target?.closest === "function" && e.target.closest("input, textarea, button, [data-sett-rename], [data-sett-rename-btn]")) return;
             e.preventDefault();
+            closeAllSettStyleDrops();
             const settEl=e.currentTarget.parentElement;
             const sx=e.clientX,sy=e.clientY,px=txtSettPos.x,py=txtSettPos.y;
             const cpWasOpen=colorPicker==="txtTextColor"||colorPicker==="txtBgColor"||colorPicker==="txtBorderColor"||colorPicker==="txtLineColor"||colorPicker==="pinLabelColor";
             const cpStart={top:cpPos.top,left:cpPos.left};
+            let nx=px,ny=py;
             const onMove=ev=>{
               const dx=(ev.clientX-sx)/Z,dy=(ev.clientY-sy)/Z;
               const _wh=((settEl&&settEl.getBoundingClientRect().height)/Z)||420;
-              const {x:nx,y:ny}=v9ClampFloatingWindowPos(px+dx,py+dy,448,_wh,Z);
+              ({x:nx,y:ny}=v9ClampFloatingWindowPos(px+dx,py+dy,448,_wh,Z));
               const adx=nx-px,ady=ny-py;
+              settEl.style.left=nx+'px';settEl.style.top=ny+'px';
               setTxtSettPos({x:nx,y:ny});
               if(cpWasOpen)setCpPos({top:cpStart.top+ady,left:cpStart.left+adx});
             };
-            const onUp=()=>{window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);};
+            const onUp=()=>{window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);pinSettOpenPos("txt",{x:nx,y:ny});setTxtSettPos({x:nx,y:ny});};
             window.addEventListener('pointermove',onMove); window.addEventListener('pointerup',onUp);
           }}>
             <div data-win-icon=""><I n={txtSubTool.icon} s={16} cl="var(--accent)"/></div>
@@ -31306,45 +32154,52 @@ const TalariaV8bLive = () => {
                 const hkH = "img-transp-h";
                 const mkDrag = e => {
                   e.stopPropagation();
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const getVal = cx => Math.round(Math.max(0,Math.min(100,(cx-rect.left)/rect.width*100)));
+                  const shell = e.currentTarget.closest("[data-sett-slider]");
+                  const rect = (shell || e.currentTarget).getBoundingClientRect();
+                  const inset = 12;
+                  const usable = Math.max(1, rect.width - inset * 2);
+                  const getVal = cx => Math.round(Math.max(0, Math.min(100, (cx - rect.left - inset) / usable * 100)));
                   setHov(hkH);
+                  try { shell?.setAttribute("data-dragging", "1"); } catch (_) { /* ignore */ }
+                  try { document.documentElement.setAttribute("data-sett-slider-grabbing", "1"); } catch (_) { /* ignore */ }
                   const onMove = ev => setTxtStyle(s=>({...s,imageTransparency:getVal(ev.clientX)}));
-                  const onUp = () => {setHov(null);window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);};
-                  onMove(e); window.addEventListener('pointermove',onMove); window.addEventListener('pointerup',onUp);
+                  const onUp = () => {
+                    setHov(null);
+                    try { shell?.removeAttribute("data-dragging"); } catch (_) { /* ignore */ }
+                    try { document.documentElement.removeAttribute("data-sett-slider-grabbing"); } catch (_) { /* ignore */ }
+                    window.removeEventListener("pointermove", onMove);
+                    window.removeEventListener("pointerup", onUp);
+                  };
+                  onMove(e); window.addEventListener("pointermove", onMove); window.addEventListener("pointerup", onUp);
                 };
                 return <>
                   <div data-sett-sec="">Image</div>
                   <label style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,
                                  width:"70%",aspectRatio:"1",boxSizing:"border-box",margin:"0 auto 16px",
-                                 background:"rgba(140,160,255,0.05)",border:"1px dashed rgba(140,160,255,0.25)",
+                                 background:"var(--surface-sunken)",border:"1px dashed var(--line)",
                                  cursor:"default"}}>
                     {txtStyle.imageDataUrl
                       ? <img src={txtStyle.imageDataUrl} style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain"}}/>
-                      : <><I n="image" s={28} cl={c.ts}/><span style={{fontSize:12,color:c.ts}}>Upload Image</span></>}
+                      : <><I n="image" s={28} cl={"var(--text-muted)"}/><span style={{fontSize:12,color:"var(--text-muted)"}}>Upload Image</span></>}
                     <input type="file" accept="image/*" style={{display:"none"}}
                       onClick={e=>e.stopPropagation()}
                       onChange={e=>{const f=e.target.files?.[0];if(!f)return;if(f.size>V9_IMAGE_UPLOAD_MAX_BYTES){v9NotifyDrawingAction(`Image must be ${V9_IMAGE_UPLOAD_MAX_MB} MB or smaller`);e.target.value="";return;}const r=new FileReader();r.onload=ev=>setTxtStyle(s=>({...s,imageDataUrl:ev.target.result}));r.readAsDataURL(f);e.target.value="";}}/>
                   </label>
                   {/* transparency — label left, slider right-aligned and narrow */}
                   <div style={{marginBottom:16}}>
-                    <span style={{fontSize:12,color:c.ts,display:"block",marginBottom:6}}>Transparency</span>
+                    <span style={{fontSize:12,color:"var(--text-muted)",display:"block",marginBottom:6}}>Transparency</span>
                     <div style={{display:"flex",alignItems:"center",gap:8,justifyContent:"flex-end"}}>
-                      <div onClick={e=>e.stopPropagation()}
-                        style={{width:130,position:"relative",height:28,display:"flex",alignItems:"center",cursor:"default",flexShrink:0}}>
-                        {/* track */}
-                        <div style={{position:"absolute",left:0,right:0,height:3,top:"50%",transform:"translateY(-50%)",borderRadius:99,background:c.trk}}>
-                          <div style={{position:"absolute",left:0,width:`${pct}%`,height:"100%",borderRadius:99,
-                            background:"color-mix(in oklab, var(--accent) 55%, transparent)"}}/>
+                      <div data-sett-slider="" onClick={e=>e.stopPropagation()} style={{width:130, ["--sett-slider-pct"]: pct}}>
+                        <div data-sett-slider-rail="">
+                          <i data-sett-slider-fill="" style={{ width:`${pct}%` }}/>
                         </div>
-                        {/* triangle handle */}
-                        <div data-sett-alpha-thumb="" style={{ position:"absolute", left:`${pct}%`, top:"50%", width:12, height:12, marginLeft:-6, marginTop:-6, borderRadius:"50%", background:"var(--accent)", border:"2px solid var(--surface)", boxSizing:"border-box", pointerEvents:"none" }}/>
-                        {/* full-track drag zone */}
-                        <div onPointerDown={mkDrag}
-                          onMouseEnter={()=>setHov(hkH)} onMouseLeave={()=>setHov(null)}
-                          style={{position:"absolute",inset:0,cursor:"default"}}/>
+                        <i data-sett-slider-thumb="" aria-hidden="true"/>
+                        <div data-sett-slider-hit=""
+                          onPointerDown={mkDrag}
+                          onMouseEnter={()=>setHov(hkH)}
+                          onMouseLeave={()=>setHov(null)}/>
                       </div>
-                      <span style={{fontSize:12,color:c.ts,minWidth:28,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{pct}%</span>
+                      <span style={{fontSize:12,color:"var(--text-muted)",minWidth:28,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{pct}%</span>
                     </div>
                   </div>
                 </>;
@@ -31359,18 +32214,23 @@ const TalariaV8bLive = () => {
                       <div data-sett-dd="" data-open={txtSizeOpen?"1":undefined}
                         onClick={e=>{e.stopPropagation();setTxtSizeOpen(v=>{const next=!v;if(next)setVolDropAnchor(v9MeasureDropAnchor(e.currentTarget,280));else setVolDropAnchor(null);return next;});}}
                         onMouseEnter={()=>setHov("txtSzBtn")} onMouseLeave={()=>setHov(null)}
-                        style={{height:30,padding:"0 8px",display:"flex",alignItems:"center",gap:4,cursor:"default"}}>
+                        style={{cursor:"default", position:"relative"}}>
                         <span style={{fontSize:12,color:txtSizeOpen?"var(--accent)":"var(--text-muted)",minWidth:16,textAlign:"center",fontVariantNumeric:"tabular-nums"}}>{txtStyle.fontSize}</span>
                         <I n="chevDown" s={7} cl={txtSizeOpen?"var(--accent)":"var(--text-muted)"}/>
                       </div>
                       {txtSizeOpen && v9PortalSettDropMenu({
                         anchor: volDropAnchor,
                         width: 52,
-                        rightAlign: true,
+                        rightAlign: false,
                         children: txtSizes.map(sz=>{
                             const isA=Number(txtStyle.fontSize)===sz; const isH=hov===`txtsz-${sz}`;
                             return (
-                              <div key={sz} data-pick-on={isA?"1":undefined} onClick={()=>{applyTxtFontSize(sz);setTxtSizeOpen(false);setVolDropAnchor(null);}}
+                              <div key={sz} data-pick-on={isA?"1":undefined} {...modalPointerActivate(() => {
+                                runSettDropPick(() => applyTxtFontSize(sz), () => {
+                                  setTxtSizeOpen(false);
+                                  setVolDropAnchor(null);
+                                });
+                              })}
                                 onMouseEnter={()=>setHov(`txtsz-${sz}`)} onMouseLeave={()=>setHov(null)}
                                 style={{padding:"5px 0",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",
                                         background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent",transition:"background 0.1s"}}>
@@ -31455,18 +32315,23 @@ const TalariaV8bLive = () => {
                       <div data-sett-dd="" data-open={txtSizeOpen?"1":undefined}
                         onClick={e=>{e.stopPropagation();setTxtSizeOpen(v=>{const next=!v;if(next)setVolDropAnchor(v9MeasureDropAnchor(e.currentTarget,280));else setVolDropAnchor(null);return next;});}}
                         onMouseEnter={()=>setHov("txtPnSzBtn")} onMouseLeave={()=>setHov(null)}
-                        style={{height:30,padding:"0 8px",display:"flex",alignItems:"center",gap:4,cursor:"default"}}>
+                        style={{cursor:"default", position:"relative"}}>
                         <span style={{fontSize:12,color:txtSizeOpen?"var(--accent)":"var(--text-muted)",minWidth:16,textAlign:"center",fontVariantNumeric:"tabular-nums"}}>{txtStyle.fontSize}</span>
                         <I n="chevDown" s={7} cl={txtSizeOpen?"var(--accent)":"var(--text-muted)"}/>
                       </div>
                       {txtSizeOpen && v9PortalSettDropMenu({
                         anchor: volDropAnchor,
                         width: 52,
-                        rightAlign: true,
+                        rightAlign: false,
                         children: txtSizes.map(sz=>{
                             const isA=Number(txtStyle.fontSize)===sz; const isH=hov===`txtpnsz-${sz}`;
                             return (
-                              <div key={sz} data-pick-on={isA?"1":undefined} onClick={()=>{applyTxtFontSize(sz);setTxtSizeOpen(false);setVolDropAnchor(null);}}
+                              <div key={sz} data-pick-on={isA?"1":undefined} {...modalPointerActivate(() => {
+                                runSettDropPick(() => applyTxtFontSize(sz), () => {
+                                  setTxtSizeOpen(false);
+                                  setVolDropAnchor(null);
+                                });
+                              })}
                                 onMouseEnter={()=>setHov(`txtpnsz-${sz}`)} onMouseLeave={()=>setHov(null)}
                                 style={{padding:"5px 0",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",
                                         background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent",transition:"background 0.1s"}}>
@@ -31495,18 +32360,23 @@ const TalariaV8bLive = () => {
                       <div data-sett-dd="" data-open={txtSizeOpen?"1":undefined}
                         onClick={e=>{e.stopPropagation();setTxtSizeOpen(v=>{const next=!v;if(next)setVolDropAnchor(v9MeasureDropAnchor(e.currentTarget,280));else setVolDropAnchor(null);return next;});}}
                         onMouseEnter={()=>setHov("txtSzBtn")} onMouseLeave={()=>setHov(null)}
-                        style={{height:30,padding:"0 8px",display:"flex",alignItems:"center",gap:4,cursor:"default"}}>
+                        style={{cursor:"default", position:"relative"}}>
                         <span style={{fontSize:12,color:txtSizeOpen?"var(--accent)":"var(--text-muted)",minWidth:16,textAlign:"center",fontVariantNumeric:"tabular-nums"}}>{txtStyle.fontSize}</span>
                         <I n="chevDown" s={7} cl={txtSizeOpen?"var(--accent)":"var(--text-muted)"}/>
                       </div>
                       {txtSizeOpen && v9PortalSettDropMenu({
                         anchor: volDropAnchor,
                         width: 52,
-                        rightAlign: true,
+                        rightAlign: false,
                         children: txtSizes.map(sz=>{
                             const isA=Number(txtStyle.fontSize)===sz; const isH=hov===`txtsz3-${sz}`;
                             return (
-                              <div key={sz} data-pick-on={isA?"1":undefined} onClick={()=>{applyTxtFontSize(sz);setTxtSizeOpen(false);setVolDropAnchor(null);}}
+                              <div key={sz} data-pick-on={isA?"1":undefined} {...modalPointerActivate(() => {
+                                runSettDropPick(() => applyTxtFontSize(sz), () => {
+                                  setTxtSizeOpen(false);
+                                  setVolDropAnchor(null);
+                                });
+                              })}
                                 onMouseEnter={()=>setHov(`txtsz3-${sz}`)} onMouseLeave={()=>setHov(null)}
                                 style={{padding:"5px 0",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",
                                         background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent",transition:"background 0.1s"}}>
@@ -31586,12 +32456,12 @@ const TalariaV8bLive = () => {
                     ))}
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:col,alignItems:"center"}}>
-                    <span style={{fontSize:12,color:c.ts,padding:"8px 12px"}}>Price</span>
+                    <span style={{fontSize:12,color:"var(--text-muted)",padding:"8px 12px"}}>Price</span>
                     <div data-sett-coord-cell="" style={{padding:"6px 8px"}}>{spinInput("pt1Price","price")}</div>
                     {twoPoints && <div data-sett-coord-cell="" style={{padding:"6px 8px"}}>{spinInput("pt2Price","price")}</div>}
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:col,alignItems:"center"}}>
-                    <span style={{fontSize:12,color:c.ts,padding:"8px 12px"}}>Bar</span>
+                    <span style={{fontSize:12,color:"var(--text-muted)",padding:"8px 12px"}}>Bar</span>
                     <div data-sett-coord-cell="" style={{padding:"6px 8px"}}>{spinInput("pt1Bar","bar")}</div>
                     {twoPoints && <div data-sett-coord-cell="" style={{padding:"6px 8px"}}>{spinInput("pt2Bar","bar")}</div>}
                   </div>
@@ -31753,22 +32623,7 @@ const TalariaV8bLive = () => {
                 onPointerDown={(e) => e.stopPropagation()}
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => toggleIndWallClockDrop(e, paramId)}
-                style={{
-                  width: "100%",
-                  height: 30,
-                  fontSize: 12,
-                  fontFamily: F,
-                  fontVariantNumeric: "tabular-nums",
-                  color: open ? "var(--accent)" : "var(--text-muted)",
-                  boxSizing: "border-box",
-                  padding: "0 22px 0 8px",
-                  outline: "none",
-                  cursor: "default",
-                  textAlign: "left",
-                  display: "flex",
-                  alignItems: "center",
-                  position: "relative",
-                }}
+                style={{cursor:"default", position:"relative"}}
               >
                 <span style={{ whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>{disp}</span>
                 <span style={{ position: "absolute", right: 7, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", display: "flex", alignItems: "center" }}>
@@ -31798,24 +32653,7 @@ const TalariaV8bLive = () => {
                 onPointerDown={(e) => e.stopPropagation()}
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => toggleIndParamDrop(e, p.id)}
-                style={{
-                  width: "100%",
-                  height: 30,
-                  fontSize: 12,
-                  fontFamily: F,
-                  color: open ? "var(--accent)" : "var(--text-muted)",
-                  boxSizing: "border-box",
-                  padding: p.id === "lineStyle" ? "0 22px 0 6px" : "0 22px 0 8px",
-                  outline: "none",
-                  cursor: "default",
-                  colorScheme: darkMode ? "dark" : "light",
-                  textAlign: "left",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "flex-start",
-                  gap: 6,
-                  position: "relative",
-                }}
+                style={{cursor:"default", position:"relative"}}
               >
                 {p.id === "lineStyle" && (
                   <span style={{ flexShrink: 0, display: "inline-flex", opacity: 0.92 }}>
@@ -31850,12 +32688,12 @@ const TalariaV8bLive = () => {
             return (
               <div key={"tr-" + (p.startId || "")} style={{
                 display: "flex", flexDirection: "column", gap: 6, padding: "8px 10px", marginBottom: 6,
-                background: "rgba(140,160,255,0.04)", border: `1px solid ${c.br}`, boxSizing: "border-box",
+                background: "var(--surface-sunken)", border: `1px solid var(--line)`, boxSizing: "border-box",
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: c.ts, width: 72, flexShrink: 0 }}>{p.label || "Range"}</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", width: 72, flexShrink: 0 }}>{p.label || "Range"}</span>
                   {renderIndWallClockSelect(p.startId, startVal, { width: 72, minWidth: 72, flex: 1 })}
-                  <span style={{ color: c.tm, fontSize: 12, flexShrink: 0 }}>–</span>
+                  <span style={{ color: "var(--text-faint)", fontSize: 12, flexShrink: 0 }}>–</span>
                   {renderIndWallClockSelect(p.endId, endVal, { width: 72, minWidth: 72, flex: 1 })}
                 </div>
               </div>
@@ -31869,19 +32707,19 @@ const TalariaV8bLive = () => {
             return (
               <div key={"sess-" + p.sessionKey} style={{
                 display: "flex", flexDirection: "column", gap: 6, padding: "8px 10px", marginBottom: 6,
-                background: "rgba(140,160,255,0.04)", border: `1px solid ${c.br}`, boxSizing: "border-box",
+                background: "var(--surface-sunken)", border: `1px solid var(--line)`, boxSizing: "border-box",
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   {TlChk(!!showVal, `ind-${p.showId}`, null, () => patchIndSettDraftLive((d) => ({ ...d, [p.showId]: !d[p.showId] })), { vpImmediate: true })}
                   <input type="text" value={nameVal} placeholder="Session name" onClick={(e) => e.stopPropagation()}
                     onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [p.nameId]: e.target.value }))}
-                    style={{ flex: 1, minWidth: 0, height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
-                      color: c.tx, fontSize: 12, fontFamily: F, padding: "0 8px", outline: "none", boxSizing: "border-box" }} />
+                    style={{ flex: 1, minWidth: 0, height: 26, background: "var(--surface-sunken)", border: "1px solid var(--line)",
+                      color: "var(--text)", fontSize: 12, fontFamily: F, padding: "0 8px", outline: "none", boxSizing: "border-box" }} />
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 26 }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: c.ts, width: 36, flexShrink: 0 }}>Time</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", width: 36, flexShrink: 0 }}>Time</span>
                   {renderIndWallClockSelect(p.startId, startVal, { width: 72, minWidth: 72, flex: 1 })}
-                  <span style={{ color: c.tm, fontSize: 12 }}>–</span>
+                  <span style={{ color: "var(--text-faint)", fontSize: 12 }}>–</span>
                   {renderIndWallClockSelect(p.endId, endVal, { width: 72, minWidth: 72, flex: 1 })}
                 </div>
               </div>
@@ -31902,9 +32740,9 @@ const TalariaV8bLive = () => {
               <div key={p.id || "div"} style={{
                 width: "100%",
                 margin: "12px 0 6px",
-                borderTop: `1px solid ${c.br}`,
+                borderTop: `1px solid var(--line)`,
                 minHeight: 1,
-              }}>{p.label ? <span style={{ fontSize: 10, color: c.tm }}>{p.label}</span> : null}</div>
+              }}>{p.label ? <span style={{ fontSize: 10, color: "var(--text-faint)" }}>{p.label}</span> : null}</div>
             );
           }
           if (p.type === "number") {
@@ -31957,7 +32795,7 @@ const TalariaV8bLive = () => {
           if (p.type === "textarea") {
             return (
               <div key={p.id} style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 12, color: c.ts, marginBottom: 6 }}>{p.label}</div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>{p.label}</div>
                 <textarea value={raw != null ? String(raw) : ""} onClick={(e) => e.stopPropagation()}
                   onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [p.id]: e.target.value }))}
                   rows={isCustom ? 14 : 8}
@@ -32016,8 +32854,8 @@ const TalariaV8bLive = () => {
               alignItems: "center",
               justifyContent: "center",
               borderRadius: 999,
-              border: `1px solid ${c.brL}`,
-              color: c.tm,
+              border: `1px solid var(--line)`,
+              color: "var(--text-faint)",
               fontSize: 9,
               fontWeight: 800,
               cursor: "default",
@@ -32056,7 +32894,7 @@ const TalariaV8bLive = () => {
               alignItems: "center",
               gap: 8,
               padding: "8px 0",
-              borderBottom: `1px solid ${c.br}`,
+              borderBottom: `1px solid var(--line)`,
               flexWrap: "wrap",
             }}>{children}</div>
           );
@@ -32094,12 +32932,12 @@ const TalariaV8bLive = () => {
               alignItems: "center",
               columnGap: 8,
               padding: "8px 0",
-              borderBottom: `1px solid ${c.br}`,
+              borderBottom: `1px solid var(--line)`,
             }}>
               {chkCell(TlChk(!!val(showId), `ict-${showId}`, null, () => flip(showId)))}
               {pill(txtId, null)}
               {timeInp(tStart)}
-              <span style={{ color: c.tm, fontSize: 12, textAlign: "center" }}>–</span>
+              <span style={{ color: "var(--text-faint)", fontSize: 12, textAlign: "center" }}>–</span>
               {timeInp(tEnd)}
               <div style={{ display: "flex", justifyContent: "center" }}><Swatch pid={fillId} /></div>
               <Info t={tip} />
@@ -32112,7 +32950,7 @@ const TalariaV8bLive = () => {
               alignItems: "center",
               columnGap: 8,
               padding: "8px 0",
-              borderBottom: `1px solid ${c.br}`,
+              borderBottom: `1px solid var(--line)`,
             }}>
               {chkCell(TlChk(!!val(showId), `ict-v-${showId}`, null, () => flip(showId)))}
               {pill(txtId, null)}
@@ -32128,7 +32966,7 @@ const TalariaV8bLive = () => {
               alignItems: "center",
               gap: 8,
               padding: "8px 0",
-              borderBottom: `1px solid ${c.br}`,
+              borderBottom: `1px solid var(--line)`,
               flexWrap: "wrap",
             }}>
               {chkCell(TlChk(!!val(showId), `ict-bx-${showId}`, null, () => flip(showId)))}
@@ -32148,7 +32986,7 @@ const TalariaV8bLive = () => {
               alignItems: "center",
               columnGap: 8,
               padding: "8px 0",
-              borderBottom: `1px solid ${c.br}`,
+              borderBottom: `1px solid var(--line)`,
             }}>
               {chkCell(TlChk(!!val(chkId), `ict-sd-${chkId}`, null, () => flip(chkId)))}
               {pill(txtId, null)}
@@ -32161,8 +32999,8 @@ const TalariaV8bLive = () => {
           return (
             <div style={{ width: "100%", boxSizing: "border-box" }}>
               {ictSec("GLOBAL SETTINGS", true)}
-              <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: "10px 12px", alignItems: "center", padding: "4px 0 10px", borderBottom: `1px solid ${c.br}` }}>
-                <span style={{ fontSize: 12, color: c.ts }}>Hide indicator above (bar minutes)</span>
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: "10px 12px", alignItems: "center", padding: "4px 0 10px", borderBottom: `1px solid var(--line)` }}>
+                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Hide indicator above (bar minutes)</span>
                 <input type="number" className="tlr-nospinner" min={1} max={1440} value={val("inputMaxInterval") == null ? "" : val("inputMaxInterval")}
                   onClick={(e) => e.stopPropagation()}
                   onChange={(e) => setv("inputMaxInterval", e.target.value)}
@@ -32175,9 +33013,9 @@ const TalariaV8bLive = () => {
                 ["SL4W", "Show last 4 week sessions"],
                 ["ShowSFill", "Show session highlighting"],
               ].map(([id, lbl]) => (
-                <div key={id} style={{ display: "grid", gridTemplateColumns: "26px 1fr", alignItems: "center", columnGap: 10, padding: "8px 0", borderBottom: `1px solid ${c.br}` }}>
+                <div key={id} style={{ display: "grid", gridTemplateColumns: "26px 1fr", alignItems: "center", columnGap: 10, padding: "8px 0", borderBottom: `1px solid var(--line)` }}>
                   {chkCell(TlChk(!!val(id), `ict-${id}`, null, () => flip(id)))}
-                  <span style={{ fontSize: 12, color: c.ts }}>{lbl}</span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{lbl}</span>
                 </div>
               ))}
               {ictSec("HISTORICAL LINES", false)}
@@ -32186,9 +33024,9 @@ const TalariaV8bLive = () => {
                 ["MOLHist", "Midnight historical vertical lines"],
                 ["ShowPrev", "Misc. historical price lines"],
               ].map(([id, lbl]) => (
-                <div key={id} style={{ display: "grid", gridTemplateColumns: "26px 1fr", alignItems: "center", columnGap: 10, padding: "8px 0", borderBottom: `1px solid ${c.br}` }}>
+                <div key={id} style={{ display: "grid", gridTemplateColumns: "26px 1fr", alignItems: "center", columnGap: 10, padding: "8px 0", borderBottom: `1px solid var(--line)` }}>
                   {chkCell(TlChk(!!val(id), `ict-${id}`, null, () => flip(id)))}
-                  <span style={{ fontSize: 12, color: c.ts }}>{lbl}</span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{lbl}</span>
                 </div>
               ))}
               {ictSec("SESSIONS", false)}
@@ -32268,7 +33106,7 @@ const TalariaV8bLive = () => {
                 const t = n === 1 ? "txt52" : n === 2 ? "txt53" : n === 3 ? "txt54" : "txt55";
                 const o = `BIASOption${n}`;
                 return (
-                  <div key={`bias-${n}`} style={{ display: "grid", gridTemplateColumns: "26px minmax(72px,1fr) minmax(120px,1fr) 20px", alignItems: "center", columnGap: 8, padding: "8px 0", borderBottom: `1px solid ${c.br}` }}>
+                  <div key={`bias-${n}`} style={{ display: "grid", gridTemplateColumns: "26px minmax(72px,1fr) minmax(120px,1fr) 20px", alignItems: "center", columnGap: 8, padding: "8px 0", borderBottom: `1px solid var(--line)` }}>
                     {chkCell(TlChk(!!val(b), `ict-${b}`, null, () => flip(b)))}
                     {pill(t, null)}
                     <Sel pid={o} w={null} />
@@ -32276,14 +33114,14 @@ const TalariaV8bLive = () => {
                   </div>
                 );
               })}
-              <div key="ict-notes" style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${c.br}` }}>
-                <div style={{ fontSize: 11, color: c.ts, marginBottom: 6 }}>{def0("notes")?.label || "Notes"}</div>
+              <div key="ict-notes" style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid var(--line)` }}>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6 }}>{def0("notes")?.label || "Notes"}</div>
                 <textarea value={val("notes") != null ? String(val("notes")) : ""} onClick={(e) => e.stopPropagation()}
                   onChange={(e) => setv("notes", e.target.value)}
                   rows={5}
                   style={{ width: "100%", boxSizing: "border-box", resize: "vertical", minHeight: 90,
                     fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: 11, lineHeight: 1.35, padding: 10,
-                    background: "rgba(140,160,255,0.05)", border: "1px solid rgba(140,160,255,0.2)", color: c.tx, outline: "none", borderRadius: 4 }} />
+                    background: "var(--surface-sunken)", border: "1px solid var(--line)", color: "var(--text)", outline: "none", borderRadius: 4 }} />
               </div>
             </div>
           );
@@ -32337,8 +33175,8 @@ const TalariaV8bLive = () => {
             return sectionHasPlotStyleCol(section) ? gc : gcNoPlot;
           };
           const cg = 8;
-          const hdr = (txt) => <span style={{ fontSize: 9, fontWeight: 800, color: c.tm, letterSpacing: "0.08em", textAlign: "center", display: "block" }}>{txt}</span>;
-          const lbl = (txt, on) => <span style={{ fontSize: 12, color: on === false ? "rgba(160,160,200,0.38)" : c.ts, transition: "color 0.15s" }}>{txt}</span>;
+          const hdr = (txt) => <span style={{ fontSize: 9, fontWeight: 800, color: "var(--text-faint)", letterSpacing: "0.08em", textAlign: "center", display: "block" }}>{txt}</span>;
+          const lbl = (txt, on) => <span style={{ fontSize: 12, color: on === false ? "var(--text-faint)" : "var(--text-muted)", transition: "color 0.15s" }}>{txt}</span>;
           const R = (marginTop = 0) => ({ display: "grid", gridTemplateColumns: gc, columnGap: cg, alignItems: "center", padding: "6px 0", ...(marginTop ? { marginTop } : {}) });
           const Swatch = ({ pid, disabled }) => {
             const ck = "ind-" + pid;
@@ -32376,8 +33214,8 @@ const TalariaV8bLive = () => {
                   onMouseDown={(e) => e.stopPropagation()}
                   onClick={(e) => e.stopPropagation()}
                   onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [pid]: v9NormalizeIndNumericString(e.target.value) }))}
-                  style={{ width: 44, height: 26, background: "rgba(140,160,255,0.05)", border: "1px solid rgba(140,160,255,0.2)",
-                    color: disabled ? c.tm : c.tx, fontSize: 12, fontFamily: F, padding: "0 4px", outline: "none", boxSizing: "border-box",
+                  style={{ width: 44, height: 26, background: "var(--surface-sunken)", border: "1px solid var(--line)",
+                    color: disabled ? "var(--text-faint)" : "var(--text)", fontSize: 12, fontFamily: F, padding: "0 4px", outline: "none", boxSizing: "border-box",
                     fontVariantNumeric: "tabular-nums", textAlign: "center", cursor: disabled ? "default" : "text", opacity: disabled ? 0.45 : 1 }} />
               </div>
             );
@@ -32520,7 +33358,7 @@ const TalariaV8bLive = () => {
               return (
               <div key={`ind-sec-${si}`}>
                 {section.title && !section.bandLevelHeader && (
-                  <div style={{ fontSize: 10, fontWeight: 800, color: c.tm, letterSpacing: "0.08em", marginTop: si ? 14 : 0, marginBottom: 4 }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: "var(--text-faint)", letterSpacing: "0.08em", marginTop: si ? 14 : 0, marginBottom: 4 }}>
                     {section.title}
                   </div>
                 )}
@@ -32612,8 +33450,8 @@ const TalariaV8bLive = () => {
               if (f.type === "number") {
                 const raw = val(f.id);
                 return (
-                  <div key={f.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0 4px", marginTop: 8, borderTop: `1px solid ${c.br}`, gap: 12 }}>
-                    <span style={{ fontSize: 12, color: c.ts }}>{f.label}</span>
+                  <div key={f.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0 4px", marginTop: 8, borderTop: `1px solid var(--line)`, gap: 12 }}>
+                    <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{f.label}</span>
                     <input type="text" inputMode="decimal" className="tlr-nospinner"
                       value={v9IndNumericDisplayValue(raw)}
                       onPointerDown={(e) => e.stopPropagation()}
@@ -32621,16 +33459,16 @@ const TalariaV8bLive = () => {
                       onClick={(e) => e.stopPropagation()}
                       onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [f.id]: v9NormalizeIndNumericString(e.target.value) }))}
                       style={v9IndNumericInputStyle({
-                        width: 56, height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
-                        color: c.tx, fontSize: 12, fontFamily: F, padding: "0 6px", outline: "none", boxSizing: "border-box",
+                        width: 56, height: 26, background: "var(--surface-sunken)", border: "1px solid var(--line)",
+                        color: "var(--text)", fontSize: 12, fontFamily: F, padding: "0 6px", outline: "none", boxSizing: "border-box",
                       })} />
                   </div>
                 );
               }
               if (f.type !== "checkbox") return null;
               return (
-                <div key={f.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0 4px", marginTop: 8, borderTop: `1px solid ${c.br}` }}>
-                  <span style={{ fontSize: 12, color: c.ts }}>{f.label}</span>
+                <div key={f.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0 4px", marginTop: 8, borderTop: `1px solid var(--line)` }}>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{f.label}</span>
                   {TlChk(!!val(f.id), `ind-${f.id}`, null, () => flip(f.id), { vpImmediate: true })}
                 </div>
               );
@@ -32643,10 +33481,10 @@ const TalariaV8bLive = () => {
             height: 26,
             fontSize: 12,
             fontFamily: F,
-            color: c.tx,
+            color: "var(--text)",
             boxSizing: "border-box",
-            backgroundColor: "rgba(140,160,255,0.05)",
-            border: "1px solid rgba(140,160,255,0.2)",
+            backgroundColor: "var(--surface-sunken)",
+            border: "1px solid var(--line)",
             borderRadius: 4,
             outline: "none",
             cursor: "default",
@@ -32656,8 +33494,8 @@ const TalariaV8bLive = () => {
             if (p.type === "heading") {
               return (
                 <div key={p.id || p.label} style={{
-                  fontSize: 10, fontWeight: 800, color: c.tm, letterSpacing: "0.08em",
-                  marginTop: 14, marginBottom: 6, paddingTop: 6, borderTop: `1px solid ${c.br}`,
+                  fontSize: 10, fontWeight: 800, color: "var(--text-faint)", letterSpacing: "0.08em",
+                  marginTop: 14, marginBottom: 6, paddingTop: 6, borderTop: `1px solid var(--line)`,
                 }}>{p.label}</div>
               );
             }
@@ -32675,10 +33513,10 @@ const TalariaV8bLive = () => {
                   display: "flex", alignItems: "center", justifyContent: "space-between",
                   padding: "8px 0", gap: 12,
                 }}>
-                  <span style={{ fontSize: 12, color: c.ts, flex: 1, minWidth: 0 }}>{p.label || "Range"}</span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)", flex: 1, minWidth: 0 }}>{p.label || "Range"}</span>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
                     {renderIndWallClockSelect(p.startId, startVal, { width: 72, minWidth: 72 })}
-                    <span style={{ color: c.tm, fontSize: 12 }}>–</span>
+                    <span style={{ color: "var(--text-faint)", fontSize: 12 }}>–</span>
                     {renderIndWallClockSelect(p.endId, endVal, { width: 72, minWidth: 72 })}
                   </div>
                 </div>
@@ -32692,7 +33530,7 @@ const TalariaV8bLive = () => {
               return (
                 <div key={"sess-flex-" + p.sessionKey} style={{
                   display: "flex", flexDirection: "column", gap: 8, padding: "10px 0",
-                  borderBottom: `1px solid ${c.br}`,
+                  borderBottom: `1px solid var(--line)`,
                 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     {TlChk(!!showVal, `ind-flex-${p.showId}`, null, () => patchIndSettDraftLive((d) => ({ ...d, [p.showId]: !d[p.showId] })), { vpImmediate: true })}
@@ -32702,7 +33540,7 @@ const TalariaV8bLive = () => {
                   </div>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6, paddingLeft: 26 }}>
                     {renderIndWallClockSelect(p.startId, startVal, { width: 72, minWidth: 72 })}
-                    <span style={{ color: c.tm, fontSize: 12 }}>–</span>
+                    <span style={{ color: "var(--text-faint)", fontSize: 12 }}>–</span>
                     {renderIndWallClockSelect(p.endId, endVal, { width: 72, minWidth: 72 })}
                   </div>
                 </div>
@@ -32711,7 +33549,7 @@ const TalariaV8bLive = () => {
             if (p.type === "checkbox") {
               return (
                 <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0" }}>
-                  <span style={{ fontSize: 12, color: c.ts }}>{p.label}</span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{p.label}</span>
                   {TlChk(!!raw, `ind-flex-${p.id}`, null, () => patchIndSettDraftLive((d) => ({ ...d, [p.id]: !d[p.id] })), { vpImmediate: true })}
                 </div>
               );
@@ -32719,7 +33557,7 @@ const TalariaV8bLive = () => {
             if (p.type === "number" && v9IsIndLineWidthParamId(p.id)) {
               return (
                 <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", gap: 12 }}>
-                  <span style={{ fontSize: 12, color: c.ts, flex: 1, minWidth: 0 }}>{p.label}</span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)", flex: 1, minWidth: 0 }}>{p.label}</span>
                   {renderIndShapeWidthDrop(p.id, () => raw, false)}
                 </div>
               );
@@ -32727,7 +33565,7 @@ const TalariaV8bLive = () => {
             if (p.type === "number") {
               return (
                 <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", gap: 12 }}>
-                  <span style={{ fontSize: 12, color: c.ts, flex: 1, minWidth: 0 }}>{p.label}</span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)", flex: 1, minWidth: 0 }}>{p.label}</span>
                   <input type="text" inputMode="decimal" className="tlr-nospinner"
                     value={v9IndNumericDisplayValue(raw)}
                     onPointerDown={(e) => { e.stopPropagation(); try { e.currentTarget.focus({ preventScroll: true }); } catch (_) { e.currentTarget.focus(); } }}
@@ -32742,7 +33580,7 @@ const TalariaV8bLive = () => {
               if (v9HideIndStylePickers()) return null;
               return (
                 <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", gap: 12 }}>
-                  <span style={{ fontSize: 12, color: c.ts, flex: 1, minWidth: 0 }}>{p.label}</span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)", flex: 1, minWidth: 0 }}>{p.label}</span>
                   <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
                     {renderIndShapeStyleDrop(p.id, () => v9GetIndDashStyle(indSettDraft, p.id, (id) => def.params.find((x) => x.id === id)), false)}
                     {renderIndPlotStyleDrop(p.id, () => v9GetIndPlotStyle(indSettDraft, p.id, (id) => def.params.find((x) => x.id === id)), false)}
@@ -32753,7 +33591,7 @@ const TalariaV8bLive = () => {
             if (p.type === "select" && Array.isArray(p.options)) {
               return (
                 <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", gap: 12 }}>
-                  <span style={{ fontSize: 12, color: c.ts, flex: 1, minWidth: 0 }}>{p.label}</span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)", flex: 1, minWidth: 0 }}>{p.label}</span>
                   {renderIndParamSelect(p, raw, { width: 150, minWidth: 120 })}
                 </div>
               );
@@ -32763,7 +33601,7 @@ const TalariaV8bLive = () => {
               const colStr = String(raw || "#3090FF");
               return (
                 <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", gap: 12 }}>
-                  <span style={{ fontSize: 12, color: c.ts, flex: 1, minWidth: 0 }}>{p.label}</span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)", flex: 1, minWidth: 0 }}>{p.label}</span>
                   <div data-v9-color-swatch="1"
                     onMouseEnter={() => setHov(ck)} onMouseLeave={() => setHov(null)}
                     {...modalPointerActivate((e) => openIndCP(e, p.id, colStr))}
@@ -32775,7 +33613,7 @@ const TalariaV8bLive = () => {
               const tVal = v9SnapWallClockTime(raw, p.default || "00:00");
               return (
                 <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", gap: 12 }}>
-                  <span style={{ fontSize: 12, color: c.ts, flex: 1, minWidth: 0 }}>{p.label}</span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)", flex: 1, minWidth: 0 }}>{p.label}</span>
                   {renderIndWallClockSelect(p.id, tVal, { width: 96, minWidth: 72 })}
                 </div>
               );
@@ -32783,19 +33621,19 @@ const TalariaV8bLive = () => {
             if (p.type === "textarea") {
               return (
                 <div key={p.id} style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 12, color: c.ts, marginBottom: 6 }}>{p.label}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>{p.label}</div>
                   <textarea value={raw != null ? String(raw) : ""} onClick={(e) => e.stopPropagation()}
                     onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [p.id]: e.target.value }))}
                     rows={isCustom ? 14 : 8}
                     style={{ width: "100%", boxSizing: "border-box", resize: "vertical", minHeight: isCustom ? 200 : 100,
                       fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: 11, lineHeight: 1.35, padding: 10,
-                      background: "rgba(140,160,255,0.05)", border: "1px solid rgba(140,160,255,0.2)", color: c.tx, outline: "none", borderRadius: 4 }} />
+                      background: "var(--surface-sunken)", border: "1px solid var(--line)", color: "var(--text)", outline: "none", borderRadius: 4 }} />
                 </div>
               );
             }
             return (
               <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", gap: 12 }}>
-                <span style={{ fontSize: 12, color: c.ts, flex: 1, minWidth: 0 }}>{p.label}</span>
+                <span style={{ fontSize: 12, color: "var(--text-muted)", flex: 1, minWidth: 0 }}>{p.label}</span>
                 <input type="text" value={raw != null ? String(raw) : ""} onClick={(e) => e.stopPropagation()}
                   onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [p.id]: e.target.value }))}
                   style={{ ...inpBase, width: 160, maxWidth: "100%", padding: "0 8px", cursor: "text" }} />
@@ -32892,22 +33730,25 @@ const TalariaV8bLive = () => {
           data-v9-chrome="1" data-chrome-win="ind-sett" data-ind-sett="1"
           style={{ position: "fixed", left: indSettPos.x, top: indSettPos.y, zIndex: 11000, width: panelW,
             colorScheme: darkMode ? "dark" : "light",
-            animation: closing.has("indsett") ? "tlrPopOut 0.155s ease both" : "tlrPopIn 0.15s ease" }}>
+            animation: closing.has("indsett") ? "tlrPopOut 0.155s ease both" : undefined }}>
           <div data-win-header="" onPointerDown={(e) => {
             e.preventDefault();
+            closeAllSettStyleDrops();
             const settEl = e.currentTarget.parentElement;
             const sx = e.clientX; const sy = e.clientY; const px = indSettPos.x; const py = indSettPos.y;
             const cpWasOpen = typeof colorPicker === "string" && colorPicker.startsWith("ind-");
             const cpStart = { top: cpPos.top, left: cpPos.left };
+            let nx = px, ny = py;
             const onMove = (ev) => {
               const dx = (ev.clientX - sx) / Z; const dy = (ev.clientY - sy) / Z;
               const _wh = ((settEl && settEl.getBoundingClientRect().height) / Z) || 480;
-              const { x: nx, y: ny } = v9ClampFloatingWindowPos(px + dx, py + dy, panelW, _wh, Z);
+              ({ x: nx, y: ny } = v9ClampFloatingWindowPos(px + dx, py + dy, panelW, _wh, Z));
               const adx = nx - px; const ady = ny - py;
+              settEl.style.left = nx + "px"; settEl.style.top = ny + "px";
               setIndSettPos({ x: nx, y: ny });
               if (cpWasOpen) setCpPos({ top: cpStart.top + ady, left: cpStart.left + adx });
             };
-            const onUp = () => { window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); };
+            const onUp = () => { window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); pinSettOpenPos("ind", { x: nx, y: ny }); setIndSettPos({ x: nx, y: ny }); };
             window.addEventListener("pointermove", onMove); window.addEventListener("pointerup", onUp);
           }}>
             <div data-win-icon=""><I n="indicator" s={15} cl="var(--accent)"/></div>
@@ -33108,9 +33949,9 @@ const TalariaV8bLive = () => {
             })}
           </nav>
           {isCustom && (
-            <div style={{ fontSize: 11, lineHeight: 1.45, color: c.tm, margin: "10px 14px 0", padding: "8px 10px",
+            <div style={{ fontSize: 11, lineHeight: 1.45, color: "var(--text-faint)", margin: "10px 14px 0", padding: "8px 10px",
               background: "rgba(255,193,7,0.07)", border: "1px solid rgba(255,193,7,0.28)" }}>
-              Sandboxed JavaScript only (not Pine). Use the template: <code style={{ color: c.ts }}>compute(bars, params)</code> returning plots.
+              Sandboxed JavaScript only (not Pine). Use the template: <code style={{ color: "var(--text-muted)" }}>compute(bars, params)</code> returning plots.
             </div>
           )}
           <div
@@ -33165,7 +34006,7 @@ const TalariaV8bLive = () => {
                 {renderIndicatorFlexSettings(inTabForFlex)}
               </div>
             ) : inTab.length === 0 ? (
-              <div style={{ fontSize: 12, color: c.tm, fontStyle: "italic", padding: "8px 4px" }}>
+              <div style={{ fontSize: 12, color: "var(--text-faint)", fontStyle: "italic", padding: "8px 4px" }}>
                 {`No ${emptyLabel} options for this indicator.`}
               </div>
             ) : (
@@ -33382,8 +34223,8 @@ const TalariaV8bLive = () => {
               overscrollBehavior: "contain",
               WebkitOverflowScrolling: "touch",
               touchAction: "none",
-              background: c.sf,
-              border: `1px solid ${c.brH}`,
+              background: "var(--surface)",
+              border: `1px solid var(--line-strong)`,
               boxShadow: "0 12px 40px rgba(0,0,0,0.75)",
               borderRadius: 4,
               pointerEvents: "auto",
@@ -33392,7 +34233,7 @@ const TalariaV8bLive = () => {
             }}
           >
             {isWallClock && (
-              <div style={{ height: 2, background: `linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`, flexShrink: 0 }} />
+              <div style={{ height: 2, background: `linear-gradient(90deg,var(--accent),var(--accent),var(--accent))`, flexShrink: 0 }} />
             )}
             {menuOptions.map((opt) => {
               const sel = !isWallClock && v9IsIndPlotStyleParamId(menuParamId)
@@ -33406,6 +34247,7 @@ const TalariaV8bLive = () => {
                   {...(sel && isWallClock ? { "data-v9-wall-clock-selected": "1" } : {})}
                   onClick={(e) => {
                     e.stopPropagation();
+                    armSettDropPickDismissGuard();
                     patchIndSettDraftLive((d) => ({ ...d, [menuParamId]: opt.value }));
                     setV9IndSelectMenu(null);
                   }}
@@ -33415,8 +34257,8 @@ const TalariaV8bLive = () => {
                     padding: isWallClock ? "6px 12px" : (v9IsIndPlotStyleParamId(menuParamId) ? "6px 10px" : "7px 10px"),
                     fontSize: 12,
                     cursor: "default",
-                    color: sel ? c.acL : hov === optKey ? c.tx : c.ts,
-                    background: sel ? "rgba(48,144,255,0.14)" : hov === optKey ? "rgba(255,255,255,0.06)" : "transparent",
+                    color: sel ? "var(--accent)" : hov === optKey ? "var(--text)" : "var(--text-muted)",
+                    background: sel ? "var(--accent-quiet)" : hov === optKey ? "rgba(255,255,255,0.06)" : "transparent",
                     fontFamily: F,
                     fontVariantNumeric: isWallClock ? "tabular-nums" : undefined,
                     transition: "background 0.1s, color 0.1s",
@@ -33429,7 +34271,7 @@ const TalariaV8bLive = () => {
                 >
                   {!isWallClock && v9IsIndPlotStyleParamId(menuParamId) && (
                     <span style={{ flexShrink: 0, width: 56, display: "inline-flex", justifyContent: "center", opacity: 0.95 }}>
-                      <V9PlotStylePreview style={opt.value} color={sel ? c.acL : hov === optKey ? c.tx : "#b2b5be"} />
+                      <V9PlotStylePreview style={opt.value} color={sel ? "var(--accent)" : hov === optKey ? "var(--text)" : "var(--text-muted)"} />
                     </span>
                   )}
                   <span>{opt.label}</span>
@@ -33462,25 +34304,21 @@ const TalariaV8bLive = () => {
         if (left + dropW > vw - mg) left = Math.max(mg, aRight + dx - dropW);
         left = Math.max(mg, left);
         return (
-          <div data-sdrop="1" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}
+          <div data-v9-chrome="1" data-sdrop="1" data-qb-menu="1" data-kind="size" data-sett-drop=""
+            onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}
             style={{ position: "fixed", top, left, zIndex: 10060, width: dropW,
-                     background: c.sf, border: "1px solid rgba(140,160,255,0.22)",
-                     boxShadow: "0 4px 16px rgba(0,0,0,0.5), 0 0 14px rgba(48,144,255,0.12)",
-                     fontFamily: F, animation: "tlrDropIn 0.15s ease" }}>
-            <div style={{ height: 2, background: `linear-gradient(90deg,${c.ac},${c.acL},${c.ac})` }} />
+                     fontFamily: "var(--font-ui)", animation: "tlrDropIn 0.12s ease" }}>
             {txtSizes.map((sz) => {
               const isA = Number(txtStyle.fontSize) === sz;
               const isH = hov === `txtsz-bar-${sz}`;
               return (
-                <div key={sz}
+                <div key={sz} data-pick-on={isA ? "1" : undefined}
                   onClick={() => { applyTxtFontSize(sz); setTxtBarSizeOpen(false); }}
                   onMouseEnter={() => setHov(`txtsz-bar-${sz}`)}
                   onMouseLeave={() => setHov(null)}
-                  style={{ padding: "5px 0", cursor: "default", display: "flex", alignItems: "center", justifyContent: "center", position: "relative",
-                           background: isA ? c.acD : isH ? c.hv2 : "transparent", transition: "background 0.1s" }}>
-                  {isA && <div style={{ position: "absolute", left: 0, top: "15%", bottom: "15%", width: 2,
-                    background: `linear-gradient(180deg,transparent,${c.acL},transparent)`, boxShadow: `0 0 6px ${c.acG}` }} />}
-                  <span style={{ fontSize: 12, color: isA ? c.acL : isH ? c.tx : c.ts, fontWeight: isA ? 700 : 500 }}>{sz}</span>
+                  style={{ padding: "6px 0", cursor: "default", display: "flex", alignItems: "center", justifyContent: "center",
+                           background: isA ? "var(--accent-quiet)" : isH ? "var(--surface-raised)" : "transparent", transition: "background 0.1s" }}>
+                  <span style={{ fontSize: 12, color: isA ? "var(--accent)" : isH ? "var(--text)" : "var(--text-muted)", fontWeight: isA ? 700 : 550 }}>{sz}</span>
                 </div>
               );
             })}
@@ -33856,10 +34694,9 @@ const TalariaV8bLive = () => {
               <div key={v} onClick={()=>{(isPfQuickBar ? applyPfMedianType(v9PitchforkMedianTypeFromQuickBarLineType(v)) : applyTlLineType(v));setTlBarDrop(null);}}
                 onMouseEnter={()=>setHov(`tbsty-${v}`)} onMouseLeave={()=>setHov(null)}
                 style={{ position:"relative", display:"flex", alignItems:"center", justifyContent:"center", padding:"8px 12px", cursor:"default",
-                         background:hov===`tbsty-${v}`||qbCurLineStyle===v?c.hv:"transparent", transition:"background 0.1s" }}>
-                {qbCurLineStyle===v && <div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
+                         background:hov===`tbsty-${v}`||qbCurLineStyle===v?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
                 <svg width={44} height={10} viewBox="0 0 44 10">
-                  <line x1={0} y1={5} x2={44} y2={5} stroke={qbCurLineStyle===v?c.acL:c.ts} strokeWidth={2}
+                  <line x1={0} y1={5} x2={44} y2={5} stroke={qbCurLineStyle===v?"var(--accent)":"var(--text-muted)"} strokeWidth={2}
                     strokeDasharray={da==="0"?undefined:da} strokeLinecap="round"/>
                 </svg>
               </div>
@@ -33874,13 +34711,12 @@ const TalariaV8bLive = () => {
               <div key={w} onClick={()=>{(isFib ? applyTlFibLineWidth : isPfQuickBar ? applyPfMedianWidth : applyTlLineWidth)(w);setTlBarDrop(null);}}
                 onMouseEnter={()=>setHov(`tbwid-${w}`)} onMouseLeave={()=>setHov(null)}
                 style={{ position:"relative", display:"flex", alignItems:"center", justifyContent:"center", padding: tlSubTool.icon==="brush"?"5px 12px":"8px 12px", cursor:"default",
-                         background:hov===`tbwid-${w}`||curW===w?c.hv:"transparent", transition:"background 0.1s" }}>
-                {curW===w && <div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
+                         background:hov===`tbwid-${w}`||curW===w?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
                 {tlSubTool.icon === "brush"
-                  ? <span style={{ fontSize:13, color:curW===w?c.acL:c.ts, fontWeight:curW===w?700:500 }}>{w}x</span>
+                  ? <span style={{ fontSize:13, color:curW===w?"var(--accent)":"var(--text-muted)", fontWeight:curW===w?700:550 }}>{w}x</span>
                   : <svg width={44} height={Math.max(10, +w+4)} viewBox={`0 0 44 ${Math.max(10, +w+4)}`}>
                       <line x1={0} y1={Math.max(10, +w+4)/2} x2={44} y2={Math.max(10, +w+4)/2}
-                        stroke={curW===w?c.acL:c.ts} strokeWidth={+w} strokeLinecap="round"/>
+                        stroke={curW===w?"var(--accent)":"var(--text-muted)"} strokeWidth={+w} strokeLinecap="round"/>
                     </svg>}
               </div>
             )})}
@@ -33890,8 +34726,8 @@ const TalariaV8bLive = () => {
               return (<div key={sz} onClick={()=>{applyTlTextSize(sz);setTlBarDrop(null);}}
                 onMouseEnter={()=>setHov(`tbpatsz-${sz}`)} onMouseLeave={()=>setHov(null)}
                 style={{ position:"relative", display:"flex", alignItems:"center", justifyContent:"center", padding:"6px 0", cursor:"default",
-                         background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
-                <span style={{ fontSize:13, color:isA?c.acL:c.ts, fontWeight:isA?700:500 }}>{sz}</span>
+                         background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
+                <span style={{ fontSize:13, color:isA?"var(--accent)":"var(--text-muted)", fontWeight:isA?700:500 }}>{sz}</span>
               </div>);
             })}
             {tlBarDrop==="rngFsz" && ["8","10","11","12","13","14","16","18","20","24"].map(sz=>{
@@ -33899,8 +34735,8 @@ const TalariaV8bLive = () => {
               return (<div key={sz} {...modalPointerActivate(() => { applyTlLabelFontSize(sz); setTlBarDrop(null); })}
                 onMouseEnter={()=>setHov(`tbfsz-${sz}`)} onMouseLeave={()=>setHov(null)}
                 style={{ position:"relative", display:"flex", alignItems:"center", justifyContent:"center", padding:"6px 0", cursor:"default",
-                         background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
-                <span style={{ fontSize:13, color:isA?c.acL:c.ts, fontWeight:isA?700:500 }}>{sz}</span>
+                         background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
+                <span style={{ fontSize:13, color:isA?"var(--accent)":"var(--text-muted)", fontWeight:isA?700:500 }}>{sz}</span>
               </div>);
             })}
             {tlBarDrop==="rngType" && ["Date & Price","Price","Date and time"].map(v=>{
@@ -33908,8 +34744,8 @@ const TalariaV8bLive = () => {
               return (<div key={v} {...modalPointerActivate(() => { applyTlRangeType(v); setTlBarDrop(null); })}
                 onMouseEnter={()=>setHov(`tbrng-${v}`)} onMouseLeave={()=>setHov(null)}
                 style={{ position:"relative", display:"flex", alignItems:"center", padding:"6px 12px", cursor:"default",
-                         background:isA?c.acD:isH?c.hv2:"transparent", transition:"background 0.1s" }}>
-                <span style={{ fontSize:13, fontWeight:isA?700:500, color:isA?c.acL:isH?c.tx:c.ts }}>{v}</span>
+                         background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent", transition:"background 0.1s" }}>
+                <span style={{ fontSize:13, fontWeight:isA?700:500, color:isA?"var(--accent)":isH?"var(--text)":"var(--text-muted)" }}>{v}</span>
               </div>);
             })}
             {tlBarDrop==="more" && [
@@ -33942,9 +34778,10 @@ const TalariaV8bLive = () => {
         const vwapChk = (on, hKey, label, toggle) =>
           TlChk(on, hKey, label, toggle, { immediate: true });
         const vwapDropPick = (onPick) => modalPointerActivate(() => {
-          onPick();
-          setVwapStyleDrop(null);
-          setVolDropAnchor(null);
+          runSettDropPick(onPick, () => {
+            setVwapStyleDrop(null);
+            setVolDropAnchor(null);
+          });
         });
         const openVCP = (e, key, color) => {
           e.stopPropagation();
@@ -33972,7 +34809,7 @@ const TalariaV8bLive = () => {
                 onMouseDown={(e)=>e.stopPropagation()}
                 onClick={(e)=>e.stopPropagation()}
                 onMouseEnter={()=>{if(!disabled)setHov(dk);}} onMouseLeave={()=>setHov(null)}
-                style={{width:56,display:"flex",alignItems:"center",justifyContent:"center",gap:4,cursor:"default"}}>
+                style={{cursor:"default", position:"relative"}}>
                 <svg width={22} height={10} viewBox="0 0 22 10">
                   <line x1={0} y1={5} x2={22} y2={5} stroke={isOpen?"var(--accent)":"var(--text-muted)"} strokeWidth={1.5} strokeLinecap="round" strokeDasharray={da(val)}/>
                 </svg>
@@ -34008,7 +34845,7 @@ const TalariaV8bLive = () => {
                 onMouseDown={(e)=>e.stopPropagation()}
                 onClick={(e)=>e.stopPropagation()}
                 onMouseEnter={()=>{if(!disabled)setHov(dk);}} onMouseLeave={()=>setHov(null)}
-                style={{width:56,display:"flex",alignItems:"center",justifyContent:"center",gap:4,cursor:"default"}}>
+                style={{cursor:"default", position:"relative"}}>
                 <svg width={22} height={Math.max(8,+val+4)} viewBox={`0 0 22 ${Math.max(8,+val+4)}`}>
                   <line x1={0} y1={Math.max(8,+val+4)/2} x2={22} y2={Math.max(8,+val+4)/2} stroke={isOpen?"var(--accent)":"var(--text-muted)"} strokeWidth={+val} strokeLinecap="round"/>
                 </svg>
@@ -34017,7 +34854,7 @@ const TalariaV8bLive = () => {
               {isOpen&&v9PortalSettDropMenu({
                 anchor: volDropAnchor,
                 width: 56,
-                rightAlign: true,
+                rightAlign: false,
                 children: ["1","2","3","4"].map(v=>{
                   const isA=val===v,isH2=hov===`vwapw-${rowKey}-${v}`;
                   return(
@@ -34037,21 +34874,23 @@ const TalariaV8bLive = () => {
         };
         const vDrop=(dk,val,options,onPick)=>{
           const isOpen=vwapStyleDrop===dk;
+          // ~7.6px/char at 12px UI + pad + chevron — keep full labels (no ellipsis)
+          const menuW = Math.max(118, ...options.map((o) => Math.ceil(String(o).length * 7.6 + 48)));
           return(
             <div style={{position:"relative"}}>
-              <div data-sett-dd="" data-open={isOpen?"1":undefined}
-                onPointerDown={(e)=>{e.stopPropagation();if(isOpen){setVwapStyleDrop(null);setVolDropAnchor(null);}else{setVolDropAnchor(v9MeasureDropAnchor(e.currentTarget,200));setVwapStyleDrop(dk);}}}
+              <div data-sett-dd="" data-sett-dd-kind="text" data-open={isOpen?"1":undefined}
+                onPointerDown={(e)=>{e.stopPropagation();if(isOpen){setVwapStyleDrop(null);setVolDropAnchor(null);}else{setVolDropAnchor(v9MeasureDropAnchor(e.currentTarget,Math.min(320,40+options.length*32)));setVwapStyleDrop(dk);}}}
                 onMouseDown={(e)=>e.stopPropagation()}
                 onClick={(e)=>e.stopPropagation()}
                 onMouseEnter={()=>setHov(dk)} onMouseLeave={()=>setHov(null)}
-                style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,cursor:"default",minWidth:120}}>
+                style={{cursor:"default", position:"relative", width:menuW, minWidth:menuW, maxWidth:menuW}}>
                 <span style={{fontSize:12,color:isOpen?"var(--accent)":"var(--text-muted)",whiteSpace:"nowrap"}}>{val}</span>
                 <I n="chevDown" s={7} cl={isOpen?"var(--accent)":"var(--text-muted)"}/>
               </div>
               {isOpen&&v9PortalSettDropMenu({
                 anchor: volDropAnchor,
-                width: Math.max(120, (volDropAnchor && volDropAnchor.triggerW) || 120),
-                rightAlign: true,
+                width: menuW,
+                rightAlign: false,
                 children: options.map(v=>{
                   const isA=val===v,isH2=hov===`${dk}-${v}`;
                   return(
@@ -34067,7 +34906,7 @@ const TalariaV8bLive = () => {
           );
         };
         const numSpinner=(valKey,val,disabled)=>(
-          <div data-sett-step="" style={{width:72,flex:"0 0 auto",opacity:disabled?0.35:1}}>
+          <div data-sett-step="" style={{opacity:disabled?0.35:1, pointerEvents:disabled?"none":"auto"}}>
             <input type="number" value={val}
               onPointerDown={e=>e.stopPropagation()}
               onMouseDown={e=>e.stopPropagation()}
@@ -34089,20 +34928,23 @@ const TalariaV8bLive = () => {
           <div data-v9-chrome="1" data-tool-sett-v2="1" data-sdrop="1" data-sett-v3="1" data-chrome-win="vwap-sett"
             onPointerDown={e=>e.stopPropagation()}
             onMouseDown={e=>e.stopPropagation()}
-            onClick={e=>{e.stopPropagation();if(typeof e.target?.closest==="function"&&e.target.closest("[data-sett-dd],[data-sett-drop],[data-sett-drop-shell]"))return;setVwapStyleDrop(null);setVolDropAnchor(null);}}
-            style={{position:"fixed",left:vwapSettPos.x,top:vwapSettPos.y,zIndex:10050,width:440,
-                    animation:closing.has("vwapsett")?"tlrPopOut 0.155s ease both":"tlrPopIn 0.15s ease"}}>
+            onClick={e=>{e.stopPropagation();if(typeof e.target?.closest==="function"&&e.target.closest("[data-sett-dd],[data-sett-drop],[data-sett-drop-shell],[data-sett-drop-portal]"))return;setVwapStyleDrop(null);setVolDropAnchor(null);}}
+            style={{position:"fixed",left:vwapSettPos.x,top:vwapSettPos.y,zIndex:V9_SETT_WIN_Z,width:440,
+                    animation:closing.has("vwapsett")?"tlrPopOut 0.155s ease both":undefined}}>
             <div data-win-header="" onPointerDown={e=>{
               e.preventDefault();
+              closeAllSettStyleDrops();
               const settEl=e.currentTarget.parentElement;
               const sx=e.clientX,sy=e.clientY,px=vwapSettPos.x,py=vwapSettPos.y;
+              let nx=px,ny=py;
               const onMove=ev=>{
                 const dx=(ev.clientX-sx)/Z,dy=(ev.clientY-sy)/Z;
                 const _wh=((settEl&&settEl.getBoundingClientRect().height)/Z)||480;
-                const {x:nx,y:ny}=v9ClampFloatingWindowPos(px+dx,py+dy,448,_wh,Z);
+                ({x:nx,y:ny}=v9ClampFloatingWindowPos(px+dx,py+dy,448,_wh,Z));
+                settEl.style.left=nx+'px';settEl.style.top=ny+'px';
                 setVwapSettPos({x:nx,y:ny});
               };
-              const onUp=()=>{window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);};
+              const onUp=()=>{window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);pinSettOpenPos("vwap",{x:nx,y:ny});setVwapSettPos({x:nx,y:ny});};
               window.addEventListener('pointermove',onMove);window.addEventListener('pointerup',onUp);
             }}>
               <div data-win-icon=""><I n="vwap" s={16} cl="var(--accent)"/></div>
@@ -34217,9 +35059,7 @@ const TalariaV8bLive = () => {
 
               {/* ── STYLE TAB ── */}
               {vwapSettTab==="style" && (()=>{
-                const gc="16px 1fr 30px 56px 56px", cg=8;
-                const hdr=txt=><span style={{fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em",textAlign:"center",display:"block"}}>{txt}</span>;
-                const lbl=(txt,on)=><span style={{fontSize:12,color:on===false?"rgba(160,160,200,0.38)":c.ts,transition:"color 0.15s"}}>{txt}</span>;
+                const lbl=(txt,on)=><span style={{fontSize:12,color:on===false?"var(--text-faint)":"var(--text-muted)",transition:"color 0.15s"}}>{txt}</span>;
                 const chk=(key)=>vwapChk(vwapStyle[key],`vc-${key}`,null,()=>patchVwapStyle(s=>({...s,[key]:!s[key]})));
                 const bandChk=(n)=>vwapChk(vwapStyle[`band${n}On`],`vc-band${n}On`,null,()=>patchVwapStyle(s=>{
                   const nextOn = !s[`band${n}On`];
@@ -34228,72 +35068,59 @@ const TalariaV8bLive = () => {
                 const sw=(k,color,dis)=><div style={{display:"flex",justifyContent:"center"}}>{vSwatch(k,color,dis)}</div>;
                 const st=(k,val,dis)=><div style={{display:"flex",justifyContent:"center"}}>{typeBtn(k,val,dis)}</div>;
                 const th=(k,val,dis)=><div style={{display:"flex",justifyContent:"center"}}>{widthBtn(k,val,dis)}</div>;
-                const R=(marginTop=0)=>({display:"grid",gridTemplateColumns:gc,columnGap:cg,alignItems:"center",padding:"7px 0",...(marginTop?{marginTop}:{})});
                 return(<>
-                  {/* header */}
-                  <div style={{display:"grid",gridTemplateColumns:gc,columnGap:cg,alignItems:"center",height:22,marginBottom:4}}>
-                    <div/><div/><div/>
-                    <div data-sett-col-lbl="">Style</div>
-                    <div data-sett-col-lbl="">Width</div>
-                  </div>
-                  {/* VWAP — color only (style/thickness live in band rows or defaults) */}
-                  <div style={R()}>
+                  {/* VWAP — color only; empty style/width slots keep the swatch column locked */}
+                  <div data-sett-control-grid="">
                     <div/>
                     {lbl("VWAP")}
                     {sw("vwap_vwapColor",vwapStyle.vwapColor,false)}
                     <div/><div/>
                   </div>
-                  {/* Band #1 */}
-                  <div style={R(8)}>
+                  <div data-sett-control-grid="">
                     {bandChk(1)}
                     {lbl("Band #1",vwapStyle.band1On)}
                     {sw("vwap_band1Color",vwapStyle.band1Color,!vwapStyle.band1On)}
                     {st("band1",vwapStyle.band1LineType,!vwapStyle.band1On)}
                     {th("band1",vwapStyle.band1LineWidth,!vwapStyle.band1On)}
                   </div>
-                  {/* Background #1 */}
-                  <div style={R()}>
+                  <div data-sett-control-grid="">
                     {chk("bg1On")}
                     {lbl("Background #1",vwapStyle.bg1On)}
                     {sw("vwap_bg1Color",vwapStyle.bg1Color,!vwapStyle.bg1On)}
                     <div/><div/>
                   </div>
-                  {/* Band #2 */}
-                  <div style={R(8)}>
+                  <div data-sett-control-grid="">
                     {bandChk(2)}
                     {lbl("Band #2",vwapStyle.band2On)}
                     {sw("vwap_band2Color",vwapStyle.band2Color,!vwapStyle.band2On)}
                     {st("band2",vwapStyle.band2LineType,!vwapStyle.band2On)}
                     {th("band2",vwapStyle.band2LineWidth,!vwapStyle.band2On)}
                   </div>
-                  {/* Background #2 */}
-                  <div style={R()}>
+                  <div data-sett-control-grid="">
                     {chk("bg2On")}
                     {lbl("Background #2",vwapStyle.bg2On)}
                     {sw("vwap_bg2Color",vwapStyle.bg2Color,!vwapStyle.bg2On)}
                     <div/><div/>
                   </div>
-                  {/* Band #3 */}
-                  <div style={R(8)}>
+                  <div data-sett-control-grid="">
                     {bandChk(3)}
                     {lbl("Band #3",vwapStyle.band3On)}
                     {sw("vwap_band3Color",vwapStyle.band3Color,!vwapStyle.band3On)}
                     {st("band3",vwapStyle.band3LineType,!vwapStyle.band3On)}
                     {th("band3",vwapStyle.band3LineWidth,!vwapStyle.band3On)}
                   </div>
-                  {/* Background #3 */}
-                  <div style={R()}>
+                  <div data-sett-control-grid="">
                     {chk("bg3On")}
                     {lbl("Background #3",vwapStyle.bg3On)}
                     {sw("vwap_bg3Color",vwapStyle.bg3Color,!vwapStyle.bg3On)}
                     <div/><div/>
                   </div>
-                  {/* Labels */}
-                  <div style={{display:"flex",alignItems:"center",padding:"8px 0",marginTop:4}}>
-                    <span style={{fontSize:12,color:c.ts}}>Labels</span>
-                    <div style={{display:"flex",alignItems:"center",marginLeft:"auto"}}>
-                      <div style={{width:66}}>{vwapChk(vwapStyle.priceLabels,"vc-priceLabels","Price",()=>patchVwapStyle(s=>({...s,priceLabels:!s.priceLabels})))}</div>
-                      <div style={{width:66}}>{vwapChk(vwapStyle.timeLabels,"vc-timeLabels","Time",()=>patchVwapStyle(s=>({...s,timeLabels:!s.timeLabels})))}</div>
+                  <div data-sett-control-grid="">
+                    <div/>
+                    {lbl("Labels")}
+                    <div data-sett-chips="">
+                      {SettChip(!!vwapStyle.priceLabels,"vc-priceLabels","Price",()=>patchVwapStyle(s=>({...s,priceLabels:!s.priceLabels})),{vwapImmediate:true})}
+                      {SettChip(!!vwapStyle.timeLabels,"vc-timeLabels","Time",()=>patchVwapStyle(s=>({...s,timeLabels:!s.timeLabels})),{vwapImmediate:true})}
                     </div>
                   </div>
                 </>);
@@ -34305,19 +35132,28 @@ const TalariaV8bLive = () => {
                 const SOURCES=["Close","Open","High","Low","(H+L)/2","(H+L+C)/3","(O+H+L+C)/4"];
                 return(
                   <div style={{display:"flex",flexDirection:"column"}}>
-                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
-                      <span style={{fontSize:12,color:c.ts}}>Bands Calculation Mode</span>
-                      {vDrop("vwap-calcmode",vwapStyle.bandsCalcMode,CALC_MODES,v=>patchVwapStyle(s=>({...s,bandsCalcMode:v})))}
+                    <div data-sett-input-row="">
+                      <span data-sett-label="">Bands Calculation Mode</span>
+                      <div data-sett-acts="">
+                        {vDrop("vwap-calcmode",vwapStyle.bandsCalcMode,CALC_MODES,v=>patchVwapStyle(s=>({...s,bandsCalcMode:v})))}
+                      </div>
                     </div>
                     {[{ok:"mult1On",vk:"mult1Val",lbl:"Bands Multiplier #1"},{ok:"mult2On",vk:"mult2Val",lbl:"Bands Multiplier #2"},{ok:"mult3On",vk:"mult3Val",lbl:"Bands Multiplier #3"}].map(({ok,vk,lbl})=>(
-                      <div key={ok} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
-                        {vwapChk(vwapStyle[ok],`vc-${ok}`,lbl,()=>patchVwapStyle(s=>({...s,[ok]:!s[ok]})))}
-                        {numSpinner(vk,vwapStyle[vk],!vwapStyle[ok])}
+                      <div key={ok} data-sett-input-row="">
+                        <span data-sett-label="" style={{display:"inline-flex",alignItems:"center",gap:8}}>
+                          {vwapChk(vwapStyle[ok],`vc-${ok}`,null,()=>patchVwapStyle(s=>({...s,[ok]:!s[ok]})))}
+                          <span>{lbl}</span>
+                        </span>
+                        <div data-sett-acts="">
+                          {numSpinner(vk,vwapStyle[vk],!vwapStyle[ok])}
+                        </div>
                       </div>
                     ))}
-                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
-                      <span style={{fontSize:12,color:c.ts}}>Source</span>
-                      {vDrop("vwap-source",vwapStyle.source,SOURCES,v=>patchVwapStyle(s=>({...s,source:v})))}
+                    <div data-sett-input-row="">
+                      <span data-sett-label="">Source</span>
+                      <div data-sett-acts="">
+                        {vDrop("vwap-source",vwapStyle.source,SOURCES,v=>patchVwapStyle(s=>({...s,source:v})))}
+                      </div>
                     </div>
                   </div>
                 );
@@ -34358,11 +35194,11 @@ const TalariaV8bLive = () => {
                       <div data-sett-coord-hdr="">Anchor</div>
                     </div>
                     <div style={{display:"grid",gridTemplateColumns:"80px 1fr",alignItems:"center"}}>
-                      <span style={{fontSize:12,color:c.ts,padding:"8px 12px"}}>Price</span>
+                      <span style={{fontSize:12,color:"var(--text-muted)",padding:"8px 12px"}}>Price</span>
                       <div data-sett-coord-cell="" style={{padding:"6px 8px"}}>{spinInput("anchorPrice","price")}</div>
                     </div>
                     <div style={{display:"grid",gridTemplateColumns:"80px 1fr",alignItems:"center"}}>
-                      <span style={{fontSize:12,color:c.ts,padding:"8px 12px"}}>Bar</span>
+                      <span style={{fontSize:12,color:"var(--text-muted)",padding:"8px 12px"}}>Bar</span>
                       <div data-sett-coord-cell="" style={{padding:"6px 8px"}}>{spinInput("anchorBar","bar")}</div>
                     </div>
                   </div>
@@ -34416,33 +35252,49 @@ const TalariaV8bLive = () => {
             })}/>
         );
         const vpDropPick = (onPick) => modalPointerActivate(() => {
-          onPick();
-          setVpStyleDrop(null);
-          setVolDropAnchor(null);
-          vpStyleBridgeFlushRef.current?.();
+          runSettDropPick(() => {
+            onPick();
+            vpStyleBridgeFlushRef.current?.();
+          }, () => {
+            setVpStyleDrop(null);
+            setVolDropAnchor(null);
+          });
         });
         const vpDrop=(dk,val,options,onPick,disabled,w)=>{
           const isOpen=vpStyleDrop===dk;
+          const contentW = Math.max(118, ...options.map((o) => Math.ceil(String(o).length * 7.6 + 48)));
+          const faceW = w || contentW;
           return(
             <div style={{position:"relative",opacity:disabled?0.35:1}}>
-              <div data-sett-dd="" data-open={isOpen?"1":undefined}
+              <div data-sett-dd="" data-sett-dd-kind="text" data-open={isOpen?"1":undefined}
                 onPointerDown={e=>{
                   e.stopPropagation();
                   if(disabled) return;
                   if(isOpen){ setVpStyleDrop(null); setVolDropAnchor(null); }
-                  else { setVolDropAnchor(v9MeasureDropAnchor(e.currentTarget, Math.min(320, 40 + options.length * 32))); setVpStyleDrop(dk); }
+                  else {
+                    const a = v9MeasureDropAnchor(e.currentTarget, Math.min(320, 40 + options.length * 32));
+                    if (!a) return;
+                    setTlStyleDrop(null); setTlStyleDropAnchor(null);
+                    setAvStyleDrop(null); setVwapStyleDrop(null);
+                    setVolDropAnchor(a);
+                    setVpStyleDrop(dk);
+                  }
                 }}
                 onMouseDown={e=>e.stopPropagation()}
                 onClick={e=>e.stopPropagation()}
                 onMouseEnter={()=>{if(!disabled)setHov(dk);}} onMouseLeave={()=>setHov(null)}
-                style={{...(w?{width:w,minWidth:w}:{minWidth:130}),display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,cursor:"default"}}>
+                style={{
+                  width: faceW, minWidth: faceW, maxWidth: faceW,
+                  cursor: "default",
+                  position: "relative",
+                }}>
                 <span style={{fontSize:12,color:isOpen?"var(--accent)":"var(--text-muted)",fontFamily:F,whiteSpace:"nowrap"}}>{val}</span>
                 <I n="chevDown" s={7} cl={isOpen?"var(--accent)":"var(--text-muted)"}/>
               </div>
-              {isOpen&&v9PortalSettDropMenu({
+              {isOpen&&volDropAnchor&&v9PortalSettDropMenu({
                 anchor: volDropAnchor,
-                width: Math.max(w || 130, (volDropAnchor && volDropAnchor.triggerW) || 130),
-                rightAlign: true,
+                width: Math.max(faceW, contentW),
+                rightAlign: false,
                 children: options.map(opt=>{
                   const isA=val===opt,isH2=hov===`vpdrop-${dk}-${opt}`;
                   return(
@@ -34457,8 +35309,8 @@ const TalariaV8bLive = () => {
             </div>
           );
         };
-        const vpIntSpinner=(valKey,val,minVal,maxVal,w=72)=>(
-          <div data-sett-step="" style={{width:w,flex:"0 0 auto"}}>
+        const vpIntSpinner=(valKey,val,minVal,maxVal,_w=72)=>(
+          <div data-sett-step="">
             <input type="number" value={val} onClick={e=>e.stopPropagation()}
               onChange={e=>{const v=e.target.value;if(/^\d*$/.test(v))setVpStyle(s=>({...s,[valKey]:v}));}}
               className="tlr-nospinner"
@@ -34478,20 +35330,24 @@ const TalariaV8bLive = () => {
           <div data-v9-chrome="1" data-tool-sett-v2="1" data-sdrop="1" data-sett-v3="1" data-chrome-win="vp-sett"
             onPointerDown={e=>e.stopPropagation()}
             onMouseDown={e=>e.stopPropagation()}
-            onClick={e=>{e.stopPropagation();if(typeof e.target?.closest==="function"&&e.target.closest("[data-sett-dd],[data-sett-drop],[data-sett-drop-shell]"))return;setVpStyleDrop(null);setVolDropAnchor(null);}}
-            style={{position:"fixed",left:vpSettPos.x,top:vpSettPos.y,zIndex:10050,width:440,
-                    animation:closing.has("vpsett")?"tlrPopOut 0.155s ease both":"tlrPopIn 0.15s ease"}}>
+            onClick={e=>{e.stopPropagation();if(typeof e.target?.closest==="function"&&e.target.closest("[data-sett-dd],[data-sett-drop],[data-sett-drop-shell],[data-sett-drop-portal]"))return;setVpStyleDrop(null);setVolDropAnchor(null);}}
+            style={{position:"fixed",left:vpSettPos.x,top:vpSettPos.y,zIndex:V9_SETT_WIN_Z,width:440,
+                    /* Enter anim omitted while open — re-applying tlrPopIn (scale) on drop open re-renders shakes the shell under the portaled menu. */
+                    animation:closing.has("vpsett")?"tlrPopOut 0.155s ease both":undefined}}>
             <div data-win-header="" onPointerDown={e=>{
               e.preventDefault();
+              closeAllSettStyleDrops();
               const settEl=e.currentTarget.parentElement;
               const sx=e.clientX,sy=e.clientY,px=vpSettPos.x,py=vpSettPos.y;
+              let nx=px,ny=py;
               const onMove=ev=>{
                 const dx=(ev.clientX-sx)/Z,dy=(ev.clientY-sy)/Z;
                 const _wh=((settEl&&settEl.getBoundingClientRect().height)/Z)||480;
-                const {x:nx,y:ny}=v9ClampFloatingWindowPos(px+dx,py+dy,448,_wh,Z);
+                ({x:nx,y:ny}=v9ClampFloatingWindowPos(px+dx,py+dy,448,_wh,Z));
+                settEl.style.left=nx+'px';settEl.style.top=ny+'px';
                 setVpSettPos({x:nx,y:ny});
               };
-              const onUp=()=>{window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);};
+              const onUp=()=>{window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);pinSettOpenPos("vp",{x:nx,y:ny});setVpSettPos({x:nx,y:ny});};
               window.addEventListener('pointermove',onMove);window.addEventListener('pointerup',onUp);
             }}>
               <div data-win-icon=""><I n="volProfile" s={16} cl="var(--accent)"/></div>
@@ -34606,25 +35462,22 @@ const TalariaV8bLive = () => {
 
               {/* ── STYLE TAB ── */}
               {vpSettTab==="style" && (()=>{
-                /* chk | label | swatch | — | — */
-                const gc="16px 1fr 30px 56px 56px", cg=8;
-                const R=()=>({display:"grid",gridTemplateColumns:gc,columnGap:cg,alignItems:"center",padding:"7px 0"});
                 const chk=(key)=><div style={{display:"flex",alignItems:"center"}}>{TlChk(vpStyle[key],`vpc-${key}`,null,()=>setVpStyle(s=>({...s,[key]:!s[key]})),{vpImmediate:true})}</div>;
-                const lbl=(txt,on)=><span style={{fontSize:12,color:on===false?"rgba(160,160,200,0.38)":c.ts,transition:"color 0.15s",flexShrink:0}}>{txt}</span>;
+                const lbl=(txt,on)=><span style={{fontSize:12,color:on===false?"var(--text-faint)":"var(--text-muted)",transition:"color 0.15s",flexShrink:0}}>{txt}</span>;
                 const sw=(k,color,dis)=><div style={{display:"flex",justifyContent:"center"}}>{vpSwatch(k,color,dis)}</div>;
-                /* col2 flex helper: label on left, control pushed right */
-                const LblCtrl=(txt,ctrl,on)=>(
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{fontSize:12,color:on===false?"rgba(160,160,200,0.38)":c.ts,transition:"color 0.15s",flex:1}}>{txt}</span>
-                    {ctrl}
-                  </div>
-                );
                 const mkAlphaDrag=(e,trackEl)=>{
                   e.stopPropagation(); if(!vpStyle.zoneBgOn) return;
-                  const rect=trackEl.getBoundingClientRect();
-                  const getVal=cx=>Math.round(Math.max(0,Math.min(1,(cx-rect.left)/rect.width))*100);
+                  const shell = trackEl?.closest?.("[data-sett-slider]") || trackEl;
+                  const rect=shell.getBoundingClientRect();
+                  const inset = 12;
+                  const usable = Math.max(1, rect.width - inset * 2);
+                  const getVal=cx=>Math.round(Math.max(0,Math.min(1,(cx-rect.left-inset)/usable))*100);
+                  try { shell?.setAttribute("data-dragging", "1"); } catch (_) { /* ignore */ }
+                  try { document.documentElement.setAttribute("data-sett-slider-grabbing", "1"); } catch (_) { /* ignore */ }
                   const onMove=ev=>setVpStyle(s=>({...s,zoneBgAlpha:getVal(ev.clientX)}));
                   const onUp=()=>{
+                    try { shell?.removeAttribute("data-dragging"); } catch (_) { /* ignore */ }
+                    try { document.documentElement.removeAttribute("data-sett-slider-grabbing"); } catch (_) { /* ignore */ }
                     window.removeEventListener('pointermove',onMove);
                     window.removeEventListener('pointerup',onUp);
                     vpStyleBridgeFlushRef.current?.();
@@ -34635,56 +35488,57 @@ const TalariaV8bLive = () => {
                 const alphaTrack=(
                   <div style={{display:"flex",alignItems:"center",gap:6,
                                opacity:vpStyle.zoneBgOn?1:0.35,transition:"opacity 0.15s",flex:1}}>
-                    <div onClick={e=>e.stopPropagation()}
-                      onPointerDown={e=>mkAlphaDrag(e,e.currentTarget)}
-                      onMouseEnter={()=>{if(vpStyle.zoneBgOn)setHov("vp-alpha-h");}} onMouseLeave={()=>setHov(null)}
-                      style={{position:"relative",flex:1,height:28,display:"flex",alignItems:"center",cursor:"default"}}>
-                      <div style={{position:"absolute",left:0,right:0,height:3,top:"50%",transform:"translateY(-50%)",borderRadius:99,background:c.trk}}>
-                        <div style={{position:"absolute",left:0,width:`${pct}%`,height:"100%",borderRadius:99,
-                          background:"color-mix(in oklab, var(--accent) 55%, transparent)"}}/>
+                    <div data-sett-slider="" data-grow="1" onClick={e=>e.stopPropagation()} style={{["--sett-slider-pct"]: pct}}>
+                      <div data-sett-slider-rail="">
+                        <i data-sett-slider-fill="" style={{ width:`${pct}%` }}/>
                       </div>
-                      <div data-sett-alpha-thumb="" style={{ position:"absolute", left:`${pct}%`, top:"50%", width:12, height:12, marginLeft:-6, marginTop:-6, borderRadius:"50%", background:"var(--accent)", border:"2px solid var(--surface)", boxSizing:"border-box", pointerEvents:"none" }}/>
+                      <i data-sett-slider-thumb="" aria-hidden="true"/>
+                      <div data-sett-slider-hit=""
+                        onPointerDown={e=>mkAlphaDrag(e,e.currentTarget.parentElement)}
+                        onMouseEnter={()=>{if(vpStyle.zoneBgOn)setHov("vp-alpha-h");}}
+                        onMouseLeave={()=>setHov(null)}/>
                     </div>
-                    <span style={{fontSize:11,color:c.ts,width:26,textAlign:"right",flexShrink:0}}>{pct}%</span>
+                    <span style={{fontSize:11,color:"var(--text-muted)",width:26,textAlign:"right",flexShrink:0}}>{pct}%</span>
                   </div>
                 );
                 return(<>
-                  <div style={R()}>{chk("valuesOn")}{lbl("Values",vpStyle.valuesOn)}{sw("vp_valuesColor",vpStyle.valuesColor,!vpStyle.valuesOn)}<div/><div/></div>
-                  <div style={{display:"flex",alignItems:"center",padding:"7px 0"}}>
-                    <span style={{fontSize:12,color:c.ts}}>Width (% of box)</span>
-                    <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:4}}>
-                      {vpIntSpinner("widthPct",vpStyle.widthPct,1,100,52)}
-                      <span style={{fontSize:11,color:c.ts}}>%</span>
+                  <div data-sett-control-grid="">{chk("valuesOn")}{lbl("Values",vpStyle.valuesOn)}{sw("vp_valuesColor",vpStyle.valuesColor,!vpStyle.valuesOn)}<div/><div/></div>
+                  <div data-sett-input-row="">
+                    <span data-sett-label="">Width (% of box)</span>
+                    <div data-sett-acts="" style={{display:"inline-flex",alignItems:"center",gap:4}}>
+                      {vpIntSpinner("widthPct",vpStyle.widthPct,1,100,72)}
+                      <span style={{fontSize:11,color:"var(--text-muted)"}}>%</span>
                     </div>
                   </div>
-                  <div style={{display:"flex",alignItems:"center",padding:"7px 0"}}>
-                    <span style={{fontSize:12,color:c.ts}}>Placement</span>
-                    <div style={{marginLeft:"auto"}}>
+                  <div data-sett-input-row="">
+                    <span data-sett-label="">Placement</span>
+                    <div data-sett-acts="">
                       {vpDrop("vp-placement",vpStyle.placement,["Left","Right"],v=>setVpStyle(s=>({...s,placement:v})),false,90)}
                     </div>
                   </div>
-                  <div style={R()}>
+                  <div data-sett-control-grid="">
                     {chk("zoneBgOn")}
                     {lbl("Zone Background",vpStyle.zoneBgOn)}
                     {sw("vp_zoneBgColor",vpStyle.zoneBgColor,!vpStyle.zoneBgOn)}
                     <div style={{gridColumn:"4/6",display:"flex",alignItems:"center"}}>{alphaTrack}</div>
                   </div>
-                  <div style={{height:1,background:c.brH,margin:"8px 0"}}/>
-                  <div style={R()}><div/>{lbl("Up Volume")}{sw("vp_upVolColor",vpStyle.upVolColor,false)}<div/><div/></div>
-                  <div style={R()}><div/>{lbl("Down Volume")}{sw("vp_downVolColor",vpStyle.downVolColor,false)}<div/><div/></div>
-                  <div style={R()}><div/>{lbl("Value Area Up")}{sw("vp_valueAreaUpColor",vpStyle.valueAreaUpColor,false)}<div/><div/></div>
-                  <div style={R()}><div/>{lbl("Value Area Down")}{sw("vp_valueAreaDownColor",vpStyle.valueAreaDownColor,false)}<div/><div/></div>
-                  <div style={{height:1,background:c.brH,margin:"8px 0"}}/>
-                  <div style={R()}>{chk("pocOn")}{lbl("POC",vpStyle.pocOn)}{sw("vp_pocColor",vpStyle.pocColor,!vpStyle.pocOn)}<div/><div/></div>
-                  <div style={R()}>{chk("vahOn")}{lbl("VAH",vpStyle.vahOn)}{sw("vp_vahColor",vpStyle.vahColor,!vpStyle.vahOn)}<div/><div/></div>
-                  <div style={R()}>{chk("valOn")}{lbl("VAL",vpStyle.valOn)}{sw("vp_valColor",vpStyle.valColor,!vpStyle.valOn)}<div/><div/></div>
-                  <div style={R()}>{chk("devPocOn")}{lbl("Developing POC",vpStyle.devPocOn)}{sw("vp_devPocColor",vpStyle.devPocColor,!vpStyle.devPocOn)}<div/><div/></div>
-                  <div style={R()}>{chk("devVAOn")}{lbl("Developing VA",vpStyle.devVAOn)}{sw("vp_devVAColor",vpStyle.devVAColor,!vpStyle.devVAOn)}<div/><div/></div>
-                  <div style={{display:"flex",alignItems:"center",padding:"8px 0",marginTop:6,gap:12}}>
-                    <span style={{fontSize:12,color:c.ts}}>Labels</span>
-                    <div style={{display:"flex",alignItems:"center",marginLeft:"auto",gap:14}}>
-                      <div style={{minWidth:72}}>{TlChk(vpStyle.priceLabels,"vpc-priceLabels","Price",()=>setVpStyle(s=>({...s,priceLabels:!s.priceLabels})),{vpImmediate:true})}</div>
-                      <div style={{minWidth:72}}>{TlChk(vpStyle.timeLabels,"vpc-timeLabels","Time",()=>setVpStyle(s=>({...s,timeLabels:!s.timeLabels})),{vpImmediate:true})}</div>
+                  <div data-sett-rule=""/>
+                  <div data-sett-control-grid=""><div/>{lbl("Up Volume")}{sw("vp_upVolColor",vpStyle.upVolColor,false)}<div/><div/></div>
+                  <div data-sett-control-grid=""><div/>{lbl("Down Volume")}{sw("vp_downVolColor",vpStyle.downVolColor,false)}<div/><div/></div>
+                  <div data-sett-control-grid=""><div/>{lbl("Value Area Up")}{sw("vp_valueAreaUpColor",vpStyle.valueAreaUpColor,false)}<div/><div/></div>
+                  <div data-sett-control-grid=""><div/>{lbl("Value Area Down")}{sw("vp_valueAreaDownColor",vpStyle.valueAreaDownColor,false)}<div/><div/></div>
+                  <div data-sett-rule=""/>
+                  <div data-sett-control-grid="">{chk("pocOn")}{lbl("POC",vpStyle.pocOn)}{sw("vp_pocColor",vpStyle.pocColor,!vpStyle.pocOn)}<div/><div/></div>
+                  <div data-sett-control-grid="">{chk("vahOn")}{lbl("VAH",vpStyle.vahOn)}{sw("vp_vahColor",vpStyle.vahColor,!vpStyle.vahOn)}<div/><div/></div>
+                  <div data-sett-control-grid="">{chk("valOn")}{lbl("VAL",vpStyle.valOn)}{sw("vp_valColor",vpStyle.valColor,!vpStyle.valOn)}<div/><div/></div>
+                  <div data-sett-control-grid="">{chk("devPocOn")}{lbl("Developing POC",vpStyle.devPocOn)}{sw("vp_devPocColor",vpStyle.devPocColor,!vpStyle.devPocOn)}<div/><div/></div>
+                  <div data-sett-control-grid="">{chk("devVAOn")}{lbl("Developing VA",vpStyle.devVAOn)}{sw("vp_devVAColor",vpStyle.devVAColor,!vpStyle.devVAOn)}<div/><div/></div>
+                  <div data-sett-control-grid="">
+                    <div/>
+                    {lbl("Labels")}
+                    <div data-sett-chips="">
+                      {SettChip(!!vpStyle.priceLabels,"vpc-priceLabels","Price",()=>setVpStyle(s=>({...s,priceLabels:!s.priceLabels})),{vpImmediate:true})}
+                      {SettChip(!!vpStyle.timeLabels,"vpc-timeLabels","Time",()=>setVpStyle(s=>({...s,timeLabels:!s.timeLabels})),{vpImmediate:true})}
                     </div>
                   </div>
                 </>);
@@ -34692,25 +35546,34 @@ const TalariaV8bLive = () => {
 
               {/* ── INPUTS TAB ── */}
               {vpSettTab==="inputs" && (()=>{
-                const Row=({left,right})=>(
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
-                    {left}{right}
-                  </div>
-                );
-                const lbl=(txt,dis)=><span style={{fontSize:12,color:dis?"rgba(160,160,200,0.38)":c.ts}}>{txt}</span>;
+                const lbl=(txt,dis)=><span style={{fontSize:12,color:dis?"var(--text-faint)":"var(--text-muted)"}}>{txt}</span>;
                 return(
                   <div style={{display:"flex",flexDirection:"column"}}>
-                    <Row left={lbl("Rows Layout")} right={vpDrop("vp-rowslayout",vpStyle.rowsLayout,["Number of Rows","Ticks Per Row"],v=>setVpStyle(s=>({...s,rowsLayout:v})))}/>
-                    <Row left={lbl("Row Size")} right={vpIntSpinner("rowSize",vpStyle.rowSize,1,500)}/>
-                    <Row
-                      left={<div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <div data-sett-input-row="">
+                      <span data-sett-label="">Rows Layout</span>
+                      <div data-sett-acts="">{vpDrop("vp-rowslayout",vpStyle.rowsLayout,["Number of Rows","Ticks Per Row"],v=>setVpStyle(s=>({...s,rowsLayout:v})))}</div>
+                    </div>
+                    <div data-sett-input-row="">
+                      <span data-sett-label="">Row Size</span>
+                      <div data-sett-acts="">{vpIntSpinner("rowSize",vpStyle.rowSize,1,500)}</div>
+                    </div>
+                    <div data-sett-input-row="">
+                      <span data-sett-label="" style={{display:"inline-flex",alignItems:"center",gap:8}}>
                         {TlChk(vpStyle.volumeOn,"vpc-volumeOn",null,()=>setVpStyle(s=>({...s,volumeOn:!s.volumeOn})),{vpImmediate:true})}
                         {lbl("Volume",!vpStyle.volumeOn)}
-                      </div>}
-                      right={vpDrop("vp-voltype",vpStyle.volumeType,["Up/Down","Total"],v=>setVpStyle(s=>({...s,volumeType:v})),!vpStyle.volumeOn)}/>
-                    <Row left={lbl("Value Area Volume %")} right={vpIntSpinner("valueAreaVol",vpStyle.valueAreaVol,0,100)}/>
-                    <div style={{display:"flex",alignItems:"center",padding:"8px 0"}}>
-                      {TlChk(vpStyle.extendRight,"vpc-extendRight","Extend Right",()=>setVpStyle(s=>({...s,extendRight:!s.extendRight})),{vpImmediate:true})}
+                      </span>
+                      <div data-sett-acts="">{vpDrop("vp-voltype",vpStyle.volumeType,["Up/Down","Total"],v=>setVpStyle(s=>({...s,volumeType:v})),!vpStyle.volumeOn)}</div>
+                    </div>
+                    <div data-sett-input-row="">
+                      <span data-sett-label="">Value Area Volume %</span>
+                      <div data-sett-acts="">{vpIntSpinner("valueAreaVol",vpStyle.valueAreaVol,0,100)}</div>
+                    </div>
+                    <div data-sett-control-grid="">
+                      <div/>
+                      <span data-sett-label="" style={{width:"auto"}}>Extend</span>
+                      <div data-sett-chips="">
+                        {SettChip(!!vpStyle.extendRight,"vpc-extendRight","Right",()=>setVpStyle(s=>({...s,extendRight:!s.extendRight})),{vpImmediate:true})}
+                      </div>
                     </div>
                   </div>
                 );
@@ -34747,11 +35610,11 @@ const TalariaV8bLive = () => {
                           <div data-sett-coord-hdr="">{hdr}</div>
                         </div>
                         <div style={{display:"grid",gridTemplateColumns:"80px 1fr",alignItems:"center"}}>
-                          <span style={{fontSize:12,color:c.ts,padding:"8px 12px"}}>Price</span>
+                          <span style={{fontSize:12,color:"var(--text-muted)",padding:"8px 12px"}}>Price</span>
                           <div data-sett-coord-cell="" style={{padding:"6px 8px"}}>{spinInput(pk,"price")}</div>
                         </div>
                         <div style={{display:"grid",gridTemplateColumns:"80px 1fr",alignItems:"center"}}>
-                          <span style={{fontSize:12,color:c.ts,padding:"8px 12px"}}>Bar</span>
+                          <span style={{fontSize:12,color:"var(--text-muted)",padding:"8px 12px"}}>Bar</span>
                           <div data-sett-coord-cell="" style={{padding:"6px 8px"}}>{spinInput(bk,"bar")}</div>
                         </div>
                       </div>
@@ -34808,30 +35671,48 @@ const TalariaV8bLive = () => {
         );
         const avDrop=(dk,val,options,onPick,disabled,w)=>{
           const isOpen=avStyleDrop===dk;
+          const contentW = Math.max(118, ...options.map((o) => Math.ceil(String(o).length * 7.6 + 48)));
+          const faceW = w || contentW;
           return(
             <div style={{position:"relative",opacity:disabled?0.35:1}}>
-              <div data-sett-dd="" data-open={isOpen?"1":undefined}
+              <div data-sett-dd="" data-sett-dd-kind="text" data-open={isOpen?"1":undefined}
                 onPointerDown={e=>{
                   e.stopPropagation();
                   if(disabled) return;
                   if(isOpen){ setAvStyleDrop(null); setVolDropAnchor(null); }
-                  else { setVolDropAnchor(v9MeasureDropAnchor(e.currentTarget, Math.min(320, 40 + options.length * 32))); setAvStyleDrop(dk); }
+                  else {
+                    const a = v9MeasureDropAnchor(e.currentTarget, Math.min(320, 40 + options.length * 32));
+                    if (!a) return;
+                    setTlStyleDrop(null); setTlStyleDropAnchor(null);
+                    setVpStyleDrop(null); setVwapStyleDrop(null);
+                    setVolDropAnchor(a);
+                    setAvStyleDrop(dk);
+                  }
                 }}
                 onMouseDown={e=>e.stopPropagation()}
                 onClick={e=>e.stopPropagation()}
                 onMouseEnter={()=>{if(!disabled)setHov(dk);}} onMouseLeave={()=>setHov(null)}
-                style={{...(w?{width:w,minWidth:w}:{minWidth:130}),display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,cursor:"default"}}>
+                style={{
+                  width: faceW, minWidth: faceW, maxWidth: faceW,
+                  cursor: "default",
+                  position: "relative",
+                }}>
                 <span style={{fontSize:12,color:isOpen?"var(--accent)":"var(--text-muted)",fontFamily:F,whiteSpace:"nowrap"}}>{val}</span>
                 <I n="chevDown" s={7} cl={isOpen?"var(--accent)":"var(--text-muted)"}/>
               </div>
-              {isOpen&&v9PortalSettDropMenu({
+              {isOpen&&volDropAnchor&&v9PortalSettDropMenu({
                 anchor: volDropAnchor,
-                width: Math.max(w || 130, (volDropAnchor && volDropAnchor.triggerW) || 130),
-                rightAlign: true,
+                width: Math.max(faceW, contentW),
+                rightAlign: false,
                 children: options.map(opt=>{
                   const isA=val===opt,isH2=hov===`avdrop-${dk}-${opt}`;
                   return(
-                    <div key={opt} data-pick-on={isA?"1":undefined} onClick={()=>{onPick(opt);setAvStyleDrop(null);setVolDropAnchor(null);}}
+                    <div key={opt} data-pick-on={isA?"1":undefined} {...modalPointerActivate(() => {
+                      runSettDropPick(() => onPick(opt), () => {
+                        setAvStyleDrop(null);
+                        setVolDropAnchor(null);
+                      });
+                    })}
                       onMouseEnter={()=>setHov(`avdrop-${dk}-${opt}`)} onMouseLeave={()=>setHov(null)}
                       style={{padding:"7px 12px",cursor:"default",background:isH2&&!isA?"var(--surface-raised)":"transparent"}}>
                       <span style={{fontSize:12,fontWeight:isA?700:550,color:isA?"var(--accent)":isH2?"var(--text)":"var(--text-muted)"}}>{opt}</span>
@@ -34842,8 +35723,8 @@ const TalariaV8bLive = () => {
             </div>
           );
         };
-        const avIntSpinner=(valKey,val,minVal,maxVal,w=72)=>(
-          <div data-sett-step="" style={{width:w,flex:"0 0 auto"}}>
+        const avIntSpinner=(valKey,val,minVal,maxVal,_w=72)=>(
+          <div data-sett-step="">
             <input type="number" value={val} onClick={e=>e.stopPropagation()}
               onChange={e=>{const v=e.target.value;if(/^\d*$/.test(v))setAvStyle(s=>({...s,[valKey]:v}));}}
               className="tlr-nospinner"
@@ -34860,20 +35741,23 @@ const TalariaV8bLive = () => {
           <div data-v9-chrome="1" data-tool-sett-v2="1" data-sdrop="1" data-sett-v3="1" data-chrome-win="av-sett"
             onPointerDown={e=>e.stopPropagation()}
             onMouseDown={e=>e.stopPropagation()}
-            onClick={e=>{e.stopPropagation();if(typeof e.target?.closest==="function"&&e.target.closest("[data-sett-dd],[data-sett-drop],[data-sett-drop-shell]"))return;setAvStyleDrop(null);setVolDropAnchor(null);}}
-            style={{position:"fixed",left:avSettPos.x,top:avSettPos.y,zIndex:10050,width:440,
-                    animation:closing.has("avsett")?"tlrPopOut 0.155s ease both":"tlrPopIn 0.15s ease"}}>
+            onClick={e=>{e.stopPropagation();if(typeof e.target?.closest==="function"&&e.target.closest("[data-sett-dd],[data-sett-drop],[data-sett-drop-shell],[data-sett-drop-portal]"))return;setAvStyleDrop(null);setVolDropAnchor(null);}}
+            style={{position:"fixed",left:avSettPos.x,top:avSettPos.y,zIndex:V9_SETT_WIN_Z,width:440,
+                    animation:closing.has("avsett")?"tlrPopOut 0.155s ease both":undefined}}>
             <div data-win-header="" onPointerDown={e=>{
               e.preventDefault();
+              closeAllSettStyleDrops();
               const settEl=e.currentTarget.parentElement;
               const sx=e.clientX,sy=e.clientY,px=avSettPos.x,py=avSettPos.y;
+              let nx=px,ny=py;
               const onMove=ev=>{
                 const dx=(ev.clientX-sx)/Z,dy=(ev.clientY-sy)/Z;
                 const _wh=((settEl&&settEl.getBoundingClientRect().height)/Z)||480;
-                const {x:nx,y:ny}=v9ClampFloatingWindowPos(px+dx,py+dy,448,_wh,Z);
+                ({x:nx,y:ny}=v9ClampFloatingWindowPos(px+dx,py+dy,448,_wh,Z));
+                settEl.style.left=nx+'px';settEl.style.top=ny+'px';
                 setAvSettPos({x:nx,y:ny});
               };
-              const onUp=()=>{window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);};
+              const onUp=()=>{window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);pinSettOpenPos("av",{x:nx,y:ny});setAvSettPos({x:nx,y:ny});};
               window.addEventListener('pointermove',onMove);window.addEventListener('pointerup',onUp);
             }}>
               <div data-win-icon=""><I n="anchoredVol" s={16} cl="var(--accent)"/></div>
@@ -34988,73 +35872,82 @@ const TalariaV8bLive = () => {
 
               {/* ── STYLE TAB ── */}
               {avSettTab==="style" && (()=>{
-                const gc="16px 1fr 30px 56px 56px", cg=8;
-                const R=()=>({display:"grid",gridTemplateColumns:gc,columnGap:cg,alignItems:"center",padding:"7px 0"});
                 const chk=(key)=><div style={{display:"flex",alignItems:"center"}}>{TlChk(avStyle[key],`avc-${key}`,null,()=>setAvStyle(s=>({...s,[key]:!s[key]})),{immediate:true})}</div>;
-                const lbl=(txt,on)=><span style={{fontSize:12,color:on===false?"rgba(160,160,200,0.38)":c.ts,transition:"color 0.15s",flexShrink:0}}>{txt}</span>;
+                const lbl=(txt,on)=><span style={{fontSize:12,color:on===false?"var(--text-faint)":"var(--text-muted)",transition:"color 0.15s",flexShrink:0}}>{txt}</span>;
                 const sw=(k,color,dis)=><div style={{display:"flex",justifyContent:"center"}}>{avSwatch(k,color,dis)}</div>;
                 const mkAlphaDrag=(e,trackEl)=>{
                   e.stopPropagation(); if(!avStyle.zoneBgOn) return;
-                  const rect=trackEl.getBoundingClientRect();
-                  const getVal=cx=>Math.round(Math.max(0,Math.min(1,(cx-rect.left)/rect.width))*100);
+                  const shell = trackEl?.closest?.("[data-sett-slider]") || trackEl;
+                  const rect=shell.getBoundingClientRect();
+                  const inset = 12;
+                  const usable = Math.max(1, rect.width - inset * 2);
+                  const getVal=cx=>Math.round(Math.max(0,Math.min(1,(cx-rect.left-inset)/usable))*100);
+                  try { shell?.setAttribute("data-dragging", "1"); } catch (_) { /* ignore */ }
+                  try { document.documentElement.setAttribute("data-sett-slider-grabbing", "1"); } catch (_) { /* ignore */ }
                   const onMove=ev=>setAvStyle(s=>({...s,zoneBgAlpha:getVal(ev.clientX)}));
-                  const onUp=()=>{window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);};
+                  const onUp=()=>{
+                    try { shell?.removeAttribute("data-dragging"); } catch (_) { /* ignore */ }
+                    try { document.documentElement.removeAttribute("data-sett-slider-grabbing"); } catch (_) { /* ignore */ }
+                    window.removeEventListener('pointermove',onMove);
+                    window.removeEventListener('pointerup',onUp);
+                  };
                   onMove(e); window.addEventListener('pointermove',onMove); window.addEventListener('pointerup',onUp);
                 };
                 const pct=avStyle.zoneBgAlpha;
                 const alphaTrack=(
                   <div style={{display:"flex",alignItems:"center",gap:6,
                                opacity:avStyle.zoneBgOn?1:0.35,transition:"opacity 0.15s",flex:1}}>
-                    <div onClick={e=>e.stopPropagation()}
-                      onPointerDown={e=>mkAlphaDrag(e,e.currentTarget)}
-                      onMouseEnter={()=>{if(avStyle.zoneBgOn)setHov("av-alpha-h");}} onMouseLeave={()=>setHov(null)}
-                      style={{position:"relative",flex:1,height:28,display:"flex",alignItems:"center",cursor:"default"}}>
-                      <div style={{position:"absolute",left:0,right:0,height:3,top:"50%",transform:"translateY(-50%)",borderRadius:99,background:c.trk}}>
-                        <div style={{position:"absolute",left:0,width:`${pct}%`,height:"100%",borderRadius:99,
-                          background:"color-mix(in oklab, var(--accent) 55%, transparent)"}}/>
+                    <div data-sett-slider="" data-grow="1" onClick={e=>e.stopPropagation()} style={{["--sett-slider-pct"]: pct}}>
+                      <div data-sett-slider-rail="">
+                        <i data-sett-slider-fill="" style={{ width:`${pct}%` }}/>
                       </div>
-                      <div data-sett-alpha-thumb="" style={{ position:"absolute", left:`${pct}%`, top:"50%", width:12, height:12, marginLeft:-6, marginTop:-6, borderRadius:"50%", background:"var(--accent)", border:"2px solid var(--surface)", boxSizing:"border-box", pointerEvents:"none" }}/>
+                      <i data-sett-slider-thumb="" aria-hidden="true"/>
+                      <div data-sett-slider-hit=""
+                        onPointerDown={e=>mkAlphaDrag(e,e.currentTarget.parentElement)}
+                        onMouseEnter={()=>{if(avStyle.zoneBgOn)setHov("av-alpha-h");}}
+                        onMouseLeave={()=>setHov(null)}/>
                     </div>
-                    <span style={{fontSize:11,color:c.ts,width:26,textAlign:"right",flexShrink:0}}>{pct}%</span>
+                    <span style={{fontSize:11,color:"var(--text-muted)",width:26,textAlign:"right",flexShrink:0}}>{pct}%</span>
                   </div>
                 );
                 return(<>
-                  <div style={R()}>{chk("valuesOn")}{lbl("Values",avStyle.valuesOn)}{sw("av_valuesColor",avStyle.valuesColor,!avStyle.valuesOn)}<div/><div/></div>
-                  <div style={{display:"flex",alignItems:"center",padding:"7px 0"}}>
-                    <span style={{fontSize:12,color:c.ts}}>Width (% of box)</span>
-                    <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:4}}>
-                      {avIntSpinner("widthPct",avStyle.widthPct,1,100,52)}
-                      <span style={{fontSize:11,color:c.ts}}>%</span>
+                  <div data-sett-control-grid="">{chk("valuesOn")}{lbl("Values",avStyle.valuesOn)}{sw("av_valuesColor",avStyle.valuesColor,!avStyle.valuesOn)}<div/><div/></div>
+                  <div data-sett-input-row="">
+                    <span data-sett-label="">Width (% of box)</span>
+                    <div data-sett-acts="" style={{display:"inline-flex",alignItems:"center",gap:4}}>
+                      {avIntSpinner("widthPct",avStyle.widthPct,1,100,72)}
+                      <span style={{fontSize:11,color:"var(--text-muted)"}}>%</span>
                     </div>
                   </div>
-                  <div style={{display:"flex",alignItems:"center",padding:"7px 0"}}>
-                    <span style={{fontSize:12,color:c.ts}}>Placement</span>
-                    <div style={{marginLeft:"auto"}}>
+                  <div data-sett-input-row="">
+                    <span data-sett-label="">Placement</span>
+                    <div data-sett-acts="">
                       {avDrop("av-placement",avStyle.placement,["Left","Right"],v=>setAvStyle(s=>({...s,placement:v})),false,90)}
                     </div>
                   </div>
-                  <div style={R()}>
+                  <div data-sett-control-grid="">
                     {chk("zoneBgOn")}
                     {lbl("Zone Background",avStyle.zoneBgOn)}
                     {sw("av_zoneBgColor",avStyle.zoneBgColor,!avStyle.zoneBgOn)}
                     <div style={{gridColumn:"4/6",display:"flex",alignItems:"center"}}>{alphaTrack}</div>
                   </div>
-                  <div style={{height:1,background:c.brH,margin:"8px 0"}}/>
-                  <div style={R()}><div/>{lbl("Up Volume")}{sw("av_upVolColor",avStyle.upVolColor,false)}<div/><div/></div>
-                  <div style={R()}><div/>{lbl("Down Volume")}{sw("av_downVolColor",avStyle.downVolColor,false)}<div/><div/></div>
-                  <div style={R()}><div/>{lbl("Value Area Up")}{sw("av_valueAreaUpColor",avStyle.valueAreaUpColor,false)}<div/><div/></div>
-                  <div style={R()}><div/>{lbl("Value Area Down")}{sw("av_valueAreaDownColor",avStyle.valueAreaDownColor,false)}<div/><div/></div>
-                  <div style={{height:1,background:c.brH,margin:"8px 0"}}/>
-                  <div style={R()}>{chk("pocOn")}{lbl("POC",avStyle.pocOn)}{sw("av_pocColor",avStyle.pocColor,!avStyle.pocOn)}<div/><div/></div>
-                  <div style={R()}>{chk("vahOn")}{lbl("VAH",avStyle.vahOn)}{sw("av_vahColor",avStyle.vahColor,!avStyle.vahOn)}<div/><div/></div>
-                  <div style={R()}>{chk("valOn")}{lbl("VAL",avStyle.valOn)}{sw("av_valColor",avStyle.valColor,!avStyle.valOn)}<div/><div/></div>
-                  <div style={R()}>{chk("devPocOn")}{lbl("Developing POC",avStyle.devPocOn)}{sw("av_devPocColor",avStyle.devPocColor,!avStyle.devPocOn)}<div/><div/></div>
-                  <div style={R()}>{chk("devVAOn")}{lbl("Developing VA",avStyle.devVAOn)}{sw("av_devVAColor",avStyle.devVAColor,!avStyle.devVAOn)}<div/><div/></div>
-                  <div style={{display:"flex",alignItems:"center",padding:"8px 0",marginTop:6,gap:12}}>
-                    <span style={{fontSize:12,color:c.ts}}>Labels</span>
-                    <div style={{display:"flex",alignItems:"center",marginLeft:"auto",gap:14}}>
-                      <div style={{minWidth:72}}>{TlChk(avStyle.priceLabels,"avc-priceLabels","Price",()=>setAvStyle(s=>({...s,priceLabels:!s.priceLabels})),{avImmediate:true})}</div>
-                      <div style={{minWidth:72}}>{TlChk(avStyle.timeLabels,"avc-timeLabels","Time",()=>setAvStyle(s=>({...s,timeLabels:!s.timeLabels})),{avImmediate:true})}</div>
+                  <div data-sett-rule=""/>
+                  <div data-sett-control-grid=""><div/>{lbl("Up Volume")}{sw("av_upVolColor",avStyle.upVolColor,false)}<div/><div/></div>
+                  <div data-sett-control-grid=""><div/>{lbl("Down Volume")}{sw("av_downVolColor",avStyle.downVolColor,false)}<div/><div/></div>
+                  <div data-sett-control-grid=""><div/>{lbl("Value Area Up")}{sw("av_valueAreaUpColor",avStyle.valueAreaUpColor,false)}<div/><div/></div>
+                  <div data-sett-control-grid=""><div/>{lbl("Value Area Down")}{sw("av_valueAreaDownColor",avStyle.valueAreaDownColor,false)}<div/><div/></div>
+                  <div data-sett-rule=""/>
+                  <div data-sett-control-grid="">{chk("pocOn")}{lbl("POC",avStyle.pocOn)}{sw("av_pocColor",avStyle.pocColor,!avStyle.pocOn)}<div/><div/></div>
+                  <div data-sett-control-grid="">{chk("vahOn")}{lbl("VAH",avStyle.vahOn)}{sw("av_vahColor",avStyle.vahColor,!avStyle.vahOn)}<div/><div/></div>
+                  <div data-sett-control-grid="">{chk("valOn")}{lbl("VAL",avStyle.valOn)}{sw("av_valColor",avStyle.valColor,!avStyle.valOn)}<div/><div/></div>
+                  <div data-sett-control-grid="">{chk("devPocOn")}{lbl("Developing POC",avStyle.devPocOn)}{sw("av_devPocColor",avStyle.devPocColor,!avStyle.devPocOn)}<div/><div/></div>
+                  <div data-sett-control-grid="">{chk("devVAOn")}{lbl("Developing VA",avStyle.devVAOn)}{sw("av_devVAColor",avStyle.devVAColor,!avStyle.devVAOn)}<div/><div/></div>
+                  <div data-sett-control-grid="">
+                    <div/>
+                    {lbl("Labels")}
+                    <div data-sett-chips="">
+                      {SettChip(!!avStyle.priceLabels,"avc-priceLabels","Price",()=>setAvStyle(s=>({...s,priceLabels:!s.priceLabels})),{avImmediate:true})}
+                      {SettChip(!!avStyle.timeLabels,"avc-timeLabels","Time",()=>setAvStyle(s=>({...s,timeLabels:!s.timeLabels})),{avImmediate:true})}
                     </div>
                   </div>
                 </>);
@@ -35062,25 +35955,34 @@ const TalariaV8bLive = () => {
 
               {/* ── INPUTS TAB ── */}
               {avSettTab==="inputs" && (()=>{
-                const Row=({left,right})=>(
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
-                    {left}{right}
-                  </div>
-                );
-                const lbl=(txt,dis)=><span style={{fontSize:12,color:dis?"rgba(160,160,200,0.38)":c.ts}}>{txt}</span>;
+                const lbl=(txt,dis)=><span style={{fontSize:12,color:dis?"var(--text-faint)":"var(--text-muted)"}}>{txt}</span>;
                 return(
                   <div style={{display:"flex",flexDirection:"column"}}>
-                    <Row left={lbl("Rows Layout")} right={avDrop("av-rowslayout",avStyle.rowsLayout,["Number of Rows","Ticks Per Row"],v=>setAvStyle(s=>({...s,rowsLayout:v})))}/>
-                    <Row left={lbl("Row Size")} right={avIntSpinner("rowSize",avStyle.rowSize,1,500)}/>
-                    <Row
-                      left={<div style={{display:"flex",alignItems:"center",gap:8}}>
-                      {TlChk(avStyle.volumeOn,"avc-volumeOn",null,()=>setAvStyle(s=>({...s,volumeOn:!s.volumeOn})),{immediate:true})}
+                    <div data-sett-input-row="">
+                      <span data-sett-label="">Rows Layout</span>
+                      <div data-sett-acts="">{avDrop("av-rowslayout",avStyle.rowsLayout,["Number of Rows","Ticks Per Row"],v=>setAvStyle(s=>({...s,rowsLayout:v})))}</div>
+                    </div>
+                    <div data-sett-input-row="">
+                      <span data-sett-label="">Row Size</span>
+                      <div data-sett-acts="">{avIntSpinner("rowSize",avStyle.rowSize,1,500)}</div>
+                    </div>
+                    <div data-sett-input-row="">
+                      <span data-sett-label="" style={{display:"inline-flex",alignItems:"center",gap:8}}>
+                        {TlChk(avStyle.volumeOn,"avc-volumeOn",null,()=>setAvStyle(s=>({...s,volumeOn:!s.volumeOn})),{immediate:true})}
                         {lbl("Volume",!avStyle.volumeOn)}
-                      </div>}
-                      right={avDrop("av-voltype",avStyle.volumeType,["Up/Down","Total"],v=>setAvStyle(s=>({...s,volumeType:v})),!avStyle.volumeOn)}/>
-                    <Row left={lbl("Value Area Volume %")} right={avIntSpinner("valueAreaVol",avStyle.valueAreaVol,0,100)}/>
-                    <div style={{display:"flex",alignItems:"center",padding:"8px 0"}}>
-                      {TlChk(avStyle.extendRight,"avc-extendRight","Extend Right",()=>setAvStyle(s=>({...s,extendRight:!s.extendRight})),{immediate:true})}
+                      </span>
+                      <div data-sett-acts="">{avDrop("av-voltype",avStyle.volumeType,["Up/Down","Total"],v=>setAvStyle(s=>({...s,volumeType:v})),!avStyle.volumeOn)}</div>
+                    </div>
+                    <div data-sett-input-row="">
+                      <span data-sett-label="">Value Area Volume %</span>
+                      <div data-sett-acts="">{avIntSpinner("valueAreaVol",avStyle.valueAreaVol,0,100)}</div>
+                    </div>
+                    <div data-sett-control-grid="">
+                      <div/>
+                      <span data-sett-label="" style={{width:"auto"}}>Extend</span>
+                      <div data-sett-chips="">
+                        {SettChip(!!avStyle.extendRight,"avc-extendRight","Right",()=>setAvStyle(s=>({...s,extendRight:!s.extendRight})),{avImmediate:true})}
+                      </div>
                     </div>
                   </div>
                 );
@@ -35115,11 +36017,11 @@ const TalariaV8bLive = () => {
                       <div data-sett-coord-hdr="">Anchor bar</div>
                     </div>
                     <div style={{display:"grid",gridTemplateColumns:"80px 1fr",alignItems:"center"}}>
-                      <span style={{fontSize:12,color:c.ts,padding:"8px 12px"}}>Price</span>
+                      <span style={{fontSize:12,color:"var(--text-muted)",padding:"8px 12px"}}>Price</span>
                       <div data-sett-coord-cell="" style={{padding:"6px 8px"}}>{spinInput("anchorPrice","price")}</div>
                     </div>
                     <div style={{display:"grid",gridTemplateColumns:"80px 1fr",alignItems:"center"}}>
-                      <span style={{fontSize:12,color:c.ts,padding:"8px 12px"}}>Bar</span>
+                      <span style={{fontSize:12,color:"var(--text-muted)",padding:"8px 12px"}}>Bar</span>
                       <div data-sett-coord-cell="" style={{padding:"6px 8px"}}>{spinInput("anchorBar","bar")}</div>
                     </div>
                   </div>
@@ -35216,10 +36118,10 @@ const TalariaV8bLive = () => {
             />
           );
         };
-        const QbColorFace = ({ role, color, empty, label }) => (
+        /* Icon-only: hollow stroke vs solid fill. Name via tip/aria-label on TlBtn — no on-bar captions. */
+        const QbColorFace = ({ role, color, empty }) => (
           <div data-qb-color="" data-qb-role={role}>
             <QbSwatch color={color} empty={empty} shape="square" role={role} />
-            {label ? <em data-qb-color-lbl="">{label}</em> : null}
           </div>
         );
         const TlSep = () => <div data-qb-sep="" aria-hidden="true"/>;
@@ -35238,6 +36140,7 @@ const TalariaV8bLive = () => {
         const hideQuickBarLineStyle = v9HideFloatingBarLineStyleAndWidth(tlQuickBarIcon);
         return v9PortalFloatingUi(
         <div ref={tlBarRef} id="v9-tl-bar" data-v9-chrome="1" data-sdrop="1" data-tlbar="1" data-qb-v2="1"
+          data-rr-qb={isRRTool ? "1" : undefined}
           onMouseDown={(e) => e.stopPropagation()}
           onMouseLeave={hideTip}
           onClick={e=>e.stopPropagation()}
@@ -35282,8 +36185,7 @@ const TalariaV8bLive = () => {
               onClick={e=>{
                 e.stopPropagation();
                 if (tlBarDrop==="template") { tlLastBarDropRef.current="template"; closeTlBarDrop(); return; }
-                setColorPicker(null); cpBarAnchorRef.current=null;
-                if (tlSettOpen) closeTlSett();
+                beginExclusiveOverlayOpen();
                 const r = e.currentTarget.getBoundingClientRect();
                 setTlBarDropAnchor({ btnTop:r.top, btnBottom:r.bottom, left:r.left, right:r.right, barX:tlBarPos.x, barY:tlBarPos.y });
                 setTlSaveAsMode(false); setTlNewTplName("");
@@ -35295,31 +36197,70 @@ const TalariaV8bLive = () => {
           </div>
           <TlSep/>
           {isRRTool ? <>
-            {/* RR tool: profit zone color */}
-            <TlBtn id="tl-rr-profit" tip="Profit zone color" isAct={colorPicker==="rr_profitColor"}
+            {/* RR: zone color faces — fill swatches, Obsidian grammar */}
+            <TlBtn id="tl-rr-profit" tip="Profit zone" isAct={colorPicker==="rr_profitColor"} w={32}
               onClick={e=>{e.stopPropagation();if(colorPicker==="rr_profitColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(rrStyle.profitColor);const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("rr_profitColor");}}}>
-              {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                <svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-                  <rect x="1" y="1" width="14" height="7" fill={rrStyle.profitColor} stroke={col} strokeWidth="1"/>
-                  <line x1="8" y1="8" x2="8" y2="15" stroke={col} strokeWidth="1.5" strokeLinecap="round"/>
-                  <polyline points="5,11 8,8 11,11" stroke={col} strokeWidth="1.3" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </div>}
+              {()=>(
+                <span data-rr-swatch="" data-tone="tp" aria-hidden="true">
+                  <i style={{ background: rrStyle.profitColor }} />
+                </span>
+              )}
             </TlBtn>
-            {/* RR tool: loss zone color */}
-            <TlBtn id="tl-rr-loss" tip="Loss zone color" isAct={colorPicker==="rr_lossColor"}
+            <TlBtn id="tl-rr-loss" tip="Stop zone" isAct={colorPicker==="rr_lossColor"} w={32}
               onClick={e=>{e.stopPropagation();if(colorPicker==="rr_lossColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(rrStyle.lossColor);const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("rr_lossColor");}}}>
-              {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                <svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-                  <rect x="1" y="8" width="14" height="7" fill={rrStyle.lossColor} stroke={col} strokeWidth="1"/>
-                  <line x1="8" y1="8" x2="8" y2="1" stroke={col} strokeWidth="1.5" strokeLinecap="round"/>
-                  <polyline points="5,5 8,8 11,5" stroke={col} strokeWidth="1.3" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </div>}
+              {()=>(
+                <span data-rr-swatch="" data-tone="sl" aria-hidden="true">
+                  <i style={{ background: rrStyle.lossColor }} />
+                </span>
+              )}
             </TlBtn>
             <TlSep/>
-            {/* RR tool: create order */}
-            <TlBtn id="tl-rr-order" tip="Create order" isAct={orderPanelOpen}
+            {/* RR: Auto BE / Trail — same source of truth as order Stop segment */}
+            {sessionAdvancedAllowed ? (
+              <>
+                <TlBtn
+                  id="tl-rr-be"
+                  tip="Auto break-even (same as Stop → Auto BE)"
+                  isAct={slAdvMode === "breakeven"}
+                  w="auto"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    markOrderControlBridge();
+                    setSlEnabled(true);
+                    setSlAdvMode((m) => (m === "breakeven" ? "none" : "breakeven"));
+                    setOrderPanelOpen(true);
+                  }}
+                >
+                  {(_, isAct) => (
+                    <span data-rr-mode="" data-on={isAct || slAdvMode === "breakeven" ? "1" : undefined}>
+                      Auto BE
+                    </span>
+                  )}
+                </TlBtn>
+                <TlBtn
+                  id="tl-rr-trail"
+                  tip="Trailing stop (same as Stop → Trail SL)"
+                  isAct={slAdvMode === "trailing"}
+                  w="auto"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    markOrderControlBridge();
+                    setSlEnabled(true);
+                    setSlAdvMode((m) => (m === "trailing" ? "none" : "trailing"));
+                    setOrderPanelOpen(true);
+                  }}
+                >
+                  {(_, isAct) => (
+                    <span data-rr-mode="" data-on={isAct || slAdvMode === "trailing" ? "1" : undefined}>
+                      Trail SL
+                    </span>
+                  )}
+                </TlBtn>
+                <TlSep/>
+              </>
+            ) : null}
+            {/* RR: send ladder → order ticket */}
+            <TlBtn id="tl-rr-order" tip="Send levels to order ticket" isAct={orderPanelOpen} w="auto"
               onClick={e=>{e.stopPropagation();
                 try {
                   const om = window.chart?.orderManager;
@@ -35428,33 +36369,31 @@ const TalariaV8bLive = () => {
                 } catch(_){}
                 setOrderPanelOpen(v=>!v);
               }}>
-
-              {(_,isAct,col)=><svg width={18} height={18} viewBox="0 0 18 18" fill="none">
-                <circle cx="8" cy="9" r="6.5" stroke={col} strokeWidth="1.5"/>
-                <path d="M8 4.5v9M10.5 6.5C10 5.5 9.2 5 8 5 6.5 5 5.5 5.9 5.5 7c0 1 .8 1.6 2.5 1.6s2.5.8 2.5 2c0 1.2-1 2-2.5 2C6.8 12.6 6 12.1 5.5 11.5" stroke={col} strokeWidth="1.4" strokeLinecap="round"/>
-                <circle cx="15" cy="3" r="4.5" fill={c.acD}/>
-                <line x1="15" y1="0.5" x2="15" y2="5.5" stroke={c.acL} strokeWidth="2" strokeLinecap="round"/>
-                <line x1="12.5" y1="3" x2="17.5" y2="3" stroke={c.acL} strokeWidth="2" strokeLinecap="round"/>
-              </svg>}
+              {(_, isAct) => (
+                <span data-qb-cta="" data-on={isAct || orderPanelOpen ? "1" : undefined}>
+                  <I n="longPos" s={12} cl="currentColor" />
+                  Order
+                </span>
+              )}
             </TlBtn>
           </> : effectiveTlGroup === "measure" ? <>
             {/* range: font color */}
-            <TlBtn id="tl-rng-fcol" tip="Label color" isAct={colorPicker==="tlLabelColor"} w={56}
+            <TlBtn id="tl-rng-fcol" tip="Label" isAct={colorPicker==="tlLabelColor"} w={32}
               onClick={e=>{e.stopPropagation();if(colorPicker==="tlLabelColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(tlStyle.labelColor);const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("tlLabelColor");}}}>
               {()=>(
-                <QbColorFace role="stroke" color={tlStyle.labelColor} label="Label" />
+                <QbColorFace role="stroke" color={tlStyle.labelColor} />
               )}
             </TlBtn>
             {/* range: background color */}
-            <TlBtn id="tl-rng-bg" tip="Background color" isAct={colorPicker==="tlBgColor"} w={84}
+            <TlBtn id="tl-rng-bg" tip="Background" isAct={colorPicker==="tlBgColor"} w={32}
               onClick={e=>{e.stopPropagation();if(colorPicker==="tlBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(tlStyle.bgColor);const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("tlBgColor");}}}>
               {()=>(
-                <QbColorFace role="fill" color={tlStyle.bgColor} label="Background" />
+                <QbColorFace role="fill" color={tlStyle.bgColor} />
               )}
             </TlBtn>
             {/* range: font size */}
             <TlBtn id="tl-rng-fsz" tip="Font size" isAct={tlBarDrop==="rngFsz"} w="auto"
-              onClick={e=>{e.stopPropagation();if(tlBarDrop==="rngFsz"){closeTlBarDrop();return;}const r=e.currentTarget.getBoundingClientRect();setColorPicker(null);cpBarAnchorRef.current=null;if(tlSettOpen)closeTlSett();setTlBarDropAnchor({btnTop:r.top,btnBottom:r.bottom,left:r.left,right:r.right,barX:tlBarPos.x,barY:tlBarPos.y});setTlBarDrop("rngFsz");}}>
+              onClick={e=>{e.stopPropagation();if(tlBarDrop==="rngFsz"){closeTlBarDrop();return;}beginExclusiveOverlayOpen();const r=e.currentTarget.getBoundingClientRect();setTlBarDropAnchor({btnTop:r.top,btnBottom:r.bottom,left:r.left,right:r.right,barX:tlBarPos.x,barY:tlBarPos.y});setTlBarDrop("rngFsz");}}>
               {(_,isAct,col)=><div data-qb-stroke="">
                 <span data-qb-stroke-val="" style={{color:col}}>{tlStyle.labelFontSize}</span>
                 <I n="chevDown" s={7} cl={col}/>
@@ -35462,7 +36401,7 @@ const TalariaV8bLive = () => {
             </TlBtn>
             {/* range: range type */}
             <TlBtn id="tl-rng-type" tip="Range type" isAct={tlBarDrop==="rngType"} w="auto"
-              onClick={e=>{e.stopPropagation();if(tlBarDrop==="rngType"){closeTlBarDrop();return;}const r=e.currentTarget.getBoundingClientRect();setColorPicker(null);cpBarAnchorRef.current=null;if(tlSettOpen)closeTlSett();setTlBarDropAnchor({btnTop:r.top,btnBottom:r.bottom,left:r.left,right:r.right,barX:tlBarPos.x,barY:tlBarPos.y});setTlBarDrop("rngType");}}>
+              onClick={e=>{e.stopPropagation();if(tlBarDrop==="rngType"){closeTlBarDrop();return;}beginExclusiveOverlayOpen();const r=e.currentTarget.getBoundingClientRect();setTlBarDropAnchor({btnTop:r.top,btnBottom:r.bottom,left:r.left,right:r.right,barX:tlBarPos.x,barY:tlBarPos.y});setTlBarDrop("rngType");}}>
               {(_,isAct,col)=>{
                 const showV=tlStyle.rangeType!=="Date and time";
                 const showH=tlStyle.rangeType!=="Price";
@@ -35476,20 +36415,18 @@ const TalariaV8bLive = () => {
               }}
             </TlBtn>
           </> : <>
-            {/* Stroke/border + background — labeled faces so the pair is never ambiguous */}
+            {/* Stroke/border + background — hollow vs solid swatches; tip/aria names the face */}
             {!["arrowMarker","arrowUp","arrowDn"].includes(tlSubTool.icon) && (()=>{
               const isShapeFillTool = ["rect","ellipse","circle","channel","flatChannel","disjointCh","triangle","arcShape"].includes(tlSubTool.icon)
                 || ((isPatternTool && !isElliottTool) && ["xabcd","headShoulders","triPattern"].includes(tlSubTool.icon));
               const isBorderShape = v9IsFilledShapeBorderSubIcon(tlSubTool.icon);
-              const strokeTip = isBorderShape || isShapeFillTool ? "Border color" : "Line color";
-              const strokeLbl = isBorderShape || isShapeFillTool ? "Border" : "Line";
+              const strokeTip = isBorderShape || isShapeFillTool ? "Border" : "Line";
               const strokeKey = isBorderShape ? "tlBorderColor" : "tlLineColor";
               const strokeCol = isBorderShape
                 ? (tlStyle.borderColor || tlStyle.lineColor)
                 : (v9QuickBarLevelGradient(tlStyle, tlSubTool.icon) || tlStyle.lineColor);
-              const strokeW = isShapeFillTool || isBorderShape ? 60 : 48;
               return (
-            <TlBtn id="tl-col2" tip={strokeTip} isAct={colorPicker===strokeKey} w={strokeW}
+            <TlBtn id="tl-col2" tip={strokeTip} isAct={colorPicker===strokeKey} w={32}
               onClick={e=>{
                 e.stopPropagation();
                 if (colorPicker === strokeKey) { setColorPicker(null); cpBarAnchorRef.current = null; return; }
@@ -35506,29 +36443,29 @@ const TalariaV8bLive = () => {
                 setColorPicker(strokeKey);
               }}>
               {() => (
-                <QbColorFace role="stroke" color={strokeCol} label={strokeLbl} />
+                <QbColorFace role="stroke" color={strokeCol} />
               )}
             </TlBtn>
               );
             })()}
             {/* Background for filled shapes */}
-            {["rect","ellipse","circle","channel","flatChannel","disjointCh"].includes(tlSubTool.icon) && <TlBtn id="tl-bgcol" tip="Background color" isAct={colorPicker==="tlBgColor"} w={84}
+            {["rect","ellipse","circle","channel","flatChannel","disjointCh"].includes(tlSubTool.icon) && <TlBtn id="tl-bgcol" tip="Background" isAct={colorPicker==="tlBgColor"} w={32}
               onClick={e=>{e.stopPropagation();if(colorPicker==="tlBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(tlStyle.bgColor);const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("tlBgColor");}}}>
               {()=>(
-                <QbColorFace role="fill" color={tlStyle.bgColor} empty={!tlStyle.bgColor || tlStyle.bgColor === "transparent"} label="Background" />
+                <QbColorFace role="fill" color={tlStyle.bgColor} empty={!tlStyle.bgColor || tlStyle.bgColor === "transparent"} />
               )}
             </TlBtn>}
-            {tlSubTool.icon === "pitchfork" && <TlBtn id="tl-pf-bgcol" tip="Background color" isAct={colorPicker==="pfBgColor"} w={84}
+            {tlSubTool.icon === "pitchfork" && <TlBtn id="tl-pf-bgcol" tip="Background" isAct={colorPicker==="pfBgColor"} w={32}
               onClick={e=>{e.stopPropagation();if(colorPicker==="pfBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(tlStyle.pfBgColor||"#3090FF");const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("pfBgColor");}}}>
               {()=>(
-                <QbColorFace role="fill" color={tlStyle.pfBgColor||"#3090FF"} empty={tlStyle.pfBackground===false} label="Background" />
+                <QbColorFace role="fill" color={tlStyle.pfBgColor||"#3090FF"} empty={tlStyle.pfBackground===false} />
               )}
             </TlBtn>}
             {/* Pattern fill */}
-            {(isPatternTool && !isElliottTool) && ["xabcd","headShoulders","triPattern"].includes(tlSubTool.icon) && <TlBtn id="tl-bgcol" tip="Background color" isAct={colorPicker==="tlBgColor"} w={84}
+            {(isPatternTool && !isElliottTool) && ["xabcd","headShoulders","triPattern"].includes(tlSubTool.icon) && <TlBtn id="tl-bgcol" tip="Background" isAct={colorPicker==="tlBgColor"} w={32}
               onClick={e=>{e.stopPropagation();if(colorPicker==="tlBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(tlStyle.bgColor);const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("tlBgColor");}}}>
               {()=>(
-                <QbColorFace role="fill" color={tlStyle.bgColor} empty={!tlStyle.bgColor || tlStyle.bgColor === "transparent"} label="Background" />
+                <QbColorFace role="fill" color={tlStyle.bgColor} empty={!tlStyle.bgColor || tlStyle.bgColor === "transparent"} />
               )}
             </TlBtn>}
             {/* btn 2b-pat-fcol: label color — only when settings exposes a Text tab (pattern uses Style tab Label row instead) */}
@@ -35540,7 +36477,7 @@ const TalariaV8bLive = () => {
               </div>}
             </TlBtn>}
             {isPatternTool && <TlBtn id="tl-pat-fsz" tip="Font size" isAct={tlBarDrop==="patFsz"} w="auto"
-              onClick={e=>{e.stopPropagation();if(tlBarDrop==="patFsz"){closeTlBarDrop();return;}const r=e.currentTarget.getBoundingClientRect();setColorPicker(null);cpBarAnchorRef.current=null;if(tlSettOpen)closeTlSett();setTlBarDropAnchor({btnTop:r.top,btnBottom:r.bottom,left:r.left,right:r.right,barX:tlBarPos.x,barY:tlBarPos.y});setTlBarDrop("patFsz");}}>
+              onClick={e=>{e.stopPropagation();if(tlBarDrop==="patFsz"){closeTlBarDrop();return;}beginExclusiveOverlayOpen();const r=e.currentTarget.getBoundingClientRect();setTlBarDropAnchor({btnTop:r.top,btnBottom:r.bottom,left:r.left,right:r.right,barX:tlBarPos.x,barY:tlBarPos.y});setTlBarDrop("patFsz");}}>
               {(_,isAct,col)=><div data-qb-stroke="">
                 <span data-qb-stroke-val="" style={{color:col}}>{tlStyle.textSize}</span>
                 <I n="chevDown" s={7} cl={col}/>
@@ -35574,7 +36511,7 @@ const TalariaV8bLive = () => {
             </TlBtn>}
             {/* btn 3: line style — hidden when settings panel has STYLE/THICKNESS (fib, gann, channel, …) */}
             {!hideQuickBarLineStyle && !["arrowMarker","arrowUp","arrowDn","draw","brush","elliott5","elliottABC","elliottTri","elliottWXY","elliottWXYXZ","xabcd","headShoulders","abcdPattern","triPattern","threeDrives"].includes(tlQuickBarIcon) && <TlBtn id="tl-sty2" tip={`Line style · ${qbLineStyle === "dashdot" ? "Dash-dot" : (qbLineStyle || "solid").replace(/^\w/, c => c.toUpperCase())}`} isAct={tlBarDrop==="style"} w="auto"
-              onClick={e=>{e.stopPropagation();if(tlBarDrop==="style"){closeTlBarDrop();return;}const r=e.currentTarget.getBoundingClientRect();setColorPicker(null);cpBarAnchorRef.current=null;if(tlSettOpen)closeTlSett();setTlBarDropAnchor({btnTop:r.top,btnBottom:r.bottom,left:r.left,right:r.right,barX:tlBarPos.x,barY:tlBarPos.y});setTlBarDrop("style");}}>
+              onClick={e=>{e.stopPropagation();if(tlBarDrop==="style"){closeTlBarDrop();return;}beginExclusiveOverlayOpen();const r=e.currentTarget.getBoundingClientRect();setTlBarDropAnchor({btnTop:r.top,btnBottom:r.bottom,left:r.left,right:r.right,barX:tlBarPos.x,barY:tlBarPos.y});setTlBarDrop("style");}}>
               {(_,isAct,col)=><div data-qb-stroke="" data-qb-style-face="">
                 <svg width={22} height={14} viewBox="0 0 22 14" aria-hidden="true">
                   <line x1={1} y1={7} x2={21} y2={7} stroke={col} strokeWidth={2.25} strokeLinecap="round"
@@ -35585,7 +36522,7 @@ const TalariaV8bLive = () => {
             </TlBtn>}
             {/* btn 4: line width */}
             {!hideQuickBarLineStyle && !["arrowMarker","arrowUp","arrowDn"].includes(tlQuickBarIcon) && <TlBtn id="tl-wid2" tip={`Thickness · ${qbLineWidth}`} isAct={tlBarDrop==="width"} w="auto"
-              onClick={e=>{e.stopPropagation();if(tlBarDrop==="width"){closeTlBarDrop();return;}const r=e.currentTarget.getBoundingClientRect();setColorPicker(null);cpBarAnchorRef.current=null;if(tlSettOpen)closeTlSett();setTlBarDropAnchor({btnTop:r.top,btnBottom:r.bottom,left:r.left,right:r.right,barX:tlBarPos.x,barY:tlBarPos.y});setTlBarDrop("width");}}>
+              onClick={e=>{e.stopPropagation();if(tlBarDrop==="width"){closeTlBarDrop();return;}beginExclusiveOverlayOpen();const r=e.currentTarget.getBoundingClientRect();setTlBarDropAnchor({btnTop:r.top,btnBottom:r.bottom,left:r.left,right:r.right,barX:tlBarPos.x,barY:tlBarPos.y});setTlBarDrop("width");}}>
               {(_,isAct,col)=> {
                 const wNum = Math.max(1, Math.min(4, parseInt(String(qbLineWidth), 10) || 1));
                 const brush = tlSubTool.icon === "brush";
@@ -35649,6 +36586,8 @@ const TalariaV8bLive = () => {
               if (dropdown) closeDropdown();
               v9DismissQuickBarPopoversSync();
               if (tlSettOpen || closing.has("tlsett")) { closeTlSett(); return; }
+              // Open on pointerdown unmounts this bar; arm dismiss lock before hook/flushSync.
+              v9SettingsChartDismissLockUntilRef.current = Date.now() + 900;
               if (txtSettOpen) closeTxtSett();
               if (vwapSettOpen) closeVwapSett();
               if (vpSettOpen) closeVpSett();
@@ -35687,7 +36626,7 @@ const TalariaV8bLive = () => {
           </TlBtn>
           {/* btn 8: more */}
           <TlBtn id="tl-more2" tip="More" isAct={tlBarDrop==="more"} w={30}
-            onClick={e=>{e.stopPropagation();if(tlBarDrop==="more"){closeTlBarDrop();return;}const r=e.currentTarget.getBoundingClientRect();setColorPicker(null);cpBarAnchorRef.current=null;if(tlSettOpen)closeTlSett();setTlBarDropAnchor({btnTop:r.top,btnBottom:r.bottom,left:r.left,right:r.right,barX:tlBarPos.x,barY:tlBarPos.y});setTlBarDrop("more");}}>
+            onClick={e=>{e.stopPropagation();if(tlBarDrop==="more"){closeTlBarDrop();return;}beginExclusiveOverlayOpen();const r=e.currentTarget.getBoundingClientRect();setTlBarDropAnchor({btnTop:r.top,btnBottom:r.bottom,left:r.left,right:r.right,barX:tlBarPos.x,barY:tlBarPos.y});setTlBarDrop("more");}}>
             {(_,isAct,col)=><svg width={14} height={4} viewBox="0 0 14 4"><circle cx="2" cy="2" r="2" fill={col}/><circle cx="7" cy="2" r="2" fill={col}/><circle cx="12" cy="2" r="2" fill={col}/></svg>}
           </TlBtn>
         </div>
@@ -36033,6 +36972,7 @@ const TalariaV8bLive = () => {
             closeVwapSett();
             return;
           }
+          v9SettingsChartDismissLockUntilRef.current = Date.now() + 900;
           if (tlSettOpen) closeTlSett();
           if (txtSettOpen) closeTxtSett();
           if (vpSettOpen) closeVpSett();
@@ -36062,9 +37002,7 @@ const TalariaV8bLive = () => {
             }
           }
           if (!d || d.type !== "anchored-vwap") return;
-          const vpW2 = window.innerWidth / Z;
-          const x = Math.max(8, Math.min(r.left / Z, vpW2 - 428));
-          const y = r.bottom / Z + 8;
+          const { x, y } = resolveSettOpenPos("vwap", 448, 520);
           suppressVwapBridge.current = true;
           editingDrawingRef.current = {
             drawing: d,
@@ -36108,8 +37046,7 @@ const TalariaV8bLive = () => {
               onClick={e=>{
                 e.stopPropagation();
                 if (tlBarDrop==="template") { tlLastBarDropRef.current="template"; closeTlBarDrop(); return; }
-                setVwapBarDrop(null); setColorPicker(null); cpBarAnchorRef.current=null;
-                if (vwapSettOpen) closeVwapSett();
+                beginExclusiveOverlayOpen();
                 const r = e.currentTarget.getBoundingClientRect();
                 setTlBarPos({ x:vwapBarPos.x, y:vwapBarPos.y });
                 setTlBarDropAnchor({ btnTop:r.top, btnBottom:r.bottom, left:r.left, right:r.right, barX:vwapBarPos.x, barY:vwapBarPos.y });
@@ -36154,7 +37091,7 @@ const TalariaV8bLive = () => {
             {/* btn: more */}
             <div style={{position:"relative",flexShrink:0}}>
               <VBtn id="vb-more" isAct={vwapBarDrop==="more"}
-                onClick={e=>{e.stopPropagation();if(vwapBarDrop==="more"){setVwapBarDrop(null);return;}setColorPicker(null);cpBarAnchorRef.current=null;setVwapBarDrop("more");}}>
+                onClick={e=>{e.stopPropagation();if(vwapBarDrop==="more"){setVwapBarDrop(null);return;}beginExclusiveOverlayOpen();setVwapBarDrop("more");}}>
                 {(_,isAct,col)=><svg width={14} height={4} viewBox="0 0 14 4"><circle cx="2" cy="2" r="2" fill={col}/><circle cx="7" cy="2" r="2" fill={col}/><circle cx="12" cy="2" r="2" fill={col}/></svg>}
               </VBtn>
               {vwapBarDrop==="more" && (
@@ -36223,6 +37160,8 @@ const TalariaV8bLive = () => {
             return;
           }
           if (closing.has("vpsett")) return;
+          v9SettingsChartDismissLockUntilRef.current = Date.now() + 900;
+          v9SuppressNextChartDeselect();
           if (tlSettOpen) closeTlSett();
           if (txtSettOpen) closeTxtSett();
           if (vwapSettOpen) closeVwapSett();
@@ -36245,7 +37184,6 @@ const TalariaV8bLive = () => {
           if (v9OpenQuickBarSettingsViaEditDrawing(d, r.left + r.width / 2, r.bottom + 8)) return;
           const hook = v9ResolveOpenDrawingSettingsHook();
           if (d && typeof hook === "function") {
-            v9SuppressNextChartDeselect();
             try {
               if (hook(d, r.left + r.width / 2, r.bottom + 8)) return;
             } catch (err) {
@@ -36253,9 +37191,7 @@ const TalariaV8bLive = () => {
             }
           }
           if (!d || !v9IsVolumeProfileDrawingType(d.type)) return;
-          const vpW2 = window.innerWidth / Z;
-          const x = Math.max(8, Math.min(r.left / Z, vpW2 - 428));
-          const y = r.bottom / Z + 8;
+          const { x, y } = resolveSettOpenPos("vp", 448, 520);
           suppressVpBridge.current = true;
           suppressCoordBridge.current = true;
           const ds = d.style || {};
@@ -36269,7 +37205,6 @@ const TalariaV8bLive = () => {
             prevGroupSelected: groupSelected,
             panelGroup: "brush",
           };
-          v9SettingsChartDismissLockUntilRef.current = Date.now() + 700;
           flushSync(() => {
             setTlStyle((prev) => ({ ...prev, ...vpCoordVisPatch }));
             setVpStyle((prev) => ({
@@ -36375,8 +37310,7 @@ const TalariaV8bLive = () => {
               onClick={e=>{
                 e.stopPropagation();
                 if (tlBarDrop==="template") { tlLastBarDropRef.current="template"; closeTlBarDrop(); return; }
-                setVpBarDrop(null); setColorPicker(null); cpBarAnchorRef.current=null;
-                if (vpSettOpen) closeVpSett();
+                beginExclusiveOverlayOpen();
                 const r = e.currentTarget.getBoundingClientRect();
                 setTlBarPos({ x:vpBarPos.x, y:vpBarPos.y });
                 setTlBarDropAnchor({ btnTop:r.top, btnBottom:r.bottom, left:r.left, right:r.right, barX:vpBarPos.x, barY:vpBarPos.y });
@@ -36411,7 +37345,7 @@ const TalariaV8bLive = () => {
             {/* btn: more */}
             <div style={{position:"relative",flexShrink:0}}>
               <VPBtn id="vpb-more" isAct={vpBarDrop==="more"}
-                onClick={e=>{e.stopPropagation();if(vpBarDrop==="more"){setVpBarDrop(null);return;}setColorPicker(null);cpBarAnchorRef.current=null;setVpBarDrop("more");}}>
+                onClick={e=>{e.stopPropagation();if(vpBarDrop==="more"){setVpBarDrop(null);return;}beginExclusiveOverlayOpen();setVpBarDrop("more");}}>
                 {(_,isAct,col)=><svg width={14} height={4} viewBox="0 0 14 4"><circle cx="2" cy="2" r="2" fill={col}/><circle cx="7" cy="2" r="2" fill={col}/><circle cx="12" cy="2" r="2" fill={col}/></svg>}
               </VPBtn>
               {vpBarDrop==="more" && (
@@ -36495,8 +37429,7 @@ const TalariaV8bLive = () => {
               onClick={e=>{
                 e.stopPropagation();
                 if (tlBarDrop==="template") { tlLastBarDropRef.current="template"; closeTlBarDrop(); return; }
-                setAvBarDrop(null); setColorPicker(null); cpBarAnchorRef.current=null;
-                if (avSettOpen) closeAvSett();
+                beginExclusiveOverlayOpen();
                 const r = e.currentTarget.getBoundingClientRect();
                 setTlBarPos({ x:avBarPos.x, y:avBarPos.y });
                 setTlBarDropAnchor({ btnTop:r.top, btnBottom:r.bottom, left:r.left, right:r.right, barX:avBarPos.x, barY:avBarPos.y });
@@ -36549,13 +37482,13 @@ const TalariaV8bLive = () => {
             <AVSep/>
             {/* btn: settings */}
             <AVBtn id="avb-sett" isAct={avSettOpen||closing.has("avsett")}
-              onClick={e=>{e.stopPropagation();if(dropdown)closeDropdown();setAvBarDrop(null);setColorPicker(null);if(avSettOpen||closing.has("avsett")){closeAvSett();}else{if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();if(indSettOpen)closeIndSett();const r=e.currentTarget.getBoundingClientRect();const avW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,avW-428));const y=r.bottom/Z+8;setAvSettPos({x,y});setAvSettOpen(true);setAvSettTab("style");}}}>
+              onClick={e=>{e.stopPropagation();if(dropdown)closeDropdown();setAvBarDrop(null);setColorPicker(null);if(avSettOpen||closing.has("avsett")){closeAvSett();}else{v9SettingsChartDismissLockUntilRef.current=Date.now()+900;v9SuppressNextChartDeselect();if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();if(indSettOpen)closeIndSett();const {x,y}=resolveSettOpenPos("av",448,520);setAvSettPos({x,y});setAvSettOpen(true);setAvSettTab("style");}}}>
               {(_,isAct,col)=><I n="settings" s={16} cl={col}/>}
             </AVBtn>
             {/* btn: more */}
             <div style={{position:"relative",flexShrink:0}}>
               <AVBtn id="avb-more" isAct={avBarDrop==="more"}
-                onClick={e=>{e.stopPropagation();if(avBarDrop==="more"){setAvBarDrop(null);return;}setColorPicker(null);cpBarAnchorRef.current=null;setAvBarDrop("more");}}>
+                onClick={e=>{e.stopPropagation();if(avBarDrop==="more"){setAvBarDrop(null);return;}beginExclusiveOverlayOpen();setAvBarDrop("more");}}>
                 {(_,isAct,col)=><svg width={14} height={4} viewBox="0 0 14 4"><circle cx="2" cy="2" r="2" fill={col}/><circle cx="7" cy="2" r="2" fill={col}/><circle cx="12" cy="2" r="2" fill={col}/></svg>}
               </AVBtn>
               {avBarDrop==="more" && (
@@ -36612,35 +37545,27 @@ const TalariaV8bLive = () => {
           window.addEventListener('pointermove',onMove); window.addEventListener('pointerup',onUp);
         };
         return (
-          <div data-sdrop="1" onClick={e=>e.stopPropagation()}
+          <div data-v9-chrome="1" data-sdrop="1" data-emoji-panel="1" onClick={e=>e.stopPropagation()}
             style={{position:"fixed",left:px,top:py,width:W,height:H,zIndex:11000,
-                    background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,
-                    boxShadow:"0 8px 32px rgba(0,0,0,0.6)",
-                    display:"flex",flexDirection:"column",fontFamily:F}}>
-            {/* top accent */}
-            <div style={{height:2,background:"rgba(255,255,255,0.18)",flexShrink:0}}/>
-            {/* header — draggable */}
-            <div onPointerDown={mkDragPanel}
-              style={{display:"flex",alignItems:"center",padding:"6px 10px 5px",cursor:"move",userSelect:"none",flexShrink:0}}>
-              <I n="emoji" s={13} cl={c.acL}/>
-              <span style={{fontSize:11,fontWeight:700,color:c.tx,flex:1,marginLeft:6}}>Emojis & Stickers</span>
-              <div {...modalPointerActivate(() => setEmojiPanelOpen(false))}
+                    display:"flex",flexDirection:"column"}}>
+            <div data-win-header="" onPointerDown={mkDragPanel}
+              style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",cursor:"move",userSelect:"none",flexShrink:0}}>
+              <I n="emoji" s={14} cl="var(--accent)"/>
+              <span style={{fontSize:12,fontWeight:700,color:"var(--text)",flex:1,fontFamily:"var(--font-ui)"}}>Emojis</span>
+              <button type="button" data-brand-icon="1" aria-label="Close" {...modalPointerActivate(() => setEmojiPanelOpen(false))}
                 onMouseEnter={()=>setHov("emoji-x")} onMouseLeave={()=>setHov(null)}
-                style={{width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",
-                        background:hov==="emoji-x"?"rgba(255,80,80,0.1)":"transparent",transition:"background 0.12s"}}>
-                <I n="x" s={13} cl={hov==="emoji-x"?c.rd:c.ts}/>
-              </div>
+                style={{width:24,height:24}}>
+                <I n="x" s={13} cl={hov==="emoji-x"?"var(--down)":"var(--text-muted)"}/>
+              </button>
             </div>
-            {/* search bar */}
-            <div style={{padding:"0 8px 6px",flexShrink:0}}>
+            <div style={{padding:"0 10px 8px",flexShrink:0}}>
               <input value={emojiSearch} onChange={e=>setEmojiSearch(e.target.value)}
                 onClick={e=>e.stopPropagation()} onPointerDown={e=>e.stopPropagation()}
                 placeholder="Search…"
-                style={{width:"100%",height:22,background:"rgba(140,160,255,0.06)",border:`1px solid ${c.brL}`,
-                        color:c.tx,fontSize:11,fontFamily:F,padding:"0 7px",outline:"none",boxSizing:"border-box"}}/>
+                style={{width:"100%",height:28,background:"var(--surface-sunken)",border:"1px solid var(--line)",
+                        borderRadius:6,color:"var(--text)",fontSize:12,fontFamily:"var(--font-ui)",padding:"0 8px",outline:"none",boxSizing:"border-box"}}/>
             </div>
-            {/* category tabs */}
-            <div style={{display:"flex",overflowX:"auto",padding:"0 4px 4px",gap:1,flexShrink:0,scrollbarWidth:"none"}}>
+            <div style={{display:"flex",overflowX:"auto",padding:"0 6px 6px",gap:2,flexShrink:0,scrollbarWidth:"none"}}>
               {cats.map(cat=>{
                 const isA=emojiCat===cat.id && !emojiSearch.trim();
                 const isH=hov===`ect-${cat.id}`;
@@ -36648,23 +37573,19 @@ const TalariaV8bLive = () => {
                   <div key={cat.id} onClick={()=>{setEmojiCat(cat.id);setEmojiSearch("");}}
                     onMouseEnter={()=>setHov(`ect-${cat.id}`)} onMouseLeave={()=>setHov(null)}
                     title={cat.label}
-                    style={{flex:1,height:24,display:"flex",alignItems:"center",justifyContent:"center",
-                            flexShrink:0,cursor:"default",fontSize:13,position:"relative",
-                            background:isA?"rgba(48,144,255,0.12)":isH?c.hv:"transparent",
+                    style={{flex:1,height:26,display:"flex",alignItems:"center",justifyContent:"center",
+                            flexShrink:0,cursor:"default",fontSize:14,borderRadius:6,
+                            background:isA?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent",
                             transition:"background 0.1s"}}>
                     {cat.icon}
-                    {isA&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,
-                      background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 5px ${c.acG}`,pointerEvents:"none"}}/>}
                   </div>
                 );
               })}
             </div>
-            <div style={{height:1,background:c.br,flexShrink:0}}/>
-            {/* category label */}
-            {!emojiSearch.trim() && <div style={{padding:"4px 10px 2px",fontSize:8,fontWeight:800,color:c.tm,letterSpacing:"0.08em",flexShrink:0}}>{activeCat.label.toUpperCase()}</div>}
-            {/* emoji grid */}
-            <div style={{flex:1,overflowY:"auto",padding:"2px 6px 6px",scrollbarWidth:"thin",scrollbarColor:`rgba(140,160,255,0.3) transparent`}}>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:1}}>
+            <div style={{height:1,background:"var(--line)",flexShrink:0}}/>
+            {!emojiSearch.trim() && <div style={{padding:"6px 10px 2px",fontSize:10,fontWeight:700,color:"var(--text-faint)",letterSpacing:"0.06em",flexShrink:0,fontFamily:"var(--font-ui)"}}>{activeCat.label.toUpperCase()}</div>}
+            <div className="tlr-scroll" style={{flex:1,overflowY:"auto",padding:"2px 6px 8px"}}>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
                 {filteredEmojis.map((em,idx)=>{
                   const hk=`em-${idx}`;
                   const isSel = txtStyle.selectedEmoji === em;
@@ -36676,8 +37597,8 @@ const TalariaV8bLive = () => {
                     }}
                       onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
                       style={{height:28,display:"flex",alignItems:"center",justifyContent:"center",
-                              fontSize:16,cursor:"default",borderRadius:2,
-                              background:isSel?"rgba(48,144,255,0.12)":hov===hk?"rgba(255,255,255,0.08)":"transparent",
+                              fontSize:16,cursor:"default",borderRadius:6,
+                              background:isSel?"var(--accent-quiet)":hov===hk?"var(--surface-raised)":"transparent",
                               transition:"background 0.08s"}}>
                       {em}
                     </div>
@@ -36689,7 +37610,7 @@ const TalariaV8bLive = () => {
         );
       })()}
 
-      {(indOpen || closing.has("ind")) && (()=>{
+      {(indOpen || closing.has("ind")) && typeof document !== "undefined" && createPortal((()=>{
         const indTabs=[
           ["active","Active","eye"],
           ["pinned","Pinned","pin"],
@@ -36706,11 +37627,11 @@ const TalariaV8bLive = () => {
         const tabCount=(id)=> id==="active"?indActive.length : id==="pinned"?indPinned.length : id==="all"?indicatorData.length : indicatorData.filter(i=>i.cat===id).length;
         const indSz = clampIndSize(indSize.w, indSize.h);
         return (
-        <div ref={indPanelRef} data-v9-chrome="1" data-chrome-win="indicators" data-ind-v2="1" data-indicators-panel="1" data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${indPos.y}px)`,left:`calc(50% + ${indPos.x}px)`,transform:"translate(-50%,-50%)",width:indSz.w,height:indSz.h,zIndex:9001,fontFamily:F,animation:closing.has("ind")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
+        <div ref={indPanelRef} data-v9-chrome="1" data-chrome-win="indicators" data-ind-v2="1" data-indicators-panel="1" data-sdrop="1" role="dialog" aria-modal="true" aria-labelledby="v9-ind-win-title" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${indPos.y}px)`,left:`calc(50% + ${indPos.x}px)`,transform:"translate(-50%,-50%)",width:indSz.w,height:indSz.h,zIndex:V9_CHROME_Z.modal,fontFamily:F,animation:closing.has("ind")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
           <div data-win-header="" onMouseDown={(e)=>{e.preventDefault();armChromeWinGestureLock();setDragging({target:"ind",startX:e.clientX,startY:e.clientY,ox:indPos.x,oy:indPos.y});}}>
             <div data-win-icon=""><I n="indicator" s={16} cl="var(--accent)"/></div>
             <div data-ind-win-titles="">
-              <span data-win-title="">Indicators</span>
+              <span data-win-title="" id="v9-ind-win-title">Indicators</span>
               <em data-ind-current="">{indActive.length > 0 ? `${indActive.length} on chart` : "None on chart"}</em>
             </div>
             <div style={{flex:1}}/>
@@ -36840,7 +37761,7 @@ const TalariaV8bLive = () => {
               </div>
               <div data-ind-list="" className="tlr-scroll">
                 {indFiltered.length===0 && (
-                  <div data-ind-empty="">
+                  <div data-ind-empty="" data-chrome-empty="1">
                     <strong>{indCat==="pinned"?"No pins yet":indCat==="active"?"Nothing on the chart":"No matches"}</strong>
                     <em>{indCat==="pinned"?"Pin indicators to find them here.":indCat==="active"?"Add an indicator from All or a category.":"Try another search."}</em>
                   </div>
@@ -36930,7 +37851,7 @@ const TalariaV8bLive = () => {
           <div data-ind-resize="se" onMouseDown={(e)=>beginIndResize(e,{w:true,h:true})} aria-hidden="true"/>
         </div>
         );
-      })()}
+      })(), document.body)}
       {alertModal && (
         <V9AlertModal
           open
@@ -37030,11 +37951,11 @@ const TalariaV8bLive = () => {
         document.body
       )}
       {(settingsOpen || closing.has("settings")) && typeof document !== "undefined" && createPortal(
-        <div ref={settingsPanelRef} data-v9-chrome="1" data-chrome-win="settings" data-settings-panel="1" data-sett-v2="1" data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${settingsPos.y}px)`,left:`calc(50% + ${settingsPos.x}px)`,transform:"translate(-50%,-50%)",width:clampSettingsSize(settingsSize.w, settingsSize.h).w,height:clampSettingsSize(settingsSize.w, settingsSize.h).h,zIndex:9002,fontFamily:F,animation:closing.has("settings")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
+        <div ref={settingsPanelRef} data-v9-chrome="1" data-chrome-win="settings" data-settings-panel="1" data-sett-v2="1" data-sdrop="1" role="dialog" aria-modal="true" aria-labelledby="v9-settings-win-title" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${settingsPos.y}px)`,left:`calc(50% + ${settingsPos.x}px)`,transform:"translate(-50%,-50%)",width:clampSettingsSize(settingsSize.w, settingsSize.h).w,height:clampSettingsSize(settingsSize.w, settingsSize.h).h,zIndex:V9_CHROME_Z.modal,fontFamily:F,animation:closing.has("settings")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
           <div data-win-header="" onMouseDown={(e)=>{e.preventDefault();armChromeWinGestureLock();setDragging({target:"settings",startX:e.clientX,startY:e.clientY,ox:settingsPos.x,oy:settingsPos.y});}}>
             <div data-win-icon=""><I n="settings" s={16} cl="var(--accent)"/></div>
             <div data-sett-win-titles="">
-              <span data-win-title="">Chart settings</span>
+              <span data-win-title="" id="v9-settings-win-title">Chart settings</span>
               <em data-sett-current-tpl="" title={settings.chartTemplate || "Custom"}>
                 {settings.chartTemplate && settings.chartTemplate !== "CUSTOM" ? settings.chartTemplate : "Custom"}
               </em>
@@ -37167,7 +38088,7 @@ const TalariaV8bLive = () => {
                   const menuW = Math.max(r.width / Z, 156);
                   setColorPicker(null);
                   cpBarAnchorRef.current = null;
-                  setSettDropPos(sdPos(r, { h, w: menuW, centerAlign: true }));
+                  setSettDropPos(sdPos(r, { h, w: menuW, flush: true }));
                   setSettDrop((prev) => (prev === dropKey ? null : dropKey));
                 };
                 const StyleDd = ({ styleKey, styleDrop, styleHov }) => {
@@ -37533,7 +38454,7 @@ const TalariaV8bLive = () => {
           </div>
         );
       })(), document.body)}
-      {(profileOpen || closing.has("profile")) && (()=>{
+      {(profileOpen || closing.has("profile")) && typeof document !== "undefined" && createPortal((()=>{
         const profTabs = [["account","Account"],["billing","Billing"]];
         const langLabels = { english:"English", arabic:"العربية" };
         const pm = profileMe;
@@ -37582,11 +38503,11 @@ const TalariaV8bLive = () => {
           window.location.href = `/login/?next=${encodeURIComponent(next)}`;
         };
         return (
-        <div ref={profilePanelRef} data-v9-chrome="1" data-chrome-win="profile" data-profile-panel="1" data-prof-v2="1" data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${profilePos.y}px)`,left:`calc(50% + ${profilePos.x}px)`,transform:"translate(-50%,-50%)",width:clampProfileSize(profileSize.w, profileSize.h).w,height:clampProfileSize(profileSize.w, profileSize.h).h,zIndex:9002,fontFamily:F,animation:closing.has("profile")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
+        <div ref={profilePanelRef} data-v9-chrome="1" data-chrome-win="profile" data-profile-panel="1" data-prof-v2="1" data-sdrop="1" role="dialog" aria-modal="true" aria-labelledby="v9-profile-win-title" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${profilePos.y}px)`,left:`calc(50% + ${profilePos.x}px)`,transform:"translate(-50%,-50%)",width:clampProfileSize(profileSize.w, profileSize.h).w,height:clampProfileSize(profileSize.w, profileSize.h).h,zIndex:V9_CHROME_Z.modal,fontFamily:F,animation:closing.has("profile")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
           <div data-win-header="" onMouseDown={(e)=>{e.preventDefault();armChromeWinGestureLock();setDragging({target:"profile",startX:e.clientX,startY:e.clientY,ox:profilePos.x,oy:profilePos.y});}}>
             <div data-win-icon=""><I n="user" s={15} cl="var(--accent)"/></div>
             <div data-prof-win-titles="">
-              <span data-win-title="">Profile</span>
+              <span data-win-title="" id="v9-profile-win-title">Profile</span>
               <em data-prof-current="">{profileTab==="billing" ? "Plan and invoices" : "Account and security"}</em>
             </div>
             <div style={{flex:1}}/>
@@ -37705,7 +38626,7 @@ const TalariaV8bLive = () => {
                           <button type="button" data-prof-lang="" data-open={isAct?"1":undefined} data-sett-drop-anchor="1"
                             {...modalPointerActivate((e) => {
                               const r = e.currentTarget.getBoundingClientRect();
-                              setSettDropPos(sdPos(r, { h: 100, centerAlign: true, w: Math.max(r.width / Z, 140) }));
+                              setSettDropPos(sdPos(r, { h: 100, flush: true, w: Math.max(r.width / Z, 140) }));
                               setSettDrop((prev) => (prev === "profLang" ? null : "profLang"));
                             })}>
                             <span>{langLabels[profileLang] || "English"}</span>
@@ -37857,13 +38778,12 @@ const TalariaV8bLive = () => {
           <div data-prof-resize="se" onMouseDown={(e)=>beginProfileResize(e,{w:true,h:true})} aria-hidden="true"/>
         </div>
         );
-      })()}
-      {(faqOpen || closing.has("faq")) && (()=>{
+      })(), document.body)}
+      {(faqOpen || closing.has("faq")) && typeof document !== "undefined" && createPortal((()=>{
         const closeFaq = () => { animClose(setFaqOpen, "faq"); setFaqExpand(null); setFaqSearch(""); };
         const faqTabs = [
           ["faq", "FAQ", "help"],
           ["hotkeys", "Hot keys", "layout"],
-          ["education", "Learn", "star"],
           ["about", "About", "info"],
         ];
         const faqItems = [
@@ -37901,7 +38821,8 @@ const TalariaV8bLive = () => {
           ["Backtesting","Run systematic tests and review results"],
         ];
         const faqSz = clampFaqSize(faqSize.w, faqSize.h);
-        const tabHint = faqCat==="faq"?"Answers for common chart tasks":faqCat==="hotkeys"?"Keyboard shortcuts":faqCat==="education"?"Coming soon":"Product and version";
+        const activeFaqCat = faqCat === "education" ? "faq" : faqCat;
+        const tabHint = activeFaqCat==="faq"?"Answers for common chart tasks":activeFaqCat==="hotkeys"?"Keyboard shortcuts":"Product and version";
         // info icon may be absent — fall back to note
         const tabIcon = (n) => (n === "info" ? "note" : n);
         const aboutBuild =
@@ -37909,12 +38830,12 @@ const TalariaV8bLive = () => {
             ? String(window.__TALARIA_CHART_BUILD_ID)
             : "2026.08.06";
         return (
-        <div ref={faqPanelRef} data-v9-chrome="1" data-chrome-win="help" data-faq-v2="1" data-help-panel="1" data-sdrop="1" onClick={(e)=>e.stopPropagation()}
-          style={{position:"fixed",top:`calc(50% + ${faqPos.y}px)`,left:`calc(50% + ${faqPos.x}px)`,transform:"translate(-50%,-50%)",width:faqSz.w,height:faqSz.h,zIndex:9002,fontFamily:F,animation:closing.has("faq")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
+        <div ref={faqPanelRef} data-v9-chrome="1" data-chrome-win="help" data-faq-v2="1" data-help-panel="1" data-sdrop="1" role="dialog" aria-modal="true" aria-labelledby="v9-help-win-title" onClick={(e)=>e.stopPropagation()}
+          style={{position:"fixed",top:`calc(50% + ${faqPos.y}px)`,left:`calc(50% + ${faqPos.x}px)`,transform:"translate(-50%,-50%)",width:faqSz.w,height:faqSz.h,zIndex:V9_CHROME_Z.modal,fontFamily:F,animation:closing.has("faq")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
           <div data-win-header="" onMouseDown={(e)=>{e.preventDefault();armChromeWinGestureLock();setDragging({target:"faq",startX:e.clientX,startY:e.clientY,ox:faqPos.x,oy:faqPos.y});}}>
             <div data-win-icon=""><I n="help" s={16} cl="var(--accent)"/></div>
             <div data-faq-win-titles="">
-              <span data-win-title="">Help</span>
+              <span data-win-title="" id="v9-help-win-title">Help</span>
               <em data-faq-current="">{tabHint}</em>
             </div>
             <div style={{flex:1}}/>
@@ -37924,7 +38845,7 @@ const TalariaV8bLive = () => {
           </div>
           <div data-faq-tabs="" role="tablist" aria-label="Help sections">
             {faqTabs.map(([id,label,icon])=>{
-              const isA = faqCat===id;
+              const isA = activeFaqCat===id;
               return (
                 <button type="button" key={id} data-active={isA?"1":undefined} role="tab" aria-selected={isA}
                   {...modalPointerActivate(() => { setFaqCat(id); setFaqExpand(null); setFaqSearch(""); })}
@@ -37935,7 +38856,7 @@ const TalariaV8bLive = () => {
               );
             })}
           </div>
-          {faqCat==="faq" ? (
+          {activeFaqCat==="faq" ? (
             <div data-faq-search="" data-faq-search-sticky="">
               <I n="search" s={14} cl="var(--text-faint)"/>
               <input type="text" placeholder="Search questions…" value={faqSearch} onChange={(e)=>setFaqSearch(e.target.value)}/>
@@ -37943,11 +38864,11 @@ const TalariaV8bLive = () => {
             </div>
           ) : null}
           <div data-faq-pane="" className="tlr-scroll">
-            {faqCat==="faq" && <>
+            {activeFaqCat==="faq" && <>
               <div data-faq-h="">Questions</div>
               <div data-faq-block="">
                 {faqFiltered.length===0 ? (
-                  <div data-faq-empty=""><strong>No matches</strong><em>Try a shorter search.</em></div>
+                  <div data-faq-empty="" data-chrome-empty="1"><strong>No matches</strong><em>Try a shorter search.</em></div>
                 ) : faqFiltered.map((item)=>(
                   <div key={item.i} data-faq-acc="" data-open={faqExpand===item.i?"1":undefined}>
                     <button type="button" data-faq-acc-top=""
@@ -37967,14 +38888,9 @@ const TalariaV8bLive = () => {
                   <span>Email</span>
                   <a href="mailto:support@talaria.io" data-faq-link="">support@talaria.io</a>
                 </div>
-                <button type="button" data-faq-row="" data-action="1"
-                  {...modalPointerActivate(() => { setFaqCat("education"); setFaqExpand(null); setFaqSearch(""); })}>
-                  <span>Learn the product</span>
-                  <em>Coming soon</em>
-                </button>
               </div>
             </>}
-            {faqCat==="hotkeys" && hotkeyGroups.map(({section,items})=>(
+            {activeFaqCat==="hotkeys" && hotkeyGroups.map(({section,items})=>(
               <div key={section}>
                 <div data-faq-h="">{section}</div>
                 <div data-faq-block="">
@@ -37987,38 +38903,7 @@ const TalariaV8bLive = () => {
                 </div>
               </div>
             ))}
-            {faqCat==="education" && <>
-              <div data-faq-soon="">
-                <strong>Coming soon</strong>
-                <em>Courses and guides will open here. Until then, use FAQ and Hot keys.</em>
-              </div>
-              <div data-faq-h="">Planned courses</div>
-              <div data-faq-block="">
-                {courses.map((course)=>(
-                  <div data-faq-row="" data-edu="1" data-soon="1" key={course.title}>
-                    <div data-faq-edu-icon=""><I n={course.icon} s={14} cl="var(--text-faint)"/></div>
-                    <div data-faq-edu-meta="">
-                      <strong>{course.title}</strong>
-                      <em>{course.desc}</em>
-                    </div>
-                    <span data-faq-tag="">{course.tag}</span>
-                  </div>
-                ))}
-              </div>
-              <div data-faq-h="">Planned guides</div>
-              <div data-faq-block="">
-                {guides.map(([title,desc])=>(
-                  <div data-faq-row="" data-edu="1" data-soon="1" key={title}>
-                    <div data-faq-edu-meta="">
-                      <strong>{title}</strong>
-                      <em>{desc}</em>
-                    </div>
-                    <span data-faq-tag="">Soon</span>
-                  </div>
-                ))}
-              </div>
-            </>}
-            {faqCat==="about" && <>
+            {activeFaqCat==="about" && <>
               <div data-faq-id="">
                 <img src="/LOGO-07.png" alt="" width={36} height={36}/>
                 <div data-faq-id-meta="">
@@ -38067,8 +38952,8 @@ const TalariaV8bLive = () => {
           <div data-faq-resize="se" onMouseDown={(e)=>beginFaqResize(e,{w:true,h:true})} aria-hidden="true"/>
         </div>
         );
-      })()}
-      {(screenshotOpen || closing.has("screenshot")) && (() => {
+      })(), document.body)}
+      {(screenshotOpen || closing.has("screenshot")) && typeof document !== "undefined" && createPortal((() => {
         const closeShot = () => animClose(setScreenshotOpen, "screenshot");
         const previewBlocked = !!(screenshotPreviewUrl && String(screenshotPreviewUrl).startsWith("data:image/svg"));
         const previewReady = !!(screenshotPreviewUrl && !previewBlocked);
@@ -38149,6 +39034,9 @@ const TalariaV8bLive = () => {
           data-chrome-win="screenshot"
           data-shot-v2="1"
           data-sdrop="1"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="v9-screenshot-win-title"
           onClick={(e) => e.stopPropagation()}
           style={{
             position: "fixed",
@@ -38157,7 +39045,7 @@ const TalariaV8bLive = () => {
             transform: "translate(-50%,-50%)",
             width: Math.min(960, typeof window !== "undefined" ? window.innerWidth - 32 : 960),
             maxWidth: "calc(100vw - 32px)",
-            zIndex: 9002,
+            zIndex: V9_CHROME_Z.modal,
             fontFamily: F,
             animation: closing.has("screenshot") ? "tlrWinOut 0.15s ease forwards" : "tlrWinIn 0.18s ease",
           }}
@@ -38175,7 +39063,7 @@ const TalariaV8bLive = () => {
               <I n="screenshot" s={16} cl="var(--accent)"/>
             </div>
             <div data-shot-win-titles="">
-              <span data-win-title="">Screenshot</span>
+              <span data-win-title="" id="v9-screenshot-win-title">Screenshot</span>
               <em data-shot-current="">Chart capture</em>
             </div>
             <button type="button" data-brand-icon="1" aria-label="Close" {...modalPointerActivate(closeShot)}
@@ -38355,17 +39243,17 @@ const TalariaV8bLive = () => {
           </div>
         </div>
         );
-      })()}
+      })(), document.body)}
 
 
-      {(logoMenu||closing.has("logoMenu")) && (
-        <div data-sdrop="1" data-v9-chrome="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:48,left:10,zIndex:9000,background:"var(--surface-raised)",border:"1px solid var(--line)",minWidth:168,fontFamily:F,borderRadius:8,padding:4,animation:closing.has("logoMenu")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
+      {(logoMenu||closing.has("logoMenu")) && typeof document !== "undefined" && createPortal(
+        <div data-sdrop="1" data-v9-chrome="1" data-tb-drop="logo" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:48,left:10,zIndex:V9_CHROME_Z.topbarDrop,background:"var(--surface)",border:"1px solid var(--line)",minWidth:168,fontFamily:F,borderRadius:8,padding:4,boxShadow:"none",animation:closing.has("logoMenu")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
           <div style={{padding:"4px 0"}}>
             <div style={{padding:"5px 14px 3px",fontSize:11,fontWeight:500,color:"var(--text-faint)",letterSpacing:"0.02em"}}>MENU</div>
             {[
               {icon:"settings",label:"Settings",hk:"lm-settings",col:c.acL,alwaysCol:false,action:()=>{openV9SettingsModalRef.current({ fromLogo: true });}},
-              {icon:"user",label:"Profile",hk:"lm-profile",col:c.acL,alwaysCol:false,action:()=>{setLogoMenu(false);closeWindows();setSettingsOpen(false);setProfileOpen(true);}},
-              {icon:"help",label:"Help",hk:"lm-faq",col:"var(--accent)",alwaysCol:true,action:()=>{setLogoMenu(false);closeWindows();setSettingsOpen(false);setFaqOpen(true);}},
+              {icon:"user",label:"Profile",hk:"lm-profile",col:c.acL,alwaysCol:false,action:()=>{setLogoMenu(false);openChromeSurface("profile");}},
+              {icon:"help",label:"Help",hk:"lm-faq",col:"var(--accent)",alwaysCol:true,action:()=>{setLogoMenu(false);openChromeSurface("help");}},
             ].map((item)=>{
               const isH = swHov===item.hk;
               const iconCol = item.alwaysCol ? item.col : (isH ? item.col : c.ts);
@@ -38376,7 +39264,7 @@ const TalariaV8bLive = () => {
                   style={{display:"flex",alignItems:"center",gap:8,padding:"6px 14px",cursor:"default",position:"relative",
                     background:isH?c.hv2:"transparent",
                     transition:"background 0.1s"}}>
-                  {isH&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${item.col},transparent)`,boxShadow:`0 0 6px ${item.col}44`}}/>}
+                  {isH&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:"var(--accent)",boxShadow:"none"}}/>}
                   <I n={item.icon} s={15} cl={iconCol}/>
                   <span style={{fontSize:12,fontWeight:item.bold?700:isH?700:500,color:textCol,flex:1}}>{item.label}</span>
                 </div>
@@ -38448,9 +39336,9 @@ const TalariaV8bLive = () => {
             )}
           </div>
         </div>
-      )}
-      {(symbolOpen||closing.has("symbol")) && (
-        <div data-v9-chrome="1" data-sdrop="1" data-tb-drop="symbol" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:42,left:48,zIndex:9000,minWidth:280,maxWidth:320,fontFamily:F,animation:closing.has("symbol")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
+      , document.body)}
+      {(symbolOpen||closing.has("symbol")) && typeof document !== "undefined" && createPortal(
+        <div data-v9-chrome="1" data-sdrop="1" data-tb-drop="symbol" role="listbox" aria-label="Symbols" tabIndex={-1} onClick={(e)=>e.stopPropagation()} onKeyDown={(e)=>v9ChromeListboxKeyDown(e,{onEsc:()=>{try{peelChromeDismissRef.current?.();}catch(_){}}})} style={{position:"fixed",top:42,left:symbolDropL,zIndex:V9_CHROME_Z.topbarDrop,minWidth:280,maxWidth:320,fontFamily:F,background:"var(--surface)",border:"1px solid var(--line)",borderRadius:8,boxShadow:"none",animation:closing.has("symbol")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
           <div data-tb-drop-search="">
             <div data-menu-head="" style={{padding:"10px 12px 6px"}}>Symbols</div>
             <div data-win-search="" style={{margin:"0 10px 10px",height:32}}>
@@ -38470,7 +39358,7 @@ const TalariaV8bLive = () => {
                     <span data-sym-group-count="">{items.length}</span>
                   </div>
                   {items.length === 0 ? (
-                    <div data-sym-empty="">{role === "supporting" ? "No supporting symbols in this session." : "No trading symbols match."}</div>
+                    <div data-sym-empty="" data-chrome-empty="1">{role === "supporting" ? "No supporting symbols in this session." : "No trading symbols match."}</div>
                   ) : items.map(s=>{
                     // compareUiTick forces row state after add/remove overlays.
                     void compareUiTick;
@@ -38488,6 +39376,9 @@ const TalariaV8bLive = () => {
                     return (
                       <div key={`${role}-${s.id}`}
                         data-menu-row=""
+                        role="option"
+                        tabIndex={-1}
+                        aria-selected={isAct}
                         data-active={isAct?"1":undefined}
                         data-supporting={s.supporting?"1":undefined}
                         data-compared={compared?"1":undefined}
@@ -38556,11 +39447,11 @@ const TalariaV8bLive = () => {
             })}
           </div>
         </div>
-      )}
-      {(chartTypeOpen||closing.has("chartType")) && (()=>{
+      , document.body)}
+      {(chartTypeOpen||closing.has("chartType")) && typeof document !== "undefined" && createPortal((()=>{
         const ctMap={"Candles":"candle","Hollow Candles":"hollowCandle","Heikin Ashi":"heikinAshi","Bars":"bars","Line":"lineChart","Area":"area"};
         return (
-          <div data-v9-chrome="1" data-sdrop="1" data-tb-drop="chartType" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:42,left:chartTypeDropL,zIndex:9000,minWidth:168,fontFamily:F,animation:closing.has("chartType")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
+          <div data-v9-chrome="1" data-sdrop="1" data-tb-drop="chartType" role="listbox" aria-label="Chart type" tabIndex={-1} onClick={(e)=>e.stopPropagation()} onKeyDown={(e)=>v9ChromeListboxKeyDown(e,{onEsc:()=>{try{peelChromeDismissRef.current?.();}catch(_){}}})} style={{position:"fixed",top:42,left:chartTypeDropL,zIndex:V9_CHROME_Z.topbarDrop,minWidth:168,fontFamily:F,background:"var(--surface)",border:"1px solid var(--line)",borderRadius:8,boxShadow:"none",animation:closing.has("chartType")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
             <div data-menu-head="">Chart type</div>
             <div style={{padding:"2px 0 8px"}}>
               {["Candles","Hollow Candles","Heikin Ashi","Bars","Line","Area"].map(t=>{
@@ -38569,6 +39460,9 @@ const TalariaV8bLive = () => {
                   <div key={t}
                     data-menu-row=""
                     data-active={isAct?"1":undefined}
+                    role="option"
+                    tabIndex={-1}
+                    aria-selected={isAct}
                     onClick={(e)=>{e.stopPropagation();setChartType(t);setChartTypeOpen(false);}}>
                     <I n={ctMap[t]} s={18} cl={isAct?"var(--accent)":"currentColor"}/>
                     <span style={{flex:1,fontSize:12,fontWeight:isAct?700:500}}>{t}</span>
@@ -38578,11 +39472,11 @@ const TalariaV8bLive = () => {
             </div>
           </div>
         );
-      })()}
+      })(), document.body)}
       <div data-v9-chrome="1" data-v9-topbar="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{ height: 44, flexShrink: 0, minWidth: 0, background: "var(--surface)", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", padding: "0 8px", gap: 0, overflow: "hidden", position: "relative" }}>
         {/* Logo — always pinned left, never scrolled away */}
         {(()=>{ const logoActive = logoMenu || settingsOpen || profileOpen || faqOpen; return (
-        <div data-tb-zone="logo" onClick={(e) => { e.stopPropagation(); const was=logoMenu; closeAll(); if(!was) setLogoMenu(true); }}
+        <div data-tb-zone="logo" role="button" aria-label="Talaria menu" aria-expanded={!!logoMenu} onClick={(e) => { e.stopPropagation(); const was=logoMenu; if(was){closePopup(setLogoMenu,"logoMenu");}else{openChromeSurface("logo");} }}
           onMouseEnter={() => setHov("logo-btn")} onMouseLeave={() => setHov(null)}
           style={{ width: 40, height: 36, flex: "0 0 auto", cursor: "default", display: "flex", alignItems: "center", justifyContent: "center", overflow: "visible", background: "var(--surface)", position: "relative", zIndex: 3 }}>
           <img
@@ -38605,18 +39499,18 @@ const TalariaV8bLive = () => {
         <div data-tb-zone="mid" style={{ flex: "1 1 auto", minWidth: 0, height: "100%", display: "flex", alignItems: "center", overflowX: "auto", overflowY: "hidden", WebkitOverflowScrolling: "touch", scrollbarWidth: "none", msOverflowStyle: "none" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 4, height: "100%", flex: "0 0 auto", padding: "0 4px" }}>
         <div style={{ width: 1, height: 16, margin: "0 2px 0 0", background: "var(--line)", flexShrink: 0 }}/>
-        <button type="button" data-tb-item="symbol" data-tb-trigger="1" data-open={symbolOpen?"1":undefined} onClick={(e) => { e.stopPropagation(); const was=symbolOpen; closeAll(); if(!was) { v9EnsureCompareFilesLoaded(); Promise.resolve(v9PurgeCompareForChartSymbol(symbol)).finally(() => setCompareUiTick((n) => n + 1)); setSymbolOpen(true); } }} onMouseEnter={() => setHov("symbol")} onMouseLeave={() => setHov(null)}
-          style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px", border: "1px solid transparent", cursor: "default", fontSize: 13, fontWeight: 650, lineHeight: 1.1, fontFamily: F, minWidth: 52, maxWidth: 148, width: "fit-content", flexShrink: 0 }}>
+        <button type="button" data-tb-item="symbol" data-tb-trigger="1" data-open={symbolOpen?"1":undefined} aria-expanded={!!symbolOpen} aria-haspopup="listbox" onClick={(e) => { e.stopPropagation(); const was=symbolOpen; if(was){closePopup(setSymbolOpen,"symbol");}else{const r=e.currentTarget.getBoundingClientRect();openChromeSurface("symbols",{left:r.left/Z});} }} onMouseEnter={() => setHov("symbol")} onMouseLeave={() => setHov(null)}
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px", border: "1px solid transparent", cursor: "default", fontSize: 13, fontWeight: 650, lineHeight: 1.1, fontFamily: F, minWidth: 52, maxWidth: 168, width: "fit-content", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", position: "relative", width: 22, height: 16, flexShrink: 0, overflow: "hidden" }}>
             <ChartSymbolBadge sym={normalizeSymForBadge(symbol)} asset={headerBadgeAsset} w={18} h={14} fontFamily={F}/>
           </div>
-          <span data-tb-label="symbol" style={{ display: "block", minWidth: 0, maxWidth: 86, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{symbol}</span>
+          <span data-tb-label="symbol" style={{ display: "block", minWidth: 0, whiteSpace: "nowrap" }}>{symbol}</span>
           <div data-tb-chevron="" style={{transform:symbolOpen?"rotate(180deg)":"rotate(0deg)",transition:"transform 0.2s ease",lineHeight:0,flexShrink:0}}>
             <svg width={10} height={6} viewBox="0 0 10 6"><path d="M1,1 L5,5 L9,1" stroke="currentColor" strokeWidth={1.8} fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </div>
         </button>
         <div style={{ width: 1, height: 16, margin: "0 2px", background: "var(--line)", flexShrink: 0 }}/>
-        <button type="button" data-tb-item="chartType" data-tb-trigger="1" data-open={chartTypeOpen?"1":undefined} onClick={(e) => { e.stopPropagation(); const was=chartTypeOpen; closeAll(); if(!was) { const r=e.currentTarget.getBoundingClientRect(); setChartTypeDropL(r.left/Z); setChartTypeOpen(true); } }} onMouseEnter={() => setHov("chartType")} onMouseLeave={() => setHov(null)}
+        <button type="button" data-tb-item="chartType" data-tb-trigger="1" data-open={chartTypeOpen?"1":undefined} aria-expanded={!!chartTypeOpen} aria-haspopup="listbox" onClick={(e) => { e.stopPropagation(); const was=chartTypeOpen; if(was){closePopup(setChartTypeOpen,"chartType");}else{const r=e.currentTarget.getBoundingClientRect();openChromeSurface("chartType",{left:r.left/Z});} }} onMouseEnter={() => setHov("chartType")} onMouseLeave={() => setHov(null)}
           style={{ padding: "5px 10px", display: "inline-flex", alignItems: "center", gap: 5, border: "1px solid transparent", fontFamily: F, fontSize: 13, fontWeight: 650, cursor: "default", flexShrink: 0 }}>
           <I n={currentChartType.icon} s={18} cl="currentColor"/>
           <span data-tb-label="chartType">{currentChartType.label}</span>
@@ -38625,7 +39519,7 @@ const TalariaV8bLive = () => {
           </div>
         </button>
         <div style={{ width: 1, height: 16, margin: "0 2px", background: "var(--line)", flexShrink: 0 }}/>
-        <button type="button" data-indicators-btn="1" data-tb-item="indicators" data-tb-trigger="1" data-open={indOpen?"1":undefined}
+        <button type="button" data-indicators-btn="1" data-tb-item="indicators" data-tb-trigger="1" data-open={indOpen?"1":undefined} aria-expanded={!!indOpen} aria-haspopup="dialog"
           onClick={(e) => {
             e.stopPropagation();
             if (indOpen) {
@@ -38635,12 +39529,7 @@ const TalariaV8bLive = () => {
               setIndTplOpen(false);
             } else {
               if (indSettOpenRef.current) closeIndSett();
-              // closeAll dismisses Symbols/TF/chart-type; closeWindows covers settings/profile/etc.
-              closeAll();
-              closeWindows();
-              setSettingsOpen(false);
-              setIndSelectedId(null);
-              setIndOpen(true);
+              openChromeSurface("indicators");
             }
           }}
           onMouseEnter={() => setHov("indicators")} onMouseLeave={() => setHov(null)}
@@ -38651,25 +39540,14 @@ const TalariaV8bLive = () => {
         <div style={{ width: 1, height: 16, margin: "0 4px", background: "var(--line)", flexShrink: 0 }}/>
         <div data-tb-item="tf" style={{ display: "flex", gap: 4, alignItems: "center", flexShrink: 0 }}>
           <div style={{ position: "relative" }}>
-            <button type="button" data-tb-trigger="1" data-tb-item="tfMenu" data-open={tfOpen?"1":undefined} aria-label={`Interval menu · current ${formatTfLabel(tf)}`} aria-expanded={tfOpen}
+            <button type="button" data-tb-trigger="1" data-tb-item="tfMenu" data-open={tfOpen?"1":undefined} aria-label={`Interval menu · current ${formatTfLabel(tf)}`} aria-expanded={tfOpen} aria-haspopup="listbox"
               onClick={(e) => {
                 e.stopPropagation();
                 const was=tfOpen;
-                setDropdown(null);
-                setSymbolSearch("");
-                setTfUnitOpen(false);
-                setSDrop(null);
-                setSettDrop(null);
-                if(logoMenu)closePopup(setLogoMenu,"logoMenu");
-                if(replayOpts)closePopup(setReplayOpts,"replayOpts");
-                if(gotoOpen)closePopup(setGotoOpen,"goto");
-                if(symbolOpen)closePopup(setSymbolOpen,"symbol");
-                if(chartTypeOpen)closePopup(setChartTypeOpen,"chartType");
                 if(was){
                   closePopup(setTfOpen,"tf");
                 } else {
                   const r=e.currentTarget.getBoundingClientRect();
-                  setTfDropL(Math.max(8, r.left/Z));
                   const k = String(tf || "");
                   const cat = /^\d+m$/.test(k) ? "minutes"
                     : /^\d+H$/.test(k) ? "hours"
@@ -38678,8 +39556,8 @@ const TalariaV8bLive = () => {
                     : /^\d+M$/.test(k) ? "months"
                     : "minutes";
                   setTfCatsOpen((prev) => (prev.includes(cat) ? prev : [...prev, cat]));
-                  setTfOpen(true);
                   setTfEditMode(false);
+                  openChromeSurface("tf", { left: Math.max(8, r.left / Z) });
                   setTfCustomErr("");
                 }
               }}
@@ -38734,8 +39612,8 @@ const TalariaV8bLive = () => {
                 selectTimeframeWithCb01Signature(key);
                 setTfCustomVal("");
               };
-              return (
-              <div data-v9-chrome="1" data-sdrop="1" data-tb-drop="tf" onClick={e=>e.stopPropagation()} style={{position:"fixed",top:42,left:tfDropL,zIndex:9000,width:220,fontFamily:F,animation:closing.has("tf")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
+              return typeof document !== "undefined" ? createPortal(
+              <div data-v9-chrome="1" data-sdrop="1" data-tb-drop="tf" role="listbox" aria-label="Interval" tabIndex={-1} onClick={e=>e.stopPropagation()} onKeyDown={(e)=>v9ChromeListboxKeyDown(e,{onEsc:()=>{try{peelChromeDismissRef.current?.();}catch(_){}}})} style={{position:"fixed",top:42,left:tfDropL,zIndex:V9_CHROME_Z.topbarDrop,width:220,fontFamily:F,background:"var(--surface)",border:"1px solid var(--line)",borderRadius:8,boxShadow:"none",animation:closing.has("tf")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
                 <div className="tlr-scroll" style={{maxHeight:320,overflowY:"auto",padding:"6px 0 4px"}}>
                   {Object.entries(tfCategories).map(([catId,{label,items}])=>{
                     const catOpen = tfCatsOpen.includes(catId);
@@ -38757,7 +39635,7 @@ const TalariaV8bLive = () => {
                         const isCustom=tfCustomItems.includes(t);
                         const isAct=tf===t;
                         return (
-                          <div key={t} data-menu-row="" data-active={isAct?"1":undefined} data-tf-row="1">
+                          <div key={t} data-menu-row="" role="option" tabIndex={-1} aria-selected={isAct} data-active={isAct?"1":undefined} data-tf-row="1">
                             <button type="button" data-tf-pick=""
                               onClick={(e)=>{e.stopPropagation();selectTimeframeWithCb01Signature(t);setTfOpen(false);}}>
                               <strong>{formatTfLabel(t)}</strong>
@@ -38812,7 +39690,7 @@ const TalariaV8bLive = () => {
                   {tfCustomErr ? <div data-tf-err="">{tfCustomErr}</div> : null}
                 </div>
               </div>
-              );
+              , document.body) : null;
             })()}
           </div>
           <div ref={tfBarRef} data-brand-seg="1" role="group" aria-label="Timeframes" style={{ display:"flex", alignItems:"center", position:"relative", flexShrink: 0 }}>
@@ -38935,10 +39813,10 @@ const TalariaV8bLive = () => {
         {[{id:"layout",icon:"layout",label:"Layouts"},{id:"layers",icon:"layers",label:"Objects"},{id:"news",icon:"news",label:"News"},{id:"screenshot",icon:"screenshot",label:"Screenshot"},{id:"expand",icon:"expand",label:"Fullscreen"}].map(({id,icon,label}) => (
           <button type="button" key={id} data-v9-utility={id} data-tb-util={id} aria-label={label}
             onClick={(e) => {
-              if(id==="layout"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); setSupportChatOpen(false); if(rightPanel==="layout"){setRightPanel(null);}else{setRightPanel("layout");setOrderPanelOpen(false);} return; }
-              if(id==="news"){ e.stopPropagation(); setSettingsOpen(false); setSupportChatOpen(false); if(rightPanel==="news"){setRightPanel(null);}else{setRightPanel("news");setOrderPanelOpen(false);} }
-              if(id==="screenshot"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); setSupportChatOpen(false); if(chartCanvasRef.current){const r=chartCanvasRef.current.getBoundingClientRect();setCanvasDims({w:Math.round(r.width),h:Math.round(r.height)});} setScreenshotFlash(true); setTimeout(()=>setScreenshotOpen(true),260); }
-              if(id==="layers"){ e.stopPropagation(); setSettingsOpen(false); setSupportChatOpen(false); if(rightPanel==="layers"){setRightPanel(null);}else{setRightPanel("layers");setOrderPanelOpen(false);} }
+              if(id==="layout"){ e.stopPropagation(); openChromeSurface("layout"); return; }
+              if(id==="news"){ e.stopPropagation(); openChromeSurface("news"); return; }
+              if(id==="screenshot"){ e.stopPropagation(); let dims=null; if(chartCanvasRef.current){const r=chartCanvasRef.current.getBoundingClientRect();dims={w:Math.round(r.width),h:Math.round(r.height)};} openChromeSurface("screenshot",{canvasDims:dims}); return; }
+              if(id==="layers"){ e.stopPropagation(); openChromeSurface("layers"); return; }
               if(id==="expand"){ e.stopPropagation(); setSupportChatOpen(false); if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{});}else{document.exitFullscreen().catch(()=>{});} }
             }}
             onMouseEnter={e=>{setHov(`u-${id}`);showTip(label,e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
@@ -38961,7 +39839,7 @@ const TalariaV8bLive = () => {
             const useLeftSide = !!(navAnchor && anchorEl === navAnchor);
             const POP_W = 380, POP_H = 540;
             const maxPopH = Math.min(POP_H, window.innerHeight * 0.78);
-            const fieldStyle = { width:"100%", boxSizing:"border-box", padding:"8px 11px", fontSize:12, background:"rgba(0,0,0,0.28)", color:c.tx, border:`1px solid ${c.br}`, borderRadius:7, outline:"none", fontFamily:F, transition:"border-color 0.12s, box-shadow 0.12s" };
+            const fieldStyle = { width:"100%", boxSizing:"border-box", padding:"8px 11px", fontSize:12, background:"rgba(0,0,0,0.28)", color: "var(--text)", border:`1px solid ${c.br}`, borderRadius:7, outline:"none", fontFamily:F, transition:"border-color 0.12s, box-shadow 0.12s" };
             const attachField = (which, file, url, fileRef, onClear) => {
               const hovKey = `sup-attach-${which}`;
               const camKey = `sup-cam-${which}`;
@@ -38999,11 +39877,11 @@ const TalariaV8bLive = () => {
                           </div>
                         )}
                         <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:11, fontWeight:650, color:c.tx, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{file.name}</div>
+                          <div style={{ fontSize:11, fontWeight:650, color: "var(--text)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{file.name}</div>
                           <div style={{ fontSize:9, color:c.tm, marginTop:1 }}>{Math.max(1, Math.round(file.size / 1024))} KB · JPEG/PNG/GIF/WebP</div>
                         </div>
                         <button type="button" title="Remove" aria-label="Remove attachment" onClick={(e) => { e.stopPropagation(); onClear(); }}
-                          style={{ border:"none", background:"transparent", color:c.ts, fontSize:14, cursor:"default", padding:"2px 6px", lineHeight:1 }}>✕</button>
+                          style={{ border:"none", background:"transparent", color: "var(--text-muted)", fontSize:14, cursor:"default", padding:"2px 6px", lineHeight:1 }}>✕</button>
                       </>
                     ) : (
                       <>
@@ -39015,7 +39893,7 @@ const TalariaV8bLive = () => {
                           <I n="image" s={15} cl={c.acL}/>
                         </button>
                         <div style={{ flex:1, minWidth:0, fontSize:11, color:c.tm, lineHeight:1.35, pointerEvents:"none" }}>
-                          <span style={{ color:c.ts, fontWeight:600 }}>Add image</span>
+                          <span style={{ color: "var(--text-muted)", fontWeight:600 }}>Add image</span>
                           <span style={{ color:c.tm }}> · Ctrl+V to paste</span>
                         </div>
                         <button type="button" title="Capture chart screenshot" aria-label="Capture chart screenshot"
@@ -39024,7 +39902,7 @@ const TalariaV8bLive = () => {
                           onMouseEnter={() => setHov(camKey)} onMouseLeave={() => setHov(hovKey)}
                           style={{ width:28, height:28, borderRadius:6, border:"none", cursor: supportCapturing ? "default" : "pointer", flexShrink:0,
                             display:"flex", alignItems:"center", justifyContent:"center", opacity: supportCapturing ? 0.5 : 1,
-                            background: hov === camKey ? "rgba(48,144,255,0.16)" : "transparent", color:c.ts }}>
+                            background: hov === camKey ? "rgba(48,144,255,0.16)" : "transparent", color: "var(--text-muted)" }}>
                           <I n="screenshot" s={14} cl={hov === camKey ? c.acL : c.ts}/>
                         </button>
                       </>
@@ -39076,7 +39954,7 @@ const TalariaV8bLive = () => {
             };
             return (
               <div ref={supportPopRef} data-v9-chrome="1" data-v9-support="1" onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
-                style={{ position:"fixed", top, ...(left != null ? { left } : { right }), width:POP_W, height:POP_H, maxHeight:"min(78vh,580px)", background:"var(--surface)", border:"1px solid var(--line)", borderRadius:8, boxShadow:"none", zIndex:9999, display:"flex", flexDirection:"column", fontFamily:F, overflow:"hidden", animation:"tlrPopIn 0.18s ease" }}>
+                style={{ position:"fixed", top, ...(left != null ? { left } : { right }), width:POP_W, height:POP_H, maxHeight:"min(78vh,580px)", background:"var(--surface)", border:"1px solid var(--line)", borderRadius:8, boxShadow:"none", zIndex:V9_CHROME_Z.support, display:"flex", flexDirection:"column", fontFamily:F, overflow:"hidden", animation:"tlrPopIn 0.18s ease" }}>
                 {/* ── Header ── */}
                 <div style={{ padding:"12px 14px", borderBottom:`1px solid var(--line)`, display:"flex", alignItems:"center", gap:10, flexShrink:0, background:"var(--surface)" }}>
                   {supportSelThread && !supportNewThread ? (
@@ -39105,7 +39983,7 @@ const TalariaV8bLive = () => {
                 {supportError && <div style={{ padding:"6px 14px", background:"rgba(229,57,53,0.12)", color:"#e53935", fontSize:11, fontWeight:600, borderBottom:`1px solid ${c.br}` }}>{supportError}</div>}
                 {/* ── Body ── */}
                 {supportLoading ? (
-                  <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", color:c.ts, fontSize:13 }}>Loading…</div>
+                  <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", color: "var(--text-muted)", fontSize:13 }}>Loading…</div>
                 ) : supportNewThread ? (
                   /* ── New Thread Form ── */
                   <div style={{ flex:1, overflowY:"auto", padding:"14px 14px 12px", display:"flex", flexDirection:"column", gap:12 }}
@@ -39113,7 +39991,7 @@ const TalariaV8bLive = () => {
                     <div>
                       <label style={{ fontSize:11, fontWeight:700, color:c.tm, display:"block", marginBottom:5, letterSpacing:"0.02em" }}>Subject</label>
                       <input type="text" value={supportNewSubject} onChange={e=>setSupportNewSubject(e.target.value)} placeholder="Brief description…" maxLength={200}
-                        style={fieldStyle} onFocus={e=>{e.target.style.borderColor=c.acL; e.target.style.boxShadow="0 0 0 3px rgba(48,144,255,0.12)";}} onBlur={e=>{e.target.style.borderColor=c.br; e.target.style.boxShadow="none";}}/>
+                        style={fieldStyle} onFocus={e=>{e.target.style.borderColor=c.acL; e.target.style.boxShadow="0 0 0 3px rgba(48,144,255,0.12)";}} onBlur={e=>{e.target.style.borderColor="var(--line)"; e.target.style.boxShadow="none";}}/>
                     </div>
                     <div>
                       <label style={{ fontSize:11, fontWeight:700, color:c.tm, display:"block", marginBottom:5, letterSpacing:"0.02em" }}>Category</label>
@@ -39133,7 +40011,7 @@ const TalariaV8bLive = () => {
                     <div>
                       <label style={{ fontSize:11, fontWeight:700, color:c.tm, display:"block", marginBottom:5, letterSpacing:"0.02em" }}>Message</label>
                       <textarea ref={supportNewBodyRef} value={supportNewBody} onChange={e=>setSupportNewBody(e.target.value)} placeholder="Describe your issue… (Ctrl/Cmd+V to paste an image)" rows={5}
-                        style={{ ...fieldStyle, resize:"vertical", minHeight:96, lineHeight:1.45 }} onFocus={e=>{e.target.style.borderColor=c.acL; e.target.style.boxShadow="0 0 0 3px rgba(48,144,255,0.12)";}} onBlur={e=>{e.target.style.borderColor=c.br; e.target.style.boxShadow="none";}}/>
+                        style={{ ...fieldStyle, resize:"vertical", minHeight:96, lineHeight:1.45 }} onFocus={e=>{e.target.style.borderColor=c.acL; e.target.style.boxShadow="0 0 0 3px rgba(48,144,255,0.12)";}} onBlur={e=>{e.target.style.borderColor="var(--line)"; e.target.style.boxShadow="none";}}/>
                     </div>
                     <div>
                       <div style={{ fontSize:11, fontWeight:700, color:c.tm, marginBottom:6 }}>Attachment</div>
@@ -39152,7 +40030,7 @@ const TalariaV8bLive = () => {
                   /* ── Chat View ── */
                   <>
                     <div style={{ flex:1, overflowY:"auto", padding:"10px 14px", display:"flex", flexDirection:"column", gap:6 }}>
-                      {supportMessages.length === 0 && <div style={{ color:c.ts, fontSize:12, textAlign:"center", padding:20 }}>No messages yet.</div>}
+                      {supportMessages.length === 0 && <div style={{ color: "var(--text-muted)", fontSize:12, textAlign:"center", padding:20 }}>No messages yet.</div>}
                       {supportMessages.map(msg => {
                         const isOwn = msg.sender_user_id === supportSelThread.user_id;
                         return (
@@ -39161,7 +40039,7 @@ const TalariaV8bLive = () => {
                               {msg.attachment && msg.attachment.url && (msg.attachment.mime_type||"").startsWith("image/") && (
                                 <img src={msg.attachment.url} alt="" style={{ maxWidth:"100%", maxHeight:160, borderRadius:4, marginBottom:msg.body?6:0, display:"block" }}/>
                               )}
-                              {msg.body && <div style={{ fontSize:12, color:c.tx, wordBreak:"break-word", whiteSpace:"pre-wrap", lineHeight:1.45 }}>{msg.body}</div>}
+                              {msg.body && <div style={{ fontSize:12, color: "var(--text)", wordBreak:"break-word", whiteSpace:"pre-wrap", lineHeight:1.45 }}>{msg.body}</div>}
                             </div>
                             <div style={{ display:"flex", alignItems:"center", gap:4, marginTop:2 }}>
                               <span style={{ fontSize:9, color:c.tm }}>{fmtTime(msg.created_at)}</span>
@@ -39182,8 +40060,8 @@ const TalariaV8bLive = () => {
                         <div style={{ display:"flex", alignItems:"flex-end", gap:6 }}>
                           <textarea ref={supportReplyBodyRef} value={supportReply} onChange={e=>setSupportReply(e.target.value)} placeholder="Type a message… (paste image with Ctrl/Cmd+V)" rows={2}
                             onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();supportSendReply();}}}
-                            style={{ flex:1, boxSizing:"border-box", padding:"8px 11px", fontSize:12, background:"rgba(0,0,0,0.28)", color:c.tx, border:`1px solid ${c.br}`, borderRadius:8, outline:"none", fontFamily:F, resize:"none", maxHeight:90, lineHeight:1.4 }}
-                            onFocus={e=>{e.target.style.borderColor=c.acL; e.target.style.boxShadow="0 0 0 3px rgba(48,144,255,0.12)";}} onBlur={e=>{e.target.style.borderColor=c.br; e.target.style.boxShadow="none";}}/>
+                            style={{ flex:1, boxSizing:"border-box", padding:"8px 11px", fontSize:12, background:"rgba(0,0,0,0.28)", color: "var(--text)", border:`1px solid ${c.br}`, borderRadius:8, outline:"none", fontFamily:F, resize:"none", maxHeight:90, lineHeight:1.4 }}
+                            onFocus={e=>{e.target.style.borderColor=c.acL; e.target.style.boxShadow="0 0 0 3px rgba(48,144,255,0.12)";}} onBlur={e=>{e.target.style.borderColor="var(--line)"; e.target.style.boxShadow="none";}}/>
                           <div onClick={()=>{ if(!supportSending) supportSendReply(); }} style={{ cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", width:34, height:34, borderRadius:8, background:"#FFFFFF", opacity:supportSending?0.5:1, flexShrink:0 }} onMouseEnter={()=>setHov("sup-send")} onMouseLeave={()=>setHov(null)}>
                             <I n="send" s={14} cl="var(--cta-fg)"/>
                           </div>
@@ -39203,9 +40081,9 @@ const TalariaV8bLive = () => {
                     )}
                     <div ref={supportListScrollRef} style={{ flex:1, overflowY:"auto" }}>
                     {supportThreads.length === 0 ? (
-                      <div style={{ padding:30, textAlign:"center", color:c.ts, fontSize:12 }}>No support threads yet.<br/>Click <b>+ New</b> to start one.</div>
+                      <div style={{ padding:30, textAlign:"center", color: "var(--text-muted)", fontSize:12 }}>No support threads yet.<br/>Click <b>+ New</b> to start one.</div>
                     ) : filteredSupportThreads.length === 0 ? (
-                      <div style={{ padding:30, textAlign:"center", color:c.ts, fontSize:12 }}>No {supportStatusFilter === "open" ? "open" : "closed"} tickets.</div>
+                      <div style={{ padding:30, textAlign:"center", color: "var(--text-muted)", fontSize:12 }}>No {supportStatusFilter === "open" ? "open" : "closed"} tickets.</div>
                     ) : filteredSupportThreads.map(t => (
                       <div key={t.id} onClick={() => supportSelectThread(t)}
                         onMouseEnter={()=>setHov(`sup-t-${t.id}`)} onMouseLeave={()=>setHov(null)}
@@ -39262,8 +40140,8 @@ const TalariaV8bLive = () => {
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", letterSpacing: "0.04em", textTransform: "uppercase" }}>New support reply</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: c.tx, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{supportToast.subject}</div>
-                <div style={{ fontSize: 12, color: c.ts, marginTop: 3, lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{supportToast.preview}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{supportToast.subject}</div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3, lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{supportToast.preview}</div>
               </div>
               <button type="button" onClick={(e) => { e.stopPropagation(); setSupportToast(null); }}
                 style={{ border: "none", background: "transparent", color: c.tm, fontSize: 14, cursor:"default", padding: 2, lineHeight: 1 }}>✕</button>
@@ -39281,27 +40159,8 @@ const TalariaV8bLive = () => {
             </div>
           ))}
           <div style={{ flex: 1, minHeight: 8 }} aria-hidden="true"/>
-          {/* Chrome presets 1–4 + light/dark — pinned rail foot */}
+          {/* Light/dark — pinned rail foot (chrome layout preset chip removed) */}
           <div data-v9-rail-foot="1" style={{ flexShrink: 0, width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, padding: "8px 0 10px", borderTop: "1px solid var(--line)", background: "var(--surface)", position: "sticky", bottom: 0, zIndex: 2 }}>
-            <span data-chrome-preset-chip="" aria-hidden="true">{chromePreset.short}/4</span>
-            <button
-              type="button"
-              data-brand-icon="1"
-              aria-label={`Chrome layout preset ${chromePresetId}: ${chromePreset.label}. Click for next.`}
-              onClick={(e) => {
-                e.stopPropagation();
-                setChromePresetId((id) => (id >= 4 ? 1 : id + 1));
-              }}
-              onMouseEnter={(e) => { setHov("chrome-preset"); showTip(chromePreset.label, e.currentTarget, "right"); }}
-              onMouseLeave={() => { setHov(null); hideTip(); }}
-              style={{ width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", border: "none", borderRadius: 6, cursor: "default", background: hov === "chrome-preset" ? "var(--surface-raised)" : "transparent", color: "var(--text-muted)" }}
-            >
-              <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <rect x="3" y="3" width="7" height="18" rx="1.5"/>
-                <rect x="14" y="3" width="7" height="10" rx="1.5"/>
-                <path d="M14 17h7M17.5 14v6"/>
-              </svg>
-            </button>
             <button
               type="button"
               data-brand-icon="1"
@@ -39370,7 +40229,7 @@ const TalariaV8bLive = () => {
                     pointerEvents: "auto",
                   }}
                 >
-                  <span style={{ fontSize: 10, fontWeight: 700, color: c.ts, letterSpacing: 0.4, textTransform: "uppercase" }}>dev layout</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", letterSpacing: 0.4, textTransform: "uppercase" }}>dev layout</span>
                   {[
                     ["1", "1"],
                     ["2v", "2"],
@@ -39694,7 +40553,7 @@ const TalariaV8bLive = () => {
             {settings.showRpSpeed!==false && (()=>{const steps=replaySpeedSteps;const last=Math.max(1,steps.length-1);const rIdx=steps.indexOf("REALISTIC");const si=speed==="REALISTIC"?(rIdx<0?last:rIdx):steps.reduce((best,v,i)=>(typeof v==="number"&&Math.abs(v-speed)<Math.abs((typeof steps[best]==="number"?steps[best]:0)-speed))?i:best,0);const pct=last>0?si/last*100:0;const applySpeedIdx=(raw)=>{const i=Math.max(0,Math.min(last,Number(raw)));const v=steps[i];if(v!==undefined)setSpeed(v);};const speedLabel=steps[si]==="REALISTIC"?"1:1":`${steps[si]}×`;return(
             <>
             <i data-rp-sep="" aria-hidden="true"/>
-            <div data-rp-speed="" data-no-tip="1" title={`Replay speed · ${speedLabel}`} style={{ "--rp-speed-pct": pct }}>
+            <div data-rp-speed="" data-brand-seg="1" data-no-tip="1" title={`Replay speed · ${speedLabel}`} style={{ "--rp-speed-pct": pct }}>
               <span data-rp-speed-val="">{speedLabel}</span>
               <div data-rp-speed-track="" style={{ cursor: "grab" }}>
                 <div data-rp-speed-rail="" aria-hidden="true">
@@ -40347,8 +41206,10 @@ const TalariaV8bLive = () => {
                 <div data-trades-tabs="">
                   {ordTabs.map(([id,label,cnt])=>{
                     const isAct=btmTab===id;
+                    const isZero=cnt===0;
                     return(
                       <button type="button" key={id} role="tab" aria-selected={isAct} data-btmtab={id} data-active={isAct?"1":undefined}
+                        data-zero={isZero?"1":undefined}
                         onClick={()=>{setBtmTab(id);if(!btmOpen)setBtmOpen(true);}}>
                         <span>{label}</span>
                         {cnt!==null ? <em>{cnt}</em> : null}
@@ -40411,12 +41272,12 @@ const TalariaV8bLive = () => {
                 const jMaxAbsCum = Math.max(1, ...jCum.map((x) => Math.abs(x.cum)));
                 const jPreTags = (ja?.preTags || tagBucketsFromNormalizedList(ja?.list || [], "pre")).slice(0, 12);
                 const jPostTags = (ja?.postTags || tagBucketsFromNormalizedList(ja?.list || [], "post")).slice(0, 12);
-                // Shared tracks for header + every row. minmax mins keep alignment;
-                // fr weights soak leftover panel width (NOTES / SYMBOL / TIME get most).
+                // Shared tracks for header + every row. ID+SYMBOL first for sticky scroll;
+                // TAGS get room; NOTES/SHOTS merge into Journal.
                 const cols=[
                   "minmax(48px,0.55fr)",  // ID
-                  "minmax(88px,1.15fr)",  // TIME
                   "minmax(72px,1.25fr)",  // SYMBOL
+                  "minmax(88px,1.15fr)",  // TIME
                   "minmax(44px,0.5fr)",   // SIDE
                   "minmax(54px,0.6fr)",   // STATUS
                   "minmax(40px,0.5fr)",   // SIZE
@@ -40425,9 +41286,8 @@ const TalariaV8bLive = () => {
                   "minmax(62px,0.75fr)",  // EXIT
                   "minmax(62px,0.85fr)",  // P&L
                   "minmax(46px,0.55fr)",  // DUR
-                  "minmax(96px,1.2fr)",   // TAGS
-                  "minmax(72px,1.55fr)",  // NOTES
-                  "minmax(64px,0.85fr)",  // SHOTS
+                  "minmax(118px,1.45fr)", // TAGS
+                  "minmax(56px,0.7fr)",   // JOURNAL
                   "minmax(58px,0.7fr)",   // ACTION
                 ].join(" ");
                 if(btmTab==="analytics") {
@@ -40610,21 +41470,20 @@ const TalariaV8bLive = () => {
                   </div>);
                 }
                 const hdrs=[
-                  {label:"ID",    key:"id",     sortable:true,  col:"id"},
-                  {label:"TIME",  key:"time",   sortable:true,  col:"time"},
-                  {label:"SYMBOL",key:"sym",    sortable:true,  col:"sym"},
-                  {label:"SIDE",  key:"side",   sortable:true,  col:"side"},
-                  {label:"STATUS",key:"status", sortable:true,  col:"status"},
-                  {label:"SIZE",  key:"sz",     sortable:true,  col:"num"},
-                  {label:"TYPE",  key:"type",   sortable:true,  col:"type"},
-                  {label:"ENTRY", key:null,     sortable:false, col:"num"},
-                  {label:"EXIT",  key:null,     sortable:false, col:"num"},
-                  {label:"P&L",   key:"pnl",    sortable:true,  col:"pnl"},
-                  {label:"DUR",   key:"dur",    sortable:true,  col:"dur"},
-                  {label:"TAGS",  key:null,     sortable:false, col:"tags"},
-                  {label:"NOTES", key:null,     sortable:false, col:"notes"},
-                  {label:"SHOTS", key:null,     sortable:false, col:"shots"},
-                  {label:"ACTION",key:null,     sortable:false, col:"action"},
+                  {label:"ID",      key:"id",     sortable:true,  col:"id"},
+                  {label:"SYMBOL",  key:"sym",    sortable:true,  col:"sym"},
+                  {label:"TIME",    key:"time",   sortable:true,  col:"time"},
+                  {label:"SIDE",    key:"side",   sortable:true,  col:"side"},
+                  {label:"STATUS",  key:"status", sortable:true,  col:"status"},
+                  {label:"SIZE",    key:"sz",     sortable:true,  col:"num"},
+                  {label:"TYPE",    key:"type",   sortable:true,  col:"type"},
+                  {label:"ENTRY",   key:null,     sortable:false, col:"num"},
+                  {label:"EXIT",    key:null,     sortable:false, col:"num"},
+                  {label:"P&L",     key:"pnl",    sortable:true,  col:"pnl"},
+                  {label:"DUR",     key:"dur",    sortable:true,  col:"dur"},
+                  {label:"TAGS",    key:null,     sortable:false, col:"tags"},
+                  {label:"JOURNAL", key:null,     sortable:false, col:"journal"},
+                  {label:"ACTION",  key:null,     sortable:false, col:"action"},
                 ];
                 const getSortVal=(r,key)=>{
                   // Prefer numeric timestamps / ids — never parse the display TIME string
@@ -40669,23 +41528,34 @@ const TalariaV8bLive = () => {
                   }
                   return dir==="asc"?cmp:-cmp;
                 });
+                btmDisplayRowsRef.current = displayRows;
+                const openTradeCardForRow = (r) => {
+                  if (!r) return;
+                  const om=typeof window!=="undefined"?window.chart?.orderManager:null;
+                  const tid=r.omId;
+                  let j=null;
+                  let order=null;
+                  if(om&&tid!=null){
+                    j=Array.isArray(om.tradeJournal)?om.tradeJournal.find(t=>Number(t.tradeId??t.id)===Number(tid)):null;
+                    order=om.pendingOrders?.find(o=>o.id===tid)||om.openPositions?.find(o=>o.id===tid)||om.closedPositions?.find(o=>o.id===tid);
+                  }
+                  setTradeCard(r);
+                  setTradeCardPreTags([...r.preTags]);
+                  setTradeCardPostTags([...r.postTags]);
+                  setTradeCardNotes(resolveTradeNotesForRow(r.id, tid, tradeNotes, om));
+                  setTradeScreenshots((prev)=>mergeTradeScreenshotState(prev,r.id,order,j));
+                };
+                openTradeCardByRowIdRef.current = (id) => {
+                  const row = (btmDisplayRowsRef.current || []).find((x) => x && x.id === id);
+                  if (row) openTradeCardForRow(row);
+                };
+                const tabFootLabel =
+                  btmTab === "pending" ? "pending" :
+                  btmTab === "open" ? "open" :
+                  btmTab === "history" ? "history" : "trades";
                 const renderTradeRow = (r, i) => {
                     const isSelected=selRow===r.id;
-                    const openCard=()=>{
-                      const om=typeof window!=="undefined"?window.chart?.orderManager:null;
-                      const tid=r.omId;
-                      let j=null;
-                      let order=null;
-                      if(om&&tid!=null){
-                        j=Array.isArray(om.tradeJournal)?om.tradeJournal.find(t=>Number(t.tradeId??t.id)===Number(tid)):null;
-                        order=om.pendingOrders?.find(o=>o.id===tid)||om.openPositions?.find(o=>o.id===tid)||om.closedPositions?.find(o=>o.id===tid);
-                      }
-                      setTradeCard(r);
-                      setTradeCardPreTags([...r.preTags]);
-                      setTradeCardPostTags([...r.postTags]);
-                      setTradeCardNotes(resolveTradeNotesForRow(r.id, tid, tradeNotes, om));
-                      setTradeScreenshots((prev)=>mergeTradeScreenshotState(prev,r.id,order,j));
-                    };
+                    const openCard=()=>openTradeCardForRow(r);
                     const isActive=r.status==="open"||r.status==="pending";
                     return(
                     <div key={r.id}
@@ -40708,8 +41578,8 @@ const TalariaV8bLive = () => {
                           {r.id}
                         </button>
                       </div>
-                      <span data-cell="time" data-col="time" title={r.time}>{r.time}</span>
                       <span data-cell="sym" data-col="sym">{r.sym}</span>
+                      <span data-cell="time" data-col="time" title={r.time}>{r.time}</span>
                       <span data-trade-side={r.side} data-col="side">{r.side==="LONG"?"Long":"Short"}</span>
                       <span data-trade-status={r.status} data-col="status">{r.status}</span>
                       <span data-cell="num" data-col="num">{r.sz}</span>
@@ -40860,35 +41730,25 @@ const TalariaV8bLive = () => {
                           });
                         })()}
                       </div>
-                      <div data-cell="notes" data-col="notes" onClick={e=>e.stopPropagation()}>
+                      <div data-cell="journal" data-col="journal" onClick={e=>e.stopPropagation()}>
                         {(()=>{
                           const omRow=typeof window!=="undefined"?window.chart?.orderManager:null;
                           const noteText=resolveTradeNotesForRow(r.id,r.omId,tradeNotes,omRow);
-                          return noteText?(
-                          <span title={noteText}>{noteText}</span>
-                        ):(
-                          <em>—</em>
-                        );})()}
-                      </div>
-                      <div data-cell="shots" data-col="shots" onClick={e=>e.stopPropagation()}>
-                        {(()=>{
-                          const omRow=typeof window!=="undefined"?window.chart?.orderManager:null;
                           const tid=r.omId;
                           const jRow=tid!=null&&Array.isArray(omRow?.tradeJournal)?omRow.tradeJournal.find(t=>Number(t.tradeId??t.id)===Number(tid)):null;
                           const orderRow=tid!=null?(omRow?.pendingOrders?.find(o=>o.id===tid)||omRow?.openPositions?.find(o=>o.id===tid)||omRow?.closedPositions?.find(o=>o.id===tid)):null;
                           const fromSt=tradeScreenshots[r.id]||{};
                           const {pre,post}=resolvedTradeScreenshotSlots(fromSt,orderRow,jRow);
-                          const allSs=[...pre,...post];
-                          return allSs.length>0?(
-                          <div data-trades-thumbs="">
-                            {allSs.slice(0,3).map((src,si)=>(
-                              <img key={si} src={src} alt="" onError={journalScreenshotImgOnError}/>
-                            ))}
-                            {allSs.length>3&&<span>+{allSs.length-3}</span>}
-                          </div>
-                        ) : (
-                          <em>—</em>
-                        );})()}
+                          const shotN=[...pre,...post].length;
+                          const has=!!(noteText||shotN);
+                          return(
+                            <span data-trades-journal="" data-has={has?"1":undefined} title={noteText||undefined}>
+                              {noteText ? <I n="note" s={12} cl="currentColor"/> : null}
+                              {shotN>0 ? <span data-shot-n="" aria-label={`${shotN} screenshots`}><I n="image" s={11} cl="currentColor"/><em>{shotN}</em></span> : null}
+                              {!has ? <em>—</em> : null}
+                            </span>
+                          );
+                        })()}
                       </div>
                       <div data-cell="action" data-col="action">
                         {r.status==="pending"?(
@@ -40910,8 +41770,10 @@ const TalariaV8bLive = () => {
                 };
 
                 // Tabs already filter by status — All is one flat newest→oldest list (no nested groups).
+                // Few rows: calm footer fills the dead slab instead of a black void.
+                const showFoot = displayRows.length > 0 && displayRows.length < 10;
                 return(
-                <div data-trades-table="" className="tlr-scroll" style={{flex:1,overflowY:btmOpen?"auto":"hidden",minHeight:0}}>
+                <div data-trades-table="" className="tlr-scroll" tabIndex={0} style={{flex:1,overflowY:btmOpen?"auto":"hidden",minHeight:0,outline:"none"}}>
                   <div data-trades-hdr="" style={{gridTemplateColumns:cols}}>
                     {hdrs.map(({label,key,sortable,col})=>{
                       const isAct=tblSort?tblSort.col===key:key==="time";
@@ -40932,6 +41794,12 @@ const TalariaV8bLive = () => {
                       <em>{btmTab==="pending"?"No pending orders.":btmTab==="open"?"No open positions.":btmTab==="history"?"No closed trades yet.":"Place an order to populate this list."}</em>
                     </div>
                   ) : displayRows.map((r,i)=>renderTradeRow(r,i))}
+                  {showFoot ? (
+                    <div data-trades-foot="" aria-hidden="true">
+                      <strong>{displayRows.length}</strong>
+                      <span>{tabFootLabel}</span>
+                    </div>
+                  ) : null}
                 </div>);
               })()}
             </div>
@@ -40996,7 +41864,7 @@ const TalariaV8bLive = () => {
             {rightPanel==="news" && (()=>{
               void ecoNewsRev;
               const cntNames = {US:"United States",EU:"Euro Zone",GB:"United Kingdom",JP:"Japan",AU:"Australia",CA:"Canada",DE:"Germany",FR:"France",IT:"Italy",CN:"China",CH:"Switzerland"};
-              const impCol = {high:c.rd, med:"#FF8C00", low:"#FFD700"};
+              const impCol = { high: "var(--down)", med: "var(--impact-med)", low: "var(--impact-low)" };
               const api = typeof window !== "undefined" ? window.__economicCalendarUi : null;
               const st = api ? api.getStatus() : null;
               const rawList = api && st && !st.loading && !st.error ? api.getFilteredEvents() : [];
@@ -41399,7 +42267,7 @@ const TalariaV8bLive = () => {
                   });
                 if (visItems.length === 0) {
                   return (
-                    <div data-objects-empty="">
+                    <div data-objects-empty="" data-chrome-empty="1">
                       <strong>{q ? "No matching objects" : "No objects on chart"}</strong>
                       <em>{q ? "Try another search." : "Add an indicator or draw on the chart."}</em>
                     </div>
@@ -41492,7 +42360,7 @@ const TalariaV8bLive = () => {
                         })}
                         onMouseEnter={()=>setSwHov(`lyrJ-${item.id}`)}
                         onMouseLeave={()=>setSwHov(`lyr-${item.id}`)}>
-                        <I n="locate" s={14} cl={isJumpH?"var(--accent)":"var(--text-muted)"}/>
+                        <I n="locate" s={15} cl={isJumpH?"var(--accent)":"var(--text-muted)"}/>
                       </button>
                       )}
                       <button type="button" data-layeraction="1" aria-label="Settings"
@@ -41500,7 +42368,7 @@ const TalariaV8bLive = () => {
                         {...modalPointerActivate(() => openLayerSettings(true))}
                         onMouseEnter={()=>setSwHov(`lyrS-${item.id}`)}
                         onMouseLeave={()=>setSwHov(`lyr-${item.id}`)}>
-                        <I n="settings" s={14} cl={isSetH?"var(--accent)":"var(--text-muted)"}/>
+                        <I n="settings" s={15} cl={isSetH?"var(--accent)":"var(--text-muted)"}/>
                       </button>
                       <button type="button" data-layeraction="1" data-warn={!isGloballyVisible?"1":undefined}
                         aria-label={isGloballyVisible ? "Hide" : "Show"}
@@ -41534,14 +42402,8 @@ const TalariaV8bLive = () => {
                         })}
                         onMouseEnter={()=>setSwHov(`lyrV-${item.id}`)}
                         onMouseLeave={()=>setSwHov(`lyr-${item.id}`)}>
-                        <span data-objects-eye="">
-                          <I n="eye" s={14} cl={isVisH?"var(--accent)":isGloballyVisible?"var(--text-muted)":"#F5A020"}/>
-                          {!isGloballyVisible && (
-                            <svg width={16} height={16} viewBox="0 0 16 16" aria-hidden="true">
-                              <line x1={2} y1={2} x2={14} y2={14} stroke={isVisH?"var(--accent)":"#F5A020"} strokeWidth={0.85} strokeLinecap="round"/>
-                            </svg>
-                          )}
-                        </span>
+                        <I n={isGloballyVisible ? "eye" : "eyeHide"} s={15}
+                          cl={isVisH?"var(--accent)":isGloballyVisible?"var(--text-muted)":"#F5A020"}/>
                       </button>
                       <button type="button" data-layeraction="1" aria-label="Delete"
                         {...modalPointerActivate(() => {
@@ -41557,7 +42419,7 @@ const TalariaV8bLive = () => {
                         onMouseLeave={()=>setSwHov(`lyr-${item.id}`)}
                         onMouseDown={(e)=>{e.stopPropagation();setSwHov(`lyrD-${item.id}_dn`);}}
                         onMouseUp={()=>setSwHov(`lyrD-${item.id}`)}>
-                        <I n="trash" s={14} cl={isDelH||isDelDn?"var(--down)":"var(--text-muted)"}/>
+                        <I n="trash" s={15} cl={isDelH||isDelDn?"var(--down)":"var(--text-muted)"}/>
                       </button>
                       </div>
                     </div>
@@ -41678,9 +42540,9 @@ const TalariaV8bLive = () => {
         </div>
           );
         })() : orderPanelOpen ? (
-        <div ref={panelRef} data-v9-order="1" data-order-v2="1" data-side={buySell} data-panel-mode={panelMode} data-order-mode={panelDetached ? "float" : "dock"} key={panelDetached?"order-float":"order-dock"} style={panelDetached
-          ? { position:"fixed", top:detachPos.y, left:detachPos.x, width:detachSize.w, height:detachSize.h, background:"var(--surface)", border:"1px solid var(--line-strong)", borderRadius:8, display:"flex", flexDirection:"column", overflow:"hidden", fontFamily:F, zIndex:10050, animation:"tlrPanelInFade 0.18s ease forwards" }
-          : { width:"100%", background:"var(--surface)", borderLeft:"1px solid var(--line)", display:"flex", flexDirection:"column", height:"100%", animation:"tlrPanelIn 0.18s ease forwards", overflow:"hidden", fontFamily:F }
+        <div ref={panelRef} data-v9-order="1" data-order-v2="1" data-order-v4="1" data-order-rev="7" data-side={buySell} data-panel-mode={panelMode} data-order-mode={panelDetached ? "float" : "dock"} key={panelDetached?"order-float":"order-dock"} style={panelDetached
+          ? { position:"fixed", top:detachPos.y, left:detachPos.x, width:detachSize.w, height:detachSize.h, background:"var(--bg)", border:"1px solid var(--line-strong)", borderRadius:16, display:"flex", flexDirection:"column", overflow:"hidden", fontFamily:F, zIndex:10050, animation:"tlrPanelInFade 0.18s ease forwards" }
+          : { width:"100%", background:"var(--bg)", borderLeft:"1px solid var(--line-strong)", display:"flex", flexDirection:"column", height:"100%", animation:"tlrPanelIn 0.18s ease forwards", overflow:"hidden", fontFamily:F }
         }>
 
           {/* 1 — Header */}
@@ -41741,37 +42603,6 @@ const TalariaV8bLive = () => {
             style={{ cursor:panelDetached?"move":"default", touchAction: panelDetached ? "none" : undefined }}>
             <div data-win-icon=""><I n="longPos" s={16} cl="var(--accent)"/></div>
             <span data-win-title="" style={{ flex: "0 1 auto" }}>Order</span>
-            {sessionAdvancedAllowed ? (
-              <button
-                type="button"
-                data-order-mode-chip=""
-                data-nodrag="1"
-                data-on={panelMode === "advanced" ? "1" : "0"}
-                aria-pressed={panelMode === "advanced"}
-                title={panelMode === "advanced" ? "Switch to basic order" : "Multi-entry, multi-TP, BE, trailing"}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setPanelMode((m) => {
-                    if (m === "advanced") {
-                      setSlAdvMode("none");
-                      setSlAdvDrop(false);
-                      return "basic";
-                    }
-                    queueMicrotask(() => loadAdvancedOrderExample());
-                    return "advanced";
-                  });
-                }}
-              >
-                {panelMode === "advanced" ? "Adv" : "Basic"}
-              </button>
-            ) : null}
-            <div ref={opOrderSizeBtnRef} data-nodrag="1" onClick={e => { e.stopPropagation(); if(opSizeOpen){setOpSizeOpen(false);return;} const r=e.currentTarget.getBoundingClientRect(); setOpSizePos({top:r.bottom+4, left:r.left}); setOpSizeOpen(true); }}
-              onMouseEnter={() => setSwHov("op-size")} onMouseLeave={() => setSwHov(null)}
-              style={{ display:"flex", alignItems:"center", gap:4, padding:"0 8px", height:26, cursor:"default", position:"relative", flexShrink:0, borderRadius:6,
-                       background:"var(--surface-sunken)", border:`1px solid ${opSizeOpen||swHov==="op-size"?"var(--line-strong)":"var(--line)"}`, transition:"border-color var(--motion)" }}>
-              <span style={{ fontSize:11, fontWeight:700, color:"var(--accent)" }}>{sizeMode}</span>
-              <I n="chevDown" s={8} cl="var(--text-muted)"/>
-            </div>
             <div style={{ flex:1 }}/>
             {(()=>{ const isH=swHov==="op-dots"; const isAct=opDotsOpen; return (
               <div ref={opOrderDotsBtnRef} data-nodrag="1" data-brand-icon="1" onClick={e=>{ e.stopPropagation(); const r=e.currentTarget.getBoundingClientRect(); const mw=152; setOpDotsPos({top:r.bottom+4,left:Math.max(4,Math.min(r.right-mw,window.innerWidth-mw-4))}); setOpDotsOpen(v=>!v); setOpTplOpen(false); }}
@@ -41785,7 +42616,7 @@ const TalariaV8bLive = () => {
               <button type="button" ref={opOrderTplBtnRef} data-nodrag="1" data-tpl-trigger="" data-brand-icon="1"
                 data-open={isAct?"1":undefined}
                 aria-label="Templates" aria-expanded={!!opTplOpen} aria-haspopup="menu"
-                onClick={e=>{ e.stopPropagation(); const r=e.currentTarget.getBoundingClientRect(); setOpTplPos({top:r.bottom+4,left:r.right-160}); setOpTplOpen(v=>!v); setOpDotsOpen(false); }}
+                onClick={e=>{ e.stopPropagation(); const r=e.currentTarget.getBoundingClientRect(); setOpTplPos({top:r.bottom+4,left:Math.max(4, Math.min(r.left, window.innerWidth - 160 - 4))}); setOpTplOpen(v=>!v); setOpDotsOpen(false); }}
                 onMouseEnter={()=>setSwHov("op-tpl-hdr")} onMouseLeave={()=>setSwHov(null)}>
                 <I n="template" s={16} cl="currentColor"/>
                 {opSavedTemplates.length > 0 || (Array.isArray(opTemplates) && opTemplates.length > 0) ? <i data-tpl-dot="" aria-hidden="true"/> : null}
@@ -41798,11 +42629,13 @@ const TalariaV8bLive = () => {
             </button>
           </div>
 
-          {/* 2 — Hero: symbol + session metrics */}
-          <div data-order-hero="">
-            <div ref={opOrderSymBtnRef} data-order-sym="" onClick={e => { e.stopPropagation(); if(opSymOpen){setOpSymOpen(false);return;} const r=e.currentTarget.getBoundingClientRect(); setOpSymPos({top:r.bottom/Z+2, left:r.left/Z}); setOpSymSearch(""); setOpSymOpen(true); }}
-              onMouseEnter={()=>setSwHov("op-sym")} onMouseLeave={()=>setSwHov(null)}
-              style={{ borderColor: opSymOpen||swHov==="op-sym" ? "var(--accent)" : undefined }}>
+          <div data-order-stack="" data-order-zones="5">
+          {/* Command strip — symbol · metrics · side · type · size (no nested cards) */}
+          <div data-order-cmd="" data-order-zone="setup">
+
+            <div ref={opOrderSymBtnRef} data-order-sym="" data-open={opSymOpen?"1":undefined}
+              onClick={e => { e.stopPropagation(); if(opSymOpen){setOpSymOpen(false);return;} const r=e.currentTarget.getBoundingClientRect(); setOpSymPos({top:r.bottom/Z+2, left:r.left/Z}); setOpSymSearch(""); setOpSymOpen(true); }}
+              onMouseEnter={()=>setSwHov("op-sym")} onMouseLeave={()=>setSwHov(null)}>
               <span>{symbol}</span>
               <I n="chevDown" s={10} cl="var(--text-muted)"/>
             </div>
@@ -41812,15 +42645,10 @@ const TalariaV8bLive = () => {
               <span style={{ textTransform:"capitalize" }}>{orderType}</span>
             </div>
             <div data-order-metrics="">
-              <span title="Typical spread for this symbol (session instrument)">Spread <b>{omHeaderSpreadTxt}</b></span>
-              <span title="Commission basis from session instrument">Comm <b>{omHeaderCommTxt}</b></span>
-              <span title="Projected margin level % after this order (equity ÷ used margin)">Margin <b>{omMarginLevelTxt}</b></span>
+              <span title="Typical spread for this symbol (session instrument)"><i>Spread</i><b>{omHeaderSpreadTxt}</b></span>
+              <span title="Commission basis from session instrument"><i>Comm</i><b>{omHeaderCommTxt}</b></span>
+              <span title="Projected margin level % after this order (equity ÷ used margin)"><i>Margin</i><b>{omMarginLevelTxt}</b></span>
             </div>
-          </div>
-
-          <div data-order-stack="">
-          {/* 3 — Intent: Side + Type (one block, less scroll) */}
-          <div data-order-block="">
             <div data-order-intent="">
               <div data-order-side="">
                 {["BUY","SELL"].map((s) => { const side=s.toLowerCase(); const a=buySell===side; return (
@@ -41834,7 +42662,7 @@ const TalariaV8bLive = () => {
                       clickHiddenOrderSide(side);
                     }}
                     onMouseEnter={()=>setSwHov(`bs-${s}`)} onMouseLeave={()=>setSwHov(null)}
-                    style={{ fontFamily:F, cursor:"default" }}>
+                    style={{ cursor:"default" }}>
                     {s}
                   </button>);
                 })}
@@ -41845,26 +42673,22 @@ const TalariaV8bLive = () => {
                     setOrderType(type);
                     clickHiddenOrderType(type);
                     if (type === "market") {
+                      // Market tab sticks: force live entry and stay Market (do not re-infer Limit/Stop).
                       const omMkt = window.chart?.orderManager;
+                      try { if (omMkt) omMkt.orderType = "market"; } catch (_) {}
                       try { omMkt?.updateOrderPanelPrice?.(); } catch (_) {}
                       const ep = document.getElementById("orderEntryPrice")?.value;
                       if (ep) v9ApplyLiveEntryPriceToRows(setEntryRows, ep);
-                      const ot = v9SyncOrderTypeFromEntryPrice(omMkt, buySell);
-                      setOrderType((prev) => (prev === ot ? prev : ot));
+                      setOrderType("market");
                     }
                   }}
                     onMouseEnter={()=>setSwHov(`ot-${t}`)} onMouseLeave={()=>setSwHov(null)}
-                    style={{ fontFamily:F, cursor:"default" }}>
+                    style={{ cursor:"default" }}>
                     {t}
                   </button>);
                 })}
               </div>
             </div>
-          </div>
-
-          {/* 5 — Risk / size */}
-          <div data-order-block="">
-            <div data-order-block-title="">Size</div>
 
           {(() => {
             const sizeUnit = currentSymbol.type==="futures" ? "contracts" : "lots";
@@ -41891,9 +42715,44 @@ const TalariaV8bLive = () => {
             return (
             <div data-order-size-row="">
               <div data-order-size-well="">
-                {sizeMode==="$" && <span style={{ fontSize:12, fontWeight:700, color:"var(--text-muted)", flexShrink:0 }}>$</span>}
-                {sizeMode==="%" && <span style={{ fontSize:10, fontWeight:700, color:"var(--text-muted)", flexShrink:0 }}>%</span>}
-                {sizeMode==="#" && <span style={{ fontSize:10, fontWeight:650, color:"var(--text-faint)", flexShrink:0 }}>{sizeUnit}</span>}
+                <button
+                  type="button"
+                  ref={opOrderSizeBtnRef}
+                  data-nodrag="1"
+                  data-order-size-trig=""
+                  data-open={opSizeOpen ? "1" : undefined}
+                  aria-label="Size mode"
+                  aria-expanded={!!opSizeOpen}
+                  title={sizeMode === "$" ? "Dollar risk" : sizeMode === "%" ? "Percent risk" : "Quantity"}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (opSizeOpen) { setOpSizeOpen(false); return; }
+                    const r = e.currentTarget.getBoundingClientRect();
+                    setOpSizePos({ top: r.bottom + 4, left: r.left });
+                    setOpSizeOpen(true);
+                  }}
+                  onMouseEnter={() => setSwHov("op-size")}
+                  onMouseLeave={() => setSwHov(null)}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 3,
+                    height: 22,
+                    padding: "0 6px",
+                    flexShrink: 0,
+                    borderRadius: 6,
+                    border: `1px solid ${opSizeOpen || swHov === "op-size" ? "var(--line-strong)" : "var(--line)"}`,
+                    background: opSizeOpen ? "var(--accent-quiet)" : "var(--surface)",
+                    color: opSizeOpen ? "var(--accent)" : "var(--text-muted)",
+                    fontSize: sizeMode === "$" ? 12 : 10,
+                    fontWeight: 700,
+                    fontFamily: F,
+                    cursor: "default",
+                  }}
+                >
+                  <span>{sizeMode === "#" ? (currentSymbol.type === "futures" ? "Cts" : "Lots") : sizeMode}</span>
+                  <I n="chevDown" s={7} cl="currentColor"/>
+                </button>
                 <input
                   type="text"
                   inputMode="decimal"
@@ -41943,15 +42802,17 @@ const TalariaV8bLive = () => {
               </div>
               <div data-order-size-meta="" style={{ display:"flex", flexDirection:"column", gap:2, alignItems:"flex-end" }}>
                 <span>
-                  {sizeMode==="$"
-                    ? `${(parseFloat(riskVal||"0")/basisAmt*100).toFixed(2)}%`
-                    : qtyDisplay}
+                  {currentSymbol.type === "futures" && (sizeMode === "$" || sizeMode === "%")
+                    ? `≈ ${Number.isFinite(qtyNum) ? Math.floor(Math.max(0, qtyNum)) : 0} contracts (min 1)`
+                    : sizeMode === "$"
+                      ? `${(parseFloat(riskVal || "0") / basisAmt * 100).toFixed(2)}%`
+                      : qtyDisplay}
                 </span>
-                <span style={{ color:"var(--text-faint)" }}>
+                <span style={{ color: minRiskHint ? "var(--warn)" : "var(--text-faint)" }}>
                   {minRiskHint
                     ? `Need ${omFuturesMinRiskTxt}`
-                    : sizeMode==="$" || sizeMode==="%"
-                      ? qtyDisplay
+                    : sizeMode === "$" || sizeMode === "%"
+                      ? (currentSymbol.type === "futures" ? qtyDisplay : qtyDisplay)
                       : (calcUsdRead && calcUsdRead !== "—" ? calcUsdRead : qtyDisplay)}
                 </span>
               </div>
@@ -41983,100 +42844,12 @@ const TalariaV8bLive = () => {
             </div>
             );
           })()}
+          </div>{/* end command strip */}
 
-          </div>{/* end size block */}
-
-          <div data-order-block="" data-order-levels="" style={{ padding:0, overflow:"hidden" }}>
-            <div data-order-levels-bar="">
-              <div data-order-block-title="">Plan</div>
-              <span data-order-plan-summary="">
-                {panelMode === "advanced"
-                  ? `${entryRows.length} ${entryRows.length === 1 ? "entry" : "entries"} · ${
-                      slAdvMode === "breakeven" ? "break-even" : slAdvMode === "trailing" ? "trailing SL" : "fixed SL"
-                    } · ${tpRows.filter((r) => r.enabled !== false).length} ${
-                      tpRows.filter((r) => r.enabled !== false).length === 1 ? "target" : "targets"
-                    }`
-                  : "One entry · fixed stop · one target"}
-              </span>
-              {sessionAdvancedAllowed && panelMode === "basic" ? (
-                <button
-                  type="button"
-                  data-order-adv-unlock=""
-                  onClick={() => {
-                    setPanelMode("advanced");
-                    loadAdvancedOrderExample();
-                  }}
-                  title="Unlock advanced plan and load a sample ladder"
-                >
-                  Advanced
-                </button>
-              ) : null}
-              {sessionAdvancedAllowed && panelMode === "advanced" ? (
-                <>
-                  <button
-                    type="button"
-                    data-order-example-btn=""
-                    title="Load a sample: 3 entries, break-even stop, 3 take-profits (trailing ready on Stop card)"
-                    onClick={(e) => { e.stopPropagation(); loadAdvancedOrderExample(); }}
-                  >
-                    Example
-                  </button>
-                  <div data-order-adv-strip="" role="toolbar" aria-label="Advanced order tools">
-                    <span
-                      data-order-adv-chip=""
-                      data-tone="entry"
-                      data-on={entryRows.length > 1 ? "1" : undefined}
-                      title="Add legs from Entries (+ Entry)"
-                    >
-                      Entries {entryRows.length}/4
-                    </span>
-                    <span
-                      data-order-adv-chip=""
-                      data-tone="tp"
-                      data-on={tpRows.length > 1 ? "1" : undefined}
-                      title="Add targets from Take profit (+ Target)"
-                    >
-                      TPs {tpRows.length}/5
-                    </span>
-                    <button
-                      type="button"
-                      data-order-adv-chip=""
-                      data-tone="be"
-                      data-on={slAdvMode === "breakeven" ? "1" : undefined}
-                      aria-pressed={slAdvMode === "breakeven"}
-                      title="Break-even: move stop to entry after profit trigger"
-                      onClick={() => {
-                        markOrderControlBridge();
-                        setSlEnabled(true);
-                        setSlAdvMode((m) => (m === "breakeven" ? "none" : "breakeven"));
-                        setSlAdvDrop(false);
-                      }}
-                    >
-                      Break-even
-                    </button>
-                    <button
-                      type="button"
-                      data-order-adv-chip=""
-                      data-tone="trail"
-                      data-on={slAdvMode === "trailing" ? "1" : undefined}
-                      aria-pressed={slAdvMode === "trailing"}
-                      title="Trailing stop loss (replaces break-even while active)"
-                      onClick={() => {
-                        markOrderControlBridge();
-                        setSlEnabled(true);
-                        setSlAdvMode((m) => (m === "trailing" ? "none" : "trailing"));
-                        setSlAdvDrop(false);
-                      }}
-                    >
-                      Trailing
-                    </button>
-                  </div>
-                </>
-              ) : null}
-            </div>
-          {/* Ladder — scrolls; place CTA stays pinned below */}
-          <div data-order-ladder="" className="tlr-scroll">
-          <div style={{ display:isWide?"grid":"block", gridTemplateColumns:isWide?"1fr 1fr":undefined, alignItems:"start", gap:8 }}>
+          <div data-order-levels="">
+          {/* Ladder tape — always single column so multi-legs read top→bottom */}
+          <div data-order-ladder="">
+          <div>
 
           {/* 6 — ENTRY */}
           {(() => {
@@ -42227,11 +43000,15 @@ const TalariaV8bLive = () => {
               setEntryRows((rows) => (rows.length > 1 ? rows.filter((r) => r.id !== id) : rows));
             };
             const addRow = () => {
-              if (!sessionAdvancedAllowed || panelMode !== "advanced") return;
-              if (entryRows.length >= 4) return;
+              if (!sessionAdvancedAllowed) return;
+              if (panelMode !== "advanced") setPanelMode("advanced");
+              if (entryRows.length >= 5) return;
+              // Keep rail open: chart preview rebuild after multi-entry can ghost-click entry-cancel ✕.
+              setOrderPanelOpen(true);
               omPanelBridgeRef.current.entryAdd = Date.now();
               markOrderControlBridge();
               const om = window.chart?.orderManager;
+              try { om?._markEntryMultiAddPress?.(); } catch (_) {}
               setEntryRows((rows) => {
                 if (!om || typeof om.addMultiEntryLevel !== "function") {
                   const n = rows.length + 1;
@@ -42319,222 +43096,543 @@ const TalariaV8bLive = () => {
                 return rows.map((r) => ({ ...r, risk: each }));
               });
             };
+            const multiEntryOn = entryRows.length > 1;
+            const collapseMultiEntry = () => {
+              setOrderPanelOpen(true);
+              setOpEntryLegsOpen(false);
+              omPanelBridgeRef.current.entryDel = Date.now();
+              markOrderControlBridge();
+              const om = window.chart?.orderManager;
+              setEntryRows((rows) => {
+                const r0 = rows[0] || { id: Date.now(), price: "0", risk: sizeMode === "%" ? "100" : "0" };
+                if (om && om.isMultiEntryMode) {
+                  try {
+                    const pid = typeof r0.id === "number" && Number.isFinite(r0.id) ? r0.id : 1;
+                    om.multiEntryLevels = [{
+                      id: pid,
+                      price: parseFloat(r0.price) || 0,
+                      amount: parseFloat(r0.risk) || 0,
+                    }];
+                    om.setEntryMode(false);
+                    om.multiEntryLevels = [];
+                  } catch (_) { /* ignore */ }
+                }
+                return [{
+                  id: r0.id ?? Date.now(),
+                  price: r0.price || "0",
+                  risk: r0.risk || (sizeMode === "%" ? "100" : "0"),
+                }];
+              });
+              requestAnimationFrame(() => {
+                try { window.chart?.orderManager?.updatePreviewLines?.(); } catch (_) {}
+              });
+            };
+            const enableMultiEntry = () => {
+              if (!sessionAdvancedAllowed) return;
+              if (panelMode !== "advanced") setPanelMode("advanced");
+              setOrderPanelOpen(true);
+              setOpEntryLegsOpen(false);
+              omPanelBridgeRef.current.entryAdd = Date.now();
+              markOrderControlBridge();
+              const om = window.chart?.orderManager;
+              try { om?._markEntryMultiAddPress?.(); } catch (_) {}
+              // Unlock OM advanced gate before setEntryMode — checkbox often stays unchecked under V9.
+              try {
+                const tgl = document.getElementById("advancedOrderToggle");
+                if (tgl && !tgl.checked) {
+                  tgl.checked = true;
+                  tgl.dispatchEvent(new Event("change", { bubbles: true }));
+                }
+                if (om && om.advancedOrderEnabled === false) om.advancedOrderEnabled = true;
+              } catch (_) { /* ignore */ }
+
+              setEntryRows((rows) => {
+                const r0 = rows[0] || { id: Date.now(), price: "0", risk: sizeMode === "%" ? "100" : (riskVal || "0") };
+                const domEntryPx = parseFloat(document.getElementById("orderEntryPrice")?.value || "0") || 0;
+                let p0 = parseFloat(r0.price) || 0;
+                if (!(p0 > 0) && domEntryPx > 0) p0 = domEntryPx;
+                const totalAmt = (() => {
+                  const fromRow = parseFloat(r0.risk) || 0;
+                  if (fromRow > 0) return fromRow;
+                  const fromRisk = parseFloat(riskVal) || 0;
+                  if (fromRisk > 0) return fromRisk;
+                  return sizeMode === "%" ? 100 : sizeMode === "#" ? 1 : 100;
+                })();
+
+                // Prefer OM native seed: empty ladder + setEntryMode(true) creates two legs.
+                if (om && typeof om.setEntryMode === "function") {
+                  try {
+                    if (p0 > 0) {
+                      const ep = document.getElementById("orderEntryPrice");
+                      if (ep) {
+                        ep.value = typeof om.formatPrice === "function" ? om.formatPrice(p0) : String(p0);
+                      }
+                    }
+                    if (sizeMode === "$") {
+                      const riskEl = document.getElementById("riskAmountUSD");
+                      if (riskEl && totalAmt > 0) riskEl.value = String(Math.round(totalAmt));
+                    } else if (sizeMode === "%") {
+                      const riskEl = document.getElementById("riskAmountPercent");
+                      if (riskEl && totalAmt > 0) riskEl.value = String(totalAmt);
+                    } else {
+                      const lotEl = document.getElementById("lotSizeAmount");
+                      if (lotEl && totalAmt > 0) lotEl.value = String(totalAmt);
+                    }
+                    om.multiEntryLevels = [];
+                    om.setEntryMode(true);
+                    if (om.isMultiEntryMode && Array.isArray(om.multiEntryLevels) && om.multiEntryLevels.length >= 2) {
+                      if (p0 > 0 && om.multiEntryLevels[0]) om.multiEntryLevels[0].price = p0;
+                      om.equalizeMultiEntryAmounts?.();
+                      om.renderMultiEntryRows?.();
+                      om.syncMultiEntryToSplitEntries?.();
+                      return om.multiEntryLevels.map((l) => ({
+                        id: l.id,
+                        price: String(l.price ?? "0"),
+                        risk: String(l.amount ?? "0"),
+                      }));
+                    }
+                  } catch (_) { /* fall through to React seed */ }
+                }
+
+                // Fallback: two React legs (still drive chart via forward bridge).
+                const isBuy = buySell === "buy";
+                const p1 = p0 > 0 ? (isBuy ? p0 * 1.0045 : p0 * 0.9955) : 0;
+                let a1;
+                let a2;
+                if (sizeMode === "%") {
+                  a1 = 50;
+                  a2 = 50;
+                } else if (sizeMode === "$") {
+                  a1 = Math.max(1, Math.round(totalAmt / 2));
+                  a2 = Math.max(0, Math.round(totalAmt) - a1);
+                } else {
+                  a1 = parseFloat((totalAmt / 2).toFixed(2));
+                  a2 = parseFloat((totalAmt / 2).toFixed(2));
+                }
+                const next = [
+                  { id: r0.id ?? Date.now(), price: String(p0 || "0"), risk: String(a1) },
+                  { id: Date.now() + 1, price: String(p1 || "0"), risk: String(a2) },
+                ];
+                if (om) {
+                  try {
+                    om.multiEntryLevels = next.map((r, i) => ({
+                      id: typeof r.id === "number" && Number.isFinite(r.id) ? r.id : i + 1,
+                      price: parseFloat(r.price) || 0,
+                      amount: parseFloat(r.risk) || 0,
+                    }));
+                    om.isMultiEntryMode = true;
+                    const toggleBtn = document.getElementById("multiEntryToggle");
+                    const singleMode = document.getElementById("singleEntryMode");
+                    const multiMode = document.getElementById("multiEntryMode");
+                    if (toggleBtn) {
+                      toggleBtn.textContent = "Single";
+                      toggleBtn.classList.add("active");
+                    }
+                    if (singleMode) singleMode.style.display = "none";
+                    if (multiMode) multiMode.style.display = "block";
+                    om.renderMultiEntryRows?.();
+                    om.syncMultiEntryToSplitEntries?.();
+                  } catch (_) { /* ignore */ }
+                }
+                return next;
+              });
+              requestAnimationFrame(() => {
+                try { window.chart?.orderManager?.updatePreviewLines?.(); } catch (_) {}
+              });
+            };
+            const toggleMultiEntry = () => {
+              if (!sessionAdvancedAllowed) return;
+              if (multiEntryOn) {
+                collapseMultiEntry();
+                return;
+              }
+              enableMultiEntry();
+            };
+            const openEntryLegsPopover = (el) => {
+              if (!el) return;
+              const r = el.getBoundingClientRect();
+              const mw = Math.min(300, Math.max(260, window.innerWidth - 16));
+              let left = r.left;
+              if (left + mw > window.innerWidth - 4) left = Math.max(4, window.innerWidth - mw - 4);
+              if (left < 4) left = 4;
+              setOpEntryLegsPos({ top: r.bottom + 4, left });
+              setOpEntryLegsOpen(true);
+              setOpTpLegsOpen(false);
+              setOpSizeOpen(false);
+              setOpDotsOpen(false);
+              setOpTplOpen(false);
+              setOpSymOpen(false);
+            };
             const arw = (onClick, up, hk) => {
               const isH = swHov === hk;
               return (
-                <div onClick={onClick} onMouseEnter={()=>setSwHov(hk)} onMouseLeave={()=>setSwHov(null)}
-                  style={{ width:10, height:8, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", color:isH?c.tx:c.ts, transition:"color 0.1s" }}>
+                <button
+                  type="button"
+                  data-order-step-btn=""
+                  data-hov={isH ? "1" : undefined}
+                  onClick={(e) => { e.stopPropagation(); onClick(); }}
+                  onMouseEnter={() => setSwHov(hk)}
+                  onMouseLeave={() => setSwHov(null)}
+                  tabIndex={-1}
+                  aria-hidden="true"
+                >
                   <svg width={7} height={4} viewBox="0 0 8 5" fill="none">
                     {up
                       ? <polyline points="1,4 4,1 7,4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                       : <polyline points="1,1 4,4 7,1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                     }
                   </svg>
+                </button>
+              );
+            };
+            const renderEntryLegRow = (row, i, { allowDelete, showSize = true, showIndex = true, showShare = true, shareCompact = false }) => {
+              const pct = totalRisk > 0 ? ((parseFloat(row.risk)||0)/totalRisk*100).toFixed(0) : "0";
+              const rowContractsDisplay =
+                sizeMode === "#"
+                  ? currentSymbol.type === "futures"
+                    ? Math.floor(Math.max(0, parseFloat(row.risk || "0")))
+                    : Math.max(0, parseFloat(row.risk || "0"))
+                  : orderQtyNum;
+              const qtyForShare = Number.isFinite(rowContractsDisplay)
+                ? rowContractsDisplay.toFixed(currentSymbol.type === "futures" ? 0 : 2)
+                : Number.isFinite(orderQtyNum)
+                  ? orderQtyNum.toFixed(currentSymbol.type === "futures" ? 0 : 2)
+                  : "0.00";
+              const shareFull =
+                entryRows.length > 1 && omEntryRowStatLines[i]
+                  ? omEntryRowStatLines[i]
+                  : sizeMode === "$"
+                    ? futuresMinRiskHint
+                      ? `Need ${omFuturesMinRiskTxt}`
+                      : `${pct}% · ${qtyForShare} ${sizeUnit}`
+                    : sizeMode === "%"
+                      ? futuresMinRiskHint
+                        ? `Need ${omFuturesMinRiskTxt}`
+                        : `$${(parseFloat(row.risk || "0") / 100 * (riskBasis === "balance" ? accountBalance : accountEquity)).toFixed(0)} · ${qtyForShare} ${sizeUnit}`
+                      : futuresMinRiskHint
+                        ? `Need ${omFuturesMinRiskTxt}`
+                        : `${pct}% · ${qtyForShare} ${sizeUnit}`;
+              /* Legs: keep % + quantity (lots/contracts); Size column stays $/%/# risk input. */
+              const shareLegsLabel = futuresMinRiskHint
+                ? null
+                : (omEntryRowStatLines[i] || `${pct}% · ${qtyForShare} ${sizeUnit}`);
+              return (
+                <div
+                  key={row.id}
+                  data-order-row=""
+                  data-size-col={showSize ? "1" : "0"}
+                  data-index-col={showIndex ? "1" : "0"}
+                  data-share-col={showShare ? "1" : "0"}
+                >
+                  {showIndex ? <span data-order-row-n="">E{i+1}</span> : null}
+                  <div data-order-field="" data-kind="price">
+                    <input type="text" inputMode="decimal" value={row.price}
+                      onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) updRow(row.id,"price",e.target.value); }}
+                      onBlur={e => {
+                        const norm = v9NormalizePriceInputOnBlur(e.target.value);
+                        updRow(row.id, "price", norm);
+                        const omBlur = window.chart?.orderManager;
+                        const ot = v9PushEntryPriceAndDetectOrderType(norm, buySell, omBlur);
+                        setOrderType((prev) => (prev === ot ? prev : ot));
+                      }}
+                    />
+                    <div data-order-step="">
+                      {arw(()=>stepRow(row.id,"price", 1), true,  `ep-${row.id}-up`)}
+                      {arw(()=>stepRow(row.id,"price",-1), false, `ep-${row.id}-dn`)}
+                    </div>
+                  </div>
+                  {showSize ? (
+                    <div data-order-field="" data-kind="size">
+                      {sizeMode==="$" && <span data-order-prefix="">$</span>}
+                      {sizeMode==="%" && <span data-order-prefix="">%</span>}
+                      <input type="text" inputMode="decimal" value={row.risk}
+                        onChange={e => {
+                          const v = e.target.value;
+                          if (sizeMode === "#" && currentSymbol.type === "futures") {
+                            if (/^\d*$/.test(v)) updRow(row.id, "risk", v);
+                            return;
+                          }
+                          if (/^\d*\.?\d*$/.test(v)) updRow(row.id, "risk", v);
+                        }}
+                        onBlur={e => {
+                          const n = parseFloat(e.target.value);
+                          let v;
+                          if (sizeMode === "#" && currentSymbol.type === "futures") {
+                            v = String(Math.max(0, Math.round(isNaN(n) ? 0 : n)));
+                          } else if (sizeMode === "%") {
+                            v = String(Math.max(0, Math.min(100, isNaN(n) ? 0 : n)));
+                          } else {
+                            v = isNaN(n) ? "0" : String(n);
+                          }
+                          if (sizeMode === "#") {
+                            if (entryRows.length === 1) {
+                              setRiskVal(v);
+                            } else {
+                              const old = parseFloat(row.risk) || 0;
+                              const neu = parseFloat(v) || 0;
+                              const total =
+                                entryRows.reduce((s, r) => s + (parseFloat(r.risk) || 0), 0) -
+                                old +
+                                neu;
+                              setRiskVal(
+                                currentSymbol.type === "futures"
+                                  ? String(Math.floor(total))
+                                  : String(total)
+                              );
+                            }
+                          } else if (sizeMode === "$") {
+                            if (entryRows.length === 1) {
+                              setRiskVal(v);
+                            } else {
+                              const old = parseFloat(row.risk) || 0;
+                              const neu = parseFloat(v) || 0;
+                              const total =
+                                entryRows.reduce((s, r) => s + (parseFloat(r.risk) || 0), 0) -
+                                old +
+                                neu;
+                              setRiskVal(String(total));
+                            }
+                          } else if (sizeMode === "%") {
+                            if (entryRows.length === 1) {
+                              setRiskVal(v);
+                            } else {
+                              const old = parseFloat(row.risk) || 0;
+                              const neu = parseFloat(v) || 0;
+                              const total =
+                                entryRows.reduce((s, r) => s + (parseFloat(r.risk) || 0), 0) -
+                                old +
+                                neu;
+                              setRiskVal(String(Math.min(100, total)));
+                            }
+                          }
+                          updRow(row.id, "risk", v);
+                        }}
+                      />
+                      {sizeMode==="#" && <span data-order-prefix="" data-unit="">{sizeUnit}</span>}
+                      <div data-order-step="">
+                        {arw(()=>stepRow(row.id,"risk", 1), true,  `er-${row.id}-up`)}
+                        {arw(()=>stepRow(row.id,"risk",-1), false, `er-${row.id}-dn`)}
+                      </div>
+                    </div>
+                  ) : null}
+                  {showShare ? (
+                    <span data-order-share="" title={shareCompact ? String(shareFull) : undefined}>
+                      {shareCompact
+                        ? (futuresMinRiskHint
+                          ? <span style={{ color: "#FFD28A" }}>Need {omFuturesMinRiskTxt}</span>
+                          : shareLegsLabel)
+                        : (entryRows.length > 1 && omEntryRowStatLines[i]
+                          ? omEntryRowStatLines[i]
+                          : sizeMode === "$"
+                            ? futuresMinRiskHint
+                              ? <><span style={{ color: "#FFD28A" }}>Need {omFuturesMinRiskTxt}</span></>
+                              : <>{pct}% · {qtyForShare} {sizeUnit}</>
+                            : sizeMode === "%"
+                              ? futuresMinRiskHint
+                                ? <><span style={{ color: "#FFD28A" }}>Need {omFuturesMinRiskTxt}</span></>
+                                : <>${(parseFloat(row.risk || "0") / 100 * (riskBasis === "balance" ? accountBalance : accountEquity)).toFixed(0)} · {qtyForShare} {sizeUnit}</>
+                              : futuresMinRiskHint
+                                ? <><span style={{ color: "#FFD28A" }}>Need {omFuturesMinRiskTxt}</span></>
+                                : <>{pct}% · {qtyForShare} {sizeUnit}</>)}
+                    </span>
+                  ) : null}
+                  {allowDelete ? (
+                    <button
+                      type="button"
+                      data-order-icon-btn=""
+                      data-tone="danger"
+                      onClick={(e) => { e.stopPropagation(); delRow(row.id); }}
+                      title="Remove entry"
+                      aria-label="Remove entry"
+                    >
+                      <I n="x" s={9} cl="currentColor"/>
+                    </button>
+                  ) : showShare || showIndex || showSize ? <span /> : null}
                 </div>
               );
             };
+            const singleRow = sortedEntryRows[0] || entryRows[0];
             return (
+              <>
               <div style={{ flexShrink:0 }}>
-                <div data-order-level="entry" data-multi={entryRows.length > 1 ? "1" : undefined}>
+                <div
+                  data-order-level="entry"
+                  data-order-zone="entry"
+                  data-multi={multiEntryOn ? "1" : undefined}
+                  data-entry-compact="1"
+                  data-size-col="0"
+                  data-index-col="0"
+                  data-share-col="0"
+                >
                   <div data-order-level-head="">
-                    <span data-order-level-title="">Entries</span>
-                    {panelMode === "advanced" ? (
-                      <span data-order-level-hint="">Split risk across up to 4 prices</span>
+                    <span data-order-level-title="">{multiEntryOn ? "Entries" : "Entry"}</span>
+                    <div style={{ flex: 1 }} />
+                    {sessionAdvancedAllowed ? (
+                      <div data-order-entry-multi="">
+                        {multiEntryOn ? (
+                          <button
+                            type="button"
+                            ref={opEntryLegsBtnRef}
+                            data-order-edit-legs=""
+                            aria-expanded={opEntryLegsOpen}
+                            aria-haspopup="dialog"
+                            title="Edit entry legs"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (opEntryLegsOpen) {
+                                setOpEntryLegsOpen(false);
+                                return;
+                              }
+                              openEntryLegsPopover(e.currentTarget);
+                            }}
+                          >
+                            Edit legs
+                          </button>
+                        ) : null}
+                        <span data-order-entry-multi-label="">Multi</span>
+                        <Toggle
+                          on={multiEntryOn}
+                          onClick={toggleMultiEntry}
+                          color="var(--ord-entry)"
+                          hk="ep-multi"
+                          c={c}
+                          swHov={swHov}
+                          setSwHov={setSwHov}
+                        />
+                      </div>
                     ) : null}
-                    {panelMode==="advanced" && (
-                      <span data-order-level-count="" style={{ color:"var(--accent)" }}>
-                        {entryRows.length}/4
-                      </span>
-                    )}
-                    <div style={{ flex:1 }}/>
-                    {panelMode==="advanced" && entryRows.length > 1 && (<>
-                      <div data-order-icon-btn="" data-tone="entry" onClick={equalizeRisk}
-                        onMouseEnter={()=>setSwHov("ep-eq")} onMouseLeave={()=>setSwHov(null)}
-                        title="Equalize size across entries">
-                        <svg width={11} height={8} viewBox="0 0 11 8" fill="none">
-                          <line x1="0" y1="2" x2="11" y2="2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                          <line x1="0" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                        </svg>
-                      </div>
-                      <div data-order-icon-btn="" data-tone="danger" onClick={clearRows}
-                        onMouseEnter={()=>setSwHov("ep-clear")} onMouseLeave={()=>setSwHov(null)}
-                        title="Reset to one entry">
-                        <svg width={10} height={11} viewBox="0 0 10 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-                          <line x1="1" y1="3" x2="9" y2="3"/>
-                          <path d="M3.5 3V2a.5.5 0 01.5-.5h2a.5.5 0 01.5.5v1"/>
-                          <path d="M2 3l.6 6.5h4.8L8 3"/>
-                          <line x1="3.8" y1="5.5" x2="3.8" y2="7.5"/>
-                          <line x1="6.2" y1="5.5" x2="6.2" y2="7.5"/>
-                        </svg>
-                      </div>
-                    </>)}
-                    {v9EntryPlusVisible && (
-                    <button type="button" data-order-add="" data-tone="entry" onClick={addRow}
-                      onMouseEnter={()=>setSwHov("ep-add")} onMouseLeave={()=>setSwHov(null)}
-                      title="Add entry level">
-                      <svg width={9} height={9} viewBox="0 0 9 9" fill="none" aria-hidden="true">
-                        <line x1="4.5" y1="1" x2="4.5" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                        <line x1="1" y1="4.5" x2="8" y2="4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                      </svg>
-                      Entry
-                    </button>
-                    )}
                   </div>
-                  {/* Rows — taller when multi-entry */}
-                  <div ref={entryScrollRef} className="tlr-scroll" data-order-rows="" data-multi={entryRows.length > 1 ? "1" : undefined}>
-                    {sortedEntryRows.map((row, i) => {
-                      const pct = totalRisk > 0 ? ((parseFloat(row.risk)||0)/totalRisk*100).toFixed(0) : "0";
-                      const rowContractsDisplay =
-                        sizeMode === "#"
-                          ? currentSymbol.type === "futures"
-                            ? Math.floor(Math.max(0, parseFloat(row.risk || "0")))
-                            : Math.max(0, parseFloat(row.risk || "0"))
-                          : orderQtyNum;
-                      return (
-                        <div key={row.id} data-order-row="">
-                          {entryRows.length > 1 && <span data-order-row-n="">{i+1}</span>}
-                          <div data-order-field="" style={{ flexShrink:0 }}>
-                            <input type="text" value={row.price}
-                              onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) updRow(row.id,"price",e.target.value); }}
-                              onBlur={e => {
-                                const norm = v9NormalizePriceInputOnBlur(e.target.value);
-                                updRow(row.id, "price", norm);
-                                const omBlur = window.chart?.orderManager;
-                                const ot = v9PushEntryPriceAndDetectOrderType(norm, buySell, omBlur);
-                                setOrderType((prev) => (prev === ot ? prev : ot));
-                              }}
-                              style={{ width:62, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
-                            <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>
-                              {arw(()=>stepRow(row.id,"price", 1), true,  `ep-${row.id}-up`)}
-                              {arw(()=>stepRow(row.id,"price",-1), false, `ep-${row.id}-dn`)}
-                            </div>
+                  <div data-order-rows="" data-summary={multiEntryOn ? "1" : undefined}>
+                    {multiEntryOn ? (
+                      <>
+                        <div
+                          data-order-row=""
+                          data-summary="1"
+                          data-size-col="0"
+                          data-index-col="0"
+                          data-share-col="0"
+                          title="Open Edit legs to change individual entries"
+                        >
+                          <div data-order-field="" data-readonly="1" data-kind="price">
+                            <span data-order-summary-val="">{entryAvgDisplay || "—"}</span>
                           </div>
-                          <div data-order-field="" style={{ flexShrink:0 }}>
-                            {sizeMode==="$" && <span style={{ fontSize:10, fontWeight:600, color:"var(--text-muted)", lineHeight:1, flexShrink:0 }}>$</span>}
-                            {sizeMode==="%" && <span style={{ fontSize:9, fontWeight:700, color:"var(--text-muted)", lineHeight:1, flexShrink:0 }}>%</span>}
-                            <input type="text" value={row.risk}
-                              onChange={e => {
-                                const v = e.target.value;
-                                if (sizeMode === "#" && currentSymbol.type === "futures") {
-                                  if (/^\d*$/.test(v)) updRow(row.id, "risk", v);
-                                  return;
-                                }
-                                if (/^\d*\.?\d*$/.test(v)) updRow(row.id, "risk", v);
-                              }}
-                              onBlur={e => {
-                                const n = parseFloat(e.target.value);
-                                let v;
-                                if (sizeMode === "#" && currentSymbol.type === "futures") {
-                                  v = String(Math.max(0, Math.round(isNaN(n) ? 0 : n)));
-                                } else if (sizeMode === "%") {
-                                  v = String(Math.max(0, Math.min(100, isNaN(n) ? 0 : n)));
-                                } else {
-                                  v = isNaN(n) ? "0" : String(n);
-                                }
-                                if (sizeMode === "#") {
-                                  if (entryRows.length === 1) {
-                                    setRiskVal(v);
-                                  } else {
-                                    const old = parseFloat(row.risk) || 0;
-                                    const neu = parseFloat(v) || 0;
-                                    const total =
-                                      entryRows.reduce((s, r) => s + (parseFloat(r.risk) || 0), 0) -
-                                      old +
-                                      neu;
-                                    setRiskVal(
-                                      currentSymbol.type === "futures"
-                                        ? String(Math.floor(total))
-                                        : String(total)
-                                    );
-                                  }
-                                } else if (sizeMode === "$") {
-                                  if (entryRows.length === 1) {
-                                    setRiskVal(v);
-                                  } else {
-                                    const old = parseFloat(row.risk) || 0;
-                                    const neu = parseFloat(v) || 0;
-                                    const total =
-                                      entryRows.reduce((s, r) => s + (parseFloat(r.risk) || 0), 0) -
-                                      old +
-                                      neu;
-                                    setRiskVal(String(total));
-                                  }
-                                } else if (sizeMode === "%") {
-                                  if (entryRows.length === 1) {
-                                    setRiskVal(v);
-                                  } else {
-                                    const old = parseFloat(row.risk) || 0;
-                                    const neu = parseFloat(v) || 0;
-                                    const total =
-                                      entryRows.reduce((s, r) => s + (parseFloat(r.risk) || 0), 0) -
-                                      old +
-                                      neu;
-                                    setRiskVal(String(Math.min(100, total)));
-                                  }
-                                }
-                                updRow(row.id, "risk", v);
-                              }}
-                              style={{ width:26, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
-                            {sizeMode==="#" && <span style={{ fontSize:9, color:c.ts, flexShrink:0, lineHeight:1, whiteSpace:"nowrap" }}>{sizeUnit}</span>}
-                            <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>
-                              {arw(()=>stepRow(row.id,"risk", 1), true,  `er-${row.id}-up`)}
-                              {arw(()=>stepRow(row.id,"risk",-1), false, `er-${row.id}-dn`)}
-                            </div>
-                          </div>
-                          {/* Pct · lots inline — prefer OM-rendered line from hidden #multiEntryRows when present */}
-                          <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", whiteSpace:"nowrap", flexShrink:0 }}>
-                            {entryRows.length > 1 && omEntryRowStatLines[i]
-                              ? omEntryRowStatLines[i]
-                              : sizeMode==="$"
-                                ? futuresMinRiskHint
-                                  ? <><span style={{ color:"#FFD28A" }}>Need {omFuturesMinRiskTxt}</span></>
-                                  : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}{Number.isFinite(orderQtyNum) ? orderQtyNum.toFixed(currentSymbol.type==="futures"?0:2) : "0.00"} {sizeUnit}</>
-                                : sizeMode==="%"
-                                  ? futuresMinRiskHint
-                                    ? <><span style={{ color:"#FFD28A" }}>Need {omFuturesMinRiskTxt}</span></>
-                                    : <><span style={{ color:c.ts }}>${(parseFloat(row.risk||"0")/100*(riskBasis==="balance"?accountBalance:accountEquity)).toFixed(0)}</span>{" · "}{Number.isFinite(orderQtyNum) ? orderQtyNum.toFixed(currentSymbol.type==="futures"?0:2) : "0.00"} {sizeUnit}</>
-                                  : futuresMinRiskHint
-                                    ? <><span style={{ color:"#FFD28A" }}>Need {omFuturesMinRiskTxt}</span></>
-                                    : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}{Number.isFinite(rowContractsDisplay) ? rowContractsDisplay.toFixed(currentSymbol.type==="futures"?0:2) : "0.00"} {sizeUnit}</>
-                            }
-                          </span>
-                          <div style={{ flex:1 }}/>
-                          {/* Delete — far right, hidden when only 1 row */}
-                          {entryRows.length > 1 ? (
-                            <div data-order-icon-btn="" data-tone="danger" onClick={(e) => { e.stopPropagation(); delRow(row.id); }}
-                              onMouseEnter={()=>setSwHov(`ed-${row.id}`)} onMouseLeave={()=>setSwHov(null)}
-                              title="Remove entry">
-                              <I n="x" s={9} cl="currentColor"/>
-                            </div>
-                          ) : null}
                         </div>
-                      );
-                    })}
+                        <div data-order-entry-under="">
+                          <span data-order-entry-fact="" title="How many entry prices are in this order (max 5)">
+                            <i>Entries</i>
+                            <b>{entryRows.length}</b>
+                          </span>
+                          <span data-order-entry-fact="" title="Approx. share of size on each entry when split evenly">
+                            <i>Each</i>
+                            <b>~{Math.max(1, Math.round(100 / entryRows.length))}%</b>
+                          </span>
+                          <span data-order-entry-fact="" title="Total size across all entries">
+                            <i>Total</i>
+                            <b>{omMultiEntryTotalQtyTxt || `0.00 ${sizeUnit}`}</b>
+                          </span>
+                        </div>
+                      </>
+                    ) : singleRow ? (
+                      renderEntryLegRow(singleRow, 0, {
+                        allowDelete: false,
+                        showSize: false,
+                        showIndex: false,
+                        showShare: false,
+                      })
+                    ) : null}
                   </div>
-                  {/* Footer — only when 2+ levels */}
-                  {entryRows.length > 1 && (
-                    <div style={{ padding:"2px 6px 3px", display:"flex", alignItems:"center", gap:6, borderTop:"1px solid rgba(48,144,255,0.1)" }}>
-                      <div style={{ flex:1 }}/>
-                      <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
-                        Avg <span style={{ color:c.ts, fontWeight:700 }}>{entryAvgDisplay}</span>
-                      </span>
-                      <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
-                        Qty <span style={{ color:c.ts, fontWeight:700 }}>{omMultiEntryTotalQtyTxt || `0.00 ${sizeUnit}`}</span>
-                      </span>
-                    </div>
-                  )}
-                  {omPanelActualAvg?.showActualAvg && omPanelActualAvg.actualAvgEntry && entryRows.length > 1 && (
-                    <div style={{ padding:"2px 6px 3px", display:"flex", alignItems:"center", gap:6, borderTop:"1px solid rgba(48,144,255,0.06)" }}>
-                      <span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.06em" }}>ACTUAL AVG</span>
-                      <div style={{ flex:1 }}/>
-                      <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
-                        Entry <span style={{ color:c.tx, fontWeight:700 }}>{omPanelActualAvg.actualAvgEntry}</span>
-                        <span style={{ color:c.ts }}> ({omPanelActualAvg.filledCount}/{omPanelActualAvg.entryCount} filled)</span>
-                      </span>
-                    </div>
-                  )}
                 </div>
               </div>
+              {typeof document !== "undefined" && opEntryLegsOpen && multiEntryOn && createPortal(
+                <>
+                  <div
+                    data-order-entry-legs-scrim=""
+                    onPointerDown={(e) => { e.preventDefault(); setOpEntryLegsOpen(false); }}
+                  />
+                  <div
+                    data-v9-chrome="1"
+                    data-order-v4="1"
+                    data-order-entry-legs=""
+                    data-sdrop="1"
+                    role="dialog"
+                    aria-label="Entry legs"
+                    onClick={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    style={{ top: opEntryLegsPos.top, left: opEntryLegsPos.left, fontFamily: F }}
+                  >
+                    <div data-order-level="entry" data-multi="1" data-size-col="1">
+                      <div data-order-level-head="" data-order-entry-legs-head="">
+                        <span data-order-level-title="">Entries</span>
+                        <span data-order-level-count="">{entryRows.length}/5</span>
+                        <div style={{ flex:1 }} />
+                        <button
+                          type="button"
+                          data-order-icon-btn=""
+                          data-tone="entry"
+                          onClick={(e) => { e.stopPropagation(); equalizeRisk(); }}
+                          title="Equalize size across entries"
+                          aria-label="Equalize size across entries"
+                        >
+                          <svg width={11} height={8} viewBox="0 0 11 8" fill="none" aria-hidden="true">
+                            <line x1="0" y1="2" x2="11" y2="2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                            <line x1="0" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                          </svg>
+                        </button>
+                        <button type="button" data-brand-icon="1" data-nodrag="1" aria-label="Close"
+                          onClick={() => setOpEntryLegsOpen(false)}
+                          onMouseEnter={()=>setSwHov("ep-legs-x")} onMouseLeave={()=>setSwHov(null)}
+                          style={{ width:24, height:24 }}>
+                          <I n="x" s={12} cl={swHov==="ep-legs-x"?"var(--down)":"var(--text-muted)"}/>
+                        </button>
+                      </div>
+                      <div ref={entryScrollRef} data-order-rows="" data-multi="1">
+                        <div data-order-cols="" aria-hidden="true" data-size-col="1">
+                          <span>#</span>
+                          <span>Price</span>
+                          <span>Size</span>
+                          <span>Share</span>
+                          <span />
+                        </div>
+                        {sortedEntryRows.map((row, i) => renderEntryLegRow(row, i, {
+                          allowDelete: true,
+                          showSize: true,
+                          showIndex: true,
+                          showShare: true,
+                          shareCompact: true,
+                        }))}
+                        {entryRows.length < 5 ? (
+                          <button type="button" data-order-ghost="" data-tone="entry"
+                            title="Add another entry price"
+                            onClick={() => addRow()}>
+                            <span data-order-row-n="">E{entryRows.length + 1}</span>
+                            <em>+ Add entry</em>
+                          </button>
+                        ) : null}
+                      </div>
+                      <div data-order-level-foot="" data-tone="entry">
+                        <span data-order-avg="" data-tone="entry">
+                          Avg entry <b>{entryAvgDisplay}</b>
+                        </span>
+                        <span data-order-avg-meta="">
+                          Qty <b>{omMultiEntryTotalQtyTxt || `0.00 ${sizeUnit}`}</b>
+                        </span>
+                      </div>
+                      {omPanelActualAvg?.showActualAvg && omPanelActualAvg.actualAvgEntry ? (
+                        <div data-order-level-foot="" data-tone="entry" data-actual="">
+                          <span data-order-avg="" data-tone="entry">
+                            Actual avg <b>{omPanelActualAvg.actualAvgEntry}</b>
+                          </span>
+                          <span data-order-avg-meta="">
+                            {omPanelActualAvg.filledCount}/{omPanelActualAvg.entryCount} filled
+                          </span>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </>,
+                document.body
+              )}
+              </>
             );
           })()}
 
@@ -42563,324 +43661,391 @@ const TalariaV8bLive = () => {
             const arw = (onClick, up, hk) => {
               const isH = swHov === hk;
               return (
-                <div onClick={slEnabled ? onClick : undefined}
-                  onMouseEnter={()=>slEnabled&&setSwHov(hk)} onMouseLeave={()=>setSwHov(null)}
-                  style={{ width:10, height:8, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", color:isH?c.rd:c.ts, transition:"color 0.1s" }}>
+                <button
+                  type="button"
+                  data-order-step-btn=""
+                  data-hov={isH ? "1" : undefined}
+                  disabled={!slEnabled}
+                  onClick={(e) => { e.stopPropagation(); if (!slEnabled) return; onClick(); }}
+                  onMouseEnter={() => slEnabled && setSwHov(hk)}
+                  onMouseLeave={() => setSwHov(null)}
+                  tabIndex={-1}
+                  aria-hidden="true"
+                >
                   <svg width={7} height={4} viewBox="0 0 8 5" fill="none">
                     {up
                       ? <polyline points="1,4 4,1 7,4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                       : <polyline points="1,1 4,4 7,1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                     }
                   </svg>
-                </div>
+                </button>
               );
             };
-            /* red diamond checkbox */
+            /** Obsidian checkbox — master enable for the Stop block. */
             const SlChk = () => {
-              const isH = swHov==="sl-chk";
-              const col = slEnabled ? c.rd : isH ? c.rd : c.ts;
+              const isH = swHov === "sl-chk";
               return (
-                <div onClick={()=>{ markOrderControlBridge(); setSlEnabled(v=>!v); }}
-                  onMouseEnter={()=>setSwHov("sl-chk")} onMouseLeave={()=>setSwHov(null)}
-                  style={{ width:12, height:12, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, cursor:"default" }}>
-                  <svg width={10} height={10} style={{overflow:"visible"}}>
-                    <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={col} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                    <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={col} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                    {slEnabled ? <>
-                      <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.rd} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                      <path d="M0.8,6 L0.8,9.2 L4,9.2" stroke={c.rd} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                      <circle cx={5} cy={5} r={2.8} fill={c.rd} opacity={0.15}/>
-                      <circle cx={5} cy={5} r={1.6} fill={c.rd}/>
-                    </> : isH && <>
-                      <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.rd} strokeWidth={1} fill="none" strokeLinecap="square"/>
-                      <path d="M0.8,6 L0.8,9.2 L4,9.2" stroke={c.rd} strokeWidth={1} fill="none" strokeLinecap="square"/>
-                    </>}
-                  </svg>
-                </div>
+                <button
+                  type="button"
+                  data-order-obs-chk=""
+                  data-tone="sl"
+                  data-on={slEnabled ? "1" : undefined}
+                  aria-checked={slEnabled}
+                  role="checkbox"
+                  title={slEnabled ? "Disable stop" : "Enable stop"}
+                  onClick={() => { markOrderControlBridge(); setSlEnabled((v) => !v); }}
+                  onMouseEnter={() => setSwHov("sl-chk")}
+                  onMouseLeave={() => setSwHov(null)}
+                >
+                  <span
+                    data-sett-box=""
+                    data-on={slEnabled ? "1" : undefined}
+                    aria-hidden="true"
+                    style={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: 4,
+                      boxSizing: "border-box",
+                      border: `1px solid ${slEnabled ? "var(--ord-sl)" : isH ? "var(--line-strong, var(--line))" : "var(--line)"}`,
+                      background: slEnabled ? "var(--ord-sl)" : "var(--surface-sunken)",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                      transition: "background 0.12s ease, border-color 0.12s ease",
+                    }}
+                  >
+                    {slEnabled ? (
+                      <svg width={11} height={11} viewBox="0 0 10 10" fill="none" aria-hidden="true">
+                        <path d="M2 5.2 L4.2 7.2 L8 2.8" stroke="var(--cta-fg, #0a0a0a)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    ) : null}
+                  </span>
+                </button>
               );
             };
+            const slModeOptions = [
+              {
+                val: "none",
+                label: "Fixed",
+                desc: "Stop stays at the price you set",
+              },
+              {
+                val: "breakeven",
+                label: "Auto BE",
+                desc: "Moves stop to entry after a profit trigger",
+              },
+              {
+                val: "trailing",
+                label: "Trail SL",
+                desc: "Stop follows price by a set distance",
+              },
+            ];
+            const slModeActive = slModeOptions.find((m) => m.val === slAdvMode) || slModeOptions[0];
             return (
               <div style={{ flexShrink:0 }}>
-                <div data-order-level="sl">
-                  <div data-order-level-head="" style={{ position:"relative" }}>
+                <div data-order-level="sl" data-order-zone="stop" data-off={slEnabled ? undefined : "1"}>
+                  <div data-order-level-head="">
                     <SlChk />
                     <span data-order-level-title="">Stop</span>
-                    {panelMode === "advanced" ? (
-                      <span data-order-level-hint="">Fixed, break-even, or trailing</span>
-                    ) : null}
                     <div style={{ flex:1 }}/>
-                    {panelMode==="advanced" && (
-                      <div data-order-sl-modes="" role="tablist" aria-label="Stop loss mode">
-                        {[
-                          ["none", "Price"],
-                          ["breakeven", "Break-even"],
-                          ["trailing", "Trailing"],
-                        ].map(([val, lbl]) => {
-                          const isAct = slAdvMode === val;
-                          return (
-                            <button
-                              type="button"
-                              key={val}
-                              role="tab"
-                              data-mode={val}
-                              data-active={isAct ? "1" : undefined}
-                              aria-selected={isAct}
-                              title={
-                                val === "none"
-                                  ? "Fixed stop price"
-                                  : val === "breakeven"
-                                    ? "Move stop to break-even after profit trigger"
-                                    : "Trailing stop that follows price"
-                              }
-                              onClick={() => {
-                                markOrderControlBridge();
-                                if (val !== "none") setSlEnabled(true);
-                                setSlAdvMode(val);
-                                setSlAdvDrop(false);
-                              }}
+                    {panelMode === "advanced" ? (
+                      <div data-order-sl-mode-dd-wrap="">
+                        <button
+                          type="button"
+                          data-order-sl-mode-dd=""
+                          data-mode={slModeActive.val}
+                          data-open={slAdvDrop ? "1" : undefined}
+                          aria-haspopup="listbox"
+                          aria-expanded={slAdvDrop}
+                          aria-label={`Stop mode: ${slModeActive.label}`}
+                          title={slModeActive.desc}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSlAdvDrop((v) => !v);
+                          }}
+                        >
+                          <span data-order-sl-mode-dd-label="">{slModeActive.label}</span>
+                          <I n="chevDown" s={7} cl="currentColor"/>
+                        </button>
+                        {slAdvDrop ? (
+                          <>
+                            <div
+                              onClick={() => setSlAdvDrop(false)}
+                              style={{ position: "fixed", inset: 0, zIndex: 9998 }}
+                            />
+                            <div
+                              data-order-sl-mode-menu=""
+                              role="listbox"
+                              aria-label="Stop loss mode"
                             >
-                              {lbl}
-                            </button>
-                          );
-                        })}
+                              {slModeOptions.map(({ val, label, desc }) => {
+                                const isAct = slAdvMode === val;
+                                return (
+                                  <button
+                                    type="button"
+                                    key={val}
+                                    role="option"
+                                    data-mode={val}
+                                    data-pick-on={isAct ? "1" : undefined}
+                                    aria-selected={isAct}
+                                    title={desc}
+                                    onClick={() => {
+                                      markOrderControlBridge();
+                                      if (val !== "none") setSlEnabled(true);
+                                      setSlAdvMode(val);
+                                      setSlAdvDrop(false);
+                                    }}
+                                  >
+                                    <b>{label}</b>
+                                    <i>{desc}</i>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </>
+                        ) : null}
                       </div>
-                    )}
+                    ) : null}
                   </div>
-                  {/* Single price row */}
-                  <div style={{ padding:"8px 10px 10px" }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:6, minHeight:36 }}>
-                      <div data-order-field="" data-on={slEnabled ? "1" : undefined} style={{ flex:1, opacity:slEnabled?1:0.4 }}>
-                        <input type="text" value={slRow.price} disabled={!slEnabled}
+                  <div data-order-sl-body="">
+                  <div data-order-rows="" data-sl-price="1">
+                    <div data-order-row="" data-size-col="0" data-index-col="0" data-share-col="0">
+                      <div data-order-field="" data-kind="price" data-on={slEnabled ? "1" : undefined}>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={slRow.price}
+                          disabled={!slEnabled}
                           onFocus={() => { slTpPriceFocusedRef.current = "sl"; }}
-                          onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) updSl(e.target.value); }}
-                          onBlur={e => {
+                          onChange={(e) => { if (/^\d*\.?\d*$/.test(e.target.value)) updSl(e.target.value); }}
+                          onBlur={(e) => {
                             slTpPriceFocusedRef.current = null;
                             updSl(v9NormalizePriceInputOnBlur(e.target.value));
                           }}
-                          style={{ flex:1, minWidth:0, background:"transparent", border:"none", outline:"none", color:slEnabled?c.rd:c.ts, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
-                        <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>
-                          {arw(()=>stepSl(1),  true,  "sl-up")}
-                          {arw(()=>stepSl(-1), false, "sl-dn")}
+                        />
+                        <div data-order-step="">
+                          {arw(() => stepSl(1), true, "sl-up")}
+                          {arw(() => stepSl(-1), false, "sl-dn")}
                         </div>
                       </div>
                     </div>
                   </div>
-                  {/* Footer: Loss · Dist */}
-                  <div style={{ padding:"2px 6px 3px", display:"flex", alignItems:"center", borderTop:"1px solid rgba(255,80,104,0.1)" }}>
+                  <div data-order-entry-under="" data-tone="sl" data-order-metrics="">
                     {(() => {
-                      const slPnl = parseFloat(String(omRiskSummaryTxt || "").replace(/[^0-9.-]/g, ""));
-                      const slCol = Number.isFinite(slPnl) && slPnl >= 0 ? c.gn : c.rd;
+                      // Trust OM signed #riskAmount (single source) — no React re-sign.
+                      const raw = String(omRiskSummaryTxt || "").trim();
+                      const inf = /∞/u.test(raw);
+                      const n = parseFloat(raw.replace(/[^0-9.-]/g, ""));
+                      let label = raw || "$0.00";
+                      if (!inf && Number.isFinite(n)) {
+                        if (n === 0) label = "$0.00";
+                        else label = `${n > 0 ? "+" : "-"}$${Math.abs(n).toFixed(2)}`;
+                      }
+                      const shownN = inf ? NaN : n;
+                      const signAttr = !Number.isFinite(shownN) || shownN === 0 ? "zero" : shownN > 0 ? "pos" : "neg";
+                      const col = signAttr === "pos" ? "var(--up)" : signAttr === "neg" ? "var(--ord-sl)" : "var(--text-muted)";
                       return (
-                    <span style={{ fontSize:9, fontWeight:700, color:slCol, fontVariantNumeric:"tabular-nums" }}>
-                      Loss <span style={{ fontWeight:800 }}>{omRiskSummaryTxt}</span>
-                    </span>
+                        <span data-order-entry-fact="" data-kind="loss" data-sign={signAttr}>
+                          <i>Loss</i>
+                          <b style={{ color: col }}>{inf ? raw : label}</b>
+                        </span>
                       );
                     })()}
-                    <div style={{ flex:1 }}/>
-                    <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
-                      Dist <span style={{ color:c.ts, fontWeight:700 }}>{omSlDistTxt}</span>{" "}{currentSymbol.type==="futures"?"ticks":"pips"}
+                    <span data-order-entry-fact="" data-kind="dist">
+                      <i>Dist</i>
+                      <b>
+                        {omSlDistTxt}
+                        {/\b(pips?|ticks?)\b/i.test(String(omSlDistTxt || ""))
+                          ? ""
+                          : ` ${currentSymbol.type === "futures" ? "ticks" : "pips"}`}
+                      </b>
                     </span>
                   </div>
-                  {/* Advanced order content */}
+                  {/* Advanced order content — labeled field rows */}
                   {slAdvMode !== "none" && (
-                    <div data-order-adv-panel="">
-                      {slAdvMode==="breakeven" ? (() => {
-                        const distUnit = currentSymbol.type==="futures" ? "ticks" : "pips";
-                        const unitLabels = { rr:"R", pips:distUnit, dollar:"$" };
-                        const trigStep = slBeUnit==="rr" ? 0.5 : slBeUnit==="dollar" ? 5 : 1;
-                        const stepTrig = (dir) => setSlBeTrigger(v => String(Math.max(0, parseFloat(v||"0") + dir*trigStep)));
-                        const stepOff  = (dir) => setSlBeOffset(v  => String(Math.max(0, parseFloat(v||"0")  + dir)));
-                        const beArw = (onClick, up, hk) => {
-                          const isH = swHov===hk;
+                    <div data-order-adv-panel="" data-mode={slAdvMode}>
+                      {(() => {
+                        const distUnit = currentSymbol.type === "futures" ? "ticks" : "pips";
+                        const unitLabels = { rr: "R", pips: distUnit, dollar: "$" };
+                        const isBe = slAdvMode === "breakeven";
+                        const unit = isBe ? slBeUnit : slTslUnit;
+                        const unitDrop = isBe ? slBeUnitDrop : slTslUnitDrop;
+                        const setUnitDrop = isBe ? setSlBeUnitDrop : setSlTslUnitDrop;
+                        const setUnit = isBe ? setSlBeUnit : setSlTslUnit;
+                        const unitStep = unit === "rr" ? (isBe ? 0.5 : 0.25) : unit === "dollar" ? 5 : 1;
+                        const stepVal = (setter, step) => (dir) =>
+                          setter((v) => String(Math.max(0, parseFloat(v || "0") + dir * step)));
+                        const arw = (onClick, up, hk) => {
+                          const isH = swHov === hk;
                           return (
-                            <div onClick={onClick} onMouseEnter={()=>setSwHov(hk)} onMouseLeave={()=>setSwHov(null)}
-                              style={{ width:10, height:8, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", color:isH?c.tx:c.ts, transition:"color 0.1s" }}>
+                            <div
+                              onClick={onClick}
+                              onMouseEnter={() => setSwHov(hk)}
+                              onMouseLeave={() => setSwHov(null)}
+                              style={{
+                                width: 10,
+                                height: 8,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                cursor: "default",
+                                color: isH ? c.tx : c.ts,
+                                transition: "color 0.1s",
+                              }}
+                            >
                               <svg width={7} height={4} viewBox="0 0 8 5" fill="none">
-                                {up ? <polyline points="1,4 4,1 7,4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                    : <polyline points="1,1 4,4 7,1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>}
+                                {up ? (
+                                  <polyline points="1,4 4,1 7,4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                ) : (
+                                  <polyline points="1,1 4,4 7,1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                )}
                               </svg>
                             </div>
                           );
                         };
-                        const isUnitH = swHov==="be-unit-btn";
-                        return (
-                          <div style={{ display:"flex", gap:5, alignItems:"center", flexWrap:"wrap" }}>
-                            <span data-order-adv-label="">Move SL to entry after</span>
-                            {/* Trigger value input */}
-                            <div style={{ display:"flex", alignItems:"center", background:"var(--surface)", border:"1px solid var(--line)", height:32, padding:"0 8px", borderRadius:6, gap:2, boxSizing:"border-box", boxShadow:"inset 0 1px 2px rgba(0,0,0,0.2)" }}>
-                              <input type="text" value={slBeTrigger}
-                                onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) setSlBeTrigger(e.target.value); }}
-                                onBlur={e => { const n=parseFloat(e.target.value); setSlBeTrigger(isNaN(n)?"0":String(n)); }}
-                                style={{ width:28, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
-                              <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>
-                                {beArw(()=>stepTrig(1),  true,  "be-trig-up")}
-                                {beArw(()=>stepTrig(-1), false, "be-trig-dn")}
-                              </div>
+                        const WellIn = ({ val, set, hkUp, hkDn, stepFn, w = 36 }) => (
+                          <div data-order-field="" data-compact="1">
+                            <input
+                              type="text"
+                              value={val}
+                              onChange={(e) => {
+                                if (/^\d*\.?\d*$/.test(e.target.value)) set(e.target.value);
+                              }}
+                              onBlur={(e) => {
+                                const n = parseFloat(e.target.value);
+                                set(isNaN(n) ? "0" : String(n));
+                              }}
+                              style={{
+                                width: w,
+                                background: "transparent",
+                                border: "none",
+                                outline: "none",
+                                color: "var(--text)",
+                                fontSize: 11,
+                                fontWeight: 700,
+                                fontFamily: F,
+                                fontVariantNumeric: "tabular-nums",
+                                padding: 0,
+                                textAlign: "center",
+                              }}
+                            />
+                            <div style={{ display: "flex", flexDirection: "column", gap: 0, flexShrink: 0 }}>
+                              {arw(() => stepFn(1), true, hkUp)}
+                              {arw(() => stepFn(-1), false, hkDn)}
                             </div>
-                            {/* Unit dropdown */}
-                            <div style={{ position:"relative" }}>
-                              <div onClick={()=>setSlBeUnitDrop(v=>!v)}
-                                onMouseEnter={()=>setSwHov("be-unit-btn")} onMouseLeave={()=>setSwHov(null)}
-                                style={{ width:52, height:30, display:"flex", alignItems:"center", justifyContent:"space-between",
-                                         padding:"0 5px", cursor:"default", flexShrink:0, boxSizing:"border-box",
-                                         background:slBeUnitDrop?c.acD:isUnitH?"rgba(48,144,255,0.08)":"transparent",
-                                         border:`1px solid ${slBeUnitDrop?"rgba(48,144,255,0.5)":isUnitH?"rgba(140,160,255,0.35)":"rgba(140,160,255,0.18)"}`,
-                                         color:slBeUnitDrop?c.acL:isUnitH?c.tx:c.ts,
-                                         transition:"all 0.12s" }}>
-                                <span style={{ fontSize:11, fontWeight:700 }}>{unitLabels[slBeUnit]}</span>
-                                <svg width={6} height={4} viewBox="0 0 6 4" fill="none" style={{ flexShrink:0, opacity:0.6 }}>
-                                  <polyline points="0.5,0.5 3,3.5 5.5,0.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                                </svg>
-                              </div>
-                              {slBeUnitDrop && (<>
-                                <div onClick={()=>setSlBeUnitDrop(false)} style={{ position:"fixed", inset:0, zIndex:9998 }}/>
-                                <div style={{ position:"absolute", left:0, top:"calc(100% + 3px)", zIndex:9999, width:64,
-                                             background:c.sf, border:"1px solid rgba(140,160,255,0.22)", boxShadow:"0 4px 16px rgba(0,0,0,0.5)" }}>
-                                  <div style={{ height:2, background:"rgba(255,255,255,0.18)" }}/>
-                                  {[["rr","R:R"],["pips",distUnit==="ticks"?"Ticks":"Pips"],["dollar","Dollar"]].map(([val,lbl]) => {
-                                    const isAct = slBeUnit===val;
-                                    const isHi  = swHov===`be-unit-${val}`;
-                                    return (
-                                      <div key={val}
-                                        onClick={()=>{ setSlBeUnit(val); setSlBeUnitDrop(false); }}
-                                        onMouseEnter={()=>setSwHov(`be-unit-${val}`)} onMouseLeave={()=>setSwHov(null)}
-                                        style={{ display:"flex", alignItems:"center", padding:"5px 8px", cursor:"default", position:"relative",
-                                                 background:isAct?c.acD:isHi?"rgba(255,255,255,0.06)":"transparent", transition:"background 0.1s" }}>
-                                        {isAct && <div style={{ position:"absolute", left:0, top:"15%", bottom:"15%", width:2,
-                                                                background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,
-                                                                boxShadow:`0 0 6px ${c.acG}` }}/>}
-                                        <span style={{ fontSize:11, fontWeight:isAct?700:500, color:isAct?c.acL:isHi?c.tx:c.ts }}>{lbl}</span>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </>)}
-                            </div>
-                            <span style={{ fontSize:11, color:c.tm }}>+</span>
-                            {/* Offset input */}
-                            <div style={{ display:"flex", alignItems:"center", background:"var(--surface)", border:"1px solid var(--line)", height:32, padding:"0 8px", borderRadius:6, gap:2, boxSizing:"border-box", boxShadow:"inset 0 1px 2px rgba(0,0,0,0.2)" }}>
-                              <input type="text" value={slBeOffset}
-                                onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) setSlBeOffset(e.target.value); }}
-                                onBlur={e => { const n=parseFloat(e.target.value); setSlBeOffset(isNaN(n)?"0":String(n)); }}
-                                style={{ width:24, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
-                              <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>
-                                {beArw(()=>stepOff(1),  true,  "be-off-up")}
-                                {beArw(()=>stepOff(-1), false, "be-off-dn")}
-                              </div>
-                            </div>
-                            <span style={{ fontSize:11, color:c.ts }}>{distUnit}</span>
                           </div>
                         );
-                      })() : (() => {
-                        const distUnit = currentSymbol.type==="futures" ? "ticks" : "pips";
-                        const unitLabels = { rr:"R", pips:distUnit, dollar:"$" };
-                        const tslStep = slTslUnit==="rr" ? 0.25 : slTslUnit==="dollar" ? 5 : 1;
-                        const stepAct  = (dir) => setSlTslActivation(v => String(Math.max(0, parseFloat(v||"0") + dir*tslStep)));
-                        const stepTrl  = (dir) => setSlTslTrail(v      => String(Math.max(0, parseFloat(v||"0") + dir*tslStep)));
-                        const stepStp  = (dir) => setSlTslStep(v       => String(Math.max(0, parseFloat(v||"0") + dir*tslStep)));
-                        const tslArw = (onClick, up, hk) => {
-                          const isH = swHov===hk;
+                        const UnitPick = () => (
+                          <div data-order-unit="" style={{ position: "relative" }}>
+                            <button
+                              type="button"
+                              data-order-unit-btn=""
+                              data-open={unitDrop ? "1" : undefined}
+                              onClick={() => setUnitDrop((v) => !v)}
+                            >
+                              <span>{unitLabels[unit]}</span>
+                              <I n="chevDown" s={7} cl="currentColor" />
+                            </button>
+                            {unitDrop ? (
+                              <>
+                                <div onClick={() => setUnitDrop(false)} style={{ position: "fixed", inset: 0, zIndex: 9998 }} />
+                                <div data-order-unit-menu="">
+                                  {[
+                                    ["rr", "R"],
+                                    ["pips", distUnit === "ticks" ? "Ticks" : "Pips"],
+                                    ["dollar", "Dollar"],
+                                  ].map(([val, lbl]) => (
+                                    <button
+                                      type="button"
+                                      key={val}
+                                      data-pick-on={unit === val ? "1" : undefined}
+                                      onClick={() => {
+                                        setUnit(val);
+                                        setUnitDrop(false);
+                                      }}
+                                    >
+                                      {lbl}
+                                    </button>
+                                  ))}
+                                </div>
+                              </>
+                            ) : null}
+                          </div>
+                        );
+                        if (isBe) {
                           return (
-                            <div onClick={onClick} onMouseEnter={()=>setSwHov(hk)} onMouseLeave={()=>setSwHov(null)}
-                              style={{ width:10, height:8, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", color:isH?c.tx:c.ts, transition:"color 0.1s" }}>
-                              <svg width={7} height={4} viewBox="0 0 8 5" fill="none">
-                                {up ? <polyline points="1,4 4,1 7,4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                    : <polyline points="1,1 4,4 7,1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>}
-                              </svg>
+                            <div data-order-adv-stack="">
+                              <div data-order-adv-field="">
+                                <span data-order-adv-field-lbl="">Trigger</span>
+                                <WellIn
+                                  val={slBeTrigger}
+                                  set={setSlBeTrigger}
+                                  hkUp="be-trig-up"
+                                  hkDn="be-trig-dn"
+                                  stepFn={stepVal(setSlBeTrigger, unitStep)}
+                                />
+                                <UnitPick />
+                              </div>
+                              <div data-order-adv-field="">
+                                <span data-order-adv-field-lbl="">Offset</span>
+                                <WellIn
+                                  val={slBeOffset}
+                                  set={setSlBeOffset}
+                                  hkUp="be-off-up"
+                                  hkDn="be-off-dn"
+                                  stepFn={stepVal(setSlBeOffset, 1)}
+                                />
+                                <span data-order-adv-field-unit="">{distUnit}</span>
+                              </div>
+                              <div data-order-adv-note="">Moves SL to entry when trigger hits</div>
                             </div>
                           );
-                        };
-                        const WellIn = ({val, set, hkUp, hkDn, stepFn, w=28}) => (
-                          <div style={{ display:"flex", alignItems:"center", background:"var(--surface)", border:"1px solid var(--line)", height:32, padding:"0 8px", borderRadius:6, gap:2, boxSizing:"border-box", boxShadow:"inset 0 1px 2px rgba(0,0,0,0.2)" }}>
-                            <input type="text" value={val}
-                              onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) set(e.target.value); }}
-                              onBlur={e => { const n=parseFloat(e.target.value); set(isNaN(n)?"0":String(n)); }}
-                              style={{ width:w, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
-                            <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>
-                              {tslArw(()=>stepFn(1),  true,  hkUp)}
-                              {tslArw(()=>stepFn(-1), false, hkDn)}
-                            </div>
-                          </div>
-                        );
-                        const isUnitH = swHov==="tsl-unit-btn";
+                        }
                         return (
-                          <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
-                            <div style={{ display:"flex", gap:5, alignItems:"center", flexWrap:"wrap" }}>
-                              <span data-order-adv-label="">After</span>
-                              <WellIn val={slTslActivation} set={setSlTslActivation} hkUp="tsl-act-up" hkDn="tsl-act-dn" stepFn={stepAct}/>
-                              {/* Unit dropdown */}
-                              <div style={{ position:"relative" }}>
-                                <div onClick={()=>setSlTslUnitDrop(v=>!v)}
-                                  onMouseEnter={()=>setSwHov("tsl-unit-btn")} onMouseLeave={()=>setSwHov(null)}
-                                  style={{ width:52, height:30, display:"flex", alignItems:"center", justifyContent:"space-between",
-                                           padding:"0 5px", cursor:"default", flexShrink:0, boxSizing:"border-box",
-                                           background:slTslUnitDrop?c.acD:isUnitH?"rgba(48,144,255,0.08)":"transparent",
-                                           border:`1px solid ${slTslUnitDrop?"rgba(48,144,255,0.5)":isUnitH?"rgba(140,160,255,0.35)":"rgba(140,160,255,0.18)"}`,
-                                           color:slTslUnitDrop?c.acL:isUnitH?c.tx:c.ts, transition:"all 0.12s" }}>
-                                  <span style={{ fontSize:11, fontWeight:700 }}>{unitLabels[slTslUnit]}</span>
-                                  <svg width={6} height={4} viewBox="0 0 6 4" fill="none" style={{ flexShrink:0, opacity:0.6 }}>
-                                    <polyline points="0.5,0.5 3,3.5 5.5,0.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                                  </svg>
-                                </div>
-                                {slTslUnitDrop && (<>
-                                  <div onClick={()=>setSlTslUnitDrop(false)} style={{ position:"fixed", inset:0, zIndex:9998 }}/>
-                                  <div style={{ position:"absolute", left:0, top:"calc(100% + 3px)", zIndex:9999, width:64,
-                                               background:c.sf, border:"1px solid rgba(140,160,255,0.22)", boxShadow:"0 4px 16px rgba(0,0,0,0.5)" }}>
-                                    <div style={{ height:2, background:"rgba(255,255,255,0.18)" }}/>
-                                    {[["rr","R:R"],["pips",distUnit==="ticks"?"Ticks":"Pips"],["dollar","Dollar"]].map(([val,lbl]) => {
-                                      const isAct = slTslUnit===val;
-                                      const isHi  = swHov===`tsl-unit-${val}`;
-                                      return (
-                                        <div key={val}
-                                          onClick={()=>{ setSlTslUnit(val); setSlTslUnitDrop(false); }}
-                                          onMouseEnter={()=>setSwHov(`tsl-unit-${val}`)} onMouseLeave={()=>setSwHov(null)}
-                                          style={{ display:"flex", alignItems:"center", padding:"5px 8px", cursor:"default", position:"relative",
-                                                   background:isAct?c.acD:isHi?"rgba(255,255,255,0.06)":"transparent", transition:"background 0.1s" }}>
-                                          {isAct && <div style={{ position:"absolute", left:0, top:"15%", bottom:"15%", width:2,
-                                                                  background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,
-                                                                  boxShadow:`0 0 6px ${c.acG}` }}/>}
-                                          <span style={{ fontSize:11, fontWeight:isAct?700:500, color:isAct?c.acL:isHi?c.tx:c.ts }}>{lbl}</span>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                </>)}
-                              </div>
-                              <span style={{ fontSize:11, color:c.tm }}>trail</span>
-                              <WellIn val={slTslTrail} set={setSlTslTrail} hkUp="tsl-trl-up" hkDn="tsl-trl-dn" stepFn={stepTrl}/>
-                              <span style={{ fontSize:11, color:c.tm }}>·</span>
-                              <span style={{ fontSize:11, color:c.tm }}>step</span>
-                              <WellIn val={slTslStep} set={setSlTslStep} hkUp="tsl-stp-up" hkDn="tsl-stp-dn" stepFn={stepStp}/>
+                          <div data-order-adv-stack="">
+                            <div data-order-adv-field="">
+                              <span data-order-adv-field-lbl="">Activate after</span>
+                              <WellIn
+                                val={slTslActivation}
+                                set={setSlTslActivation}
+                                hkUp="tsl-act-up"
+                                hkDn="tsl-act-dn"
+                                stepFn={stepVal(setSlTslActivation, unitStep)}
+                              />
+                              <UnitPick />
                             </div>
-                            {/* TSL explanation row */}
-                            <div style={{ borderTop:"1px solid rgba(255,80,104,0.08)", paddingTop:4 }}>
-                              <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", lineHeight:1.4 }}>
-                                {"Activates after "}
-                                <span style={{ color:c.gn, fontWeight:700 }}>{slTslActivation} {unitLabels[slTslUnit]}</span>
-                                {" profit · SL trails "}
-                                <span style={{ color:c.ts, fontWeight:700 }}>{slTslTrail} {unitLabels[slTslUnit]}</span>
-                                {" behind price · steps every "}
-                                <span style={{ color:c.ts, fontWeight:700 }}>{slTslStep} {unitLabels[slTslUnit]}</span>
-                              </span>
+                            <div data-order-adv-field="">
+                              <span data-order-adv-field-lbl="">Trail by</span>
+                              <WellIn
+                                val={slTslTrail}
+                                set={setSlTslTrail}
+                                hkUp="tsl-trl-up"
+                                hkDn="tsl-trl-dn"
+                                stepFn={stepVal(setSlTslTrail, unitStep)}
+                              />
+                              <span data-order-adv-field-unit="">{unitLabels[unit]}</span>
+                            </div>
+                            <div data-order-adv-field="">
+                              <span data-order-adv-field-lbl="">Step</span>
+                              <WellIn
+                                val={slTslStep}
+                                set={setSlTslStep}
+                                hkUp="tsl-stp-up"
+                                hkDn="tsl-stp-dn"
+                                stepFn={stepVal(setSlTslStep, unitStep)}
+                              />
+                              <span data-order-adv-field-unit="">{unitLabels[unit]}</span>
+                            </div>
+                            <div data-order-adv-note="">
+                              Trails SL behind price after activation; steps only when price moves by Step
                             </div>
                           </div>
                         );
                       })()}
                     </div>
                   )}
-                  {/* BE explanation row */}
-                  {slAdvMode==="breakeven" && (
-                    <div style={{ borderTop:"1px solid rgba(255,80,104,0.08)", padding:"3px 6px 4px" }}>
-                      <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", lineHeight:1.4 }}>
-                        {"SL moves from "}
-                        <span style={{ color:c.rd, fontWeight:700 }}>{slRows[0].price}</span>
-                        {" to "}
-                        <span style={{ color:c.ts, fontWeight:700 }}>{entryRows[0].price}</span>
-                        {" when price reaches "}
-                        <span style={{ color:c.gn, fontWeight:700 }}>—</span>
-                      </span>
-                    </div>
-                  )}
+                  </div>
                 </div>
               </div>
             );
@@ -43026,7 +44191,8 @@ const TalariaV8bLive = () => {
               return "";
             };
             const addTp = () => {
-              if (!sessionAdvancedAllowed || panelMode !== "advanced") return;
+              if (!sessionAdvancedAllowed) return;
+              if (panelMode !== "advanced") setPanelMode("advanced");
               if (tpRows.length >= 5) return;
               omPanelBridgeRef.current.tpAdd = Date.now();
               markOrderControlBridge();
@@ -43151,247 +44317,472 @@ const TalariaV8bLive = () => {
                 return rows.map((r) => ({ ...r, qty: each }));
               });
             };
+            const multiTpOn = tpRows.length > 1;
+            const singleTp = sortedTpRows[0] || tpRows[0];
+            const tpTotalQtyTxt =
+              omTpAvgLotsTxt
+                ? `${omTpAvgLotsTxt} ${sizeUnit}`
+                : Number.isFinite(orderQtyNumTp)
+                  ? `${orderQtyNumTp.toFixed(currentSymbol.type === "futures" ? 0 : 2)} ${sizeUnit}`
+                  : `0.00 ${sizeUnit}`;
+            const toggleMultiTp = () => {
+              if (!sessionAdvancedAllowed) return;
+              if (multiTpOn) {
+                setOpTpLegsOpen(false);
+                clearTp();
+                return;
+              }
+              addTp();
+            };
+            const openTpLegsPopover = (el) => {
+              if (!el) return;
+              const r = el.getBoundingClientRect();
+              const mw = Math.min(300, Math.max(260, window.innerWidth - 16));
+              let left = r.left;
+              if (left + mw > window.innerWidth - 4) left = Math.max(4, window.innerWidth - mw - 4);
+              if (left < 4) left = 4;
+              setOpTpLegsPos({ top: r.bottom + 4, left });
+              setOpTpLegsOpen(true);
+              setOpEntryLegsOpen(false);
+              setOpSizeOpen(false);
+              setOpDotsOpen(false);
+              setOpTplOpen(false);
+              setOpSymOpen(false);
+            };
             const arw = (onClick, up, hk) => {
-              const isH = swHov===hk;
+              const isH = swHov === hk;
               return (
-                <div onClick={onClick} onMouseEnter={()=>setSwHov(hk)} onMouseLeave={()=>setSwHov(null)}
-                  style={{ width:10, height:8, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", color:isH?c.tx:c.ts, transition:"color 0.1s" }}>
+                <button
+                  type="button"
+                  data-order-step-btn=""
+                  data-hov={isH ? "1" : undefined}
+                  onClick={(e) => { e.stopPropagation(); if (!tpEnabled) return; onClick(); }}
+                  onMouseEnter={() => tpEnabled && setSwHov(hk)}
+                  onMouseLeave={() => setSwHov(null)}
+                  tabIndex={-1}
+                  aria-hidden="true"
+                  disabled={!tpEnabled}
+                >
                   <svg width={7} height={4} viewBox="0 0 8 5" fill="none">
-                    {up ? <polyline points="1,4 4,1 7,4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                        : <polyline points="1,1 4,4 7,1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>}
+                    {up
+                      ? <polyline points="1,4 4,1 7,4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      : <polyline points="1,1 4,4 7,1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>}
                   </svg>
+                </button>
+              );
+            };
+            /** Obsidian checkbox — master enable for the whole Targets block. */
+            const TpChk = () => {
+              const isH = swHov === "tp-chk";
+              return (
+                <button
+                  type="button"
+                  data-order-obs-chk=""
+                  data-tone="tp"
+                  data-on={tpEnabled ? "1" : undefined}
+                  aria-checked={tpEnabled}
+                  role="checkbox"
+                  title={tpEnabled ? "Disable targets" : "Enable targets"}
+                  onClick={() => {
+                    markOrderControlBridge();
+                    setTpEnabled((v) => {
+                      const next = !v;
+                      setTpRows((rows) => rows.map((r) => ({ ...r, enabled: next })));
+                      if (!next) setOpTpLegsOpen(false);
+                      return next;
+                    });
+                  }}
+                  onMouseEnter={() => setSwHov("tp-chk")}
+                  onMouseLeave={() => setSwHov(null)}
+                >
+                  <span
+                    data-sett-box=""
+                    data-on={tpEnabled ? "1" : undefined}
+                    aria-hidden="true"
+                    style={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: 4,
+                      boxSizing: "border-box",
+                      border: `1px solid ${tpEnabled ? "var(--ord-tp)" : isH ? "var(--line-strong, var(--line))" : "var(--line)"}`,
+                      background: tpEnabled ? "var(--ord-tp)" : "var(--surface-sunken)",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                      transition: "background 0.12s ease, border-color 0.12s ease",
+                    }}
+                  >
+                    {tpEnabled ? (
+                      <svg width={11} height={11} viewBox="0 0 10 10" fill="none" aria-hidden="true">
+                        <path d="M2 5.2 L4.2 7.2 L8 2.8" stroke="var(--cta-fg, #0a0a0a)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    ) : null}
+                  </span>
+                </button>
+              );
+            };
+            const renderTpLegRow = (row, i, { allowDelete, showSize = true, showIndex = true, showShare = true, shareCompact = false }) => {
+              const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
+              const rowIdx = om?.tpTargets?.length
+                ? om.tpTargets.findIndex((t) => t && (t.id === row.id || String(t.id) === String(row.id)))
+                : i;
+              const effIdx = rowIdx >= 0 ? rowIdx : i;
+              const shareLotsTxt = om
+                ? v9OmTpShareLotsAt(om, effIdx, currentSymbol.type)
+                : (Number.isFinite(orderQtyNumTp) ? orderQtyNumTp.toFixed(currentSymbol.type === "futures" ? 0 : 2) : "0.00");
+              const pct = totalQty > 0 ? ((parseFloat(row.qty) || 0) / totalQty * 100).toFixed(0) : "0";
+              /* Legs popover: always % + lots — never OM R:R lines that omit share %. */
+              const shareLegsLabel = futuresMinRiskHintTp
+                ? null
+                : `${pct}% · ${shareLotsTxt} ${sizeUnit}`;
+              const shareTicketLabel = omTpRowStatLines[i]
+                ? omTpRowStatLines[i]
+                : sizeMode === "$"
+                  ? (futuresMinRiskHintTp ? null : `${pct}% · ${shareLotsTxt}`)
+                  : sizeMode === "%"
+                    ? (futuresMinRiskHintTp ? null : `$${(parseFloat(row.qty || "0") / 100 * basisAmtTp).toFixed(0)} · ${shareLotsTxt}`)
+                    : (futuresMinRiskHintTp ? null : `${pct}% · ${shareLotsTxt}`);
+              return (
+                <div
+                  key={row.id}
+                  data-order-row=""
+                  data-kind="tp"
+                  data-size-col={showSize ? "1" : "0"}
+                  data-index-col={showIndex ? "1" : "0"}
+                  data-share-col={showShare ? "1" : "0"}
+                >
+                  {showIndex ? <span data-order-row-n="">T{i + 1}</span> : null}
+                  <div data-order-field="" data-kind="price" data-on={tpEnabled ? "1" : undefined}>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={row.price}
+                      disabled={!tpEnabled}
+                      onFocus={() => { slTpPriceFocusedRef.current = "tp"; }}
+                      onChange={(e) => { if (/^\d*\.?\d*$/.test(e.target.value)) updTp(row.id, "price", e.target.value); }}
+                      onBlur={(e) => {
+                        slTpPriceFocusedRef.current = null;
+                        updTp(row.id, "price", v9NormalizePriceInputOnBlur(e.target.value));
+                      }}
+                    />
+                    <div data-order-step="">
+                      {arw(() => stepTp(row.id, "price", 1), true, `tp-${row.id}-up`)}
+                      {arw(() => stepTp(row.id, "price", -1), false, `tp-${row.id}-dn`)}
+                    </div>
+                  </div>
+                  {showSize ? (
+                    <div data-order-field="" data-kind="size">
+                      {sizeMode === "$" && <span data-order-prefix="">$</span>}
+                      {sizeMode === "%" && <span data-order-prefix="">%</span>}
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={row.qty}
+                        disabled={!tpEnabled}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (sizeMode === "#" && currentSymbol.type === "futures") {
+                            if (!/^\d*$/.test(v)) return;
+                            if (tpRows.length === 1 && orderLotTotalTp > 0 && v !== "") {
+                              const n = parseInt(v, 10);
+                              if (!isNaN(n) && n > orderLotTotalTp) {
+                                updTp(row.id, "qty", String(Math.floor(orderLotTotalTp)));
+                                return;
+                              }
+                            }
+                            updTp(row.id, "qty", v);
+                            return;
+                          }
+                          if (sizeMode === "#" && tpRows.length === 1 && orderLotTotalTp > 0 && v !== "" && /^\d*\.?\d*$/.test(v)) {
+                            const n = parseFloat(v);
+                            if (!isNaN(n) && n > orderLotTotalTp) {
+                              updTp(row.id, "qty", String(orderLotTotalTp));
+                              return;
+                            }
+                          }
+                          if (/^\d*\.?\d*$/.test(v)) updTp(row.id, "qty", v);
+                        }}
+                        onBlur={(e) => {
+                          const n = parseFloat(e.target.value);
+                          if (sizeMode === "#") {
+                            markOrderControlBridge();
+                            setTpRows((rows) => {
+                              const v =
+                                currentSymbol.type === "futures"
+                                  ? String(Math.max(0, Math.round(isNaN(n) ? 0 : n)))
+                                  : isNaN(n)
+                                    ? "0"
+                                    : String(n);
+                              let working = rows.map((r) => (r.id === row.id ? { ...r, qty: v } : r));
+                              if (tpRows.length === 1 && orderLotTotalTp > 0) {
+                                working = working.map((r) =>
+                                  r.id === row.id
+                                    ? { ...r, qty: v9TpClampSingleLotQty(v, orderLotTotalTp, currentSymbol.type) }
+                                    : r
+                                );
+                              } else if (tpRows.length > 1 && orderLotTotalTp > 0) {
+                                working = v9TpNormalizeMultiLotRows(working, orderLotTotalTp, currentSymbol.type);
+                              }
+                              return working;
+                            });
+                            return;
+                          }
+                          updTp(row.id, "qty", isNaN(n) ? "0" : String(n));
+                        }}
+                      />
+                      {sizeMode === "#" && <span data-order-prefix="" data-unit="">{sizeUnit}</span>}
+                      <div data-order-step="">
+                        {arw(() => stepTp(row.id, "qty", 1), true, `tq-${row.id}-up`)}
+                        {arw(() => stepTp(row.id, "qty", -1), false, `tq-${row.id}-dn`)}
+                      </div>
+                    </div>
+                  ) : null}
+                  {showShare ? (
+                    <span data-order-share="" title={shareCompact ? shareLegsLabel || undefined : undefined}>
+                      {futuresMinRiskHintTp
+                        ? <span style={{ color: "#FFD28A" }}>Need {omFuturesMinRiskTxt}</span>
+                        : shareCompact
+                          ? shareLegsLabel
+                          : (shareTicketLabel || `${pct}% · ${shareLotsTxt}`)}
+                    </span>
+                  ) : null}
+                  {allowDelete ? (
+                    <button
+                      type="button"
+                      data-order-icon-btn=""
+                      data-tone="danger"
+                      onClick={(e) => { e.stopPropagation(); delTp(row.id); }}
+                      title="Remove target"
+                      aria-label="Remove target"
+                    >
+                      <I n="x" s={9} cl="currentColor"/>
+                    </button>
+                  ) : showShare || showIndex || showSize ? <span /> : null}
                 </div>
               );
             };
+            const tpFoot = (
+              <div data-order-entry-under="" data-tone="tp" data-order-metrics="">
+                {(() => {
+                  const tpPnl = parseFloat(String(omRewardSummaryTxt || "").replace(/[^0-9.-]/g, ""));
+                  const tpCol = Number.isFinite(tpPnl) && tpPnl >= 0 ? "var(--up)" : "var(--down)";
+                  return (
+                    <span data-order-entry-fact="" data-kind="profit">
+                      <i>Profit</i>
+                      <b style={{ color: tpCol }}>{omRewardSummaryTxt}</b>
+                    </span>
+                  );
+                })()}
+                <span data-order-entry-fact="" data-kind="dist">
+                  <i>Dist</i>
+                  <b>
+                    {omTpDistTxt}
+                    {/\b(pips?|ticks?)\b/i.test(String(omTpDistTxt || ""))
+                      ? ""
+                      : ` ${currentSymbol.type === "futures" ? "ticks" : "pips"}`}
+                  </b>
+                </span>
+              </div>
+            );
             return (
-              <div style={{ flexShrink:0 }}>
-                <div data-order-level="tp" data-multi={tpRows.length > 1 ? "1" : undefined}>
+              <>
+              <div style={{ flexShrink: 0 }}>
+                <div
+                  data-order-level="tp"
+                  data-order-zone="target"
+                  data-multi={multiTpOn ? "1" : undefined}
+                  data-tp-compact="1"
+                  data-size-col="0"
+                  data-index-col="0"
+                  data-share-col="0"
+                  data-off={tpEnabled ? undefined : "1"}
+                >
                   <div data-order-level-head="">
-                    <span data-order-level-title="">Targets</span>
-                    {panelMode === "advanced" ? (
-                      <span data-order-level-hint="">Scale out up to 5 TPs</span>
-                    ) : null}
-                    {panelMode==="advanced" && (
-                      <span data-order-level-count="" style={{ color:"var(--up)" }}>
-                        {tpRows.length}/5
-                      </span>
-                    )}
-                    <div style={{ flex:1 }}/>
-                    {panelMode==="advanced" && tpRows.length > 1 && (<>
-                      <div data-order-icon-btn="" data-tone="tp" onClick={equalizeTp}
-                        onMouseEnter={()=>setSwHov("tp-eq")} onMouseLeave={()=>setSwHov(null)}
-                        title="Equalize size across targets">
-                        <svg width={11} height={8} viewBox="0 0 11 8" fill="none">
-                          <line x1="0" y1="2" x2="11" y2="2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                          <line x1="0" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                        </svg>
-                      </div>
-                      <div data-order-icon-btn="" data-tone="danger" onClick={clearTp}
-                        onMouseEnter={()=>setSwHov("tp-clear")} onMouseLeave={()=>setSwHov(null)}
-                        title="Reset to one target">
-                        <svg width={10} height={11} viewBox="0 0 10 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-                          <line x1="1" y1="3" x2="9" y2="3"/>
-                          <path d="M3.5 3V2a.5.5 0 01.5-.5h2a.5.5 0 01.5.5v1"/>
-                          <path d="M2 3l.6 6.5h4.8L8 3"/>
-                          <line x1="3.8" y1="5.5" x2="3.8" y2="7.5"/>
-                          <line x1="6.2" y1="5.5" x2="6.2" y2="7.5"/>
-                        </svg>
-                      </div>
-                    </>)}
-                    {v9TpPlusVisible && (
-                    <button type="button" data-order-add="" data-tone="tp" onClick={addTp}
-                      onMouseEnter={()=>setSwHov("tp-add")} onMouseLeave={()=>setSwHov(null)}
-                      title="Add take-profit target">
-                      <svg width={9} height={9} viewBox="0 0 9 9" fill="none" aria-hidden="true">
-                        <line x1="4.5" y1="1" x2="4.5" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                        <line x1="1" y1="4.5" x2="8" y2="4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                      </svg>
-                      Target
-                    </button>
-                    )}
-                  </div>
-                  <div ref={tpScrollRef} className="tlr-scroll" data-order-rows="" data-multi={tpRows.length > 1 ? "1" : undefined}>
-                    {sortedTpRows.map((row, i) => {
-                      const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
-                      const rowIdx = om?.tpTargets?.length
-                        ? om.tpTargets.findIndex((t) => t && (t.id === row.id || String(t.id) === String(row.id)))
-                        : i;
-                      const effIdx = rowIdx >= 0 ? rowIdx : i;
-                      const shareLotsTxt = om
-                        ? v9OmTpShareLotsAt(om, effIdx, currentSymbol.type)
-                        : (Number.isFinite(orderQtyNumTp) ? orderQtyNumTp.toFixed(currentSymbol.type === "futures" ? 0 : 2) : "0.00");
-                      const pct = totalQty > 0 ? ((parseFloat(row.qty)||0)/totalQty*100).toFixed(0) : "0";
-                      return (
-                        <div key={row.id} data-order-row="" style={{ opacity:row.enabled?1:0.38, transition:"opacity var(--motion)" }}>
-                          {(()=>{
-                            const isH = swHov===`tp-chk-${row.id}`;
-                            const col = row.enabled ? c.gn : isH ? c.gn : c.ts;
-                            return (
-                              <div onClick={()=>updTp(row.id,"enabled",!row.enabled)}
-                                onMouseEnter={()=>setSwHov(`tp-chk-${row.id}`)} onMouseLeave={()=>setSwHov(null)}
-                                style={{ width:12, height:12, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, cursor:"default" }}>
-                                <svg width={10} height={10} style={{overflow:"visible"}}>
-                                  <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={col} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                                  <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={col} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                                  {row.enabled ? <>
-                                    <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.gn} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                                    <path d="M0.8,6 L0.8,9.2 L4,9.2" stroke={c.gn} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                                    <circle cx={5} cy={5} r={2.8} fill={c.gn} opacity={0.15}/>
-                                    <circle cx={5} cy={5} r={1.6} fill={c.gn}/>
-                                  </> : isH && <>
-                                    <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.gn} strokeWidth={1} fill="none" strokeLinecap="square"/>
-                                    <path d="M0.8,6 L0.8,9.2 L4,9.2" stroke={c.gn} strokeWidth={1} fill="none" strokeLinecap="square"/>
-                                  </>}
-                                </svg>
-                              </div>
-                            );
-                          })()}
-                          {tpRows.length > 1 && <span data-order-row-n="">{i+1}</span>}
-                          <div data-order-field="" data-on={row.enabled ? "1" : undefined} style={{ flexShrink:0 }}>
-                            <input type="text" value={row.price} disabled={!row.enabled}
-                              onFocus={() => { slTpPriceFocusedRef.current = "tp"; }}
-                              onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) updTp(row.id,"price",e.target.value); }}
-                              onBlur={e => {
-                                slTpPriceFocusedRef.current = null;
-                                updTp(row.id,"price", v9NormalizePriceInputOnBlur(e.target.value));
-                              }}
-                              style={{ width:58, background:"transparent", border:"none", outline:"none", color:row.enabled?"var(--up)":"var(--text-muted)", fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
-                            <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>
-                              {arw(()=>stepTp(row.id,"price", 1), true,  `tp-${row.id}-up`)}
-                              {arw(()=>stepTp(row.id,"price",-1), false, `tp-${row.id}-dn`)}
-                            </div>
-                          </div>
-                          <div data-order-field="" style={{ flexShrink:0 }}>
-                            {sizeMode==="$" && <span style={{ fontSize:10, fontWeight:600, color:"var(--text-muted)", lineHeight:1, flexShrink:0 }}>$</span>}
-                            {sizeMode==="%" && <span style={{ fontSize:9, fontWeight:700, color:"var(--text-muted)", lineHeight:1, flexShrink:0 }}>%</span>}
-                            <input type="text" value={row.qty}
-                              onChange={e => {
-                                const v = e.target.value;
-                                if (sizeMode === "#" && currentSymbol.type === "futures") {
-                                  if (!/^\d*$/.test(v)) return;
-                                  if (tpRows.length === 1 && orderLotTotalTp > 0 && v !== "") {
-                                    const n = parseInt(v, 10);
-                                    if (!isNaN(n) && n > orderLotTotalTp) {
-                                      updTp(row.id, "qty", String(Math.floor(orderLotTotalTp)));
-                                      return;
-                                    }
-                                  }
-                                  updTp(row.id, "qty", v);
-                                  return;
-                                }
-                                if (sizeMode === "#" && tpRows.length === 1 && orderLotTotalTp > 0 && v !== "" && /^\d*\.?\d*$/.test(v)) {
-                                  const n = parseFloat(v);
-                                  if (!isNaN(n) && n > orderLotTotalTp) {
-                                    updTp(row.id, "qty", String(orderLotTotalTp));
-                                    return;
-                                  }
-                                }
-                                if(/^\d*\.?\d*$/.test(v)) updTp(row.id,"qty",v);
-                              }}
-                              onBlur={e => {
-                                const n = parseFloat(e.target.value);
-                                if (sizeMode === "#") {
-                                  markOrderControlBridge();
-                                  setTpRows((rows) => {
-                                    let v =
-                                      currentSymbol.type === "futures"
-                                        ? String(Math.max(0, Math.round(isNaN(n) ? 0 : n)))
-                                        : isNaN(n)
-                                          ? "0"
-                                          : String(n);
-                                    let working = rows.map((r) => (r.id === row.id ? { ...r, qty: v } : r));
-                                    if (tpRows.length === 1 && orderLotTotalTp > 0) {
-                                      working = working.map((r) =>
-                                        r.id === row.id
-                                          ? { ...r, qty: v9TpClampSingleLotQty(v, orderLotTotalTp, currentSymbol.type) }
-                                          : r
-                                      );
-                                    } else if (tpRows.length > 1 && orderLotTotalTp > 0) {
-                                      working = v9TpNormalizeMultiLotRows(working, orderLotTotalTp, currentSymbol.type);
-                                    }
-                                    return working;
-                                  });
-                                  return;
-                                }
-                                updTp(row.id,"qty", isNaN(n)?"0":String(n));
-                              }}
-                              style={{ width:32, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
-                            {sizeMode==="#" && <span style={{ fontSize:9, color:c.ts, flexShrink:0, lineHeight:1, whiteSpace:"nowrap" }}>{sizeUnit}</span>}
-                            <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>
-                              {arw(()=>stepTp(row.id,"qty", 1), true,  `tq-${row.id}-up`)}
-                              {arw(()=>stepTp(row.id,"qty",-1), false, `tq-${row.id}-dn`)}
-                            </div>
-                          </div>
-                          {/* Pct · lots / RR+profit — prefer OM multi-TP row from hidden #multipleTPList */}
-                          <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", whiteSpace:"nowrap", flexShrink:0 }}>
-                            {omTpRowStatLines[i]
-                              ? omTpRowStatLines[i]
-                              : sizeMode==="$"
-                                ? futuresMinRiskHintTp
-                                  ? <><span style={{ color:"#FFD28A" }}>Need {omFuturesMinRiskTxt}</span></>
-                                  : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}{shareLotsTxt} {sizeUnit}</>
-                                : sizeMode==="%"
-                                  ? futuresMinRiskHintTp
-                                    ? <><span style={{ color:"#FFD28A" }}>Need {omFuturesMinRiskTxt}</span></>
-                                    : <><span style={{ color:c.ts }}>${(parseFloat(row.qty || "0") / 100 * basisAmtTp).toFixed(0)}</span>{" · "}{shareLotsTxt} {sizeUnit}</>
-                                  : futuresMinRiskHintTp
-                                    ? <><span style={{ color:"#FFD28A" }}>Need {omFuturesMinRiskTxt}</span></>
-                                    : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}{shareLotsTxt} {sizeUnit}</>}
-                          </span>
-                          <div style={{ flex:1 }}/>
-                          {tpRows.length > 1 ? (
-                            <div onClick={(e) => { e.stopPropagation(); delTp(row.id); }}
-                              onMouseEnter={()=>setSwHov(`tpd-${row.id}`)} onMouseLeave={()=>setSwHov(null)}
-                              style={{ width:16, height:20, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", flexShrink:0, color:swHov===`tpd-${row.id}`?c.rd:c.ts, transition:"color 0.1s" }}>
-                              <I n="x" s={9} cl={swHov===`tpd-${row.id}`?c.rd:c.ts}/>
-                            </div>
-                          ) : <div style={{ width:16, flexShrink:0 }}/>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {/* Footer — always visible */}
-                  <div style={{ padding:"2px 6px 3px", display:"flex", alignItems:"center", gap:6, borderTop:"1px solid rgba(0,212,161,0.1)" }}>
-                    {(() => {
-                      const tpPnl = parseFloat(String(omRewardSummaryTxt || "").replace(/[^0-9.-]/g, ""));
-                      const tpCol = Number.isFinite(tpPnl) && tpPnl >= 0 ? c.gn : c.rd;
-                      return (
-                    <span style={{ fontSize:9, fontWeight:700, color:tpCol, fontVariantNumeric:"tabular-nums" }}>
-                      Profit <span style={{ fontWeight:800 }}>{omRewardSummaryTxt}</span>
-                    </span>
-                      );
-                    })()}
-                    <div style={{ flex:1 }}/>
-                    {tpRows.length > 1 && (
-                      <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", textAlign:"right", lineHeight:1.25, maxWidth:160 }}>
-                        Avg TP{" "}
-                        <span style={{ color:c.ts, fontWeight:700 }}>{omTpAvgLotsTxt || "—"}</span>
-                        {" lots"}
-                        {omTpWapPriceTxt ? (
-                          <>
-                            {" · "}
-                            <span style={{ color:c.ts, fontWeight:600 }}>{omTpWapPriceTxt}</span>
-                          </>
+                    <TpChk />
+                    <span data-order-level-title="">{multiTpOn ? "Targets" : "Target"}</span>
+                    <div style={{ flex: 1 }} />
+                    {sessionAdvancedAllowed ? (
+                      <div data-order-entry-multi="" data-tone="tp" data-order-tp-controls="">
+                        {multiTpOn ? (
+                          <button
+                            type="button"
+                            ref={opTpLegsBtnRef}
+                            data-order-edit-legs=""
+                            data-tone="tp"
+                            aria-expanded={opTpLegsOpen}
+                            aria-haspopup="dialog"
+                            title="Edit target legs"
+                            disabled={!tpEnabled}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!tpEnabled) return;
+                              if (opTpLegsOpen) {
+                                setOpTpLegsOpen(false);
+                                return;
+                              }
+                              openTpLegsPopover(e.currentTarget);
+                            }}
+                          >
+                            Edit legs
+                          </button>
                         ) : null}
-                      </span>
-                    )}
-                    <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
-                      Dist <span style={{ color:c.ts, fontWeight:700 }}>{omTpDistTxt}</span>
-                      {" "}{currentSymbol.type==="futures" ? "ticks" : "pips"}
-                    </span>
+                        <span data-order-entry-multi-label="">Multi</span>
+                        <Toggle
+                          on={multiTpOn}
+                          onClick={() => { if (tpEnabled) toggleMultiTp(); }}
+                          color="var(--ord-tp)"
+                          hk="tp-multi"
+                          c={c}
+                          swHov={swHov}
+                          setSwHov={setSwHov}
+                        />
+                      </div>
+                    ) : null}
                   </div>
-                  {omPanelActualAvg?.showActualAvg && omPanelActualAvg.actualAvgTarget && tpRows.length > 1 && (
-                    <div style={{ padding:"2px 6px 3px", display:"flex", alignItems:"center", gap:6, borderTop:"1px solid rgba(0,212,161,0.06)" }}>
-                      <span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.06em" }}>ACTUAL AVG</span>
-                      <div style={{ flex:1 }}/>
-                      <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
-                        Target <span style={{ color:c.gn, fontWeight:700 }}>{omPanelActualAvg.actualAvgTarget}</span>
-                        <span style={{ color:c.ts }}> ({omPanelActualAvg.hitCount}/{omPanelActualAvg.targetCount} hit)</span>
+                  <div data-order-rows="" data-summary={multiTpOn ? "1" : undefined} data-order-tp-body="">
+                    {multiTpOn ? (
+                      <>
+                        <div
+                          data-order-row=""
+                          data-summary="1"
+                          data-size-col="0"
+                          data-index-col="0"
+                          data-share-col="0"
+                          title="Open Edit legs to change individual targets"
+                        >
+                          <div data-order-field="" data-readonly="1" data-kind="price" data-on="1">
+                            <span data-order-summary-val="">{omTpWapPriceTxt || "—"}</span>
+                          </div>
+                        </div>
+                        <div data-order-entry-under="" data-tone="tp">
+                          <span data-order-entry-fact="" title="How many take-profit prices are in this order (max 5)">
+                            <i>Targets</i>
+                            <b>{tpRows.length}</b>
+                          </span>
+                          <span data-order-entry-fact="" title="Approx. share of size on each target when split evenly">
+                            <i>Each</i>
+                            <b>~{Math.max(1, Math.round(100 / tpRows.length))}%</b>
+                          </span>
+                          <span data-order-entry-fact="" title="Total size across targets">
+                            <i>Total</i>
+                            <b>{tpTotalQtyTxt}</b>
+                          </span>
+                        </div>
+                      </>
+                    ) : singleTp ? (
+                      renderTpLegRow(singleTp, 0, {
+                        allowDelete: false,
+                        showSize: false,
+                        showIndex: false,
+                        showShare: false,
+                      })
+                    ) : null}
+                  </div>
+                  {tpFoot}
+                  {omPanelActualAvg?.showActualAvg && omPanelActualAvg.actualAvgTarget && multiTpOn ? (
+                    <div data-order-level-foot="" data-tone="tp" data-actual="">
+                      <span data-order-avg="" data-tone="tp">
+                        Actual avg <b>{omPanelActualAvg.actualAvgTarget}</b>
+                      </span>
+                      <span data-order-avg-meta="">
+                        {omPanelActualAvg.hitCount}/{omPanelActualAvg.targetCount} hit
                       </span>
                     </div>
-                  )}
+                  ) : null}
                 </div>
               </div>
+              {typeof document !== "undefined" && opTpLegsOpen && multiTpOn && createPortal(
+                <>
+                  <div
+                    data-order-entry-legs-scrim=""
+                    onPointerDown={(e) => { e.preventDefault(); setOpTpLegsOpen(false); }}
+                  />
+                  <div
+                    data-v9-chrome="1"
+                    data-order-v4="1"
+                    data-order-entry-legs=""
+                    data-order-tp-legs=""
+                    data-sdrop="1"
+                    role="dialog"
+                    aria-label="Target legs"
+                    onClick={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    style={{ top: opTpLegsPos.top, left: opTpLegsPos.left, fontFamily: F }}
+                  >
+                    <div data-order-level="tp" data-multi="1" data-size-col="1">
+                      <div data-order-level-head="" data-order-entry-legs-head="">
+                        <span data-order-level-title="">Targets</span>
+                        <span data-order-level-count="">{tpRows.length}/5</span>
+                        <div style={{ flex: 1 }} />
+                        <button
+                          type="button"
+                          data-order-icon-btn=""
+                          data-tone="tp"
+                          onClick={(e) => { e.stopPropagation(); equalizeTp(); }}
+                          title="Equalize size across targets"
+                          aria-label="Equalize size across targets"
+                        >
+                          <svg width={11} height={8} viewBox="0 0 11 8" fill="none" aria-hidden="true">
+                            <line x1="0" y1="2" x2="11" y2="2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                            <line x1="0" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          data-brand-icon="1"
+                          data-nodrag="1"
+                          aria-label="Close"
+                          onClick={() => setOpTpLegsOpen(false)}
+                          onMouseEnter={() => setSwHov("tp-legs-x")}
+                          onMouseLeave={() => setSwHov(null)}
+                          style={{ width: 24, height: 24 }}
+                        >
+                          <I n="x" s={12} cl={swHov === "tp-legs-x" ? "var(--down)" : "var(--text-muted)"}/>
+                        </button>
+                      </div>
+                      <div ref={tpScrollRef} data-order-rows="" data-multi="1">
+                        <div data-order-cols="" data-kind="tp" aria-hidden="true" data-size-col="1">
+                          <span>#</span>
+                          <span>Price</span>
+                          <span>Size</span>
+                          <span>Share</span>
+                          <span />
+                        </div>
+                        {sortedTpRows.map((row, i) => renderTpLegRow(row, i, {
+                          allowDelete: true,
+                          showSize: true,
+                          showIndex: true,
+                          showShare: true,
+                          shareCompact: true,
+                        }))}
+                        {tpRows.length < 5 ? (
+                          <button
+                            type="button"
+                            data-order-ghost=""
+                            data-tone="tp"
+                            title="Add another take-profit"
+                            onClick={() => addTp()}
+                          >
+                            <span data-order-row-n="">T{tpRows.length + 1}</span>
+                            <em>+ Add target</em>
+                          </button>
+                        ) : null}
+                      </div>
+                      <div data-order-level-foot="" data-tone="tp">
+                        <span data-order-avg="" data-tone="tp" title="Size-weighted average take-profit">
+                          Avg TP <b>{omTpWapPriceTxt || "—"}</b>
+                        </span>
+                        <span data-order-avg-meta="">
+                          Qty <b>{tpTotalQtyTxt}</b>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </>,
+                document.body
+              )}
+              </>
             );
           })()}
 
@@ -43414,172 +44805,203 @@ const TalariaV8bLive = () => {
               e.target.value = "";
             }}/>
 
-          {/* Pre-Trade Tags — labels/options from Strategies Lab (same as order-manager pre-trade variables) */}
-          {tagDefs.length > 0 && (
-          <div style={{ flexShrink:0 }}>
-            <div data-order-extras="tags">
-              <div data-order-extras-head="" onClick={()=>setTagsOpen(v=>!v)} onMouseEnter={()=>setSwHov("tags-hdr")} onMouseLeave={()=>setSwHov(null)}
-                style={{ borderBottom:tagsOpen?"1px solid var(--line)":"none",
-                         background:swHov==="tags-hdr"?"var(--surface-raised)":"transparent", transition:"background var(--motion)" }}>
-                <span data-order-extras-title="">Pre-trade tags</span>
-                {(() => {
-                  const done = Object.keys(tagSels).filter((k) => {
-                    const v = tagSels[k];
-                    if (v === undefined || v === "") return false;
-                    if (v === "—") return false;
-                    return true;
-                  }).length;
-                  return done > 0 && <span style={{ padding:"0 6px", height:18, display:"inline-flex", alignItems:"center", borderRadius:4, fontSize:10, fontWeight:800, color:"var(--warn)", background:"color-mix(in oklab, var(--warn) 16%, transparent)", border:"1px solid color-mix(in oklab, var(--warn) 35%, transparent)" }}>{done}</span>;
-                })()}
-                <div style={{ flex:1 }}/>
-                <svg width={8} height={5} viewBox="0 0 8 5" fill="none" style={{ color:"var(--warn)", opacity:0.75, transition:"transform 0.15s", transform:tagsOpen?"rotate(180deg)":"rotate(0deg)" }}>
-                  <polyline points="0.5,0.5 4,4.5 7.5,0.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </div>
-              {tagsOpen && (
-                <div data-order-tag-grid="">
-                  {tagDefs.map(tag => {
-                    const val = tagSels[tag.id];
-                    const isDropOpen = tagDropOpen===tag.id;
-                    if(tag.type==="bool") {
-                      const isSet = val !== undefined;
-                      const isYes = val === true;
-                      const isNo  = val === false;
-                      return (
-                        <div key={tag.id} data-order-tag-row="">
-                          <span data-order-tag-lbl="">{tag.label}</span>
-                          <div data-order-tag-bool="" data-on={isYes?"yes":isNo?"no":undefined}
-                            onClick={()=>setTagSels(s=>{ const cur=s[tag.id]; return {...s,[tag.id]: cur===undefined?true : cur===true?false : true}; })}>
-                            {isYes ? "Yes" : isNo ? "No" : "—"}
-                          </div>
-                        </div>
-                      );
-                    }
-                    return (
-                      <div key={tag.id} data-order-tag-row="" style={{ position:"relative" }}>
-                        <span data-order-tag-lbl="">{tag.label}</span>
-                        <div data-order-tag-dd="" data-open={isDropOpen?"1":undefined}
-                          onClick={()=>setTagDropOpen(v=>v===tag.id?null:tag.id)}>
-                          <span>{val || "—"}</span>
-                          <svg width={7} height={4} viewBox="0 0 6 4" fill="none" style={{ flexShrink:0, opacity:0.7 }}>
-                            <polyline points="0.5,0.5 3,3.5 5.5,0.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        </div>
-                        {isDropOpen && (<>
-                          <div onClick={()=>setTagDropOpen(null)} style={{ position:"fixed", inset:0, zIndex:9998 }}/>
-                          <div data-sett-drop="" style={{ position:"absolute", right:0, bottom:"calc(100% + 4px)", zIndex:9999, minWidth:"100%",
-                                        background:"var(--surface)", border:"1px solid var(--line)", borderRadius:8, boxShadow:"none", padding:"4px 0" }}>
-                            {tag.options.map(opt => {
-                              const isAct = val===opt;
-                              const isHi  = swHov===`tag-opt-${tag.id}-${opt}`;
-                              return (
-                                <div key={opt} data-pick-on={isAct?"1":undefined}
-                                  onClick={()=>{ setTagSels(s=>({...s,[tag.id]:opt})); setTagDropOpen(null); }}
-                                  onMouseEnter={()=>setSwHov(`tag-opt-${tag.id}-${opt}`)} onMouseLeave={()=>setSwHov(null)}
-                                  style={{ display:"flex", alignItems:"center", padding:"7px 12px", cursor:"default",
-                                           background:isAct?"var(--accent-quiet)":isHi?"var(--surface-raised)":"transparent" }}>
-                                  <span style={{ fontSize:12, fontWeight:isAct?700:550, color:isAct?"var(--accent)":isHi?"var(--text)":"var(--text-muted)", whiteSpace:"nowrap" }}>{opt}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </>)}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-          )}
-
-          {/* Screenshots */}
-          <div style={{ flexShrink:0, padding:"0 0 2px", gridColumn:isWide?"1 / -1":undefined }}>
-            <div data-order-extras="shots" style={{ display:"flex", alignItems:"center", padding:"6px 8px", gap:6, minHeight:36 }}>
-              <span data-order-extras-title="">Screenshots</span>
-              {screenshots.length > 0 && <span style={{ padding:"0 3px", fontSize:9, fontWeight:800, color:c.acL, background:c.acD, flexShrink:0 }}>{screenshots.length}</span>}
-              {/* Scrollable thumbnail strip */}
-              <div className="tlr-scroll" style={{ flex:1, display:"flex", gap:3, overflowX:"auto", alignItems:"center", minWidth:0 }}>
-                {screenshots.map(ss => {
-                  const isHovSs = swHov===`ss-${ss.id}` || swHov===`ss-rep-${ss.id}` || swHov===`ss-del-${ss.id}`;
-                  return (
-                    <div key={ss.id} onMouseEnter={()=>setSwHov(`ss-${ss.id}`)} onMouseLeave={()=>setSwHov(null)}
-                      style={{ position:"relative", width:34, height:28, flexShrink:0, border:`1px solid ${isHovSs?"rgba(140,160,255,0.5)":"rgba(140,160,255,0.18)"}`, overflow:"hidden", transition:"border-color 0.12s" }}>
-                      <img src={ss.dataUrl} alt={ss.name} style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }}/>
-                      {isHovSs && (
-                        <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.72)", display:"flex", alignItems:"stretch", justifyContent:"center" }}>
-                          {/* Replace — left half */}
-                          <div onClick={()=>{ setReplaceTargetId(ss.id); replaceInputRef.current?.click(); }}
-                            onMouseEnter={()=>setSwHov(`ss-rep-${ss.id}`)} onMouseLeave={()=>setSwHov(`ss-${ss.id}`)}
-                            title="Replace"
-                            style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
-                                     background:swHov===`ss-rep-${ss.id}`?"rgba(255,255,255,0.22)":"transparent",
-                                     color:swHov===`ss-rep-${ss.id}`?c.tx:c.ts, transition:"background 0.1s", borderRight:"1px solid rgba(255,255,255,0.1)" }}>
-                            <svg width={11} height={11} viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                              <path d="M1 6a5 5 0 1 0 1.5-3.5"/><polyline points="1,1 1,4 4,4"/>
-                            </svg>
-                          </div>
-                          {/* Delete — right half */}
-                          <div onClick={()=>setScreenshots(ss2=>ss2.filter(s=>s.id!==ss.id))}
-                            onMouseEnter={()=>setSwHov(`ss-del-${ss.id}`)} onMouseLeave={()=>setSwHov(`ss-${ss.id}`)}
-                            title="Delete"
-                            style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
-                                     background:swHov===`ss-del-${ss.id}`?"rgba(255,80,104,0.35)":"transparent",
-                                     color:swHov===`ss-del-${ss.id}`?c.rd:"rgba(255,100,120,0.85)", transition:"background 0.1s" }}>
-                            <svg width={9} height={10} viewBox="0 0 10 11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                              <line x1="1" y1="3" x2="9" y2="3"/><path d="M3.5 3V2a.5.5 0 01.5-.5h2a.5.5 0 01.5.5v1"/>
-                              <path d="M2 3l.6 6.5h4.8L8 3"/>
-                            </svg>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              {/* Add button */}
-              {(()=>{ const isH=swHov==="ss-add"; return (
-                <div onClick={()=>fileInputRef.current?.click()}
-                  onMouseEnter={()=>setSwHov("ss-add")} onMouseLeave={()=>setSwHov(null)}
-                  style={{ width:24, height:24, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center",
-                           background:isH?"rgba(48,144,255,0.08)":"transparent",
-                           border:`1px solid ${isH?"rgba(140,160,255,0.38)":"rgba(140,160,255,0.2)"}`,
-                           color:isH?c.acL:c.ts, cursor:"default", transition:"all 0.12s", position:"relative" }}>
-                  <svg width={11} height={11} viewBox="0 0 14 14" fill="none">
-                    <line x1="7" y1="2" x2="7" y2="12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                    <line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                  </svg>
-                  {isH && <div style={{ position:"absolute", bottom:0, left:"50%", transform:"translateX(-50%)", width:"70%", height:1, background:`linear-gradient(90deg,transparent,${c.acL},transparent)`, pointerEvents:"none" }}/>}
-                </div>
-              ); })()}
-            </div>
-          </div>
-
-          {/* Notes section */}
-          {(()=>{
-            const isH = swHov==="notes-hdr";
+          {/* Journal meta — exclusive tabs: Tags / Screenshots / Notes */}
+          {(() => {
+            const tagsDone = Object.keys(tagSels).filter((k) => {
+              const v = tagSels[k];
+              if (v === undefined || v === "" || v === "—") return false;
+              return true;
+            }).length;
+            const activeTab =
+              journalTab === "tags" && tagDefs.length === 0 ? "shots" : journalTab;
+            const tabs = [
+              tagDefs.length > 0
+                ? { id: "tags", label: "Pre-trade", tone: "gold", count: tagsDone }
+                : null,
+              { id: "shots", label: "Screenshots", tone: "neutral", count: screenshots.length },
+              { id: "notes", label: "Notes", tone: "accent", count: null },
+            ].filter(Boolean);
             return (
-              <div style={{ flexShrink:0, margin:"4px 8px 2px", background:c.hv2, border:`1px solid ${c.br}` }}>
-                <div onMouseEnter={()=>setSwHov("notes-hdr")} onMouseLeave={()=>setSwHov(null)}
-                  onClick={()=>setNotesOpen(v=>!v)}
-                  style={{ display:"flex", alignItems:"center", gap:5, padding:"4px 6px", cursor:"default", userSelect:"none", borderBottom:notesOpen?`1px solid ${c.br}`:"none" }}>
-                  <div style={{ width:5, height:5, transform:"rotate(45deg)", background:c.tm, flexShrink:0 }}/>
-                  <span style={{ fontSize:8, fontWeight:800, color:isH?c.ts:c.tm, letterSpacing:"0.07em", flex:1, transition:"color 0.12s" }}>NOTES</span>
-                  <svg width={8} height={5} viewBox="0 0 8 5" style={{ transition:"transform 0.15s", transform:notesOpen?"rotate(180deg)":"rotate(0deg)", flexShrink:0 }}>
-                    <path d="M0.5,0.5 L4,4 L7.5,0.5" stroke={c.tm} strokeWidth={1.3} fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </div>
-                {notesOpen && (
-                  <div style={{ padding:"4px 6px 6px" }}>
-                    <textarea value={notesText} onChange={e=>setNotesText(e.target.value)}
-                      placeholder="Trade notes…"
-                      style={{ width:"100%", boxSizing:"border-box", height:52, background:c.well, border:`1px solid ${c.br}`, outline:"none", resize:"none",
-                               color:c.tx, fontSize:10, fontFamily:F, padding:"4px 6px", lineHeight:1.5,
-                               boxShadow:"inset 0 1px 2px rgba(0,0,0,0.2)", transition:"border-color 0.15s" }}
-                      onFocus={e=>e.target.style.borderColor=c.acB} onBlur={e=>e.target.style.borderColor=c.br}
-                    />
+              <div
+                data-order-meta-block=""
+                data-order-zone="journal"
+                data-journal-tab={activeTab}
+                data-collapsed={journalBodyOpen ? undefined : "1"}
+              >
+
+                <div data-order-meta-head="">
+                  <button
+                    type="button"
+                    data-order-meta-title=""
+                    data-order-journal-toggle=""
+                    aria-expanded={journalBodyOpen}
+                    title={journalBodyOpen ? "Collapse journal" : "Expand journal"}
+                    onClick={() => setJournalBodyOpen((v) => !v)}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                      background: "transparent",
+                      border: "none",
+                      padding: 0,
+                      cursor: "default",
+                    }}
+                  >
+                    <span>Journal</span>
+                    <I n="chevDown" s={8} cl="currentColor"/>
+                    {!journalBodyOpen ? (
+                      <span data-order-journal-summary="">
+                        {[
+                          tagsDone > 0 ? `${tagsDone} tags` : null,
+                          screenshots.length > 0 ? `${screenshots.length} shots` : null,
+                          String(notesText || "").trim() ? "notes" : null,
+                        ].filter(Boolean).join(" · ") || "Optional"}
+                      </span>
+                    ) : null}
+                  </button>
+                  {journalBodyOpen ? (
+                  <div data-order-meta-tabs="" role="tablist" aria-label="Order journal tools">
+                    {tabs.map((tab) => {
+                      const isAct = activeTab === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          role="tab"
+                          data-order-meta-tab=""
+                          data-tone={tab.tone}
+                          data-active={isAct ? "1" : undefined}
+                          aria-selected={isAct}
+                          onClick={() => setJournalTab(tab.id)}
+                        >
+                          <span data-order-meta-tab-label="">{tab.label}</span>
+                          {tab.count != null ? (
+                            <span data-order-meta-tab-count="">{tab.count}</span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
                   </div>
-                )}
+                  ) : null}
+                </div>
+
+                {journalBodyOpen && activeTab === "tags" && tagDefs.length > 0 ? (
+                  <div data-order-meta-panel="" data-kind="tags" data-pre-trade="1" aria-label="Pre-trade tags">
+                    <div data-order-tag-grid="">
+                      {tagDefs.map((tag) => {
+                        const val = tagSels[tag.id];
+                        const isDropOpen = tagDropOpen === tag.id;
+                        if (tag.type === "bool") {
+                          const isYes = val === true;
+                          const isNo = val === false;
+                          return (
+                            <div key={tag.id} data-order-tag-row="">
+                              <span data-order-tag-lbl="">{tag.label}</span>
+                              <button type="button" data-order-tag-bool=""
+                                data-on={isYes ? "yes" : isNo ? "no" : undefined}
+                                onClick={() => setTagSels((s) => {
+                                  const cur = s[tag.id];
+                                  return { ...s, [tag.id]: cur === undefined ? true : cur === true ? false : true };
+                                })}>
+                                {isYes ? "Yes" : isNo ? "No" : "—"}
+                              </button>
+                            </div>
+                          );
+                        }
+                        const filled = val != null && String(val).trim() !== "" && String(val) !== "—";
+                        return (
+                          <div key={tag.id} data-order-tag-row="" style={{ position: "relative" }}>
+                            <span data-order-tag-lbl="">{tag.label}</span>
+                            <button
+                              type="button"
+                              data-order-tag-dd=""
+                              data-filled={filled ? "1" : undefined}
+                              data-open={isDropOpen ? "1" : undefined}
+                              onClick={() => setTagDropOpen((v) => (v === tag.id ? null : tag.id))}
+                            >
+                              <span>{val || "—"}</span>
+                              <I n="chevDown" s={7} cl="currentColor"/>
+                            </button>
+                            {isDropOpen ? (
+                              <>
+                                <div onClick={() => setTagDropOpen(null)} style={{ position: "fixed", inset: 0, zIndex: 9998 }} />
+                                <div data-order-unit-menu="" style={{ right: 0, left: "auto", bottom: "calc(100% + 4px)", top: "auto", minWidth: "100%" }}>
+                                  {tag.options.map((opt) => {
+                                    const isAct = val === opt;
+                                    return (
+                                      <button type="button" key={opt} data-pick-on={isAct ? "1" : undefined}
+                                        onClick={() => { setTagSels((s) => ({ ...s, [tag.id]: opt })); setTagDropOpen(null); }}>
+                                        {opt}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+
+                {journalBodyOpen && activeTab === "shots" ? (
+                  <div data-order-meta-panel="" data-kind="shots">
+                    <div data-order-meta-shots="" data-panel="1" aria-label="Screenshot thumbnails">
+                      {screenshots.map((ss) => (
+                        <div key={ss.id} data-tc-shot="" data-order-rail-shot="">
+                          <img
+                            src={ss.dataUrl}
+                            alt={ss.name || "shot"}
+                            draggable={false}
+                            onError={journalScreenshotImgOnError}
+                          />
+                          <div data-tc-shot-acts="">
+                            <button
+                              type="button"
+                              data-act="view"
+                              aria-label="View screenshot"
+                              title="View"
+                              {...modalPointerActivate(() => setViewingScreenshot(ss.dataUrl))}
+                            >
+                              <I n="eye" s={13} cl="currentColor" />
+                            </button>
+                            <button
+                              type="button"
+                              data-act="del"
+                              aria-label="Remove screenshot"
+                              title="Delete"
+                              {...modalPointerActivate(() =>
+                                setScreenshots((all) => all.filter((s) => s.id !== ss.id))
+                              )}
+                            >
+                              <I n="x" s={13} cl="currentColor" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        data-order-meta-shot-add=""
+                        title="Add screenshot"
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        + Add screenshot
+                      </button>
+                    </div>
+                    {screenshots.length === 0 ? (
+                      <p data-order-meta-empty="">Attach chart shots for this order before you place it.</p>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {journalBodyOpen && activeTab === "notes" ? (
+                  <div data-order-meta-panel="" data-kind="notes">
+                    <textarea data-order-notes-input="" value={notesText}
+                      onChange={(e) => setNotesText(e.target.value)}
+                      placeholder="Pre-trade notes…" rows={3} />
+                  </div>
+                ) : null}
               </div>
             );
           })()}
@@ -43589,6 +45011,7 @@ const TalariaV8bLive = () => {
           </div>{/* end levels block */}
           </div>{/* end order-stack */}
 
+          <div data-order-exec-strip="">
           {(() => {
             const qty = parseFloat(omOrderQtyTxt || "0");
             const hasSizingIntent =
@@ -43596,9 +45019,7 @@ const TalariaV8bLive = () => {
               (slEnabled && parseFloat(slRows[0]?.price || "0") > 0);
             const show = currentSymbol.type === "futures" && hasSizingIntent && (!Number.isFinite(qty) || qty < 1);
             return show ? (
-              <div style={{ margin:"5px 8px 0", padding:"5px 7px", flexShrink:0,
-                border:"1px solid rgba(255,190,80,0.28)", background:"rgba(255,190,80,0.08)",
-                color:"#FFD28A", fontSize:10, fontWeight:700, lineHeight:1.35 }}>
+              <div data-order-exec-banner="" data-tone="warn">
                 Futures require at least 1 whole contract.
                 {omFuturesMinRiskTxt ? ` Need at least ${omFuturesMinRiskTxt} risk for this stop.` : " Increase risk or reduce stop distance."}
               </div>
@@ -43619,9 +45040,7 @@ const TalariaV8bLive = () => {
               eq > 0 &&
               rsk > eq * 1.0001;
             return show ? (
-              <div style={{ margin:"5px 8px 0", padding:"5px 7px", flexShrink:0,
-                border:"1px solid rgba(255,80,104,0.35)", background:"rgba(255,80,104,0.08)",
-                color:"#ffb8c8", fontSize:10, fontWeight:700, lineHeight:1.35 }}>
+              <div data-order-exec-banner="" data-tone="danger">
                 Stop loss risk ({omRiskSummaryTxt}) exceeds account equity ({formatV9AccountNum(eq)}). Margin level is buying-power coverage, not a cap on loss if price hits your stop.
               </div>
             ) : null;
@@ -43646,18 +45065,24 @@ const TalariaV8bLive = () => {
             };
             const riskLabel = fmtSigned(riskSigned);
             const rewardLabel = fmtSigned(rewardSigned);
+            const riskBarCol = riskSigned > 0 ? "var(--up)" : "var(--down)";
+            const rewardBarCol = rewardSigned >= 0 ? "var(--up)" : "var(--down)";
             return (
               <div data-order-rr="">
                 <div data-order-rr-bar="">
-                  <span style={{ flex:1, background:"var(--down)" }}/>
-                  <span style={{ flex:Math.max(0.1,rr || 0.1), background:"var(--up)" }}/>
+                  <span style={{ flex: Math.max(0.15, riskMag || 0.15), background: riskBarCol }}/>
+                  <span style={{ flex: Math.max(0.1, rewardMag || rr || 0.1), background: rewardBarCol }}/>
                 </div>
                 <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", paddingTop:5 }}>
+                  <span style={{ fontSize:9, fontWeight:650, color:"var(--text-faint)" }}>Risk</span>
+                  <span style={{ fontSize:9, fontWeight:650, color:"var(--text-faint)" }}>Reward</span>
+                </div>
+                <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", paddingTop:2 }}>
                   <span style={{ fontSize:10, fontWeight:700, color: riskSigned >= 0 ? "var(--up)" : "var(--down)", fontVariantNumeric:"tabular-nums" }}>{riskLabel}</span>
                   <div style={{ display:"flex", alignItems:"baseline", gap:1 }}>
-                    <span style={{ fontSize:11, fontWeight:750, color:"var(--down)", fontVariantNumeric:"tabular-nums" }}>1</span>
+                    <span style={{ fontSize:11, fontWeight:750, color: riskBarCol, fontVariantNumeric:"tabular-nums" }}>1</span>
                     <span style={{ fontSize:10, fontWeight:600, color:"var(--text-faint)" }}>:</span>
-                    <span style={{ fontSize:11, fontWeight:750, color:"var(--up)", fontVariantNumeric:"tabular-nums" }}>{rrLabel}</span>
+                    <span style={{ fontSize:11, fontWeight:750, color: rewardBarCol, fontVariantNumeric:"tabular-nums" }}>{rrLabel}</span>
                   </div>
                   <span style={{ fontSize:10, fontWeight:700, color: rewardSigned >= 0 ? "var(--up)" : "var(--down)", fontVariantNumeric:"tabular-nums" }}>{rewardLabel}</span>
                 </div>
@@ -43665,11 +45090,17 @@ const TalariaV8bLive = () => {
             );
           })()}
 
-          {/* 10 — Execute button (flat primary CTA — side already chosen above) */}
+          {/* 10 — Execute CTA: Obsidian buy/sell; hard-disabled from OM canPlace */}
           {(()=>{
             const isBuy  = buySell==="buy";
             const isH    = swHov==="exec-btn";
             const isPr   = swHov==="exec-btn_dn";
+            const placeLabel = (
+              omPlaceButtonTxt
+              || `${isBuy ? "Buy" : "Sell"} 0 ${currentSymbol.type === "futures" ? "Contracts" : "Lots"}`
+            ).replace(/\s+-\s+/g, " · ");
+            const setupIncomplete = !omCanPlace;
+            const sideBtn = isBuy ? "buy" : "sell";
             return (
               <div data-order-foot="">
                 {omValidationTxt ? (
@@ -43679,7 +45110,17 @@ const TalariaV8bLive = () => {
                     {omValidationTxt}
                   </div>
                 ) : null}
-                <button type="button" data-brand-btn="primary" data-nodrag="1" onClick={() => {
+                <button
+                  type="button"
+                  data-brand-btn={sideBtn}
+                  data-order-exec=""
+                  data-ready={setupIncomplete ? "0" : "1"}
+                  data-active={setupIncomplete ? undefined : "1"}
+                  data-nodrag="1"
+                  disabled={setupIncomplete}
+                  aria-disabled={setupIncomplete}
+                  onClick={() => {
+                    if (!omCanPlace) return;
                     const list = screenshots.map((s) => ({ dataUrl: s.dataUrl, name: s.name || "" }));
                     const trimmedNotes = String(notesText || "").trim();
                     if (typeof window !== "undefined") {
@@ -43700,18 +45141,21 @@ const TalariaV8bLive = () => {
                     document.getElementById("placeOrderButton")?.click();
                   }}
                   onMouseEnter={()=>setSwHov("exec-btn")} onMouseLeave={()=>setSwHov(null)}
-                  onMouseDown={()=>setSwHov("exec-btn_dn")} onMouseUp={()=>setSwHov("exec-btn")}
-                  style={{ cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", gap:8,
-                           opacity: isPr ? 0.9 : 1, transform:isPr?"scale(0.99)":"scale(1)",
-                           transition:"opacity var(--motion), transform 80ms ease-out", fontFamily:F }}>
-                  <span style={{ fontSize:14, fontWeight:700, letterSpacing:"0.02em", fontFamily:F }}>
-                    {(omPlaceButtonTxt || `${isBuy ? "Buy" : "Sell"} 0 ${currentSymbol.type==="futures" ? "Contracts" : "Lots"}`).replace(/\s+-\s+/g, " · ")}
+                  onMouseDown={()=>{ if (!setupIncomplete) setSwHov("exec-btn_dn"); }} onMouseUp={()=>setSwHov("exec-btn")}
+                  style={{ cursor: setupIncomplete ? "not-allowed" : "default", display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+                           opacity: setupIncomplete ? 0.72 : isPr ? 0.92 : isH ? 0.95 : 1,
+                           transform:isPr?"scale(0.99)":"scale(1)",
+                           transition:"opacity var(--motion), transform 80ms ease-out, background var(--motion), border-color var(--motion), color var(--motion)",
+                           fontFamily:F }}
+                >
+                  <span data-order-exec-label="">
+                    {placeLabel}
                   </span>
-                  {isH ? null : null}
                 </button>
               </div>
             );
           })()}
+          </div>{/* end exec strip */}
 
 
           {/* Resize handles — only when detached */}
@@ -43756,115 +45200,118 @@ const TalariaV8bLive = () => {
 
         </div>
         ) : null}
-        {/* Order panel size mode picker — portal to body so detached panel / chrome overflow cannot clip or stack above */}
+        {/* Order size-mode picker — same Obsidian menu grammar as topbar drops */}
         {typeof document !== "undefined" && opSizeOpen && orderPanelOpen && createPortal(
-          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{ position:"fixed", top:opSizePos.top, left:opSizePos.left, zIndex:10060, width:120, background:"var(--surface)", border:"1px solid var(--line)", boxShadow:"none", fontFamily:F, animation:"tlrDropIn 0.15s ease" }}>
-            <div style={{ height:2, background:"rgba(255,255,255,0.18)" }}/>
-            {[["$","Dollar Amount"],["%","Percentage"],["#","Quantity"]].map(([m, label]) => {
+          <div data-v9-chrome="1" data-order-drop="size" data-sdrop="1" data-tb-drop="size" role="listbox" aria-label="Size mode"
+            onClick={(e) => e.stopPropagation()}
+            style={{ position: "fixed", top: opSizePos.top, left: opSizePos.left, zIndex: 10060, width: 168, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, boxShadow: "none", padding: "4px 0", fontFamily: F }}>
+            {[["$", "Dollar amount"], ["%", "Percentage"], ["#", "Quantity"]].map(([m, label]) => {
               const isAct = sizeMode === m;
-              const isH = swHov === `sz-drop-${m}`;
               return (
-                <div key={m} onClick={() => {
+                <div key={m} data-menu-row="" role="option" aria-selected={isAct} data-active={isAct ? "1" : undefined}
+                  onClick={() => {
                     markOrderControlBridge();
                     setSizeMode(m);
-                    // % / # default to 1 (not leftover $100 → 100% / 100 contracts). $ stays 100.
                     setRiskVal(m === "$" ? "100" : "1");
                     clickHiddenSizeMode(m);
                     setOpSizeOpen(false);
-                  }}
-                  onMouseEnter={()=>setSwHov(`sz-drop-${m}`)} onMouseLeave={()=>setSwHov(null)}
-                  style={{ display:"flex", alignItems:"center", padding:"6px 12px", cursor:"default", position:"relative",
-                           background: isAct ? c.acD : isH ? c.hv2 : "transparent", transition:"background 0.1s" }}>
-                  {isAct && <div style={{ position:"absolute", left:0, top:"15%", bottom:"15%", width:2, background:`linear-gradient(180deg,transparent,${c.acL},transparent)`, boxShadow:`0 0 6px ${c.acG}` }}/>}
-                  <span style={{ fontSize:12, fontWeight:isAct?700:500, color:isAct?c.acL:isH?c.tx:c.ts }}>{m}  {label}</span>
+                  }}>
+                  <b data-order-size-glyph="">{m}</b>
+                  <span>{label}</span>
                 </div>
               );
             })}
           </div>,
           document.body
         )}
-        {/* Order panel symbol picker — portal to body (same as size picker) */}
+        {/* Order symbol picker — reuse topbar symbol drop chrome */}
         {typeof document !== "undefined" && opSymOpen && orderPanelOpen && createPortal(
-          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{ position:"fixed", top:opSymPos.top, left:opSymPos.left, zIndex:10060, width:190, background:c.sf, border:`1px solid ${c.brH}`, boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`, fontFamily:F, animation:"tlrDropIn 0.15s ease" }}>
-            <div style={{ height:2, background:"rgba(255,255,255,0.18)" }}/>
-            <div style={{ padding:"5px 8px 4px", borderBottom:`1px solid ${c.br}` }}>
-              <div style={{ fontSize:9, fontWeight:700, color:c.tm, letterSpacing:"0.06em", marginBottom:4 }}>SESSION</div>
-              <div style={{ display:"flex", alignItems:"center", background:c.well, border:`1px solid ${c.brH}`, padding:"3px 7px", gap:5 }}>
-                <I n="search" s={11} cl={c.tm}/>
-                <input autoFocus type="text" placeholder="Search symbol…" value={opSymSearch} onChange={e=>setOpSymSearch(e.target.value)}
-                  style={{ flex:1, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:11, fontFamily:F, padding:0 }}/>
+          <div data-v9-chrome="1" data-order-drop="sym" data-sdrop="1" data-tb-drop="symbol" role="listbox" aria-label="Session symbols"
+            onClick={(e) => e.stopPropagation()}
+            style={{ position: "fixed", top: opSymPos.top, left: opSymPos.left, zIndex: 10060, width: 260, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, boxShadow: "none", fontFamily: F }}>
+            <div data-tb-drop-search="">
+              <div data-menu-head="" style={{ padding: "10px 12px 6px" }}>Session</div>
+              <div data-win-search="" style={{ margin: "0 10px 10px", height: 32 }}>
+                <I n="search" s={12} cl="var(--text-faint)"/>
+                <input autoFocus type="search" placeholder="Search symbol…" value={opSymSearch}
+                  onChange={(e) => setOpSymSearch(e.target.value)}
+                  style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "var(--text)", fontSize: 12, fontFamily: F, padding: 0 }} />
               </div>
             </div>
-            <div className="tlr-scroll" style={{ maxHeight:280, overflowY:"auto", padding:"4px 0" }}>
+            <div className="tlr-scroll" style={{ maxHeight: 280, overflowY: "auto", padding: "0 0 8px" }}>
               {v9FilterSessionSymbolGroups(v9BuildSessionSymbolGroups(sessionPairs, symbol), opSymSearch).map(({ cat, items }) => (
-                  <div key={cat}>
-                    <div style={{ padding:"4px 12px 2px", fontSize:8, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>{cat}</div>
-                    {items.map(s => {
-                      const isAct = symbol === s.id;
-                      const isH = hov === `opsym-${s.id}`;
-                      return (
-                        <div key={s.id}
-                          className={!isAct ? "symbol-market-row" : undefined}
-                          onMouseDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            selectSessionSymbol(s.id, s.fileId);
-                            setOpSymOpen(false);
-                            setOpSymSearch("");
-                          }}
-                          onMouseEnter={() => setHov(`opsym-${s.id}`)} onMouseLeave={() => setHov(null)}
-                          style={{ display:"flex", alignItems:"center", gap:8, padding:"5px 12px", cursor:"default", position:"relative",
-                                   background:isAct?c.acD:isH?c.hv2:"transparent", transition:"background 0.1s" }}>
-                          {isAct && <div style={{ position:"absolute", left:0, top:"15%", bottom:"15%", width:2, background:`linear-gradient(180deg,transparent,${c.acL},transparent)`, boxShadow:`0 0 6px ${c.acG}` }}/>}
-                          <div style={{ display:"flex", alignItems:"center", position:"relative", minWidth:34, height:14, flexShrink:0 }}>
-                            <ChartSymbolBadge sym={normalizeSymForBadge(s.id)} asset={chartAssetFromSymbolObj(s)} w={18} h={14} fontFamily={F}/>
-                          </div>
-                          <div style={{ flex:1, minWidth:0 }} title={s.supporting?`${s.id} — supporting symbol (view only)`:undefined}>
-                            <div style={{ fontSize:11, fontWeight:isAct?700:600, color:s.supporting?V9_SUPPORTING_GOLD:isAct?c.acL:isH?c.tx:c.ts, lineHeight:1.3 }}>{s.id}</div>
-                            <div style={{ fontSize:9, color:c.tm, lineHeight:1.3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.name}</div>
-                          </div>
-                          {!isAct && (() => {
-                            void compareUiTick;
-                            const compareFid = v9ResolveCompareFileId(s.id, s.fileId, sessionPairs);
-                            const compared = v9IsComparedSymbol(s.id, compareFid ?? s.fileId);
-                            const compareFull = !compared && !v9CanAddCompareOverlay();
-                            return (
-                              <button
-                                type="button"
-                                data-sym-compare=""
-                                data-on={compared?"1":undefined}
-                                data-icon="1"
-                                aria-disabled={compareFull?"true":undefined}
-                                aria-label={
-                                  compared ? `Remove ${s.id} from compare`
-                                  : compareFull ? `Compare full · max ${V9_MAX_COMPARE_OVERLAYS}`
-                                  : `Add ${s.id} to compare`
-                                }
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  if (compared) {
-                                    Promise.resolve(v9RemoveCompareSymbol(compareFid ?? s.fileId, s.id)).finally(() => setCompareUiTick((n) => n + 1));
-                                    return;
-                                  }
-                                  if (compareFull) {
-                                    try {
-                                      const ac = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
-                                      ac?.showNotification?.(`Compare full · max ${V9_MAX_COMPARE_OVERLAYS}`);
-                                    } catch (_) { /* ignore */ }
-                                    return;
-                                  }
-                                  Promise.resolve(v9AddCompareSymbol(s.id, compareFid ?? s.fileId, sessionPairs, symbol)).finally(() => setCompareUiTick((n) => n + 1));
-                                }}
-                              >
-                                <I n={compared ? "x" : "plus"} s={14} cl="currentColor"/>
-                              </button>
-                            );
-                          })()}
-                        </div>
-                      );
-                    })}
+                <div key={cat} data-sym-group="">
+                  <div data-sym-group-head="">
+                    <span data-sym-group-label="">{cat}</span>
                   </div>
+                  {items.map((s) => {
+                    const isAct = symbol === s.id;
+                    void compareUiTick;
+                    const compareFid = v9ResolveCompareFileId(s.id, s.fileId, sessionPairs);
+                    const compared = !isAct && v9IsComparedSymbol(s.id, compareFid ?? s.fileId);
+                    const compareFull = !compared && !v9CanAddCompareOverlay();
+                    return (
+                      <div key={s.id}
+                        data-menu-row=""
+                        data-sym-row="1"
+                        role="option"
+                        aria-selected={isAct}
+                        data-active={isAct ? "1" : undefined}
+                        data-supporting={s.supporting ? "1" : undefined}
+                        data-compared={compared ? "1" : undefined}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (e.target.closest("[data-sym-compare]")) return;
+                          selectSessionSymbol(s.id, s.fileId);
+                          setOpSymOpen(false);
+                          setOpSymSearch("");
+                        }}>
+                        <div data-sym-badge="">
+                          <ChartSymbolBadge sym={normalizeSymForBadge(s.id)} asset={chartAssetFromSymbolObj(s)} w={18} h={14} fontFamily={F}/>
+                        </div>
+                        <div data-sym-meta="" title={s.supporting ? `${s.id} — supporting symbol (view only)` : undefined}>
+                          <strong>{s.id}</strong>
+                          <em>{s.name}</em>
+                        </div>
+                        {isAct ? (
+                          <span data-sym-chip={s.supporting ? "support" : "chart"}>{s.supporting ? "View" : "Chart"}</span>
+                        ) : (
+                          <button
+                            type="button"
+                            data-sym-compare=""
+                            data-on={compared ? "1" : undefined}
+                            data-icon="1"
+                            aria-disabled={compareFull ? "true" : undefined}
+                            aria-label={
+                              compared ? `Remove ${s.id} from compare`
+                              : compareFull ? `Compare full · max ${V9_MAX_COMPARE_OVERLAYS}`
+                              : `Add ${s.id} to compare`
+                            }
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (compared) {
+                                Promise.resolve(v9RemoveCompareSymbol(compareFid ?? s.fileId, s.id)).finally(() => setCompareUiTick((n) => n + 1));
+                                return;
+                              }
+                              if (compareFull) {
+                                try {
+                                  const ac = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+                                  ac?.showNotification?.(`Compare full · max ${V9_MAX_COMPARE_OVERLAYS}`);
+                                } catch (_) { /* ignore */ }
+                                return;
+                              }
+                              Promise.resolve(v9AddCompareSymbol(s.id, compareFid ?? s.fileId, sessionPairs, symbol)).finally(() => setCompareUiTick((n) => n + 1));
+                            }}
+                          >
+                            <I n={compared ? "x" : "plus"} s={14} cl="currentColor"/>
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               ))}
             </div>
           </div>,
@@ -43873,88 +45320,75 @@ const TalariaV8bLive = () => {
         </div>
       </div>
 
-      {/* Order panel — Template list — portal so dots/template sit above detached order panel */}
+      {/* Order panel — Template list — Obsidian menu (no glow rails) */}
       {typeof document !== "undefined" && opTplOpen && createPortal(
         <>
-        <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{ position:"fixed", top:opTplPos.top, left:opTplPos.left, zIndex:10060, width:180, background:"var(--surface)", border:"1px solid var(--line)", boxShadow:"none", fontFamily:F, animation:"tlrDropIn 0.15s ease" }}>
-          <div style={{ height:2, background:"rgba(255,255,255,0.18)" }}/>
-          <div style={{padding:"4px 0"}}>
-            {[["Save as",()=>{setOpSaveAsMode(true);setOpNewTplName("");}],
-              ["Apply default",()=>{setActiveTemplate(null);setOpTplOpen(false);}]].map(([lbl,action])=>{
-              const isH=swHov===`optpl-${lbl}`,isAct=lbl==="Save as"&&opSaveAsMode;
-              return(
-                <div key={lbl} onClick={action}
-                  onMouseEnter={()=>setSwHov(`optpl-${lbl}`)} onMouseLeave={()=>setSwHov(null)}
-                  style={{display:"flex",alignItems:"center",padding:"6px 12px",cursor:"default",position:"relative",
-                    background:isAct?c.acD:isH?c.hv2:"transparent",transition:"background 0.1s"}}>
-                  {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
-                  <span style={{fontSize:13,color:isAct?c.acL:isH?c.tx:c.ts,fontWeight:isAct?700:500}}>{lbl}</span>
-                </div>
-              );
-            })}
-            <div style={{height:1,margin:"4px 0",background:c.brH}}/>
-            {opSaveAsMode&&(
-              <div style={{padding:"4px 8px 4px 12px",display:"flex",alignItems:"center",gap:4,boxSizing:"border-box",width:"100%"}} onMouseDown={e=>e.stopPropagation()}>
-                <input autoFocus value={opNewTplName} onChange={e=>setOpNewTplName(e.target.value)}
-                  onKeyDown={e=>{
-                    if(e.key==="Enter"&&opNewTplName.trim()){setOpSavedTemplates(ts=>[...ts,opNewTplName.trim()]);setOpSaveAsMode(false);setOpNewTplName("");}
-                    if(e.key==="Escape"){setOpSaveAsMode(false);setOpNewTplName("");}
-                  }}
-                  placeholder="Template name…"
-                  style={{flex:1,minWidth:0,background:c.hv,border:"1px solid rgba(140,160,255,0.22)",outline:"none",color:c.tx,fontSize:11,fontFamily:F,padding:"3px 6px",boxSizing:"border-box"}}/>
-                <div onClick={()=>{if(opNewTplName.trim()){setOpSavedTemplates(ts=>[...ts,opNewTplName.trim()]);setOpSaveAsMode(false);setOpNewTplName("");}}}
-                  onMouseEnter={()=>setSwHov("op-tpl-save-ok")} onMouseLeave={()=>setSwHov(null)}
-                  style={{padding:"2px 4px",display:"flex",alignItems:"center",cursor:"default",flexShrink:0,position:"relative",
-                    background:swHov==="op-tpl-save-ok"?c.hv:"transparent",transition:"background 0.12s"}}>
-                  <I n="check" s={11} cl={opNewTplName.trim()?c.acL:c.tm}/>
-                </div>
+        <div data-v9-chrome="1" data-order-drop="menu" data-sdrop="1" data-tpl-menu="" role="menu" aria-label="Order templates"
+          onClick={e=>e.stopPropagation()}
+          style={{ position:"fixed", top:opTplPos.top, left:opTplPos.left, zIndex:10060, width:180, background:"var(--surface)", border:"1px solid var(--line)", borderRadius:8, boxShadow:"none", padding:"4px 0", fontFamily:F }}>
+          {[["Save as",()=>{setOpSaveAsMode(true);setOpNewTplName("");}],
+            ["Apply default",()=>{setActiveTemplate(null);setOpTplOpen(false);}]].map(([lbl,action])=>{
+            const isAct=lbl==="Save as"&&opSaveAsMode;
+            return(
+              <div key={lbl} data-menu-row="" role="menuitem" data-active={isAct?"1":undefined} onClick={action}>
+                <span>{lbl}</span>
               </div>
-            )}
-            {[...opTemplates,...opSavedTemplates].length===0&&!opSaveAsMode?(
-              <div style={{padding:"6px 12px"}}><span style={{fontSize:11,color:c.tm,fontStyle:"italic"}}>No saved templates</span></div>
-            ):[...opTemplates,...opSavedTemplates].map((tpl,idx)=>{
-              const isAct=activeTemplate===tpl,isH=swHov===`optpl-item-${idx}`;
-              return(
-                <div key={idx} onMouseEnter={()=>setSwHov(`optpl-item-${idx}`)} onMouseLeave={()=>setSwHov(null)}
-                  style={{display:"flex",alignItems:"center",padding:"4px 8px 4px 12px",cursor:"default",position:"relative",
-                    background:isAct?c.acD:isH?c.hv2:"transparent",transition:"background 0.1s"}}>
-                  {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
-                  <span onClick={()=>{setActiveTemplate(isAct?null:tpl);setOpTplOpen(false);}}
-                    style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",
-                      fontSize:12,color:isAct?c.acL:isH?c.tx:c.ts,fontWeight:isAct?700:500}}>{tpl}</span>
-                  {idx>=opTemplates.length&&<div onClick={e=>{e.stopPropagation();setOpSavedTemplates(ts=>ts.filter((_,i)=>i!==idx-opTemplates.length));}}
-                    onMouseEnter={()=>setSwHov(`optpl-del-${idx}`)} onMouseLeave={()=>setSwHov(`optpl-item-${idx}`)}
-                    style={{padding:"2px 4px",cursor:"default"}}>
-                    <I n="x" s={11} cl={swHov===`optpl-del-${idx}`?c.rd:c.tm}/>
-                  </div>}
-                </div>
-              );
-            })}
-          </div>
+            );
+          })}
+          <div style={{height:1,margin:"4px 8px",background:"var(--line)"}}/>
+          {opSaveAsMode&&(
+            <div style={{padding:"4px 10px 8px",display:"flex",alignItems:"center",gap:6,boxSizing:"border-box",width:"100%"}} onMouseDown={e=>e.stopPropagation()}>
+              <input autoFocus value={opNewTplName} onChange={e=>setOpNewTplName(e.target.value)}
+                onKeyDown={e=>{
+                  if(e.key==="Enter"&&opNewTplName.trim()){setOpSavedTemplates(ts=>[...ts,opNewTplName.trim()]);setOpSaveAsMode(false);setOpNewTplName("");}
+                  if(e.key==="Escape"){setOpSaveAsMode(false);setOpNewTplName("");}
+                }}
+                placeholder="Template name…"
+                style={{flex:1,minWidth:0,background:"var(--surface-sunken)",border:"1px solid var(--line-strong)",outline:"none",color:"var(--text)",fontSize:11,fontFamily:F,padding:"6px 8px",borderRadius:6,boxSizing:"border-box"}}/>
+              <button type="button" data-brand-icon="1" aria-label="Save template"
+                onClick={()=>{if(opNewTplName.trim()){setOpSavedTemplates(ts=>[...ts,opNewTplName.trim()]);setOpSaveAsMode(false);setOpNewTplName("");}}}
+                style={{width:28,height:28,flexShrink:0}}>
+                <I n="check" s={12} cl={opNewTplName.trim()?"var(--accent)":"var(--text-faint)"}/>
+              </button>
+            </div>
+          )}
+          {[...opTemplates,...opSavedTemplates].length===0&&!opSaveAsMode?(
+            <div data-chrome-empty="1" style={{padding:"8px 14px",fontSize:11,color:"var(--text-faint)"}}>No saved templates</div>
+          ):[...opTemplates,...opSavedTemplates].map((tpl,idx)=>{
+            const isAct=activeTemplate===tpl;
+            return(
+              <div key={idx} data-menu-row="" role="menuitem" data-active={isAct?"1":undefined}
+                onClick={()=>{setActiveTemplate(isAct?null:tpl);setOpTplOpen(false);}}>
+                <span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tpl}</span>
+                {idx>=opTemplates.length&&(
+                  <button type="button" data-brand-icon="1" aria-label={`Delete ${tpl}`}
+                    onClick={e=>{e.stopPropagation();setOpSavedTemplates(ts=>ts.filter((_,i)=>i!==idx-opTemplates.length));}}
+                    style={{width:22,height:22,flexShrink:0}}>
+                    <I n="x" s={11} cl="var(--text-faint)"/>
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
         <div onClick={()=>{setOpTplOpen(false);setOpSaveAsMode(false);}} style={{ position:"fixed", inset:0, zIndex:10055 }}/>
         </>,
         document.body
       )}
 
-      {/* Order panel — Dots menu — portal to body */}
+      {/* Order panel — Dots menu — Obsidian */}
       {typeof document !== "undefined" && opDotsOpen && createPortal(
         <>
-        <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{ position:"fixed", top:opDotsPos.top, left:opDotsPos.left, zIndex:10060, width:152, background:"var(--surface)", border:"1px solid var(--line)", boxShadow:"none", fontFamily:F, animation:"tlrDropIn 0.15s ease" }}>
-          <div style={{ height:2, background:"rgba(255,255,255,0.18)" }}/>
-          {(()=>{ const isH=swHov==="dots-detach"; return (
-            <div onClick={()=>{ setPanelDetached(v=>{ if(!v){ const pw=detachSize.w,ph=detachSize.h; const mid=v9ClampFloatingWindowPos(Math.round((window.innerWidth-pw)/2),Math.round((window.innerHeight-ph)/2),pw,ph,Z||1,0); setDetachPos(mid); } return !v; }); setOpDotsOpen(false); }}
-              onMouseEnter={()=>setSwHov("dots-detach")} onMouseLeave={()=>setSwHov(null)}
-              style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 12px", cursor:"default",
-                       background:isH?"rgba(255,255,255,0.04)":"transparent", transition:"background 0.1s" }}>
-              <svg width={11} height={11} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color:isH?c.tx:c.ts, flexShrink:0 }}>
-                <rect x="1" y="3" width="14" height="12" rx="1"/><line x1="5" y1="1" x2="5" y2="5"/><line x1="11" y1="1" x2="11" y2="5"/>
-              </svg>
-              <span style={{ fontSize:11, fontWeight:500, color:isH?c.tx:c.ts }}>{panelDetached?"Attach Panel":"Detach Panel"}</span>
-            </div>
-          ); })()}
-          {sessionAdvancedAllowed && (()=>{ const isH=swHov==="dots-mode"; const isBasic=panelMode==="basic"; return (
-            <div onClick={()=>{
+        <div data-v9-chrome="1" data-order-drop="menu" data-sdrop="1" role="menu" aria-label="Order panel options"
+          onClick={e=>e.stopPropagation()}
+          style={{ position:"fixed", top:opDotsPos.top, left:opDotsPos.left, zIndex:10060, width:168, background:"var(--surface)", border:"1px solid var(--line)", borderRadius:8, boxShadow:"none", padding:"4px 0", fontFamily:F }}>
+          <div data-menu-row="" role="menuitem"
+            onClick={()=>{ setPanelDetached(v=>{ if(!v){ const pw=detachSize.w,ph=detachSize.h; const mid=v9ClampFloatingWindowPos(Math.round((window.innerWidth-pw)/2),Math.round((window.innerHeight-ph)/2),pw,ph,Z||1,0); setDetachPos(mid); } return !v; }); setOpDotsOpen(false); }}>
+            <span>{panelDetached?"Attach panel":"Detach panel"}</span>
+          </div>
+          {sessionAdvancedAllowed && (
+            <div data-menu-row="" role="menuitem" data-active={panelMode==="basic"?"1":undefined}
+              onClick={()=>{
                 setPanelMode((m) => {
                   if (m === "advanced") {
                     setSlAdvMode("none");
@@ -43964,16 +45398,10 @@ const TalariaV8bLive = () => {
                   return "advanced";
                 });
                 setOpDotsOpen(false);
-              }}
-              onMouseEnter={()=>setSwHov("dots-mode")} onMouseLeave={()=>setSwHov(null)}
-              style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 12px", cursor:"default", borderTop:"1px solid rgba(140,160,255,0.08)",
-                       background:isH?"rgba(255,255,255,0.04)":"transparent", transition:"background 0.1s" }}>
-              <svg width={11} height={11} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color:isBasic?c.acL:isH?c.tx:c.ts, flexShrink:0 }}>
-                <rect x="1" y="1" width="6" height="6" rx="0.5"/><rect x="9" y="1" width="6" height="6" rx="0.5"/><rect x="1" y="9" width="6" height="6" rx="0.5"/><rect x="9" y="9" width="6" height="6" rx="0.5"/>
-              </svg>
-              <span style={{ fontSize:11, fontWeight:500, color:isBasic?c.acL:isH?c.tx:c.ts }}>{isBasic?"Advanced Mode":"Basic Mode"}</span>
+              }}>
+              <span>{panelMode==="basic"?"Advanced mode":"Basic mode"}</span>
             </div>
-          ); })()}
+          )}
         </div>
         <div onClick={()=>setOpDotsOpen(false)} style={{ position:"fixed", inset:0, zIndex:10055 }}/>
         </>,
@@ -43987,19 +45415,19 @@ const TalariaV8bLive = () => {
         const tzRefUiMs = getV9ChartBarTimeMs(v9ActiveChartInstance());
         const cfgMap = { gridStyle:{key:"gridLineStyle",type:"style"}, gridThick:{key:"gridLineThickness",type:"thick"}, crosshairStyle:{key:"crosshairStyle",type:"style"}, crosshairThick:{key:"crosshairLineThickness",type:"thick"}, priceStyle:{key:"priceLineStyle",type:"style"}, priceThick:{key:"priceLineThickness",type:"thick"}, chartTimeFormat:{key:"timeFormat",type:"select",opts:["24h","12h"]}, chartTimezone:{key:"timezone",type:"select",opts:getChartTimezoneSelectOptions(tzRefUiMs),scrollMaxPx:tzScrollH}, chartPrecision:{key:"precision",type:"select",opts:["Default","0.00000","0.0000","0.000","0.00","0.0"]}, chartTemplate:{key:"chartTemplate",type:"template",opts:tplOpts,scrollMaxPx:tzScrollH} };
         if (settDrop==="profLang") return (
-          <div data-sdrop="1" data-sett-drop-root="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:10120,width:settDropPos.w||140,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease"}}>
+          <div data-sdrop="1" data-sett-drop-root="1" data-sett-drop="" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:V9_CHROME_Z.nestedDrop,width:settDropPos.w||140,background:"var(--surface)",border:"1px solid var(--line)",borderRadius:8,boxShadow:"none",fontFamily:F,animation:"tlrPopIn 0.13s ease"}}>
             <div style={{padding:"4px 0"}}>
-              <div style={{padding:"5px 12px 3px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em"}}>LANGUAGE</div>
+              <div style={{padding:"5px 12px 3px",fontSize:9,fontWeight:700,color:"var(--text-faint)",letterSpacing:"0.06em"}}>LANGUAGE</div>
               {[["english","English"],["arabic","العربية"]].map(([id,label])=>{
                 const isAct=profileLang===id; const isH=swHov===`lang-${id}`;
                 return(
                   <div key={id} onClick={()=>{setProfileLang(id);setSettDrop(null);}}
                     onMouseEnter={()=>setSwHov(`lang-${id}`)} onMouseLeave={()=>setSwHov(null)}
                     style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 12px",cursor:"default",position:"relative",
-                      background:isAct?c.acD:isH?c.hv2:"transparent",
+                      background:isAct?"var(--accent-quiet)":isH?"var(--surface-raised)":"transparent",
                       transition:"background 0.1s"}}>
-                    {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
-                    <span style={{fontSize:13,fontWeight:isAct?700:500,color:isAct?c.acL:isH?c.tx:c.ts}}>{label}</span>
+                    {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:"var(--accent)",boxShadow:"none"}}/>}
+                    <span style={{fontSize:13,fontWeight:isAct?700:500,color:isAct?"var(--accent)":isH?"var(--text)":"var(--text-muted)"}}>{label}</span>
                   </div>
                 );
               })}
@@ -44007,27 +45435,27 @@ const TalariaV8bLive = () => {
           </div>
         );
         if (settDrop==="loadTemplate") return (
-          <div data-sdrop="1" data-sett-drop-root="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:10120,width:settDropPos.w||150,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease"}}>
+          <div data-sdrop="1" data-sett-drop-root="1" data-sett-drop="" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:V9_CHROME_Z.nestedDrop,width:settDropPos.w||150,background:"var(--surface)",border:"1px solid var(--line)",borderRadius:8,boxShadow:"none",fontFamily:F,animation:"tlrPopIn 0.13s ease"}}>
             <div style={{padding:"4px 0"}}>
-              <div style={{padding:"5px 12px 3px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em"}}>SAVED TEMPLATES</div>
+              <div style={{padding:"5px 12px 3px",fontSize:9,fontWeight:700,color:"var(--text-faint)",letterSpacing:"0.06em"}}>SAVED TEMPLATES</div>
               {customTemplates.length===0 ? (
-                <div style={{padding:"10px 12px",fontSize:13,color:c.tm,fontStyle:"italic",textAlign:"center"}}>No saved templates</div>
+                <div data-chrome-empty="1" style={{padding:"10px 12px",fontSize:13,color:"var(--text-faint)",fontStyle:"italic",textAlign:"center"}}>No saved templates</div>
               ) : customTemplates.map((tpl,i)=>{
                 const isAct=settings.chartTemplate===tpl.n;
                 return (
                   <div key={tpl.n} onClick={()=>{applyTemplate(tpl.n,tpl.settings);setSettDrop(null);}}
                     onMouseEnter={()=>setSwHov("ldtpl-"+i)} onMouseLeave={()=>setSwHov(null)}
                     style={{display:"flex",alignItems:"center",gap:7,padding:"6px 12px",cursor:"default",position:"relative",
-                      background:isAct?c.acD:swHov==="ldtpl-"+i?c.hv2:"transparent",
+                      background:isAct?"var(--accent-quiet)":swHov==="ldtpl-"+i?"var(--surface-raised)":"transparent",
                       transition:"background 0.1s"}}>
-                      {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
+                      {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:"var(--accent)",boxShadow:"none"}}/>}
                     <div style={{display:"flex",gap:3,flexShrink:0}}>
-                      {tpl.cols.map((col,ci)=><div key={ci} style={{width:8,height:8,borderRadius:"50%",background:col,boxShadow:`0 0 4px ${col}88`}}/>)}
+                      {tpl.cols.map((col,ci)=><div key={ci} style={{width:8,height:8,borderRadius:"50%",background:col,boxShadow:"none"}}/>)}
                     </div>
-                    <span style={{flex:1,fontSize:13,color:isAct?c.acL:c.ts,fontWeight:isAct?700:500}}>{tpl.n}</span>
+                    <span style={{flex:1,fontSize:13,color:isAct?"var(--accent)":"var(--text-muted)",fontWeight:isAct?700:500}}>{tpl.n}</span>
                     <div onClick={(e)=>{e.stopPropagation();setCustomTemplates(prev=>deleteV9ChartTemplateAtIndex(prev, i));}}
                       onMouseEnter={()=>setSwHov("ldtpldel-"+i)} onMouseLeave={()=>setSwHov("ldtpl-"+i)}
-                      style={{fontSize:15,lineHeight:1,color:swHov==="ldtpldel-"+i?c.rd:"rgba(140,160,255,0.3)",cursor:"default",padding:"0 2px",transition:"color 0.12s"}}>×</div>
+                      style={{fontSize:15,lineHeight:1,color:swHov==="ldtpldel-"+i?"var(--down)":"var(--text-faint)",cursor:"default",padding:"0 2px",transition:"color 0.12s"}}>×</div>
                   </div>
                 );
               })}
@@ -44292,18 +45720,42 @@ const TalariaV8bLive = () => {
               x: Math.max(-(vpW/2-W/2-M), Math.min(vpW/2-W/2-M, x)),
               y: Math.max(-(vpH/2-H/2-M), Math.min(vpH/2-H/2-M, y))
             });
-            if (dragging.target === "settings") setSettingsPos(cc(dragging.ox+dx, dragging.oy+dy, settingsSize.w, settingsSize.h));
-            else if (dragging.target === "ind") setIndPos(cc(dragging.ox+dx, dragging.oy+dy, indSize.w, indSize.h));
-            else if (dragging.target === "profile") setProfilePos(cc(dragging.ox+dx, dragging.oy+dy, profileSize.w, profileSize.h));
-            else if (dragging.target === "faq") setFaqPos(cc(dragging.ox+dx, dragging.oy+dy, faqSize.w, faqSize.h));
-            else if (dragging.target === "news") setNewsPos({ x: dragging.ox + dx, y: dragging.oy + dy });
-            else if (dragging.target === "screenshot") setScreenshotPos(cc(dragging.ox+dx, dragging.oy+dy, Math.min(1180,(typeof window!=="undefined"?window.innerWidth:1200)-24), Math.min(760,(typeof window!=="undefined"?window.innerHeight:900)-24)));
-            else if (dragging.target === "layers") setLayersPos({ x: dragging.ox + dx, y: dragging.oy + dy });
-            else if (dragging.target === "layout") setLayoutPos({ x: dragging.ox + dx, y: dragging.oy + dy });
+            const pinKind = { settings: "settings", ind: "indCatalog", profile: "profile", faq: "help", screenshot: "screenshot" }[dragging.target];
+            if (dragging.target === "settings") {
+              const p = cc(dragging.ox+dx, dragging.oy+dy, settingsSize.w, settingsSize.h);
+              if (pinKind) settPosLiveRef.current[pinKind] = p;
+              setSettingsPos(p);
+            } else if (dragging.target === "ind") {
+              const p = cc(dragging.ox+dx, dragging.oy+dy, indSize.w, indSize.h);
+              if (pinKind) settPosLiveRef.current[pinKind] = p;
+              setIndPos(p);
+            } else if (dragging.target === "profile") {
+              const p = cc(dragging.ox+dx, dragging.oy+dy, profileSize.w, profileSize.h);
+              if (pinKind) settPosLiveRef.current[pinKind] = p;
+              setProfilePos(p);
+            } else if (dragging.target === "faq") {
+              const p = cc(dragging.ox+dx, dragging.oy+dy, faqSize.w, faqSize.h);
+              if (pinKind) settPosLiveRef.current[pinKind] = p;
+              setFaqPos(p);
+            } else if (dragging.target === "screenshot") {
+              const p = cc(dragging.ox+dx, dragging.oy+dy, Math.min(1180,(typeof window!=="undefined"?window.innerWidth:1200)-24), Math.min(760,(typeof window!=="undefined"?window.innerHeight:900)-24));
+              if (pinKind) settPosLiveRef.current[pinKind] = p;
+              setScreenshotPos(p);
+            }
           }}
-          onMouseUp={() => { setDragging(null); releaseChromeWinGestureLock(); }}
-          onPointerUp={() => { setDragging(null); releaseChromeWinGestureLock(); }}
-          style={{ position: "fixed", inset: 0, zIndex: 99998, cursor: "move", background: "transparent", border: "none", boxShadow: "none", pointerEvents: "auto" }}
+          onMouseUp={() => {
+            const pinKind = dragging && { settings: "settings", ind: "indCatalog", profile: "profile", faq: "help", screenshot: "screenshot" }[dragging.target];
+            if (pinKind && settPosLiveRef.current[pinKind]) pinSettOpenPos(pinKind, settPosLiveRef.current[pinKind]);
+            setDragging(null);
+            releaseChromeWinGestureLock();
+          }}
+          onPointerUp={() => {
+            const pinKind = dragging && { settings: "settings", ind: "indCatalog", profile: "profile", faq: "help", screenshot: "screenshot" }[dragging.target];
+            if (pinKind && settPosLiveRef.current[pinKind]) pinSettOpenPos(pinKind, settPosLiveRef.current[pinKind]);
+            setDragging(null);
+            releaseChromeWinGestureLock();
+          }}
+          style={{ position: "fixed", inset: 0, zIndex: V9_CHROME_Z.tip - 1, cursor: "move", background: "transparent", border: "none", boxShadow: "none", pointerEvents: "auto" }}
         />
       )}
       {winResizeCursor && (
@@ -44327,7 +45779,7 @@ const TalariaV8bLive = () => {
           }}
           onMouseUp={endChromeWinResize}
           onPointerUp={endChromeWinResize}
-          style={{ position: "fixed", inset: 0, zIndex: 99998, cursor: winResizeCursor, background: "transparent", border: "none", boxShadow: "none", pointerEvents: "auto" }}
+          style={{ position: "fixed", inset: 0, zIndex: V9_CHROME_Z.tip - 1, cursor: winResizeCursor, background: "transparent", border: "none", boxShadow: "none", pointerEvents: "auto" }}
         />
       )}
       {/* Trade Card Modal */}
@@ -44929,7 +46381,7 @@ const TalariaV8bLive = () => {
         <div onClick={()=>setTradeActPopup(null)} onPointerDown={(e)=>{ if(e.target===e.currentTarget) setTradeActPopup(null); }}
           style={{position:"fixed",inset:0,zIndex:99999,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(4px)"}}>
           <div onClick={e=>e.stopPropagation()} onPointerDown={e=>e.stopPropagation()}
-            style={{width:660,maxHeight:"88vh",background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 28px 70px rgba(0,0,0,0.8), 0 0 30px rgba(48,144,255,0.12)`,display:"flex",flexDirection:"column",fontFamily:F,animation:"tlrPopIn 0.2s ease"}}>
+            style={{width:660,maxHeight:"88vh",background: "var(--surface)",border:`1px solid ${c.brH}`,boxShadow:`0 28px 70px rgba(0,0,0,0.8), 0 0 30px rgba(48,144,255,0.12)`,display:"flex",flexDirection:"column",fontFamily:F,animation:"tlrPopIn 0.2s ease"}}>
             {/* Top accent */}
             <div style={{height:2,background:"rgba(255,255,255,0.18)",flexShrink:0}}/>
             {/* Header */}
@@ -44937,9 +46389,9 @@ const TalariaV8bLive = () => {
               <div style={{width:7,height:7,borderRadius:"50%",background:c.gn,flexShrink:0,animation:"tlrDotPulse 1.8s ease-in-out infinite"}}/>
               <span style={{fontSize:10,fontWeight:500,color:c.tm,letterSpacing:"0.04em"}}>TRADE ACTIVATED</span>
               <span style={{fontSize:13,fontWeight:700,color:c.acL,fontVariantNumeric:"tabular-nums"}}>{r.id}</span>
-              <span style={{fontSize:12,fontWeight:700,color:c.tx}}>{r.sym}</span>
+              <span style={{fontSize:12,fontWeight:700,color: "var(--text)"}}>{r.sym}</span>
               <span style={{fontSize:9,fontWeight:800,color:isLong?c.gn:c.rd,background:isLong?c.gnD:c.rdD,padding:"2px 7px",letterSpacing:"0.07em"}}>{isLong?"LONG":"SHORT"}</span>
-              <span style={{fontSize:9,color:c.ts,background:c.hv,border:`1px solid ${c.br}`,padding:"2px 6px"}}>{r.type}</span>
+              <span style={{fontSize:9,color: "var(--text-muted)",background:c.hv,border:`1px solid ${c.br}`,padding:"2px 6px"}}>{r.type}</span>
               <div style={{flex:1}}/>
               <div {...modalPointerActivate(() => setTradeActPopup(null))} onMouseEnter={()=>setSwHov("tap-x")} onMouseLeave={()=>setSwHov(null)}
                 style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="tap-x"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s"}}>
@@ -45010,7 +46462,7 @@ const TalariaV8bLive = () => {
                       <input ref={tapTagInputRef} value={tapTagInput} onChange={e=>setTapTagInput(e.target.value)}
                         onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addTapCustomTag();}}}
                         placeholder="Add custom tag…"
-                        style={{flex:1,background:"rgba(255,140,66,0.04)",border:"none",color:c.tx,fontFamily:F,fontSize:10,padding:"5px 8px",outline:"none",caretColor:"#FF8C42"}}/>
+                        style={{flex:1,background:"rgba(255,140,66,0.04)",border:"none",color: "var(--text)",fontFamily:F,fontSize:10,padding:"5px 8px",outline:"none",caretColor:"#FF8C42"}}/>
                       <div onMouseDown={e=>e.preventDefault()} onClick={addTapCustomTag}
                         style={{padding:"0 8px",display:"flex",alignItems:"center",cursor:"default",fontSize:12,fontWeight:700,color:"rgba(255,140,66,0.6)",borderLeft:"1px solid rgba(255,140,66,0.15)"}}>+</div>
                     </div>
@@ -45022,14 +46474,14 @@ const TalariaV8bLive = () => {
                     <div style={{fontSize:8,fontWeight:800,color:c.tm,letterSpacing:"0.1em",marginBottom:6}}>WHY THIS TRADE?</div>
                     <textarea value={tapJournal} onChange={e=>setTapJournal(e.target.value)}
                       placeholder="Setup, strategy, confluence factors, key levels, market context…"
-                      style={{width:"100%",height:100,background:c.hv2,border:`1px solid ${c.brH}`,color:c.tx,fontFamily:F,fontSize:12,padding:"8px 10px",outline:"none",resize:"none",boxSizing:"border-box",lineHeight:1.5,caretColor:c.acL}}
+                      style={{width:"100%",height:100,background:c.hv2,border:`1px solid ${c.brH}`,color: "var(--text)",fontFamily:F,fontSize:12,padding:"8px 10px",outline:"none",resize:"none",boxSizing:"border-box",lineHeight:1.5,caretColor:c.acL}}
                     />
                   </div>
                   <div>
                     <div style={{fontSize:8,fontWeight:800,color:c.tm,letterSpacing:"0.1em",marginBottom:6}}>STRATEGY / SETUP NAME</div>
                     <input value={tapStrategy} onChange={e=>setTapStrategy(e.target.value)}
                       placeholder="e.g. London Breakout, Trend Continuation, Reversal…"
-                      style={{width:"100%",background:c.hv2,border:`1px solid ${c.brH}`,color:c.tx,fontFamily:F,fontSize:12,padding:"7px 10px",outline:"none",boxSizing:"border-box",caretColor:c.acL}}
+                      style={{width:"100%",background:c.hv2,border:`1px solid ${c.brH}`,color: "var(--text)",fontFamily:F,fontSize:12,padding:"7px 10px",outline:"none",boxSizing:"border-box",caretColor:c.acL}}
                     />
                   </div>
                   {/* Timeline info */}
@@ -45037,7 +46489,7 @@ const TalariaV8bLive = () => {
                     {[["SESSION",tSession],["DAY",tDayName],["DATE",`${tDay} ${tMon}`],["TIME",tTime]].map(([lbl,val])=>(
                       <div key={lbl} style={{padding:"4px 10px",background:c.hv2,border:`1px solid ${c.br}`}}>
                         <div style={{fontSize:7,fontWeight:700,color:c.tm,letterSpacing:"0.08em"}}>{lbl}</div>
-                        <div style={{fontSize:10,fontWeight:700,color:c.ts,marginTop:2}}>{val}</div>
+                        <div style={{fontSize:10,fontWeight:700,color: "var(--text-muted)",marginTop:2}}>{val}</div>
                       </div>
                     ))}
                   </div>
@@ -45064,7 +46516,7 @@ const TalariaV8bLive = () => {
                               <div className="ss-view-btn" onClick={()=>setViewingScreenshot(img)}
                                 style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"4px 8px",background:c.hv,cursor:"default",transition:"background 0.1s"}}>
                                 <I n="eye" s={13} cl={c.ts}/>
-                                <span style={{fontSize:8,color:c.ts}}>View</span>
+                                <span style={{fontSize:8,color: "var(--text-muted)"}}>View</span>
                               </div>
                               <div className="ss-del-btn" onClick={()=>setTapScreenshots(prev=>{const n=[...prev];n[si]=null;return n;})}
                                 style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"4px 8px",background:"rgba(255,255,255,0.1)",cursor:"default",transition:"background 0.1s"}}>
@@ -45122,6 +46574,11 @@ const TalariaV8bLive = () => {
         </div>
         );
       })()}
+
+      {/* Dual RR paint fought on select — SVG only unless __V9_RR_REACT_CHROME__ === true */}
+      {typeof window !== "undefined" && window.__V9_RR_REACT_CHROME__ === true ? (
+        <V9RrToolOverlay active slAdvMode={slAdvMode} />
+      ) : null}
 
       {/* ── Global Obsidian tooltip (fixed; side=right for left rail so tips are never clipped) ── */}
       {tipData&&(

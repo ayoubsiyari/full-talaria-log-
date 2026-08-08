@@ -646,9 +646,10 @@ const ICONS = {
   ),
   trash: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <L x1="5" y1="7" x2="19" y2="7" />
-      <P d="M9 7 V5 H15 V7" />
-      <P d="M7 7 L8 19 H16 L17 7" />
+      {/* Slightly fuller viewBox so optical weight matches eye/settings at 15px */}
+      <L x1="4.5" y1="6.5" x2="19.5" y2="6.5" />
+      <P d="M9 6.5 V4.5 H15 V6.5" />
+      <P d="M6.5 6.5 L7.5 20 H16.5 L17.5 6.5" />
     </Svg>
   ),
   /** Delete drawings — trash + line mark. */

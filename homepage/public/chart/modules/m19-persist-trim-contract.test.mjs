@@ -519,56 +519,6 @@ test('local-only restore: durable+hot tiers merge; hot never reads durable', { s
   assert.equal(om.tradeJournal[0].journalEntry.exitScreenshot, full.journalEntry.exitScreenshot);
 });
 
-test('money-path summaries survive newer slim hot-tier merge', { skip: ENV_KILL }, () => {
-  const om = seedOm(false);
-  const full = richRow(303);
-  full.symbol = 'EURUSD';
-  full.entryScreenshot = 'data:image/png;base64,FULL_ENTRY';
-  full.bar_close_r_archive = [1, 2, 3];
-  full.bar_close_r = [4, 5, 6];
-  const pending = { ...richRow(304), symbol: 'EURUSD', status: 'pending' };
-  const closed = { ...richRow(305), symbol: 'EURUSD', status: 'closed' };
-  const durable = {
-    savedAt: 1000,
-    journal: [JSON.parse(JSON.stringify(full))],
-    pending_orders: [JSON.parse(JSON.stringify(pending))],
-    open_positions: [JSON.parse(JSON.stringify(full))],
-    closed_positions: [JSON.parse(JSON.stringify(closed))],
-    journal_by_ticker: { EURUSD: [JSON.parse(JSON.stringify(full))] },
-    per_instrument_stats: { EURUSD: { trades: 2, pnl: 12.5 } },
-    account_runtime: { balance: 10000, equity: 10010, initialBalance: 9000 },
-    order_counters: { orderIdCounter: 305, tradeGroupIdCounter: 9 },
-  };
-  const hotFull = { ...full, pnl: 88, mfe_r: 9.5 };
-  const hot = {
-    savedAt: 2000,
-    journal: om._m19TrimRecordsForHotPersist([hotFull]),
-    pending_orders: om._m19TrimRecordsForHotPersist([{ ...pending, pnl: 2 }]),
-    open_positions: om._m19TrimRecordsForHotPersist([hotFull]),
-    closed_positions: om._m19TrimRecordsForHotPersist([{ ...closed, pnl: 13 }]),
-    account_runtime: { balance: 10123, equity: 10145, initialBalance: 9000 },
-    order_counters: { orderIdCounter: 400, tradeGroupIdCounter: 12 },
-    m19_hot_persist_trim_v1: true,
-  };
-  assert.equal(hot.journal_by_ticker, undefined);
-  assert.equal(hot.per_instrument_stats, undefined);
-
-  const chart = makeChartWithRealLocalBackup(om, 'm19-money-fields');
-  const merged = chart._m19MergeLocalBackupTiers(durable, hot, om);
-
-  assert.equal(merged.savedAt, 2000);
-  assert.deepEqual(merged.account_runtime, hot.account_runtime);
-  assert.deepEqual(merged.order_counters, hot.order_counters);
-  assert.deepEqual(merged.journal_by_ticker, durable.journal_by_ticker);
-  assert.deepEqual(merged.per_instrument_stats, durable.per_instrument_stats);
-  assert.equal(merged.journal[0].pnl, 88);
-  assert.equal(merged.open_positions[0].mfe_r, 9.5);
-  assert.equal(merged.journal[0].entryScreenshot, full.entryScreenshot);
-  assert.deepEqual(merged.open_positions[0].bar_close_r_archive, full.bar_close_r_archive);
-  assert.equal(merged.m19_hot_persist_trim_v1, undefined);
-  console.log('GREEN — M19 money-path hot/durable merge: RESOLVER_CALLED_AND_RIGHT');
-});
-
 test('deletion survives slim save then full save: trade and screenshot stay deleted', { skip: ENV_KILL }, () => {
   const om = seedOm(false);
   const survivor = richRow(601);

@@ -385,6 +385,14 @@ function _orderCancelBeforeConfirmV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_CANCEL_BEFORE_CONFIRM_V1;
 }
 
+/**
+ * Multi-entry green/purple + rebuilds preview badges under the cursor; the trailing
+ * `click` can land on the freshly spawned entry-cancel ✕ and close the order rail.
+ */
+function _orderMultiAddCancelSuppressV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_MULTI_ADD_CANCEL_SUPPRESS_V1;
+}
+
 /** Cluster G / TAL-01885: keep edge SL/TP rows visible instead of hiding at plot seams. */
 function _orderLineEdgeVisibilityV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_LINE_EDGE_VISIBILITY_V1;
@@ -450,6 +458,8 @@ function _orderSlTriggerDiagV1Enabled() {
 
 const ENTRY_STACK_OFFSET_PX = 16;
 const ORDER_CANCEL_PLACE_SUPPRESS_MS = 450;
+/** Same window as cancel→place: pointerdown on + then click on recreated ✕. */
+const ORDER_MULTI_ADD_CANCEL_SUPPRESS_MS = 450;
 const ORDER_LINE_EDGE_VISIBILITY_PAD_PX = 24;
 const ORDER_SPLIT_HANDLE_MIN_DRAG_PX = 4;
 const MULTI_TP_COINCIDENT_STACK_OFFSET_PX = 6;
@@ -934,6 +944,8 @@ class OrderManager {
         this._previewEntryLinkedToRiskReward = false;
         /** False until user clicks Execute on the RR tool settings bar — blocks order preview / panel sync. */
         this._rrExecuteArmed = false;
+        /** Drawing id linked to Execute so RR label chrome can survive setTool() deselect. */
+        this._linkedRrDrawingId = null;
         this._pendingPreviewConnector = null; // Vertical limit/stop preview guide (SVG line)
         this._pendingPreviewConnectorDots = []; // Intersection dots on entry/TP/SL levels
         this.entryMarkers = [];
@@ -4494,6 +4506,26 @@ class OrderManager {
         const sym = ref.ticker || this._getSymbol();
         const gross = this.estimatePnLForPriceLevel(s, entry, exit, q, sym);
         return gross - this._roundTripCommissionForLots(ref, q);
+    }
+
+    /**
+     * Sign of P&L if stop is hit vs entry: protective stop → −1, stop on profit side → +1.
+     * BUY: SL below entry = loss; SL above = gain. SELL: inverse.
+     */
+    _slPnlSignVsEntry(side, entryPx, slPx) {
+        const entry = Number(entryPx);
+        const sl = Number(slPx);
+        if (!(entry > 0) || !(sl > 0) || entry === sl) return 0;
+        const isSell = side === 'SELL' || side === 'sell';
+        if (isSell) return sl > entry ? -1 : 1;
+        return sl < entry ? -1 : 1;
+    }
+
+    /** Explicit +/− money readout for Loss / Risk summary chips. */
+    _formatSignedUsd(amount) {
+        if (!Number.isFinite(amount) || amount === 0) return '$0.00';
+        const sign = amount > 0 ? '+' : '-';
+        return `${sign}$${Math.abs(amount).toFixed(2)}`;
     }
 
     /** Net P&L at TP/SL for an open leg (entry already spread-adjusted on fill). */
@@ -13214,6 +13246,20 @@ class OrderManager {
     }
 
     /**
+     * Normalize Strategies Lab timing → `pre` | `post` | "".
+     * Order-ticket / place-order strategy vars are PRE only.
+     */
+    _strategyVarTimingKind(v) {
+        const t = String(v?.timing ?? v?.when ?? '')
+            .trim()
+            .toLowerCase()
+            .replace(/[\s-]+/g, '_');
+        if (t === 'pre' || t === 'pre_trade' || t === 'entry') return 'pre';
+        if (t === 'post' || t === 'post_trade' || t === 'exit') return 'post';
+        return '';
+    }
+
+    /**
      * Pre-trade variable definitions from session (Strategies Lab), filtered to PRE only.
      */
     _getPreTradeVariableDefs() {
@@ -13222,7 +13268,7 @@ class OrderManager {
             const raw = sess.strategy_variables;
             const list = Array.isArray(raw) ? raw : (sess.strategy_definition?.variables || []);
             return list.filter(
-                (v) => v && v.type === 'variable' && v.timing === 'pre'
+                (v) => v && v.type === 'variable' && this._strategyVarTimingKind(v) === 'pre'
             );
         } catch (e) {
             return [];
@@ -13238,7 +13284,7 @@ class OrderManager {
             const raw = sess.strategy_variables;
             const list = Array.isArray(raw) ? raw : (sess.strategy_definition?.variables || []);
             return list.filter(
-                (v) => v && v.type === 'variable' && v.timing === 'post'
+                (v) => v && v.type === 'variable' && this._strategyVarTimingKind(v) === 'post'
             );
         } catch (e) {
             return [];
@@ -18730,18 +18776,34 @@ class OrderManager {
     }
 
     /**
-     * When {@link window.__CHART_ENV.DISABLE_ORDER_ENTRY_PLUS_UI} is not strictly `false`, hide all
-     * “+” / split-entry affordances: chart Entry+ badges, preview green + / purple split handles,
-     * TP ladder +, native panel add row, V9 rail. Defaults to enabled in chart-env.defaults; set to `true` to disable.
-     * Also blocked when session Advanced order is off.
+     * Hide Entry/TP “+” / split affordances only when session Advanced is off, or when
+     * {@link window.__CHART_ENV.DISABLE_ORDER_ENTRY_PLUS_UI} is explicitly `true` (opt-out).
+     * Unset / false keeps plus UI available for Advanced sessions.
      */
     _isOrderEntryPlusUiDisabled() {
         try {
             if (!this._isAdvancedOrderAllowed()) return true;
-            return window.__CHART_ENV?.DISABLE_ORDER_ENTRY_PLUS_UI !== false;
+            return window.__CHART_ENV?.DISABLE_ORDER_ENTRY_PLUS_UI === true;
         } catch (_e) {
             return true;
         }
+    }
+
+    /**
+     * Place-readiness for V9 React rail — do not parse button label text.
+     * @returns {{ canPlace: boolean, reason: string, label: string, disabled: boolean }}
+     */
+    getPlaceReadiness() {
+        const cached = this._placeReadiness;
+        if (cached && typeof cached === 'object') return cached;
+        const placeBtn = document.getElementById('placeOrderButton');
+        const disabled = !!(placeBtn && placeBtn.disabled);
+        return {
+            canPlace: !disabled,
+            reason: '',
+            label: placeBtn?.textContent?.replace(/\s+/g, ' ').trim() || '',
+            disabled,
+        };
     }
 
     /**
@@ -18826,6 +18888,8 @@ class OrderManager {
             return;
         }
         if (kind === 'entry') {
+            // pointerdown on green + rebuilds ✓✕ under the cursor — suppress trailing cancel click.
+            this._markEntryMultiAddPress();
             if (!this.isMultiEntryMode) {
                 this.setEntryMode(true);
             } else if (this.multiEntryLevels.length < 2) {
@@ -19083,6 +19147,10 @@ class OrderManager {
                 levelPrice: lineData.price,
                 onClick: (event) => {
                     event.stopPropagation();
+                    if (self._shouldSuppressEntryCancelAfterMultiAdd()) {
+                        console.warn('🟦OM-DIAG cancel ✕ suppressed after multi-entry add');
+                        return;
+                    }
                     self._markEntryCancelBadgePress();
                     self.closeOrderRailFromChartCancel();
                 },
@@ -19581,11 +19649,27 @@ class OrderManager {
         return Number.isFinite(until) && now <= until;
     }
 
+    /** Mark after enabling/adding multi-entry so a trailing click on recreated ✕ cannot close the rail. */
+    _markEntryMultiAddPress(now = this._orderInteractionNowMs()) {
+        if (!_orderMultiAddCancelSuppressV1Enabled()) return;
+        this._entryMultiAddCancelSuppressUntilMs = now + ORDER_MULTI_ADD_CANCEL_SUPPRESS_MS;
+    }
+
+    _shouldSuppressEntryCancelAfterMultiAdd(now = this._orderInteractionNowMs()) {
+        if (!_orderMultiAddCancelSuppressV1Enabled()) return false;
+        const until = Number(this._entryMultiAddCancelSuppressUntilMs);
+        return Number.isFinite(until) && now <= until;
+    }
+
     /**
      * Chart preview ✕: close V9 React rail when running in a multichart iframe — toggleOrderPanel()
      * only sees a hidden #orderPanel (never .visible), so it would wrongly take the "open" branch.
      */
     closeOrderRailFromChartCancel() {
+        if (this._shouldSuppressEntryCancelAfterMultiAdd()) {
+            console.warn('🟦OM-DIAG closeOrderRail suppressed after multi-entry add');
+            return;
+        }
         try {
             const mc = typeof document !== 'undefined'
                 && document.documentElement?.classList?.contains?.('multichart-embed');
@@ -21434,7 +21518,19 @@ class OrderManager {
         if (placeBtn && editingId && (this.orderType === 'limit' || this.orderType === 'stop')) {
             const typeLabel = this.orderType ? this.orderType.toUpperCase() : 'PENDING';
             const directionLabel = this.orderSide ? this.orderSide.toUpperCase() : '';
+            placeBtn.disabled = false;
+            placeBtn.style.opacity = '1';
+            placeBtn.style.cursor = 'default';
             placeBtn.textContent = `Update ${typeLabel} ${directionLabel} #${editingId}`;
+            this._placeReadiness = {
+                canPlace: true,
+                reason: '',
+                label: placeBtn.textContent.replace(/\s+/g, ' ').trim(),
+                disabled: false,
+            };
+            try {
+                if (typeof window !== 'undefined') window.__talariaV9PlaceReadiness = this._placeReadiness;
+            } catch (_e) { /* ignore */ }
             return;
         }
 
@@ -21506,6 +21602,15 @@ class OrderManager {
                     placeBtn.textContent = `${action} ${this._formatQty(quantity)} ${positionLabel}`;
                 }
             }
+            this._placeReadiness = {
+                canPlace: !!canPlace,
+                reason: canPlace ? '' : String(reason || ''),
+                label: placeBtn.textContent?.replace(/\s+/g, ' ').trim() || '',
+                disabled: !canPlace,
+            };
+            try {
+                if (typeof window !== 'undefined') window.__talariaV9PlaceReadiness = this._placeReadiness;
+            } catch (_e) { /* ignore */ }
         }
         
         this._applyCalculatedReadout(this._getCalculatedReadoutParts());
@@ -22104,8 +22209,15 @@ class OrderManager {
                 riskEl.textContent = '$0.00';
                 riskEl.style.color = '#9ca3af'; // Gray
             } else {
-                riskEl.textContent = `$${risk.toFixed(2)}`;
-                riskEl.style.color = '#ef4444'; // Red for risk
+                // Signed P&L at stop vs entry (protective → −$; stop on profit side → +$).
+                let slPxForSign = liveSlPrice > 0
+                    ? liveSlPrice
+                    : parseFloat(document.getElementById('slPrice')?.value || 0);
+                if (!(slPxForSign > 0) && legacyNamedSlPrice > 0) slPxForSign = legacyNamedSlPrice;
+                const sign = this._slPnlSignVsEntry(this.orderSide, slContextEntry, slPxForSign);
+                const signedRisk = (sign === 0 ? -1 : sign) * Math.abs(risk);
+                riskEl.textContent = this._formatSignedUsd(signedRisk);
+                riskEl.style.color = signedRisk >= 0 ? '#22c55e' : '#ef4444';
             }
             const eqR = Number.parseFloat(this.equity);
             if (hasValidSL && Number.isFinite(risk) && risk > 0 && Number.isFinite(eqR) && eqR > 0 && risk > eqR * 1.0001) {
@@ -22319,7 +22431,7 @@ class OrderManager {
         }
 
         const riskTxt = document.getElementById('riskAmount')?.textContent || '';
-        const riskNum = Number.parseFloat(String(riskTxt).replace(/[^0-9.-]/g, ''));
+        const riskNum = Math.abs(Number.parseFloat(String(riskTxt).replace(/[^0-9.-]/g, '')));
         const riskExceedsEquity =
             Number.isFinite(riskNum) &&
             Number.isFinite(equityNow) &&
@@ -24641,7 +24753,6 @@ class OrderManager {
 
         const line = chart.svg.append('line')
             .attr('class', disabled ? 'preview-line preview-line--disabled' : 'preview-line')
-            .attr('data-om-state', 'preview')
             .attr('x1', 0)
             .attr('x2', chart.w)
             .attr('y1', lineYPx)
@@ -26283,6 +26394,7 @@ class OrderManager {
         this._previewEntryDecoupledFromRR = false;
         this._previewEntryLinkedToRiskReward = false;
         this._rrExecuteArmed = false;
+        this._linkedRrDrawingId = null;
         this.tpManuallyPositioned = false;
         this.slManuallyPositioned = false;
     }
@@ -27267,6 +27379,7 @@ class OrderManager {
     addMultiEntryLevel() {
         if (!this._isAdvancedOrderAllowed() || this._isOrderEntryPlusUiDisabled()) return;
         if (!this._canAddMoreMultiEntryLevels(this.multiEntryLevels?.length || 0)) return;
+        this._markEntryMultiAddPress();
         const mode = this.positionSizeMode || 'risk-usd';
         const nNext = this.multiEntryLevels.length + 1;
         let avgAmount;
@@ -28437,6 +28550,7 @@ class OrderManager {
                     self.showNotification(`New TP added at ${self.formatPrice(newPrice)}`, 'success');
                 } else if (isEntryLine && self.isMultiEntryMode) {
                     if (!self._canAddMoreMultiEntryLevels(self.multiEntryLevels?.length || 0)) return;
+                    self._markEntryMultiAddPress();
                     self.multiEntryLevels.push({
                         id: Date.now(),
                         price: parseFloat(newPrice.toFixed(self.getPricePrecision())),
@@ -28988,6 +29102,7 @@ class OrderManager {
     armRiskRewardToolExecute(drawing) {
         if (!drawing) return;
         this._rrExecuteArmed = true;
+        this._linkedRrDrawingId = drawing.id != null ? drawing.id : null;
         this._syncRiskRewardDrawingToOpenOrderPanel(drawing, { forceEntry: true });
         this.calculatePositionFromRisk();
         this.calculateAdvancedRiskReward();
@@ -29008,6 +29123,7 @@ class OrderManager {
     disarmRiskRewardToolExecute() {
         const drawing = this._getSelectedRiskRewardDrawing();
         this._rrExecuteArmed = false;
+        this._linkedRrDrawingId = null;
         if (drawing) {
             this.removePreviewLines();
             const dm = drawing._drawingManager?.() || this.chart?.drawingManager;
@@ -29890,6 +30006,8 @@ class OrderManager {
      */
     riskRewardAddEntryFromTool(drawing) {
         this.pushRiskRewardToolToManager(drawing, { rrToolInternal: true });
+        // RR entry + rebuilds preview; keep a trailing click from hitting entry-cancel ✕.
+        this._markEntryMultiAddPress();
         const allE = typeof drawing._allEntryPrices === 'function' ? drawing._allEntryPrices() : [drawing.points[0].y];
         const currentPrice = drawing.points[0].y;
         if (!this.isMultiEntryMode || !this.multiEntryLevels?.length || allE.length <= 1) {
@@ -43664,12 +43782,11 @@ class OrderManager {
         const isBuyExit = order.type === 'BUY';
         const wickY = isBuyExit ? yScale(candle.h) : yScale(candle.l);
         const arrowCY = isBuyExit ? wickY - sz - gap : wickY + sz + gap;
-        const color = arrowCY < wickY ? _omLineColor('filledLoss') : _omLineColor('filledWin');
+        const color = arrowCY < wickY ? '#ef4444' : '#22c55e';
 
         const markerGroup = chart.svg.append('g')
             .attr('class', `exit-marker exit-marker-${order.id}`)
             .attr('data-linked-order-ids', String(order.id))
-            .attr('data-om-state', 'filled')
             .style('pointer-events', 'all')
             .style('cursor', 'pointer')
             .style('clip-path', 'none')
@@ -43677,7 +43794,6 @@ class OrderManager {
 
         markerGroup.append('line')
             .attr('data-role', 'exit-tick')
-            .attr('data-om-state', 'filled')
             .attr('x1', x - tickW / 2).attr('x2', x + tickW / 2)
             .attr('y1', y).attr('y2', y)
             .attr('stroke', color).attr('stroke-width', 2);
@@ -49144,7 +49260,6 @@ class OrderManager {
 
         const container = document.createElement('div');
         container.id = 'orderNotifications';
-        container.setAttribute('data-om-toast-root', '1');
         container.style.cssText = `
             position: fixed;
             top: 70px;
@@ -49152,9 +49267,8 @@ class OrderManager {
             z-index: 10000;
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 10px;
             pointer-events: none;
-            font-family: var(--font-ui, "Helvetica Neue", sans-serif);
         `;
         document.body.appendChild(container);
     }
@@ -49180,30 +49294,29 @@ class OrderManager {
 
         const safeTypeLegacy = ['success', 'error', 'warning', 'info'].includes(type) ? type : 'info';
         const accent = {
-            success: '#00D4A1',
-            error: '#E53935',
-            warning: '#F5A020',
-            info: '#3090FF'
+            success: '#22c55e',
+            error: '#ef4444',
+            warning: '#f59e0b',
+            info: '#3b82f6'
         }[safeTypeLegacy];
 
         const notification = document.createElement('div');
-        notification.className = `chart-toast-tooltip om-notification ${safeTypeLegacy}`;
-        notification.setAttribute('data-om-toast', safeTypeLegacy);
-        /* Obsidian toast: flat surface, severity rail, no glow */
+        notification.className = 'chart-toast-tooltip';
+        /* Match .chart-tooltip surface: compact panel + colored left rail for severity */
         notification.style.cssText = `
-            background: var(--surface, #12141a);
-            color: var(--text, #f2f4f8);
-            border: 1px solid var(--line, #2a2f3a);
+            background: rgba(42, 46, 57, 0.95);
+            color: #ffffff;
+            border: 1px solid #363a45;
             border-left: 3px solid ${accent};
-            border-radius: 8px;
-            padding: 10px 12px;
-            font-size: 12px;
-            line-height: 1.35;
+            border-radius: 4px;
+            padding: 7px 11px;
+            font-size: 11px;
+            line-height: 14px;
             font-weight: 600;
-            font-family: var(--font-ui, "Helvetica Neue", sans-serif);
-            box-shadow: none;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
             box-sizing: border-box;
-            animation: slideIn 0.22s ease-out;
+            animation: slideIn 0.3s ease-out;
             pointer-events: auto;
             min-width: 200px;
             max-width: 380px;
@@ -51478,15 +51591,9 @@ class OrderManager {
         const s = this._orderLevelLineStyle(kind);
         const o = overrides || {};
         const dash = o.dasharray !== undefined ? o.dasharray : s.dasharray;
-        const state =
-            kind === true || kind === 'preview' ? 'preview'
-                : kind === 'pending' ? 'pending'
-                    : kind === 'filled' ? 'filled'
-                        : 'open';
         lineSel
             .attr('stroke-dasharray', dash == null ? null : dash)
-            .attr('opacity', o.opacity !== undefined ? o.opacity : s.opacity)
-            .attr('data-om-state', state);
+            .attr('opacity', o.opacity !== undefined ? o.opacity : s.opacity);
         // Prefer explicit override; otherwise use kind default width (skip if drag highlight active).
         const sw = o.strokeWidth !== undefined ? o.strokeWidth : s.strokeWidth;
         if (sw !== undefined && !o.skipStrokeWidth) {

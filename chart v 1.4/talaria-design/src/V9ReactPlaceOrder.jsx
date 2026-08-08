@@ -1,3 +1,8 @@
+/**
+ * QUARANTINED — do not mount beside the V9 Obsidian order rail in TalariaV8bLive.
+ * Dual mirror UI over #orderPanel; live product uses the rail in TalariaV8bLive.jsx only.
+ * Kept for reference / possible future extraction; importing this into the live shell is a bug.
+ */
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 function $(id) {

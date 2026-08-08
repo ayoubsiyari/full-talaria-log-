@@ -2,7 +2,10 @@
    Shell: data-sett-v3="1". Flat, no chrome glow. Easy scan: label left · controls right. */
 
 [data-sett-v3="1"] {
+  /* Typebase lock — every label/control inherits 12px; never browser 16px */
   font-family: var(--font-ui) !important;
+  font-size: 12px !important;
+  line-height: 1.25 !important;
   background: var(--surface) !important;
   border: 1px solid var(--line) !important;
   border-radius: 8px !important;
@@ -18,6 +21,29 @@
   /* --v9-sett-max-h is set by the in-chart clamp so tall panels scroll instead of clipping */
   max-height: min(700px, var(--v9-sett-max-h, calc(100vh - 96px))) !important;
   box-sizing: border-box !important;
+}
+
+/* All settings labels — one size. Covers sett-row, input-row, bare spans, nested chk text.
+   Color stays on the outer label so disabled/faint inline states still win. */
+[data-sett-v3="1"] [data-sett-label],
+[data-sett-v3="1"] [data-sett-chk-label] {
+  font-family: var(--font-ui) !important;
+  font-size: 12px !important;
+  font-weight: 550 !important;
+  line-height: 1.25 !important;
+  color: var(--text-muted) !important;
+}
+[data-sett-v3="1"] [data-sett-label] span {
+  font-family: inherit !important;
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  line-height: inherit !important;
+}
+[data-sett-v3="1"] [data-sett-control-grid] > span {
+  font-family: var(--font-ui) !important;
+  font-size: 12px !important;
+  font-weight: 550 !important;
+  line-height: 1.25 !important;
 }
 
 [data-sett-v3="1"][data-ind-sett="1"],
@@ -359,8 +385,8 @@
   color: var(--text) !important;
 }
 [data-sett-v3="1"] [data-sett-box] {
-  width: 14px !important;
-  height: 14px !important;
+  width: 16px !important;
+  height: 16px !important;
   border-radius: 4px !important;
   box-sizing: border-box !important;
 }
@@ -400,18 +426,25 @@
   background: var(--accent-quiet);
 }
 
-/* Dropdown triggers — same sunken grammar as brand fields */
+/* Dropdown triggers — same 30× / r6 shell as swatch + chip */
 [data-sett-v3="1"] [data-sett-dd],
 [data-sett-v3="1"] [data-sett-dd-btn] {
   height: 30px !important;
   min-height: 30px !important;
-  min-width: 52px;
-  padding: 0 8px !important;
+  min-width: 56px;
+  padding: 0 10px !important;
   border-radius: 6px !important;
   border: 1px solid var(--line) !important;
   background: var(--surface-sunken) !important;
   box-sizing: border-box !important;
   box-shadow: none !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  /* Never line-height:0 — that clipped “Std Deviation” / source labels inside the face */
+  line-height: 1.2 !important;
+  vertical-align: middle;
   transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease !important;
 }
 
@@ -426,6 +459,66 @@
   background: var(--accent-quiet) !important;
   border-color: color-mix(in oklab, var(--accent) 45%, var(--line)) !important;
   color: var(--accent) !important;
+}
+
+/* Style clusters: swatch + style/width/ep share one gap + one face width */
+[data-sett-v3="1"] [data-sett-cluster] {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  flex-wrap: wrap;
+}
+[data-sett-v3="1"] [data-sett-cluster] > [data-v9-color-swatch],
+[data-sett-v3="1"] [data-sett-acts] > [data-v9-color-swatch] {
+  width: 30px !important;
+  height: 30px !important;
+  border-radius: 6px !important;
+}
+/* Nested relative wrappers around mkBtn — keep cluster gap even */
+[data-sett-v3="1"] [data-sett-cluster] > div {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 0;
+}
+/* Line / width / endpoint faces — glyph-only (svg, no label span).
+   CRITICAL: text selects also render a chevron <svg>; never match those with :has(> svg)
+   alone — that crushed “Std Deviation” / “Percentage” to 74px and clipped menus. */
+[data-sett-v3="1"] [data-sett-cluster] [data-sett-dd]:not(:has(> span)),
+[data-sett-v3="1"] [data-sett-dd]:has(> svg):not(:has(> span)),
+[data-sett-v3="1"] [data-sett-dd-btn]:has(> svg):not(:has(> span)) {
+  width: 74px !important;
+  min-width: 74px !important;
+  max-width: 74px !important;
+  height: 30px !important;
+  padding: 0 10px !important;
+  gap: 8px !important;
+  justify-content: space-between !important;
+  line-height: 0 !important; /* glyph faces only */
+}
+/* Text / mode selects (span label + optional chevron svg) — grow to full label.
+   data-sett-dd-kind="text" is the explicit escape hatch — prefer it on new controls. */
+[data-sett-v3="1"] [data-sett-dd]:has(> span),
+[data-sett-v3="1"] [data-sett-dd-btn]:has(> span),
+[data-sett-v3="1"] [data-sett-dd-kind="text"] {
+  width: auto !important;
+  min-width: 90px !important;
+  max-width: none !important;
+  justify-content: space-between !important;
+  flex-shrink: 0 !important;
+  line-height: 1.2 !important;
+}
+[data-sett-v3="1"] [data-sett-dd]:has(> span) > span,
+[data-sett-v3="1"] [data-sett-dd-btn]:has(> span) > span {
+  font-family: var(--font-ui) !important;
+  font-size: 12px !important;
+  font-weight: 550 !important;
+  line-height: 1.2 !important;
+  white-space: nowrap !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 /* Kill leftover blue/gold glow underlines inside settings */
@@ -444,13 +537,35 @@
 [data-ind-style-drop="1"],
 /* Portaled menus live on document.body — keep the same Obsidian face */
 body > [data-sett-drop][data-v9-chrome],
-body > [data-sett-drop-shell][data-v9-chrome] {
+body > [data-sett-drop-shell][data-v9-chrome],
+body > [data-sett-drop-portal][data-v9-chrome] {
   background: var(--surface) !important;
   border: 1px solid var(--line) !important;
   border-radius: 8px !important;
   box-shadow: none !important;
   font-family: var(--font-ui) !important;
+  font-size: 12px !important;
+  line-height: 1.25 !important;
   padding: 4px 0 !important;
+}
+/* Portaled option rows — full label, regular 12px, no wrap/clip */
+body > [data-sett-drop][data-v9-chrome] > div,
+body > [data-sett-drop-shell][data-v9-chrome] > div,
+body > [data-sett-drop-portal][data-v9-chrome] > div,
+[data-sett-v3="1"] [data-sett-drop] > div {
+  min-height: 32px !important;
+  display: flex !important;
+  align-items: center !important;
+  box-sizing: border-box !important;
+}
+body > [data-sett-drop][data-v9-chrome] span,
+body > [data-sett-drop-shell][data-v9-chrome] span,
+body > [data-sett-drop-portal][data-v9-chrome] span,
+[data-sett-v3="1"] [data-sett-drop] span {
+  font-family: var(--font-ui) !important;
+  font-size: 12px !important;
+  line-height: 1.25 !important;
+  white-space: nowrap !important;
 }
 [data-sett-v3="1"] [data-sett-drop],
 [data-sett-v3="1"] [data-sett-drop-shell],
@@ -468,11 +583,28 @@ body > [data-sett-drop-shell][data-v9-chrome] {
 /* Selected option — quiet fill, no left accent tick */
 [data-sett-v3="1"] [data-sett-drop] [data-on="1"],
 [data-sett-v3="1"] [data-sett-drop-shell] [data-pick-on="1"],
+[data-sett-v3="1"] [data-sett-drop] [data-pick-on="1"],
 [data-ind-style-drop="1"] [data-pick-on="1"],
 body > [data-sett-drop][data-v9-chrome] [data-pick-on="1"],
-body > [data-sett-drop-shell][data-v9-chrome] [data-pick-on="1"] {
+body > [data-sett-drop-shell][data-v9-chrome] [data-pick-on="1"],
+body > [data-sett-drop][data-v9-chrome] [data-on="1"],
+body > [data-sett-drop-shell][data-v9-chrome] [data-on="1"] {
   background: var(--accent-quiet) !important;
   color: var(--accent) !important;
+}
+/* Menu rows — flat, readable, no glow ticks */
+[data-sett-v3="1"] [data-sett-drop] > div,
+[data-sett-v3="1"] [data-sett-drop-shell] > div,
+body > [data-sett-drop][data-v9-chrome] > div,
+body > [data-sett-drop-shell][data-v9-chrome] > div {
+  box-shadow: none !important;
+  filter: none !important;
+}
+[data-sett-v3="1"] [data-sett-drop] > div:hover,
+[data-sett-v3="1"] [data-sett-drop-shell] > div:hover,
+body > [data-sett-drop][data-v9-chrome] > div:hover,
+body > [data-sett-drop-shell][data-v9-chrome] > div:hover {
+  background: var(--surface-raised);
 }
 [data-ind-style-drop="1"] [style*="boxShadow"],
 [data-ind-style-drop="1"] [style*="box-shadow"],
@@ -612,7 +744,7 @@ body > [data-sett-drop-shell][data-v9-chrome] [data-pick-on="1"] {
   filter: none !important;
 }
 
-/* B / I format toggles */
+/* B / I format toggles — same 30×30 shell as chip/dd; glyph fills the face */
 [data-sett-v3="1"] [data-sett-fmt] {
   width: 30px !important;
   height: 30px !important;
@@ -624,10 +756,12 @@ body > [data-sett-drop-shell][data-v9-chrome] [data-pick-on="1"] {
   background: var(--surface-sunken) !important;
   color: var(--text-muted) !important;
   font-family: var(--font-ui) !important;
-  font-size: 13px !important;
+  font-size: 14px !important;
+  line-height: 1 !important;
   cursor: default !important;
   box-sizing: border-box !important;
   position: relative;
+  flex-shrink: 0;
   transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease !important;
 }
 [data-sett-v3="1"] [data-sett-fmt]:hover {
@@ -674,21 +808,29 @@ body > [data-sett-drop-shell][data-v9-chrome] [data-pick-on="1"] {
   background: var(--accent-quiet) !important;
 }
 
-/* Coordinate / numeric steppers — one bordered shell; input never re-borders */
+/* Compact numeric steppers — fixed shell; never stretch to fill the row.
+   Coord cells opt into full width below. */
 [data-sett-v3="1"] [data-sett-step] {
   display: inline-flex !important;
   align-items: stretch !important;
-  width: 100% !important;
-  max-width: 100% !important;
-  height: 32px !important;
-  min-height: 32px !important;
+  width: 72px !important;
+  max-width: 72px !important;
+  height: 30px !important;
+  min-height: 30px !important;
   min-width: 72px !important;
-  flex: 1 1 auto !important;
+  flex: 0 0 72px !important;
   border: 1px solid var(--line) !important;
   border-radius: 6px !important;
   background: var(--surface-sunken) !important;
   overflow: hidden !important;
   box-sizing: border-box !important;
+}
+[data-sett-v3="1"] [data-sett-coord-cell] [data-sett-step] {
+  width: 100% !important;
+  max-width: 100% !important;
+  flex: 1 1 auto !important;
+  height: 32px !important;
+  min-height: 32px !important;
 }
 [data-sett-v3="1"] [data-sett-step] input,
 [data-sett-v3="1"] [data-sett-step] input.tlr-nospinner,
@@ -749,14 +891,169 @@ body > [data-sett-drop-shell][data-v9-chrome] [data-pick-on="1"] {
   background: var(--surface-raised) !important;
 }
 
-/* Compact chevrons on sett dropdowns */
-[data-sett-v3="1"] [data-sett-dd] svg,
-[data-sett-v3="1"] [data-sett-dd-btn] svg {
-  width: 7px !important;
-  height: 7px !important;
+/* Dense fib/gann/channel level values — same rail, centered digits */
+[data-sett-v3="1"] [data-sett-step][data-sett-level-step] {
+  height: 28px !important;
+  min-height: 28px !important;
+}
+[data-sett-v3="1"] [data-sett-step][data-sett-level-step] input,
+[data-sett-v3="1"] [data-sett-step][data-sett-level-step] input.tlr-nospinner {
+  text-align: center !important;
+  padding: 0 6px !important;
+  font-size: 11px !important;
+}
+
+/*
+  Style control rail — chk | label | swatch | style dd | width dd
+  Matches 30px swatch + 74px preview faces so columns never overflow.
+*/
+[data-sett-v3="1"] [data-sett-control-grid] {
+  display: grid !important;
+  grid-template-columns: 16px minmax(0, 1fr) 30px 74px 74px !important;
+  column-gap: 6px !important;
+  align-items: center !important;
+  min-height: 40px !important;
+  padding: 4px 0 !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+}
+[data-sett-v3="1"] [data-sett-control-grid] > [data-sett-chips] {
+  grid-column: 3 / -1 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 6px !important;
+  min-width: 0 !important;
+}
+/* Checkbox+label as one cell (TlChk) — keeps swatch/style/width columns locked */
+[data-sett-v3="1"] [data-sett-control-grid] > [data-sett-chk-label] {
+  grid-column: 1 / 3 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  min-width: 0 !important;
+  gap: 8px;
+}
+/* Opacity / alpha slider fills the style+width slots */
+[data-sett-v3="1"] [data-sett-control-grid] > [data-sett-slider-slot] {
+  grid-column: 4 / -1 !important;
+  display: flex !important;
+  align-items: center !important;
+  min-width: 0 !important;
+}
+[data-sett-v3="1"] [data-sett-control-grid] > [data-sett-slider-slot] [data-sett-slider] {
+  width: 100% !important;
+  max-width: none !important;
+  flex: 1 1 auto !important;
+}
+[data-sett-v3="1"] [data-sett-control-grid] [data-sett-dd]:has(> svg):not(:has(> span)),
+[data-sett-v3="1"] [data-sett-control-grid] [data-sett-dd-btn]:has(> svg):not(:has(> span)) {
+  width: 74px !important;
+  min-width: 74px !important;
+  max-width: 74px !important;
+}
+
+/* Inputs tab rows — label flexes left; control stays a fixed right rail */
+[data-sett-v3="1"] [data-sett-input-row] {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  min-height: 40px !important;
+  padding: 4px 0 !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+}
+[data-sett-v3="1"] [data-sett-input-row] > [data-sett-label] {
+  flex: 1 1 auto !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  font-size: 12px !important;
+  font-weight: 550 !important;
+  color: var(--text-muted) !important;
+}
+[data-sett-v3="1"] [data-sett-input-row] > [data-sett-acts] {
+  flex: 0 0 auto !important;
+  margin-left: 0 !important;
+  justify-content: flex-end !important;
+  flex-wrap: nowrap !important;
+}
+[data-sett-v3="1"] [data-sett-input-row] [data-sett-dd]:has(> span) {
+  min-width: 118px !important;
+}
+
+/* Compact chevrons only — never crush line/endpoint/thickness preview SVGs
+   (a prior 7×7 rule on all `svg` made style previews unreadable). */
+[data-sett-v3="1"] [data-sett-dd] [data-chrome-icon],
+[data-sett-v3="1"] [data-sett-dd-btn] [data-chrome-icon] {
+  width: 8px !important;
+  height: 8px !important;
   flex-shrink: 0;
   opacity: 0.75;
 }
+
+/* Style / thickness / endpoint previews — fixed slot inside the 74px face */
+[data-sett-v3="1"] [data-sett-dd] > svg,
+[data-sett-v3="1"] [data-sett-dd-btn] > svg,
+[data-sett-v3="1"] [data-sett-dd] svg[data-sett-preview],
+[data-sett-v3="1"] [data-sett-cluster] svg[data-sett-preview] {
+  width: 28px !important;
+  height: 12px !important;
+  min-width: 28px;
+  min-height: 12px;
+  max-height: none;
+  flex: 0 0 28px;
+  opacity: 1;
+  display: block;
+  margin: 0 !important;
+  overflow: visible;
+}
+/* Portaled + inline line/endpoint menus — enlarge line glyphs; leave 56-wide plot previews alone */
+body > [data-sett-drop] svg[data-sett-preview],
+body > [data-sett-drop-shell] svg[data-sett-preview],
+body > [data-sett-drop-portal] svg[data-sett-preview],
+[data-sett-v3="1"] [data-sett-drop] svg[data-sett-preview],
+body > [data-sett-drop] svg[width="22"],
+body > [data-sett-drop] svg[width="24"],
+body > [data-sett-drop] svg[width="28"],
+body > [data-sett-drop] svg[width="32"],
+body > [data-sett-drop] svg[width="36"],
+body > [data-sett-drop-shell] svg[width="22"],
+body > [data-sett-drop-shell] svg[width="24"],
+body > [data-sett-drop-shell] svg[width="28"],
+body > [data-sett-drop-shell] svg[width="32"],
+body > [data-sett-drop-shell] svg[width="36"],
+body > [data-sett-drop-portal] svg[width="22"],
+body > [data-sett-drop-portal] svg[width="24"],
+body > [data-sett-drop-portal] svg[width="28"],
+body > [data-sett-drop-portal] svg[width="32"],
+body > [data-sett-drop-portal] svg[width="36"],
+[data-sett-v3="1"] [data-sett-drop] svg[width="22"],
+[data-sett-v3="1"] [data-sett-drop] svg[width="24"],
+[data-sett-v3="1"] [data-sett-drop] svg[width="28"],
+[data-sett-v3="1"] [data-sett-drop] svg[width="32"],
+[data-sett-v3="1"] [data-sett-drop] svg[width="36"] {
+  width: 36px !important;
+  height: 14px !important;
+  min-width: 36px;
+  min-height: 14px;
+  max-height: none;
+  flex-shrink: 0;
+  opacity: 1;
+  display: block;
+}
+
+body > [data-sett-drop] [data-chrome-icon],
+body > [data-sett-drop-shell] [data-chrome-icon],
+body > [data-sett-drop-portal] [data-chrome-icon] {
+  width: 8px !important;
+  height: 8px !important;
+  min-width: 0;
+  min-height: 0;
+  max-height: none;
+  opacity: 0.75;
+}
+
+/* (cluster dd face rules live with the main sett-dd block above) */
 
 /* Content textarea block */
 [data-sett-v3="1"] [data-sett-content] {
@@ -801,34 +1098,205 @@ body > [data-sett-drop-shell][data-v9-chrome] [data-pick-on="1"] {
   font-family: var(--font-ui);
 }
 
-/* Visibility range slider — flat Obsidian (circle thumbs, quiet rail) */
-[data-sett-v3="1"] [data-sett-vis-range] {
-  --sett-vis-thumb: 12px;
+/* ── Unified Obsidian slider ──
+   Same scrubber grammar as replay speed: sunken shell · inset rail · 14px thumb · grab. */
+[data-sett-v3="1"] [data-sett-slider] {
+  --sett-slider-inset: 12px;
+  --sett-slider-thumb: 14px;
   position: relative;
-  height: 28px;
+  height: 32px;
+  width: 128px;
   display: flex;
   align-items: center;
-  cursor: default;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  padding: 0 var(--sett-slider-inset);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-sunken);
+  cursor: grab !important;
   min-width: 0;
+  line-height: 0;
+  overflow: visible;
+  box-shadow: none;
+  transition: opacity 0.15s ease, border-color 0.12s ease;
 }
-[data-sett-v3="1"] [data-sett-vis-rail] {
+[data-sett-v3="1"] [data-sett-slider]:hover {
+  border-color: var(--line-strong, var(--line));
+}
+[data-sett-v3="1"] [data-sett-slider]:active,
+[data-sett-v3="1"] [data-sett-slider][data-dragging="1"] {
+  cursor: grabbing !important;
+  border-color: color-mix(in oklab, var(--accent) 50%, var(--line));
+}
+[data-sett-v3="1"] [data-sett-slider][data-grow="1"] {
+  width: auto;
+  flex: 1 1 auto;
+  min-width: 96px;
+  max-width: 168px;
+}
+[data-sett-v3="1"] [data-sett-slider-rail] {
   position: absolute;
-  left: 0;
-  right: 0;
+  left: var(--sett-slider-inset);
+  right: var(--sett-slider-inset);
   top: 50%;
   height: 3px;
   transform: translateY(-50%);
   border-radius: 999px;
-  background: color-mix(in oklab, var(--line) 90%, var(--surface));
+  background: color-mix(in oklab, var(--line) 85%, var(--surface));
   overflow: hidden;
   pointer-events: none;
+  z-index: 0;
+  box-sizing: border-box;
+}
+[data-sett-v3="1"] [data-sett-slider-fill] {
+  display: block;
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  min-width: 0;
+  border-radius: 999px;
+  background: var(--accent) !important;
+  pointer-events: none;
+}
+[data-sett-v3="1"] [data-sett-slider-thumb],
+[data-sett-v3="1"] [data-sett-alpha-thumb] {
+  position: absolute;
+  top: 50%;
+  /* Thumb rides the inset rail (same math as replay --rp-speed-pct) */
+  left: calc(
+    var(--sett-slider-inset) + (100% - (var(--sett-slider-inset) * 2)) * (var(--sett-slider-pct, 0) / 100)
+  );
+  width: var(--sett-slider-thumb, 14px) !important;
+  height: var(--sett-slider-thumb, 14px) !important;
+  margin: 0 !important;
+  transform: translate(-50%, -50%) scale(1);
+  border-radius: 50% !important;
+  background: var(--accent) !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  filter: none !important;
+  box-sizing: border-box;
+  pointer-events: none;
+  z-index: 2;
+  transition: transform 0.1s ease;
+}
+[data-sett-v3="1"] [data-sett-slider]:hover [data-sett-slider-thumb],
+[data-sett-v3="1"] [data-sett-slider]:focus-within [data-sett-slider-thumb] {
+  transform: translate(-50%, -50%) scale(1.12);
+}
+[data-sett-v3="1"] [data-sett-slider][data-dragging="1"] [data-sett-slider-thumb] {
+  transform: translate(-50%, -50%) scale(0.92);
+}
+[data-sett-v3="1"] [data-sett-slider] input[type="range"] {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  opacity: 0 !important;
+  cursor: grab !important;
+  pointer-events: auto !important;
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  background: transparent !important;
+  z-index: 3;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+[data-sett-v3="1"] [data-sett-slider] input[type="range"]:active,
+[data-sett-v3="1"] [data-sett-slider][data-dragging="1"] input[type="range"] {
+  cursor: grabbing !important;
+}
+[data-sett-v3="1"] [data-sett-slider] input[type="range"]::-webkit-slider-runnable-track {
+  height: 32px;
+  cursor: grab !important;
+  background: transparent;
+}
+[data-sett-v3="1"] [data-sett-slider] input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  width: 28px;
+  height: 32px;
+  background: transparent;
+  cursor: grab !important;
+}
+[data-sett-v3="1"] [data-sett-slider] input[type="range"]:active::-webkit-slider-thumb,
+[data-sett-v3="1"] [data-sett-slider][data-dragging="1"] input[type="range"]::-webkit-slider-thumb {
+  cursor: grabbing !important;
+}
+[data-sett-v3="1"] [data-sett-slider] input[type="range"]::-moz-range-track {
+  height: 32px;
+  cursor: grab !important;
+  background: transparent;
+  border: none;
+}
+[data-sett-v3="1"] [data-sett-slider] input[type="range"]::-moz-range-thumb {
+  width: 28px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  cursor: grab !important;
+}
+[data-sett-v3="1"] [data-sett-slider-hit] {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  cursor: grab !important;
+  touch-action: none;
+}
+[data-sett-v3="1"] [data-sett-slider-hit]:active {
+  cursor: grabbing !important;
+}
+
+/* Visibility dual-thumb range — same scrubber shell as replay / sett-slider.
+   Thumbs/hits must use --sett-vis-inset (not raw %), or 0%/100% sit on the shell edge. */
+[data-sett-v3="1"] [data-sett-vis-range] {
+  --sett-vis-inset: 12px;
+  --sett-vis-thumb: 14px;
+  position: relative;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  cursor: grab !important;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0 var(--sett-vis-inset);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-sunken);
+  overflow: hidden;
+  transition: border-color 0.12s ease;
+}
+[data-sett-v3="1"] [data-sett-vis-range]:hover {
+  border-color: var(--line-strong, var(--line));
+}
+[data-sett-v3="1"] [data-sett-vis-range]:active {
+  cursor: grabbing !important;
+  border-color: color-mix(in oklab, var(--accent) 50%, var(--line));
+}
+[data-sett-v3="1"] [data-sett-vis-rail] {
+  position: absolute;
+  left: var(--sett-vis-inset);
+  right: var(--sett-vis-inset);
+  top: 50%;
+  height: 3px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--line) 85%, var(--surface));
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+  box-sizing: border-box;
 }
 [data-sett-v3="1"] [data-sett-vis-fill] {
   position: absolute;
   top: 0;
   bottom: 0;
   border-radius: 999px;
-  background: color-mix(in oklab, var(--accent) 55%, transparent);
+  background: var(--accent) !important;
   pointer-events: none;
 }
 [data-sett-v3="1"] [data-sett-vis-thumb] {
@@ -840,45 +1308,42 @@ body > [data-sett-drop-shell][data-v9-chrome] [data-pick-on="1"] {
   transform: translate(-50%, -50%) scale(1);
   border-radius: 50%;
   background: var(--accent) !important;
-  border: 2px solid var(--surface) !important;
-  outline: 1px solid color-mix(in oklab, var(--accent) 45%, var(--line));
+  border: none !important;
+  outline: none !important;
   box-shadow: none !important;
+  filter: none !important;
   box-sizing: border-box;
   pointer-events: none;
   z-index: 2;
-  transition: transform 0.1s ease, outline-color 0.1s ease;
+  transition: transform 0.1s ease;
 }
+[data-sett-v3="1"] [data-sett-vis-range]:hover [data-sett-vis-thumb],
 [data-sett-v3="1"] [data-sett-vis-thumb][data-hot="1"] {
-  transform: translate(-50%, -50%) scale(1.14);
-  outline-color: var(--accent);
+  transform: translate(-50%, -50%) scale(1.12);
 }
 [data-sett-v3="1"] [data-sett-vis-hit] {
   position: absolute;
   top: calc(50% - 14px);
   width: 28px;
   height: 28px;
-  cursor: default;
+  cursor: grab !important;
   z-index: 1;
+  touch-action: none;
+}
+[data-sett-v3="1"] [data-sett-vis-hit]:active {
+  cursor: grabbing !important;
 }
 [data-sett-v3="1"] [data-sett-vis-hit][data-full] {
-  inset: 0;
+  left: var(--sett-vis-inset);
+  right: var(--sett-vis-inset);
+  top: 0;
+  bottom: 0;
   width: auto;
   height: auto;
-  top: 0;
   z-index: 0;
 }
 
-/* SETT-UNIFY-HARDEN */
-/* Alpha thumbs — always circular, no triangle costume */
-[data-sett-v3="1"] [data-sett-alpha-thumb] {
-  width: 12px !important;
-  height: 12px !important;
-  border-radius: 50% !important;
-  background: var(--accent) !important;
-  border: 2px solid var(--surface) !important;
-  box-shadow: none !important;
-  outline: none !important;
-}
+/* SETT-UNIFY-HARDEN — alpha thumbs covered by unified slider block above */
 
 /* Bare legacy steppers — step-shell inputs are overridden above with higher specificity */
 [data-sett-v3="1"] [data-tool-sett-pane] > input.tlr-nospinner,

@@ -436,14 +436,15 @@
             z-index: 25;
             display: flex;
             flex-direction: column;
-            gap: 3px;
-            font-size: 11px;
-            font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            color: #d1d4dc;
+            gap: 4px;
+            font-size: 12px;
+            font-family: "Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif;
+            color: #f4f4f5;
             pointer-events: none;
             box-sizing: border-box;
             /* max-width set per-frame in chart.js (_syncOhlcLegendMaxWidth) so legend stays left of price axis */
             max-width: min(560px, calc(100% - 96px));
+            -webkit-font-smoothing: antialiased;
         }
         #chart-container #chartWrapper .ohlc-header,
         #panels-container .ohlc-header {
@@ -458,6 +459,9 @@
         #chart-container #chartWrapper .ohlc-symbol-block,
         #panels-container .ohlc-symbol-block {
             flex: 0 0 auto;
+            font-weight: 650;
+            letter-spacing: 0.01em;
+            color: #f4f4f5;
         }
         #chart-container #chartWrapper .ohlc-stats,
         #panels-container .ohlc-stats {
@@ -476,7 +480,7 @@
             display: flex;
             align-items: center;
             flex-wrap: nowrap;
-            gap: 6px;
+            gap: 8px;
             flex: 0 1 auto;
             min-width: 0;
             overflow: hidden;
@@ -487,6 +491,36 @@
             display: inline-flex;
             align-items: center;
             gap: 2px;
+        }
+        #chart-container #chartWrapper .ohlc-symbol-block #chartSymbol,
+        #chart-container #chartWrapper .ohlc-symbol-block .ohlc-symbol-text,
+        #panels-container .ohlc-symbol-block [id^="chartSymbol"] {
+            color: #f4f4f5;
+            font-weight: 700;
+        }
+        #chart-container #chartWrapper .ohlc-symbol-block #chartTimeframe,
+        #chart-container #chartWrapper .ohlc-symbol-block .ohlc-separator,
+        #panels-container .ohlc-symbol-block [id^="chartTimeframe"],
+        #panels-container .ohlc-symbol-block .ohlc-separator {
+            color: rgba(244, 244, 245, 0.64);
+            font-weight: 550;
+        }
+        #chart-container #chartWrapper .ohlc-label,
+        #panels-container .ohlc-label {
+            color: rgba(244, 244, 245, 0.4);
+            font-size: 11px;
+            font-weight: 600;
+            margin-right: 3px;
+        }
+        #chart-container #chartWrapper .ohlc-value,
+        #chart-container #chartWrapper .ohlc-change,
+        #panels-container .ohlc-value,
+        #panels-container .ohlc-change {
+            color: rgba(244, 244, 245, 0.64);
+            font-size: 11px;
+            font-weight: 550;
+            font-family: "JetBrains Mono", ui-monospace, monospace;
+            font-variant-numeric: tabular-nums;
         }
         #chart-container #chartWrapper .ohlc-item-close-change,
         #panels-container .ohlc-item-close-change {
@@ -529,12 +563,12 @@
             margin: 0;
             padding: 2px 4px;
             background: transparent;
-            color: #787b86;
+            color: rgba(244, 244, 245, 0.4);
             cursor:default;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            border-radius: 3px;
+            border-radius: 6px;
             line-height: 0;
             flex-shrink: 0;
             pointer-events: auto;
@@ -543,8 +577,8 @@
         }
         #chart-container #chartWrapper .ohlc-legend-chevron:hover,
         #panels-container .ohlc-legend-chevron:hover {
-            background: rgba(255, 255, 255, 0.06);
-            color: #b2b5be;
+            background: #141416;
+            color: rgba(244, 244, 245, 0.64);
             opacity: 1;
         }
         #chart-container #chartWrapper .ohlc-legend-chevron svg,
@@ -712,8 +746,8 @@
             width: 18px;
             height: 18px;
             border-radius: 6px;
-            background: rgba(255, 198, 0, 0.18);
-            border: 1px solid rgba(255, 198, 0, 0.45);
+            background: rgba(48, 144, 255, 0.16);
+            border: 1px solid rgba(48, 144, 255, 0.4);
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -789,26 +823,39 @@
             justify-content: center;
             pointer-events: none;
             box-sizing: border-box;
-            border-radius: 50%;
-            border: 1.5px solid currentColor;
-            background: rgba(0, 0, 0, 0.15);
+            border: none;
+            border-radius: 0;
+            background: transparent;
+            outline: none;
+            box-shadow: none;
         }
         #chart-container #chartWrapper .nav-badge-go-back,
         #panels-container .nav-badge-go-back {
-            width: 17px;
-            height: 17px;
+            width: auto;
+            height: auto;
             flex-shrink: 0;
-            display: block;
+            display: inline-flex;
         }
+        /* Rollback status: green = allowed, red = blocked — icon only, no accent ring. */
+        #chart-container #chartWrapper .nav-integrity-badge.enabled,
         #chart-container #chartWrapper .nav-integrity-badge.enabled .nav-badge-icon,
-        #panels-container .nav-integrity-badge.enabled .nav-badge-icon {
+        #chart-container #chartWrapper .nav-integrity-badge.enabled .nav-badge-go-back,
+        #panels-container .nav-integrity-badge.enabled,
+        #panels-container .nav-integrity-badge.enabled .nav-badge-icon,
+        #panels-container .nav-integrity-badge.enabled .nav-badge-go-back {
             color: #22c55e;
+            background: transparent;
         }
+        #chart-container #chartWrapper .nav-integrity-badge.disabled,
         #chart-container #chartWrapper .nav-integrity-badge.disabled .nav-badge-icon,
-        #panels-container .nav-integrity-badge.disabled .nav-badge-icon {
+        #chart-container #chartWrapper .nav-integrity-badge.disabled .nav-badge-go-back,
+        #panels-container .nav-integrity-badge.disabled,
+        #panels-container .nav-integrity-badge.disabled .nav-badge-icon,
+        #panels-container .nav-integrity-badge.disabled .nav-badge-go-back {
             color: #ef4444;
+            background: transparent;
         }
-        /* Replay rollback hover — shell matches path hint / bottom toasts (Exo 2, #0F1119, left stripe). Bottom aligned via JS (__TalariaToastStack.anchorBottomPx) when present. */
+        /* Replay rollback hover — Obsidian tip (flat, no glow rail). */
         #chart-container #chartWrapper .nav-badge-tooltip,
         #panels-container .nav-badge-tooltip {
             position: fixed;
@@ -817,22 +864,22 @@
             top: auto;
             transform: translateX(-50%);
             margin: 0;
-            padding: 5px 11px 5px 14px;
+            padding: 5px 10px;
             overflow: visible;
-            background: #0f1119;
-            color: rgba(255, 255, 255, 0.92);
-            border: 1px solid rgba(140, 160, 255, 0.12);
-            border-radius: 0;
+            background: var(--surface-raised, #141414);
+            color: var(--text, #fff);
+            border: 1px solid var(--line, rgba(255,255,255,0.12));
+            border-radius: 6px;
             font-size: 11px;
             line-height: 1.35;
             font-weight: 600;
-            font-family: "Exo 2", sans-serif;
+            font-family: var(--font-ui, Helvetica, Arial, sans-serif);
             white-space: normal;
             max-width: min(92vw, 360px);
             text-align: center;
             box-sizing: border-box;
             z-index: 100065;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.55);
+            box-shadow: none;
             opacity: 0;
             visibility: hidden;
             pointer-events: none;
@@ -840,29 +887,16 @@
         }
         body.light-mode #chart-container #chartWrapper .nav-badge-tooltip,
         body.light-mode #panels-container .nav-badge-tooltip {
-            background: #e8ebf6;
-            color: rgba(0, 0, 0, 0.92);
-            border-color: rgba(0, 5, 40, 0.26);
+            background: var(--surface-raised, #f0f0f2);
+            color: var(--text, #111);
+            border-color: var(--line, rgba(0,0,0,0.12));
         }
         #chart-container #chartWrapper .nav-badge-tooltip::after,
-        #panels-container .nav-badge-tooltip::after {
-            display: none;
-        }
+        #panels-container .nav-badge-tooltip::after,
         #chart-container #chartWrapper .nav-badge-tooltip::before,
         #panels-container .nav-badge-tooltip::before {
-            display: block;
-            content: "";
-            position: absolute;
-            left: 0;
-            top: 0;
-            bottom: 0;
-            width: 3px;
-            pointer-events: none;
-            background: linear-gradient(180deg, transparent, #4a6aff, transparent);
-        }
-        body.light-mode #chart-container #chartWrapper .nav-badge-tooltip::before,
-        body.light-mode #panels-container .nav-badge-tooltip::before {
-            background: linear-gradient(180deg, transparent, #2f55e8, transparent);
+            display: none !important;
+            content: none !important;
         }
         #chart-container #chartWrapper .nav-integrity-badge:hover .nav-badge-tooltip,
         #chart-container #chartWrapper .nav-integrity-badge.show-tooltip .nav-badge-tooltip,
@@ -1456,8 +1490,23 @@
     <script>
     // 1. Auth check: confirm user is logged in; store user id in localStorage
     //    so userStorage's per-user key prefix works. Redirects to /login on 401.
+    //    Local Vite (`npm run dev:live`) has no /login page — SPA falls back to this
+    //    same index.html, so a 401→/login redirect would reload forever. Skip redirect
+    //    on localhost; production still hard-gates.
     (function() {
+        var host = '';
+        try { host = String(window.location.hostname || ''); } catch (e) {}
+        var isLocalDev = host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+        var skipLoginRedirect = isLocalDev
+            || (function () {
+                try { return new URLSearchParams(window.location.search).get('chromePreview') === '1'; }
+                catch (e) { return false; }
+            })();
         function redirectToLogin() {
+            if (skipLoginRedirect) {
+                try { console.warn('[Talaria] auth skipped (local/chromePreview) — not redirecting to /login'); } catch (e) {}
+                return;
+            }
             var next = window.location.pathname + window.location.search;
             var loginUrl = '/login/?next=' + encodeURIComponent(next);
             try {
@@ -1612,7 +1661,7 @@
     <script defer src="/chart/modules/chart-data-pipeline.js?v=20260804b127"></script>
 
     <!-- Bottom toast stack (shared showNotification + path hint); must load before chart.js. -->
-    <script defer src="/chart/modules/talaria-toast-stack.js?v=20260806obsidian2"></script>
+    <script defer src="/chart/modules/talaria-toast-stack.js?v=20260807obsidian4"></script>
     <script defer src="/chart/modules/module-presence-runtime.js?v=20260804b127"></script>
     <!-- Session day/week boundaries (FX 17:00 NY). After registry + presence; before chart.js. -->
     <script defer src="/chart/modules/session-calendar.js?v=20260804b127"></script>
@@ -1621,7 +1670,7 @@
          as a callable. Its DOMContentLoaded handler fires after main.jsx has
          mounted React (deferred too), so the #chartCanvas element exists.
          Bump ?v= whenever /chart assets change so browsers/CDNs don’t serve stale JS. -->
-    <script defer src="/chart/chart.js?v=20260804b127"></script>
+    <script defer src="/chart/chart.js?v=20260807b135"></script>
     <!-- V9 React theme panel → chart.chartSettings (shared with legacy-index.html). Must load after chart.js. -->
     <script defer src="/chart/modules/v9-theme-bridge.js?v=20260804b127"></script>
 
@@ -1656,7 +1705,7 @@
     <!-- Economic calendar: Finnhub via /api + chart time-axis markers (__economicCalendarForChart). -->
     <script defer src="/chart/modules/economic-news-sidebar.js?v=20260804b127"></script>
   <script type="module" crossorigin src="/chart/dist-v9/assets/talaria-v9-live.js"></script>
-  <link rel="stylesheet" crossorigin href="/chart/dist-v9/assets/indexDF7sBcHY.css">
+  <link rel="stylesheet" crossorigin href="/chart/dist-v9/assets/indexBuF6Bh6a.css">
 </head>
 <body>
     <div id="talaria-build-badge" aria-label="chart build id"></div>
