@@ -60,6 +60,7 @@ const ICONS = {
       <P d="M5 3 L5 17 L9 13 L12 20 L14.5 19 L11.5 12 L17 12 Z" fill={cl} stroke="none" />
     </Svg>
   ),
+  /* ── Drawing: lines (each silhouette unique at 16–18px) ── */
   trendline: (s, cl) => (
     <Svg s={s} cl={cl}>
       <L x1="4" y1="18" x2="20" y2="6" />
@@ -69,83 +70,94 @@ const ICONS = {
   ),
   hray: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <L x1="5" y1="12" x2="17" y2="12" />
       <C cx="4" cy="12" r="2" fill={cl} stroke="none" />
-      <P d="M17 8 L21 12 L17 16 Z" fill={cl} stroke="none" />
+      <L x1="6" y1="12" x2="16.5" y2="12" />
+      <P d="M16 8.5 L21 12 L16 15.5 Z" fill={cl} stroke="none" />
     </Svg>
   ),
   hline: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <L x1="6" y1="12" x2="18" y2="12" />
-      <P d="M3 12 L6 9 L6 15 Z" fill={cl} stroke="none" />
-      <P d="M21 12 L18 9 L18 15 Z" fill={cl} stroke="none" />
+      <L x1="6.5" y1="12" x2="17.5" y2="12" />
+      <P d="M3 12 L6.5 9.2 V14.8 Z" fill={cl} stroke="none" />
+      <P d="M21 12 L17.5 9.2 V14.8 Z" fill={cl} stroke="none" />
     </Svg>
   ),
   vline: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <L x1="12" y1="6" x2="12" y2="18" />
-      <P d="M12 3 L9 6 L15 6 Z" fill={cl} stroke="none" />
-      <P d="M12 21 L9 18 L15 18 Z" fill={cl} stroke="none" />
+      <L x1="12" y1="6.5" x2="12" y2="17.5" />
+      <P d="M12 3 L9.2 6.5 H14.8 Z" fill={cl} stroke="none" />
+      <P d="M12 21 L9.2 17.5 H14.8 Z" fill={cl} stroke="none" />
     </Svg>
   ),
   ray: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <L x1="5" y1="17" x2="15" y2="7" />
-      <C cx="4.5" cy="17.5" r="2" fill={cl} stroke="none" />
-      <P d="M15 4 L20 5 L16 9 Z" fill={cl} stroke="none" />
+      <C cx="5" cy="17" r="2" fill={cl} stroke="none" />
+      <L x1="6.5" y1="15.5" x2="15" y2="7" />
+      <P d="M14.2 4.2 L20.2 5.2 L16.2 10.2 Z" fill={cl} stroke="none" />
     </Svg>
   ),
+  /** Infinite both ways — arrows past the two anchors. */
   extendedLine: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <L x1="4" y1="18" x2="20" y2="6" />
-      <C cx="8" cy="14" r="2" fill={cl} stroke="none" />
-      <C cx="16" cy="8" r="2" fill={cl} stroke="none" />
+      <L x1="3.5" y1="18.5" x2="20.5" y2="5.5" />
+      <C cx="9" cy="14" r="1.75" fill={cl} stroke="none" />
+      <C cx="15" cy="9.5" r="1.75" fill={cl} stroke="none" />
+      <P d="M3.2 15.2 L3.5 18.5 L6.8 18.2" />
+      <P d="M17.2 5.8 L20.5 5.5 L20.2 8.8" />
     </Svg>
   ),
+  /** Price × time cross through one point. */
   crossLine: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <L x1="4" y1="12" x2="20" y2="12" />
-      <L x1="12" y1="4" x2="12" y2="20" />
+      <L x1="3" y1="12" x2="21" y2="12" />
+      <L x1="12" y1="3" x2="12" y2="21" />
+      <C cx="12" cy="12" r="2" fill={cl} stroke="none" />
     </Svg>
   ),
   polyline: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <P d="M4 18 L8 8 L14 15 L20 5" />
-      <C cx="4" cy="18" r="1.75" fill={cl} stroke="none" />
-      <C cx="8" cy="8" r="1.75" fill={cl} stroke="none" />
-      <C cx="14" cy="15" r="1.75" fill={cl} stroke="none" />
-      <C cx="20" cy="5" r="1.75" fill={cl} stroke="none" />
+      <P d="M3.5 17.5 L8 7 L13.5 14.5 L20.5 5.5" />
+      <C cx="3.5" cy="17.5" r="1.6" fill={cl} stroke="none" />
+      <C cx="8" cy="7" r="1.6" fill={cl} stroke="none" />
+      <C cx="13.5" cy="14.5" r="1.6" fill={cl} stroke="none" />
+      <C cx="20.5" cy="5.5" r="1.6" fill={cl} stroke="none" />
     </Svg>
   ),
+  /** Directed multi-segment path (arrowed end). */
   pathTool: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <P d="M4 5 H16 L7 18 H17" />
-      <C cx="4" cy="5" r="1.75" fill={cl} stroke="none" />
-      <P d="M17 15 L21 18 L17 21 Z" fill={cl} stroke="none" />
+      <P d="M4 16 L8 7 L13 13 L17.5 7" />
+      <C cx="4" cy="16" r="1.6" fill={cl} stroke="none" />
+      <C cx="8" cy="7" r="1.6" fill={cl} stroke="none" />
+      <C cx="13" cy="13" r="1.6" fill={cl} stroke="none" />
+      <P d="M16.2 4.5 L21 7 L16.2 9.5 Z" fill={cl} stroke="none" />
     </Svg>
   ),
   curve: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <P d="M4 18 C4 8 10 4 20 8" />
-      <C cx="4" cy="18" r="1.75" fill={cl} stroke="none" />
-      <C cx="20" cy="8" r="1.75" fill={cl} stroke="none" />
+      <P d="M4 18 C6 6 14 4 20 9" />
+      <C cx="4" cy="18" r="1.6" fill={cl} stroke="none" />
+      <C cx="20" cy="9" r="1.6" fill={cl} stroke="none" />
+      <C cx="11" cy="6.5" r="1.25" />
     </Svg>
   ),
+  /** S-curve with mid handle — distinct from single curve. */
   doubleCurve: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <P d="M4 18 C4 8 20 14 20 5" />
-      <C cx="4" cy="18" r="1.75" fill={cl} stroke="none" />
-      <C cx="20" cy="5" r="1.75" fill={cl} stroke="none" />
+      <P d="M3.5 18 C5 8 10 18 12 11 C14 4 18 12 20.5 6" />
+      <C cx="3.5" cy="18" r="1.5" fill={cl} stroke="none" />
+      <C cx="12" cy="11" r="1.5" fill={cl} stroke="none" />
+      <C cx="20.5" cy="6" r="1.5" fill={cl} stroke="none" />
     </Svg>
   ),
   rect: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <R x="4" y="5" width="16" height="14" rx="2" />
+      <R x="4" y="5.5" width="16" height="13" rx="2" />
     </Svg>
   ),
   triangle: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <P d="M12 4 L20 19 H4 Z" />
+      <P d="M12 4 L20.5 19.5 H3.5 Z" />
     </Svg>
   ),
   circle: (s, cl) => (
@@ -155,154 +167,183 @@ const ICONS = {
   ),
   ellipse: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <ellipse cx="12" cy="12" rx="9" ry="6" />
+      <ellipse cx="12" cy="12" rx="9" ry="5.5" />
     </Svg>
   ),
   arcShape: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <P d="M4 18 Q12 3 20 18" />
+      <P d="M4 17.5 Q12 2.5 20 17.5" />
+      <C cx="4" cy="17.5" r="1.5" fill={cl} stroke="none" />
+      <C cx="20" cy="17.5" r="1.5" fill={cl} stroke="none" />
     </Svg>
   ),
   arrowMarker: (s, cl) => (
     <Svg s={s} cl={cl} fill={cl}>
-      <P d="M12 3 L14.5 14 H18 L12 21 L6 14 H9.5 Z" fill={cl} stroke="none" transform="rotate(20 12 12)" />
+      <P d="M12 3.5 L15 13.5 H18.5 L12 20.5 L5.5 13.5 H9 Z" fill={cl} stroke="none" />
     </Svg>
   ),
+  /** Diagonal arrowed line (not a corner “external link”). */
   arrowLine: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <L x1="5" y1="19" x2="19" y2="5" />
-      <P d="M12 5 H19 V12" />
+      <L x1="5" y1="18" x2="15.5" y2="7.5" />
+      <P d="M12.5 5 L19.5 5.5 L16 11.5 Z" fill={cl} stroke="none" />
+      <C cx="5" cy="18" r="1.6" fill={cl} stroke="none" />
     </Svg>
   ),
   arrowUp: (s, cl) => (
     <Svg s={s} cl={cl} fill={cl}>
-      <P d="M12 4 L5 13 H9 V20 H15 V13 H19 Z" fill={cl} stroke="none" />
+      <P d="M12 3.5 L5.5 12.5 H9.5 V20.5 H14.5 V12.5 H18.5 Z" fill={cl} stroke="none" />
     </Svg>
   ),
   arrowDn: (s, cl) => (
     <Svg s={s} cl={cl} fill={cl}>
-      <P d="M12 20 L5 11 H9 V4 H15 V11 H19 Z" fill={cl} stroke="none" />
+      <P d="M12 20.5 L5.5 11.5 H9.5 V3.5 H14.5 V11.5 H18.5 Z" fill={cl} stroke="none" />
     </Svg>
   ),
   draw: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <P d="M4 20 C7 20 8 16 10 16 C12 16 12 20 15 20" />
-      <P d="M14 4 L20 10 L10 20 H4 V14 Z" />
+      <P d="M4 19 C6.5 19 7.5 15.5 10 15.5 C12.5 15.5 13 19 16 19" />
+      <P d="M13.5 4.5 L19.5 10.5 L10.5 19.5 H4.5 V13.5 Z" />
     </Svg>
   ),
+  /** Highlighter — broad tip stroke. */
   brush: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <P d="M14 4 L20 10 L11 19 L5 19 L5 13 Z" />
-      <P d="M5 19 C5 21 8 21 9 19" />
+      <P d="M7 16.5 L14.5 4.5 L19.5 8 L12 20 H7 Z" />
+      <P d="M7 16.5 C5.5 18 6 20.5 8.5 20.5" />
+      <L x1="9" y1="14" x2="16" y2="6.5" opacity="0.45" />
     </Svg>
   ),
   eraser: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <P d="M16 4 L20 8 L10 18 H5 L4 17 L14 7 Z" />
-      <L x1="7" y1="15" x2="11" y2="19" />
+      <P d="M15.5 4.5 L20 9 L11 18 H5.5 L4.5 17 L13.5 8 Z" />
+      <L x1="6.5" y1="15.5" x2="11" y2="20" />
+      <L x1="4" y1="20.5" x2="14" y2="20.5" opacity="0.55" />
     </Svg>
   ),
   channel: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <L x1="3" y1="18" x2="21" y2="12" />
-      <L x1="3" y1="12" x2="21" y2="6" />
+      <L x1="3" y1="17.5" x2="21" y2="11" />
+      <L x1="3" y1="11.5" x2="21" y2="5" />
+      <L x1="3" y1="14.5" x2="21" y2="8" strokeDasharray="2.5 2.5" opacity="0.55" />
     </Svg>
   ),
   regressionCh: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <L x1="3" y1="19" x2="21" y2="13" />
-      <L x1="3" y1="11" x2="21" y2="5" />
-      <L x1="3" y1="15" x2="21" y2="9" strokeDasharray="2 3" />
+      <L x1="3" y1="18.5" x2="21" y2="12" />
+      <L x1="3" y1="10.5" x2="21" y2="4" />
+      <L x1="3" y1="14.5" x2="21" y2="8" strokeDasharray="2 2.5" />
+      <C cx="7" cy="13.2" r="1.1" fill={cl} stroke="none" />
+      <C cx="12" cy="11" r="1.1" fill={cl} stroke="none" />
+      <C cx="17" cy="8.8" r="1.1" fill={cl} stroke="none" />
     </Svg>
   ),
   flatChannel: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <L x1="3" y1="7" x2="21" y2="7" />
-      <L x1="3" y1="17" x2="21" y2="13" />
+      <L x1="3" y1="6.5" x2="21" y2="6.5" />
+      <L x1="3" y1="17.5" x2="21" y2="12.5" />
+      <L x1="3" y1="12" x2="21" y2="9.5" strokeDasharray="2.5 2.5" opacity="0.5" />
     </Svg>
   ),
   disjointCh: (s, cl) => (
     <Svg s={s} cl={cl}>
       <L x1="3" y1="7" x2="10" y2="5" />
-      <L x1="14" y1="8" x2="21" y2="6" />
-      <L x1="3" y1="16" x2="10" y2="14" />
-      <L x1="14" y1="17" x2="21" y2="15" />
+      <L x1="14" y1="8.5" x2="21" y2="6.5" />
+      <L x1="3" y1="16.5" x2="10" y2="14.5" />
+      <L x1="14" y1="18" x2="21" y2="16" />
+      <L x1="10.5" y1="5.5" x2="13.5" y2="8" strokeDasharray="1.5 2" opacity="0.45" />
+      <L x1="10.5" y1="15" x2="13.5" y2="17.5" strokeDasharray="1.5 2" opacity="0.45" />
     </Svg>
   ),
   pitchfork: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <C cx="5" cy="12" r="1.5" fill={cl} stroke="none" />
-      <C cx="19" cy="5" r="1.5" fill={cl} stroke="none" />
-      <C cx="19" cy="19" r="1.5" fill={cl} stroke="none" />
-      <L x1="5" y1="12" x2="19" y2="12" />
-      <L x1="12" y1="9" x2="19" y2="5" />
-      <L x1="12" y1="15" x2="19" y2="19" />
+      <C cx="4.5" cy="12" r="1.6" fill={cl} stroke="none" />
+      <C cx="19.5" cy="5" r="1.6" fill={cl} stroke="none" />
+      <C cx="19.5" cy="19" r="1.6" fill={cl} stroke="none" />
+      <L x1="4.5" y1="12" x2="19.5" y2="12" />
+      <L x1="11.5" y1="8.5" x2="19.5" y2="5" />
+      <L x1="11.5" y1="15.5" x2="19.5" y2="19" />
     </Svg>
   ),
   fib: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <L x1="4" y1="6" x2="20" y2="6" />
-      <L x1="4" y1="10" x2="20" y2="10" opacity="0.75" />
-      <L x1="4" y1="14" x2="20" y2="14" opacity="0.5" />
-      <L x1="4" y1="18" x2="20" y2="18" opacity="0.35" />
+      <L x1="4" y1="5.5" x2="20" y2="5.5" />
+      <L x1="4" y1="9.5" x2="20" y2="9.5" opacity="0.8" />
+      <L x1="4" y1="14" x2="20" y2="14" opacity="0.55" />
+      <L x1="4" y1="18.5" x2="20" y2="18.5" opacity="0.35" />
+      <L x1="4" y1="5.5" x2="4" y2="18.5" opacity="0.4" />
     </Svg>
   ),
-  fibExtension: (s, cl) => ICONS.fib(s, cl),
+  /** Retracement base + projected extension levels. */
+  fibExtension: (s, cl) => (
+    <Svg s={s} cl={cl}>
+      <P d="M4 16 L9 7 L14 12" />
+      <C cx="4" cy="16" r="1.4" fill={cl} stroke="none" />
+      <C cx="9" cy="7" r="1.4" fill={cl} stroke="none" />
+      <C cx="14" cy="12" r="1.4" fill={cl} stroke="none" />
+      <L x1="14" y1="8" x2="21" y2="8" opacity="0.85" />
+      <L x1="14" y1="12" x2="21" y2="12" opacity="0.55" />
+      <L x1="14" y1="16.5" x2="21" y2="16.5" opacity="0.35" />
+    </Svg>
+  ),
   fibChannel: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <L x1="3" y1="19" x2="21" y2="11" />
-      <L x1="3" y1="16" x2="21" y2="8" opacity="0.7" />
-      <L x1="3" y1="13" x2="21" y2="5" opacity="0.45" />
+      <L x1="3" y1="18.5" x2="21" y2="10" />
+      <L x1="3" y1="15" x2="21" y2="6.5" opacity="0.7" />
+      <L x1="3" y1="11.5" x2="21" y2="3" opacity="0.4" />
     </Svg>
   ),
   fibTimeZone: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <L x1="6" y1="4" x2="6" y2="20" />
-      <L x1="10" y1="4" x2="10" y2="20" opacity="0.75" />
-      <L x1="15" y1="4" x2="15" y2="20" opacity="0.5" />
-      <L x1="19" y1="4" x2="19" y2="20" opacity="0.35" />
+      <L x1="5.5" y1="4" x2="5.5" y2="20" />
+      <L x1="9.5" y1="4" x2="9.5" y2="20" opacity="0.8" />
+      <L x1="14.5" y1="4" x2="14.5" y2="20" opacity="0.5" />
+      <L x1="19" y1="4" x2="19" y2="20" opacity="0.3" />
+      <L x1="4" y1="20" x2="20" y2="20" opacity="0.35" />
     </Svg>
   ),
   fibFan: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <L x1="4" y1="19" x2="20" y2="5" />
-      <L x1="4" y1="19" x2="20" y2="11" opacity="0.65" />
-      <L x1="4" y1="19" x2="20" y2="16" opacity="0.4" />
       <C cx="4" cy="19" r="1.5" fill={cl} stroke="none" />
+      <L x1="4" y1="19" x2="20" y2="4.5" />
+      <L x1="4" y1="19" x2="20" y2="10" opacity="0.65" />
+      <L x1="4" y1="19" x2="20" y2="15.5" opacity="0.4" />
     </Svg>
   ),
   fibCircles: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <C cx="12" cy="12" r="3.5" />
-      <C cx="12" cy="12" r="6.5" opacity="0.6" />
-      <C cx="12" cy="12" r="9.5" opacity="0.35" />
+      <C cx="12" cy="12" r="3.2" />
+      <C cx="12" cy="12" r="6.2" opacity="0.6" />
+      <C cx="12" cy="12" r="9.2" opacity="0.35" />
     </Svg>
   ),
   fibSpiral: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <P d="M12 12 C12 10 14 9 15.5 9 C18 9 19.5 11 19.5 13.5 C19.5 17 16.5 20 12.5 20 C7.5 20 4.5 16 4.5 11.5 C4.5 6 9 3 14.5 3" />
+      <P d="M12 12 C12 10.2 13.8 9 15.4 9 C17.8 9 19.4 11 19.4 13.4 C19.4 17 16.4 20 12.4 20 C7.6 20 4.6 16 4.6 11.6 C4.6 6.2 9 3.2 14.4 3.2" />
     </Svg>
   ),
   fibArcs: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <P d="M4 19 Q4 11 12 11" />
-      <P d="M4 19 Q4 7 16 7" opacity="0.6" />
-      <P d="M4 19 Q4 4 20 4" opacity="0.35" />
       <C cx="4" cy="19" r="1.5" fill={cl} stroke="none" />
+      <P d="M4 19 Q4 11.5 12 11.5" />
+      <P d="M4 19 Q4 7.5 16 7.5" opacity="0.6" />
+      <P d="M4 19 Q4 4 20 4" opacity="0.35" />
     </Svg>
   ),
   fibWedge: (s, cl) => (
     <Svg s={s} cl={cl}>
       <P d="M4 19 L12 4 L20 19" />
-      <L x1="7" y1="14" x2="17" y2="14" opacity="0.5" />
+      <L x1="7" y1="13.5" x2="17" y2="13.5" opacity="0.55" />
+      <L x1="8.5" y1="10" x2="15.5" y2="10" opacity="0.35" />
     </Svg>
   ),
   fibTime: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <P d="M4 18 L9 7 L14 14 L20 5" />
-      <L x1="4" y1="4" x2="4" y2="20" opacity="0.35" />
-      <L x1="9" y1="4" x2="9" y2="20" opacity="0.35" />
-      <L x1="14" y1="4" x2="14" y2="20" opacity="0.35" />
+      <P d="M4 17.5 L9 6.5 L14 13.5 L20 5" />
+      <L x1="4" y1="4" x2="4" y2="20" opacity="0.4" />
+      <L x1="9" y1="4" x2="9" y2="20" opacity="0.4" />
+      <L x1="14" y1="4" x2="14" y2="20" opacity="0.4" />
+      <L x1="20" y1="4" x2="20" y2="20" opacity="0.25" />
     </Svg>
   ),
   gannBox: (s, cl) => (
@@ -310,107 +351,163 @@ const ICONS = {
       <R x="4" y="4" width="16" height="16" rx="1.5" />
       <L x1="4" y1="12" x2="20" y2="12" opacity="0.45" />
       <L x1="12" y1="4" x2="12" y2="20" opacity="0.45" />
+      <L x1="4" y1="8" x2="20" y2="8" opacity="0.25" />
+      <L x1="4" y1="16" x2="20" y2="16" opacity="0.25" />
     </Svg>
   ),
   gannSquare: (s, cl) => (
     <Svg s={s} cl={cl}>
       <R x="4" y="4" width="16" height="16" rx="1.5" />
-      <L x1="4" y1="4" x2="20" y2="20" opacity="0.5" />
-      <L x1="20" y1="4" x2="4" y2="20" opacity="0.5" />
+      <L x1="4" y1="4" x2="20" y2="20" opacity="0.55" />
+      <L x1="20" y1="4" x2="4" y2="20" opacity="0.55" />
     </Svg>
   ),
   gannFan: (s, cl) => (
     <Svg s={s} cl={cl}>
+      <C cx="4" cy="20" r="1.4" fill={cl} stroke="none" />
       <L x1="4" y1="20" x2="20" y2="4" />
-      <L x1="4" y1="20" x2="20" y2="10" opacity="0.6" />
-      <L x1="4" y1="20" x2="20" y2="16" opacity="0.4" />
-      <L x1="4" y1="20" x2="14" y2="4" opacity="0.6" />
+      <L x1="4" y1="20" x2="20" y2="9.5" opacity="0.65" />
+      <L x1="4" y1="20" x2="20" y2="15.5" opacity="0.4" />
+      <L x1="4" y1="20" x2="13.5" y2="4" opacity="0.65" />
     </Svg>
   ),
+  /** Impulse 1–2–3–4–5. */
   elliott5: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <P d="M3 14 L7 5 L11 14 L15 5 L19 12 L21 7" />
+      <P d="M3 15 L6.5 6 L10 14 L14 4.5 L17.5 12.5 L21 7" />
+      <C cx="3" cy="15" r="1.2" fill={cl} stroke="none" />
+      <C cx="21" cy="7" r="1.2" fill={cl} stroke="none" />
     </Svg>
   ),
-  elliottABC: (s, cl) => ICONS.elliott5(s, cl),
-  elliottTri: (s, cl) => ICONS.elliott5(s, cl),
-  elliottWXY: (s, cl) => ICONS.elliott5(s, cl),
-  elliottWXYXZ: (s, cl) => ICONS.elliott5(s, cl),
+  /** Correction A–B–C. */
+  elliottABC: (s, cl) => (
+    <Svg s={s} cl={cl}>
+      <P d="M3.5 7 L9 17 L14.5 9 L20.5 16" />
+      <C cx="3.5" cy="7" r="1.2" fill={cl} stroke="none" />
+      <C cx="20.5" cy="16" r="1.2" fill={cl} stroke="none" />
+    </Svg>
+  ),
+  /** Contracting triangle A–B–C–D–E. */
+  elliottTri: (s, cl) => (
+    <Svg s={s} cl={cl}>
+      <P d="M3.5 6 L7.5 17 L11.5 8 L15.5 15 L19 10.5 L20.5 13" />
+      <L x1="3.5" y1="5" x2="20.5" y2="11" opacity="0.35" />
+      <L x1="3.5" y1="19" x2="20.5" y2="13.5" opacity="0.35" />
+    </Svg>
+  ),
+  /** Double combo W–X–Y. */
+  elliottWXY: (s, cl) => (
+    <Svg s={s} cl={cl}>
+      <P d="M3 10 L6 16 L9 8 L12 14 L15 7 L18 15 L21 9" />
+    </Svg>
+  ),
+  /** Triple combo W–X–Y–X–Z. */
+  elliottWXYXZ: (s, cl) => (
+    <Svg s={s} cl={cl}>
+      <P d="M2.5 11 L5 17 L7.5 9 L10 15 L12.5 7 L15 14 L17.5 8 L20 16 L21.5 10" />
+    </Svg>
+  ),
   wave: (s, cl) => ICONS.elliott5(s, cl),
   xabcd: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <P d="M3 8 L7 13 L12 4 L17 12 L21 3" />
+      <P d="M3 9 L7.5 15.5 L12 4.5 L16.5 14 L21 3.5" />
+      <C cx="3" cy="9" r="1.2" fill={cl} stroke="none" />
+      <C cx="12" cy="4.5" r="1.2" fill={cl} stroke="none" />
+      <C cx="21" cy="3.5" r="1.2" fill={cl} stroke="none" />
     </Svg>
   ),
   abcdPattern: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <P d="M3 6 L8 14 L14 5 L21 13" />
+      <P d="M3.5 7 L9 16 L14.5 6 L20.5 15" />
+      <C cx="3.5" cy="7" r="1.2" fill={cl} stroke="none" />
+      <C cx="20.5" cy="15" r="1.2" fill={cl} stroke="none" />
     </Svg>
   ),
   headShoulders: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <P d="M3 17 L6 12 L9 15 L12 5 L15 15 L18 12 L21 17" />
+      <P d="M3 16.5 L6.5 11 L9.5 14.5 L12 4.5 L14.5 14.5 L17.5 11 L21 16.5" />
+      <L x1="3.5" y1="16.5" x2="20.5" y2="16.5" opacity="0.5" />
     </Svg>
   ),
   triPattern: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <L x1="3" y1="5" x2="21" y2="12" />
-      <L x1="3" y1="19" x2="21" y2="12" />
+      <L x1="3" y1="5" x2="21" y2="11.5" />
+      <L x1="3" y1="19" x2="21" y2="12.5" />
+      <P d="M5 7.5 L8 15.5 L11 9 L14 14 L17 10.5" opacity="0.55" />
     </Svg>
   ),
   threeDrives: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <P d="M3 16 L6 8 L9 14 L12 5 L16 13 L20 4" />
+      <P d="M3 15.5 L6 7 L9 14 L12.5 4.5 L16 13 L20.5 3.5" />
+      <L x1="6" y1="7" x2="6" y2="17" opacity="0.3" />
+      <L x1="12.5" y1="4.5" x2="12.5" y2="17" opacity="0.3" />
+      <L x1="20.5" y1="3.5" x2="20.5" y2="17" opacity="0.3" />
     </Svg>
   ),
   text: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <P d="M5 7 H19" />
-      <P d="M12 7 V19" />
-      <P d="M8 19 H16" />
+      <P d="M5 6.5 H19" />
+      <P d="M12 6.5 V19" />
+      <P d="M8.5 19 H15.5" />
     </Svg>
   ),
+  /** Sticky note with fold. */
   note: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <P d="M5 4 H19 V15 H10 L5 19 V4 Z" />
-      <L x1="8" y1="9" x2="16" y2="9" />
+      <P d="M5 4 H15.5 L19 7.5 V20 H5 Z" />
+      <P d="M15.5 4 V7.5 H19" />
+      <L x1="8" y1="11" x2="16" y2="11" />
+      <L x1="8" y1="14.5" x2="13.5" y2="14.5" opacity="0.55" />
     </Svg>
   ),
-  comment: (s, cl) => ICONS.note(s, cl),
+  /** Speech bubble — distinct from sticky note. */
+  comment: (s, cl) => (
+    <Svg s={s} cl={cl}>
+      <P d="M4.5 5.5 H19.5 V14.5 H11 L7 18.5 V14.5 H4.5 Z" />
+      <L x1="8" y1="9" x2="16" y2="9" />
+      <L x1="8" y1="12" x2="13" y2="12" opacity="0.55" />
+    </Svg>
+  ),
   priceNote: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <P d="M5 4 H19 V15 H10 L5 19 V4 Z" />
-      <P d="M12 8 V13 M10.5 9.5 H13.5 M10.5 11.5 H13" />
+      <P d="M5 4 H15.5 L19 7.5 V20 H5 Z" />
+      <P d="M15.5 4 V7.5 H19" />
+      <P d="M10.5 10.5 H13.2 C14.1 10.5 14.7 11.1 14.7 11.9 C14.7 12.7 14.1 13.3 13.2 13.3 H10.5 V15.5 M10.5 10.5 V15.5 M9.3 12.1 H14.5 M9.3 14 H13.5" />
     </Svg>
   ),
   callout: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <P d="M4 5 H20 V14 H13 L9 18 V14 H4 Z" />
-      <L x1="7" y1="9" x2="17" y2="9" />
+      <P d="M4 5 H18 V12.5 H12.5 L9 17 V12.5 H4 Z" />
+      <L x1="7" y1="8.5" x2="15" y2="8.5" />
+      <P d="M16.5 14.5 L20.5 19.5" />
+      <C cx="20.5" cy="19.5" r="1.4" fill={cl} stroke="none" />
     </Svg>
   ),
   priceLabel: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <P d="M3 9 L7 6 H20 V18 H7 L3 15 Z" />
+      <P d="M3.5 9 L8 5.5 H20.5 V18.5 H8 L3.5 15 Z" />
+      <L x1="11" y1="10" x2="17" y2="10" />
+      <L x1="11" y1="14" x2="15" y2="14" opacity="0.55" />
     </Svg>
   ),
   signpost: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <L x1="8" y1="4" x2="8" y2="20" />
-      <P d="M8 5 H18 L16 9 L18 13 H8" />
+      <L x1="7.5" y1="3.5" x2="7.5" y2="20.5" />
+      <P d="M7.5 5 H18.5 L16.5 8.5 L18.5 12 H7.5" />
     </Svg>
   ),
+  /** Pennant / flag mark — triangle on a pole. */
   flag: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <L x1="7" y1="4" x2="7" y2="20" />
-      <P d="M7 4 H18 L15 9 L18 14 H7" />
+      <L x1="7" y1="3.5" x2="7" y2="20.5" />
+      <P d="M7 4.5 L18.5 8.5 L7 12.5 Z" />
     </Svg>
   ),
   image: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <R x="4" y="5" width="16" height="14" rx="2" />
+      <R x="4" y="5.5" width="16" height="13" rx="2" />
       <C cx="9" cy="10" r="1.5" fill={cl} stroke="none" />
-      <P d="M4 16 L9 12 L12 15 L16 11 L20 15" />
+      <P d="M4.5 16 L9 12 L12 14.5 L16 11 L19.5 14.5" />
     </Svg>
   ),
   emoji: (s, cl) => (
@@ -424,39 +521,53 @@ const ICONS = {
   volProfile: (s, cl) => (
     <Svg s={s} cl={cl}>
       <L x1="5" y1="4" x2="5" y2="20" />
-      <R x="6" y="5" width="6" height="2" rx="0.5" fill={cl} stroke="none" opacity="0.4" />
-      <R x="6" y="9" width="10" height="2" rx="0.5" fill={cl} stroke="none" opacity="0.7" />
-      <R x="6" y="13" width="12" height="2" rx="0.5" fill={cl} stroke="none" />
-      <R x="6" y="17" width="8" height="2" rx="0.5" fill={cl} stroke="none" opacity="0.55" />
+      <R x="6" y="5.5" width="5.5" height="2" rx="0.5" fill={cl} stroke="none" opacity="0.4" />
+      <R x="6" y="9.5" width="10" height="2" rx="0.5" fill={cl} stroke="none" opacity="0.7" />
+      <R x="6" y="13.5" width="12" height="2" rx="0.5" fill={cl} stroke="none" />
+      <R x="6" y="17.5" width="7.5" height="2" rx="0.5" fill={cl} stroke="none" opacity="0.55" />
     </Svg>
   ),
-  anchoredVol: (s, cl) => ICONS.volProfile(s, cl),
+  /** Volume profile with anchor point. */
+  anchoredVol: (s, cl) => (
+    <Svg s={s} cl={cl}>
+      <C cx="5" cy="5" r="2" />
+      <L x1="5" y1="7" x2="5" y2="20" />
+      <R x="6.5" y="8" width="5" height="1.8" rx="0.4" fill={cl} stroke="none" opacity="0.45" />
+      <R x="6.5" y="11.5" width="10" height="1.8" rx="0.4" fill={cl} stroke="none" opacity="0.75" />
+      <R x="6.5" y="15" width="12" height="1.8" rx="0.4" fill={cl} stroke="none" />
+      <R x="6.5" y="18.5" width="7" height="1.8" rx="0.4" fill={cl} stroke="none" opacity="0.55" />
+    </Svg>
+  ),
+  /** Anchored VWAP — anchor + volume-weighted curve. */
   vwap: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <C cx="12" cy="5" r="2" />
-      <L x1="7" y1="8" x2="17" y2="8" />
-      <L x1="12" y1="8" x2="12" y2="18" />
-      <P d="M6 14 H9 V19 M18 14 H15 V19" />
+      <C cx="5" cy="6" r="2" />
+      <P d="M5 8 C8 8 9 16 13 12 C16 9 18 15 21 11" />
+      <L x1="3.5" y1="19.5" x2="20.5" y2="19.5" opacity="0.35" />
     </Svg>
   ),
   longPos: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <R x="4" y="13" width="16" height="6" rx="1.5" />
-      <P d="M12 13 V6 M9 9 L12 6 L15 9" />
+      <R x="4" y="13.5" width="16" height="5.5" rx="1.2" />
+      <R x="6" y="5" width="12" height="5.5" rx="1.2" opacity="0.45" />
+      <P d="M12 13.5 V8.5 M9.5 10.5 L12 7.5 L14.5 10.5" />
     </Svg>
   ),
   shortPos: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <R x="4" y="5" width="16" height="6" rx="1.5" />
-      <P d="M12 11 V18 M9 15 L12 18 L15 15" />
+      <R x="4" y="5" width="16" height="5.5" rx="1.2" />
+      <R x="6" y="13.5" width="12" height="5.5" rx="1.2" opacity="0.45" />
+      <P d="M12 10.5 V15.5 M9.5 13.5 L12 16.5 L14.5 13.5" />
     </Svg>
   ),
+  /** Range / measure — bidirectional bar with ticks. */
   measure: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <R x="4" y="9" width="16" height="6" rx="1" transform="rotate(-35 12 12)" />
-      <L x1="8" y1="10" x2="8" y2="13" transform="rotate(-35 12 12)" />
-      <L x1="12" y1="10" x2="12" y2="14" transform="rotate(-35 12 12)" />
-      <L x1="16" y1="10" x2="16" y2="13" transform="rotate(-35 12 12)" />
+      <L x1="4" y1="12" x2="20" y2="12" />
+      <P d="M4 12 L7 9.2 V14.8 Z" fill={cl} stroke="none" />
+      <P d="M20 12 L17 9.2 V14.8 Z" fill={cl} stroke="none" />
+      <L x1="10" y1="9.5" x2="10" y2="14.5" />
+      <L x1="14" y1="9.5" x2="14" y2="14.5" />
     </Svg>
   ),
   magnet: (s, cl) => (
@@ -507,8 +618,24 @@ const ICONS = {
       <C cx="12" cy="12" r="2.5" />
     </Svg>
   ),
-  eyeAll: (s, cl) => ICONS.eye(s, cl),
-  eyeInd: (s, cl) => ICONS.eye(s, cl),
+  /** Hide drawings — eye + diagonal stroke. */
+  eyeAll: (s, cl) => (
+    <Svg s={s} cl={cl}>
+      <P d="M3 11 C5.5 7.5 8.5 5.5 11 5.5 C13.5 5.5 16 7 18.5 11" />
+      <C cx="11" cy="11" r="2.1" />
+      <L x1="5" y1="16" x2="19" y2="16" />
+      <C cx="5" cy="16" r="1.2" fill={cl} stroke="none" />
+      <C cx="19" cy="16" r="1.2" fill={cl} stroke="none" />
+    </Svg>
+  ),
+  /** Hide indicators — eye + study curve. */
+  eyeInd: (s, cl) => (
+    <Svg s={s} cl={cl}>
+      <P d="M3 10.5 C5.5 7 8.5 5.5 11 5.5 C13.5 5.5 16 7 18.5 10.5" />
+      <C cx="11" cy="10.5" r="2" />
+      <P d="M4 18 C7.5 18 9 13 12.5 14.5 C15.5 15.8 17 18 20 16" />
+    </Svg>
+  ),
   eyePos: (s, cl) => ICONS.eye(s, cl),
   eyeHide: (s, cl) => (
     <Svg s={s} cl={cl}>
@@ -524,8 +651,27 @@ const ICONS = {
       <P d="M7 7 L8 19 H16 L17 7" />
     </Svg>
   ),
-  trashDraw: (s, cl) => ICONS.trash(s, cl),
-  trashInd: (s, cl) => ICONS.trash(s, cl),
+  /** Delete drawings — trash + line mark. */
+  trashDraw: (s, cl) => (
+    <Svg s={s} cl={cl}>
+      <L x1="5" y1="6.5" x2="15" y2="6.5" />
+      <P d="M8 6.5 V5 H13 V6.5" />
+      <P d="M6.5 6.5 L7.5 17 H13.5 L14.5 6.5" />
+      <L x1="16" y1="12" x2="21" y2="18" />
+      <C cx="16" cy="12" r="1.2" fill={cl} stroke="none" />
+    </Svg>
+  ),
+  /** Delete indicators — trash + bars. */
+  trashInd: (s, cl) => (
+    <Svg s={s} cl={cl}>
+      <L x1="4.5" y1="6.5" x2="14.5" y2="6.5" />
+      <P d="M7.5 6.5 V5 H12.5 V6.5" />
+      <P d="M6 6.5 L7 17 H13 L14 6.5" />
+      <L x1="17" y1="18" x2="17" y2="12" />
+      <L x1="19.5" y1="18" x2="19.5" y2="9" />
+      <L x1="22" y1="18" x2="22" y2="14" />
+    </Svg>
+  ),
   undo: (s, cl) => (
     <Svg s={s} cl={cl}>
       <P d="M9 14 L4 9 L9 4" />
@@ -572,18 +718,58 @@ const ICONS = {
       <R x="13" y="13" width="7" height="7" rx="1.5" />
     </Svg>
   ),
-  /** Templates / presets — three slots + add (not copy/clone). Shared trigger. */
+  /** Templates — 2×2 grid with + in the empty slot (shared trigger). */
   template: (s, cl) => (
     <Svg s={s} cl={cl}>
-      <R x="3" y="3" width="7.5" height="7.5" rx="1.5" />
-      <R x="13.5" y="3" width="7.5" height="7.5" rx="1.5" />
-      <R x="3" y="13.5" width="7.5" height="7.5" rx="1.5" />
-      <L x1="17.25" y1="13.5" x2="17.25" y2="21" />
-      <L x1="13.5" y1="17.25" x2="21" y2="17.25" />
+      <R x="3.5" y="3.5" width="7" height="7" rx="1.4" />
+      <R x="13.5" y="3.5" width="7" height="7" rx="1.4" />
+      <R x="3.5" y="13.5" width="7" height="7" rx="1.4" />
+      <L x1="17" y1="14" x2="17" y2="20.5" strokeWidth={1.85} />
+      <L x1="13.75" y1="17.25" x2="20.25" y2="17.25" strokeWidth={1.85} />
     </Svg>
   ),
   /** Alias used by older call sites. */
   templates: (s, cl) => ICONS.template(s, cl),
+  /**
+   * Line / border color — framed stroke (not the active tool glyph).
+   * Pair with a color swatch in the quick bar.
+   */
+  lineColor: (s, cl) => (
+    <Svg s={s} cl={cl}>
+      <R x="4.5" y="4.5" width="15" height="15" rx="2.5" />
+      <L x1="4.5" y1="4.5" x2="19.5" y2="19.5" opacity="0.35" />
+      <P d="M8 16.5 L15.5 9 L18 11.5 L10.5 19 H8 Z" fill={cl} stroke="none" opacity="0.9" />
+    </Svg>
+  ),
+  /** Fill / background color — paint bucket with drip. */
+  fill: (s, cl) => (
+    <Svg s={s} cl={cl}>
+      <P d="M8 11.5 L13.5 4 L19 11.5 Z" />
+      <P d="M7.5 12 H18.5 C19.6 12 20.2 12.8 20.2 14 C20.2 16.4 18 18.8 15.2 18.8 H10.8 C8 18.8 5.8 16.4 5.8 14 C5.8 12.8 6.4 12 7.5 12 Z" />
+      <P d="M10 18.8 C10 20.6 11.2 21.8 12.6 21.8 C14 21.8 15.2 20.6 15.2 18.8" />
+    </Svg>
+  ),
+  /** Stroke / line style — solid · dash · dot samples stacked. */
+  strokeStyle: (s, cl) => (
+    <Svg s={s} cl={cl}>
+      <L x1="3.5" y1="6" x2="20.5" y2="6" strokeWidth={1.75} />
+      <L x1="3.5" y1="12" x2="8" y2="12" strokeWidth={1.75} />
+      <L x1="10.5" y1="12" x2="15" y2="12" strokeWidth={1.75} />
+      <L x1="17.5" y1="12" x2="20.5" y2="12" strokeWidth={1.75} />
+      <C cx="5" cy="18" r="1.35" fill={cl} stroke="none" />
+      <C cx="10" cy="18" r="1.35" fill={cl} stroke="none" />
+      <C cx="15" cy="18" r="1.35" fill={cl} stroke="none" />
+      <C cx="20" cy="18" r="1.35" fill={cl} stroke="none" />
+    </Svg>
+  ),
+  /** Line thickness — three increasing weights. */
+  lineWeight: (s, cl) => (
+    <Svg s={s} cl={cl}>
+      <L x1="4" y1="6.5" x2="20" y2="6.5" strokeWidth={1.25} />
+      <L x1="4" y1="12" x2="20" y2="12" strokeWidth={2.25} />
+      <L x1="4" y1="17.5" x2="20" y2="17.5" strokeWidth={3.25} />
+    </Svg>
+  ),
   tree: (s, cl) => (
     <Svg s={s} cl={cl}>
       <P d="M12 4 V10 M12 10 H7 V16 M12 10 H17 V16 M7 16 H5 V20 M7 16 H9 V20 M17 16 H15 V20 M17 16 H19 V20" />

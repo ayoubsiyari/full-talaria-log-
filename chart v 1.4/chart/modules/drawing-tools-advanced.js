@@ -13,7 +13,7 @@ class RulerTool extends BaseDrawing {
         super('ruler', points, style);
         this.requiredPoints = 2;
         this.style.showLabel = style.showLabel !== false;
-        this.style.labelBg = style.labelBg || 'rgba(41, 98, 255, 0.9)';
+        this.style.labelBg = style.labelBg || 'rgba(48, 144, 255, 0.9)';
     }
 
     render(container, scales, renderOptsArg = {}) {
@@ -184,7 +184,7 @@ class DatePriceRangeTool extends BaseDrawing {
         this.style.stroke = style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.strokeWidth = style.strokeWidth || 2;
         this.style.strokeDasharray = style.strokeDasharray || '';
-        this.style.fill = style.fill || 'rgba(41, 98, 255, 0.15)';
+        this.style.fill = style.fill || 'rgba(48, 144, 255, 0.15)';
         this.style.showBackground = style.showBackground === undefined ? false : !!style.showBackground;
         this.style.borderEnabled = style.borderEnabled === undefined ? false : !!style.borderEnabled;
         this.style.borderColor = style.borderColor || this.style.stroke;
@@ -2221,7 +2221,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('y1', entryY)
                 .attr('x2', zoneX2)
                 .attr('y2', entryY)
-                .attr('stroke', this.style.entryColor || '#2962FF')
+                .attr('stroke', this.style.entryColor || '#3090FF')
                 .attr('stroke-width', 1)
                 .attr('stroke-dasharray', dashExtra)
                 .style('pointer-events', 'none');
@@ -2343,7 +2343,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('y1', yy)
                 .attr('x2', zoneX2)
                 .attr('y2', yy)
-                .attr('stroke', this.style.entryColor || '#2962FF')
+                .attr('stroke', this.style.entryColor || '#3090FF')
                 .attr('stroke-width', 1)
                 .attr('stroke-dasharray', dashExtra)
                 .style('pointer-events', 'none');
@@ -2465,7 +2465,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 ? Math.max(8, Math.min(24, rawLabelFontSize))
                 : 11;
             const labelFontWeight = '500';
-            const labelFontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif';
+            const labelFontFamily = '"JetBrains Mono", ui-monospace, monospace';
             const labelTextColor = this.style.textColor || this.style.labelTextColor || '#FFFFFF';
             const edgeLabelRadius = 8;
             const edgeSnapGap = 0;
@@ -2806,7 +2806,7 @@ class BaseRiskRewardTool extends BaseDrawing {
             const tpInnerFill = 'rgba(22, 101, 52, 0.92)';
             const beFill = 'rgba(120, 53, 15, 0.92)';
             const slExtraFill = 'rgba(127, 29, 29, 0.88)';
-            const entryLineColor = sideStr === 'BUY' ? '#2962ff' : '#f23645';
+            const entryLineColor = sideStr === 'BUY' ? '#3090FF' : '#f23645';
             const tpLineColor = '#089981';
 
             const rerenderRrAfterOm = () => {
@@ -3742,7 +3742,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                     .on('click', onClick);
             };
             mkPlus(targetY, '#16a34a', () => this.addExtraTarget());
-            mkPlus(entryY, '#2962FF', () => this.addExtraEntry());
+            mkPlus(entryY, '#3090FF', () => this.addExtraEntry());
             mkPlus(stopY, '#ef4444', (e) => this.addExtraStop(e));
         }
 
@@ -4103,7 +4103,7 @@ class BaseRiskRewardTool extends BaseDrawing {
         const handleRadius = 3;
         const hitRadius = 5;
         const entryLineHitRadius = 8;
-        const handleStroke = '#2962FF';
+        const handleStroke = '#3090FF';
         const handleStrokeWidth = 2;
         
         // Remove existing handles
@@ -4213,7 +4213,7 @@ class BaseRiskRewardTool extends BaseDrawing {
 
     createCornerHandles(scales, zoneX1, zoneX2, upperY, lowerY) {
         const handleRadius = 3;
-        const handleStroke = '#2962FF';
+        const handleStroke = '#3090FF';
         const handleStrokeWidth = 2;
 
         if (this.group) {
@@ -4449,7 +4449,7 @@ class PathTool extends BaseDrawing {
                 .attr('cy', y)
                 .attr('r', 3)
                 .attr('fill', 'transparent')
-                .attr('stroke', '#2962FF')
+                .attr('stroke', '#3090FF')
                 .attr('stroke-width', 2)
                 .attr('class', 'resize-handle')
                 .attr('data-point-index', i)
@@ -4727,7 +4727,7 @@ class PolylineTool extends BaseDrawing {
                 .attr('cy', y)
                 .attr('r', 3)
                 .attr('fill', 'transparent')
-                .attr('stroke', '#2962FF')
+                .attr('stroke', '#3090FF')
                 .attr('stroke-width', 2)
                 .attr('class', 'resize-handle')
                 .attr('data-point-index', i)

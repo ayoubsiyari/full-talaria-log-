@@ -22,10 +22,10 @@ class FibChannelTool extends BaseDrawing {
             { value: 0, label: '0', color: '#787b86', enabled: true },
             { value: 1, label: '1', color: '#787b86', enabled: true },
             { value: 0.236, label: '0.236', color: '#f23645', enabled: true },
-            { value: 0.382, label: '0.382', color: '#ff9800', enabled: true },
-            { value: 0.5, label: '0.5', color: '#ffeb3b', enabled: true },
-            { value: 0.618, label: '0.618', color: '#4caf50', enabled: true },
-            { value: 0.786, label: '0.786', color: '#2196f3', enabled: true }
+            { value: 0.382, label: '0.382', color: '#D4893A', enabled: true },
+            { value: 0.5, label: '0.5', color: '#C4B454', enabled: true },
+            { value: 0.618, label: '0.618', color: '#089981', enabled: true },
+            { value: 0.786, label: '0.786', color: '#3090FF', enabled: true }
         ];
         this.levels = (Array.isArray(style.levels) && style.levels.length)
             ? style.levels
@@ -280,16 +280,16 @@ class FibTimeZoneTool extends BaseDrawing {
         const defaultLevels = [
             { value: 0, enabled: true, color: '#787b86' },
             { value: 1, enabled: true, color: '#f23645' },
-            { value: 2, enabled: true, color: '#ff9800' },
-            { value: 3, enabled: true, color: '#ffeb3b' },
-            { value: 5, enabled: true, color: '#4caf50' },
-            { value: 8, enabled: true, color: '#00bcd4' },
-            { value: 13, enabled: true, color: '#2962ff' },
-            { value: 21, enabled: true, color: '#9c27b0' },
-            { value: 34, enabled: true, color: '#e91e63' },
-            { value: 55, enabled: false, color: '#673ab7' },
-            { value: 89, enabled: false, color: '#3f51b5' },
-            { value: 144, enabled: false, color: '#607d8b' }
+            { value: 2, enabled: true, color: '#D4893A' },
+            { value: 3, enabled: true, color: '#C4B454' },
+            { value: 5, enabled: true, color: '#089981' },
+            { value: 8, enabled: true, color: '#3D9B8F' },
+            { value: 13, enabled: true, color: '#3090FF' },
+            { value: 21, enabled: true, color: '#A2A1CD' },
+            { value: 34, enabled: true, color: '#C45B8A' },
+            { value: 55, enabled: false, color: '#2C537A' },
+            { value: 89, enabled: false, color: '#3090FF' },
+            { value: 144, enabled: false, color: '#8C8C8C' }
         ];
 
         // Use the same storage model as other fib tools: `levels`.
@@ -545,11 +545,11 @@ class FibSpeedFanTool extends BaseDrawing {
         if (this.style.showBottomLabels === undefined) this.style.showBottomLabels = true;
         if (this.style.levelsLabelMode !== 'percent' && this.style.levelsLabelMode !== 'values' && this.style.levelsLabelMode !== 'both') this.style.levelsLabelMode = 'values';
         this.levels = style.levels || [
-            { value: 1, enabled: true, color: '#2962ff' },
-            { value: 0.75, enabled: true, color: '#00bcd4' },
-            { value: 0.618, enabled: true, color: '#4caf50' },
-            { value: 0.5, enabled: true, color: '#ffeb3b' },
-            { value: 0.382, enabled: true, color: '#ff9800' },
+            { value: 1, enabled: true, color: '#3090FF' },
+            { value: 0.75, enabled: true, color: '#3D9B8F' },
+            { value: 0.618, enabled: true, color: '#089981' },
+            { value: 0.5, enabled: true, color: '#C4B454' },
+            { value: 0.382, enabled: true, color: '#D4893A' },
             { value: 0.25, enabled: true, color: '#f23645' },
             { value: 0, enabled: true, color: '#787b86' }
         ];
@@ -860,7 +860,7 @@ class TrendFibTimeTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('trend-fib-time', points, style);
         this.requiredPoints = 3;
-        this.style.stroke = style.stroke || '#9c27b0';
+        this.style.stroke = style.stroke || '#A2A1CD';
         this.style.strokeWidth = style.strokeWidth || 1;
         if (this.style.showZones === undefined) this.style.showZones = true;
         if (this.style.backgroundOpacity === undefined) this.style.backgroundOpacity = 0.12;
@@ -873,13 +873,13 @@ class TrendFibTimeTool extends BaseDrawing {
         if (this.style.levelsLabelMode !== 'percent' && this.style.levelsLabelMode !== 'values' && this.style.levelsLabelMode !== 'both') this.style.levelsLabelMode = 'values';
         this.levels = style.levels || [
             { value: 0, enabled: true, color: '#787b86' },
-            { value: 0.382, enabled: true, color: '#ff9800' },
-            { value: 0.5, enabled: true, color: '#ffeb3b' },
-            { value: 0.618, enabled: true, color: '#4caf50' },
-            { value: 1, enabled: true, color: '#2962ff' },
-            { value: 1.618, enabled: true, color: '#e91e63' },
-            { value: 2.618, enabled: false, color: '#673ab7' },
-            { value: 4.236, enabled: false, color: '#3f51b5' }
+            { value: 0.382, enabled: true, color: '#D4893A' },
+            { value: 0.5, enabled: true, color: '#C4B454' },
+            { value: 0.618, enabled: true, color: '#089981' },
+            { value: 1, enabled: true, color: '#3090FF' },
+            { value: 1.618, enabled: true, color: '#C45B8A' },
+            { value: 2.618, enabled: false, color: '#2C537A' },
+            { value: 4.236, enabled: false, color: '#3090FF' }
         ];
     }
 
@@ -1140,13 +1140,13 @@ class FibCirclesTool extends BaseDrawing {
         if (this.style.levelsLabelMode !== 'percent' && this.style.levelsLabelMode !== 'values' && this.style.levelsLabelMode !== 'both') this.style.levelsLabelMode = 'values';
         this.levels = style.levels || [
             { value: 0.236, enabled: true, color: '#f23645' },
-            { value: 0.382, enabled: true, color: '#ff9800' },
-            { value: 0.5, enabled: true, color: '#ffeb3b' },
-            { value: 0.618, enabled: true, color: '#4caf50' },
-            { value: 0.786, enabled: true, color: '#00bcd4' },
-            { value: 1, enabled: true, color: '#2962ff' },
-            { value: 1.618, enabled: false, color: '#e91e63' },
-            { value: 2.618, enabled: false, color: '#673ab7' }
+            { value: 0.382, enabled: true, color: '#D4893A' },
+            { value: 0.5, enabled: true, color: '#C4B454' },
+            { value: 0.618, enabled: true, color: '#089981' },
+            { value: 0.786, enabled: true, color: '#3D9B8F' },
+            { value: 1, enabled: true, color: '#3090FF' },
+            { value: 1.618, enabled: false, color: '#C45B8A' },
+            { value: 2.618, enabled: false, color: '#2C537A' }
         ];
         this.style.levels = this.levels;
     }
@@ -1293,12 +1293,12 @@ class FibCirclesTool extends BaseDrawing {
                     : 0.12)));
 
         const hexToRgba = (hex, alpha) => {
-            if (!hex || typeof hex !== 'string') return `rgba(41, 98, 255, ${alpha})`;
+            if (!hex || typeof hex !== 'string') return `rgba(48, 144, 255, ${alpha})`;
             const h = hex.trim();
             if (h.startsWith('rgba(') || h.startsWith('rgb(')) return h;
             let raw = h[0] === '#' ? h.slice(1) : h;
             if (raw.length === 3) raw = raw.split('').map(c => c + c).join('');
-            if (raw.length !== 6) return `rgba(41, 98, 255, ${alpha})`;
+            if (raw.length !== 6) return `rgba(48, 144, 255, ${alpha})`;
             const r = parseInt(raw.slice(0, 2), 16);
             const g = parseInt(raw.slice(2, 4), 16);
             const b = parseInt(raw.slice(4, 6), 16);
@@ -1518,7 +1518,7 @@ class FibSpiralTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('fib-spiral', points, style);
         this.requiredPoints = 2;
-        this.style.stroke = style.stroke || '#00bcd4';
+        this.style.stroke = style.stroke || '#3D9B8F';
         this.style.strokeWidth = style.strokeWidth || 1;
         if (this.style.counterClockwise === undefined) {
             this.style.counterClockwise = style.counterClockwise === true || style.v9FibSpiralCCW === true;
@@ -1679,15 +1679,15 @@ class FibArcsTool extends BaseDrawing {
         if (this.style.trendLineEnabled === undefined) this.style.trendLineEnabled = true;
         this.levels = style.levels || [
             { value: 0.236, enabled: true, color: '#f23645' },
-            { value: 0.382, enabled: true, color: '#ff9800' },
-            { value: 0.5, enabled: true, color: '#ffeb3b' },
-            { value: 0.618, enabled: true, color: '#4caf50' },
-            { value: 0.786, enabled: true, color: '#00bcd4' },
-            { value: 1, enabled: true, color: '#2962ff' },
-            { value: 1.618, enabled: true, color: '#e91e63' },
-            { value: 2, enabled: true, color: '#2962ff' },
-            { value: 2.618, enabled: true, color: '#e91e63' },
-            { value: 3, enabled: true, color: '#2962ff' },
+            { value: 0.382, enabled: true, color: '#D4893A' },
+            { value: 0.5, enabled: true, color: '#C4B454' },
+            { value: 0.618, enabled: true, color: '#089981' },
+            { value: 0.786, enabled: true, color: '#3D9B8F' },
+            { value: 1, enabled: true, color: '#3090FF' },
+            { value: 1.618, enabled: true, color: '#C45B8A' },
+            { value: 2, enabled: true, color: '#3090FF' },
+            { value: 2.618, enabled: true, color: '#C45B8A' },
+            { value: 3, enabled: true, color: '#3090FF' },
             { value: 4.236, enabled: true, color: '#f23645' }
         ];
         // Persist/load same model as FibonacciRetracementTool — BaseDrawing.toJSON only ships `style`.
@@ -1742,12 +1742,12 @@ class FibArcsTool extends BaseDrawing {
         const priceDecimals = (typeof this.getPriceDecimals === 'function') ? this.getPriceDecimals(this.points[0]?.y) : 2;
 
         const hexToRgba = (hex, alpha) => {
-            if (!hex || typeof hex !== 'string') return `rgba(41, 98, 255, ${alpha})`;
+            if (!hex || typeof hex !== 'string') return `rgba(48, 144, 255, ${alpha})`;
             let h = hex.trim();
             if (h.startsWith('rgba(') || h.startsWith('rgb(')) return h;
             if (h[0] === '#') h = h.slice(1);
             if (h.length === 3) h = h.split('').map(c => c + c).join('');
-            if (h.length !== 6) return `rgba(41, 98, 255, ${alpha})`;
+            if (h.length !== 6) return `rgba(48, 144, 255, ${alpha})`;
             const r = parseInt(h.slice(0, 2), 16);
             const g = parseInt(h.slice(2, 4), 16);
             const b = parseInt(h.slice(4, 6), 16);
@@ -1961,10 +1961,10 @@ class FibWedgeTool extends BaseDrawing {
         this.levels = style.levels || [
             { value: 0, enabled: false, color: '#787b86' },
             { value: 0.236, enabled: true, color: '#f23645' },
-            { value: 0.382, enabled: true, color: '#ff9800' },
-            { value: 0.5, enabled: true, color: '#ffeb3b' },
-            { value: 0.618, enabled: true, color: '#4caf50' },
-            { value: 0.786, enabled: true, color: '#00bcd4' },
+            { value: 0.382, enabled: true, color: '#D4893A' },
+            { value: 0.5, enabled: true, color: '#C4B454' },
+            { value: 0.618, enabled: true, color: '#089981' },
+            { value: 0.786, enabled: true, color: '#3D9B8F' },
             { value: 1, enabled: true, color: '#787b86' }
         ];
         this.style.levels = this.levels;
@@ -2117,12 +2117,12 @@ class FibWedgeTool extends BaseDrawing {
         }
 
         const hexToRgba = (hex, alpha) => {
-            if (!hex || typeof hex !== 'string') return `rgba(41, 98, 255, ${alpha})`;
+            if (!hex || typeof hex !== 'string') return `rgba(48, 144, 255, ${alpha})`;
             let h = hex.trim();
             if (h.startsWith('rgba(') || h.startsWith('rgb(')) return h;
             if (h[0] === '#') h = h.slice(1);
             if (h.length === 3) h = h.split('').map(c => c + c).join('');
-            if (h.length !== 6) return `rgba(41, 98, 255, ${alpha})`;
+            if (h.length !== 6) return `rgba(48, 144, 255, ${alpha})`;
             const r = parseInt(h.slice(0, 2), 16);
             const g = parseInt(h.slice(2, 4), 16);
             const b = parseInt(h.slice(4, 6), 16);
@@ -2365,9 +2365,9 @@ class PitchforkTool extends BaseDrawing {
         this.style.stroke = style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.strokeWidth = style.strokeWidth || 2;
         this.style.fill = style.fill || 'none';
-        this.style.medianColor = style.medianColor || '#e91e63';
+        this.style.medianColor = style.medianColor || '#C45B8A';
         this.style.innerFill = style.innerFill || 'rgba(76, 175, 80, 0.2)';
-        this.style.outerFill = style.outerFill || 'rgba(41, 98, 255, 0.2)';
+        this.style.outerFill = style.outerFill || 'rgba(48, 144, 255, 0.2)';
         this.style.pitchforkStyle = style.pitchforkStyle || 'original'; // 'original', 'schiff', 'modified-schiff', 'inside'
         if (style.extendLeft === undefined) this.style.extendLeft = false;
         if (style.extendRight === undefined) this.style.extendRight = true;
@@ -2378,10 +2378,10 @@ class PitchforkTool extends BaseDrawing {
         this.levels = style.levels || [
             { value: 0.25, label: '0.25', color: '#cd853f', enabled: false },
             { value: 0.382, label: '0.382', color: '#90ee90', enabled: false },
-            { value: 0.5, label: '0.5', color: '#00bcd4', enabled: true },
+            { value: 0.5, label: '0.5', color: '#3D9B8F', enabled: true },
             { value: 0.618, label: '0.618', color: '#5f9ea0', enabled: false },
             { value: 0.75, label: '0.75', color: '#5f9ea0', enabled: false },
-            { value: 1, label: '1', color: '#2962ff', enabled: true },
+            { value: 1, label: '1', color: '#3090FF', enabled: true },
             { value: 1.5, label: '1.5', color: '#9370db', enabled: false },
             { value: 1.75, label: '1.75', color: '#db7093', enabled: false }
         ];
@@ -3115,16 +3115,16 @@ class PitchfanTool extends BaseDrawing {
         this.requiredPoints = 3;
         this.style.stroke = style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.strokeWidth = style.strokeWidth || 2;
-        this.style.medianColor = style.medianColor || '#e91e63';
+        this.style.medianColor = style.medianColor || '#C45B8A';
         if (this.style.backgroundOpacity === undefined) this.style.backgroundOpacity = 0.2;
         if (this.style.showZones === undefined) this.style.showZones = true;
         this.levels = style.levels || [
             { value: 0.25, label: '0.25', color: '#cd853f', enabled: false },
             { value: 0.382, label: '0.382', color: '#90ee90', enabled: false },
-            { value: 0.5, label: '0.5', color: '#00bcd4', enabled: true },
+            { value: 0.5, label: '0.5', color: '#3D9B8F', enabled: true },
             { value: 0.618, label: '0.618', color: '#5f9ea0', enabled: false },
             { value: 0.75, label: '0.75', color: '#5f9ea0', enabled: false },
-            { value: 1, label: '1', color: '#2962ff', enabled: true },
+            { value: 1, label: '1', color: '#3090FF', enabled: true },
             { value: 1.5, label: '1.5', color: '#9370db', enabled: false },
             { value: 1.75, label: '1.75', color: '#db7093', enabled: false }
         ];
@@ -3267,7 +3267,7 @@ class PitchfanTool extends BaseDrawing {
         const showZones = this.style.showZones !== false;
 
         const hexToRgba = (hex, alpha) => {
-            if (!hex || typeof hex !== 'string') return `rgba(41, 98, 255, ${alpha})`;
+            if (!hex || typeof hex !== 'string') return `rgba(48, 144, 255, ${alpha})`;
             let h = hex.trim();
             if (h.startsWith('rgba(')) {
                 return h.replace(/([\d.]+)\s*\)\s*$/, `${alpha})`);
@@ -3277,7 +3277,7 @@ class PitchfanTool extends BaseDrawing {
             }
             if (h[0] === '#') h = h.slice(1);
             if (h.length === 3) h = h.split('').map(c => c + c).join('');
-            if (h.length !== 6) return `rgba(41, 98, 255, ${alpha})`;
+            if (h.length !== 6) return `rgba(48, 144, 255, ${alpha})`;
             const r = parseInt(h.slice(0, 2), 16);
             const g = parseInt(h.slice(2, 4), 16);
             const b = parseInt(h.slice(4, 6), 16);
@@ -3411,7 +3411,7 @@ class GannSquareFixedTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('gann-square-fixed', points, style);
         this.requiredPoints = 2;
-        this.style.stroke = style.stroke || '#ff5722';
+        this.style.stroke = style.stroke || '#E85D3A';
         this.style.strokeWidth = style.strokeWidth || 1;
         if (this.style.showZones === undefined) this.style.showZones = true;
         if (this.style.backgroundOpacity === undefined) this.style.backgroundOpacity = 0.12;
@@ -3498,22 +3498,22 @@ class GannSquareFixedTool extends BaseDrawing {
         const showZones = this.style.showZones !== false;
 
         const defaultGridLevels = [
-            { value: 0, enabled: true, color: '#ff9800' },
-            { value: 0.25, enabled: true, color: '#00bcd4' },
-            { value: 0.5, enabled: true, color: '#4caf50' },
-            { value: 0.75, enabled: true, color: '#2962ff' },
-            { value: 1, enabled: true, color: '#2962ff' }
+            { value: 0, enabled: true, color: '#D4893A' },
+            { value: 0.25, enabled: true, color: '#3D9B8F' },
+            { value: 0.5, enabled: true, color: '#089981' },
+            { value: 0.75, enabled: true, color: '#3090FF' },
+            { value: 1, enabled: true, color: '#3090FF' }
         ];
         const defaultFanLevels = [
-            { value: 0.25, enabled: true, color: '#00bcd4' },
-            { value: 0.5, enabled: true, color: '#4caf50' },
-            { value: 0.75, enabled: true, color: '#2962ff' }
+            { value: 0.25, enabled: true, color: '#3D9B8F' },
+            { value: 0.5, enabled: true, color: '#089981' },
+            { value: 0.75, enabled: true, color: '#3090FF' }
         ];
         const defaultArcLevels = [
-            { value: 0.25, enabled: true, color: '#ff9800' },
-            { value: 0.5, enabled: true, color: '#00bcd4' },
-            { value: 0.75, enabled: true, color: '#4caf50' },
-            { value: 1, enabled: true, color: '#2962ff' }
+            { value: 0.25, enabled: true, color: '#D4893A' },
+            { value: 0.5, enabled: true, color: '#3D9B8F' },
+            { value: 0.75, enabled: true, color: '#089981' },
+            { value: 1, enabled: true, color: '#3090FF' }
         ];
 
         if (!this.style) this.style = {};
@@ -3556,7 +3556,7 @@ class GannSquareFixedTool extends BaseDrawing {
         const ensureBoundary = (arr, v) => {
             const eps = 1e-9;
             if (!arr.some(x => Math.abs(x.value - v) < eps)) {
-                arr.push({ value: v, enabled: true, color: v === 0 ? '#ff9800' : '#2962ff' });
+                arr.push({ value: v, enabled: true, color: v === 0 ? '#D4893A' : '#3090FF' });
             }
         };
         const zoneLevels = gridEnabled.map(l => ({ ...l }));
@@ -3798,7 +3798,7 @@ class GannSquareFixedTool extends BaseDrawing {
         this.group.append('line')
             .attr('x1', left).attr('y1', top)
             .attr('x2', left + size).attr('y2', top + size)
-            .attr('stroke', '#00bcd4')
+            .attr('stroke', '#3D9B8F')
             .attr('stroke-width', diagW)
             .attr('opacity', 0.9);
 
@@ -3816,7 +3816,7 @@ class GannSquareFixedTool extends BaseDrawing {
         this.group.append('line')
             .attr('x1', left + size).attr('y1', top)
             .attr('x2', left).attr('y2', top + size)
-            .attr('stroke', '#4caf50')
+            .attr('stroke', '#089981')
             .attr('stroke-width', diagW)
             .attr('opacity', 0.8);
 
@@ -3975,7 +3975,7 @@ class GannSquareTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('gann-square', points, style);
         this.requiredPoints = 2;
-        this.style.stroke = style.stroke || '#9c27b0';
+        this.style.stroke = style.stroke || '#A2A1CD';
         this.style.strokeWidth = style.strokeWidth || 1;
     }
 
@@ -4074,13 +4074,13 @@ class GannSquareTool extends BaseDrawing {
 class GannFanTool extends BaseDrawing {
     static defaultFanLevels() {
         return [
-            { value: 0.125, label: '1/8', enabled: true, color: '#ff9800' },
-            { value: 0.25, label: '1/4', enabled: true, color: '#4caf50' },
+            { value: 0.125, label: '1/8', enabled: true, color: '#D4893A' },
+            { value: 0.25, label: '1/4', enabled: true, color: '#089981' },
             { value: 1 / 3, label: '1/3', enabled: true, color: '#00c853' },
-            { value: 0.5, label: '1/2', enabled: true, color: '#00bcd4' },
-            { value: 1, label: '1/1', enabled: true, color: '#2962ff' },
-            { value: 2, label: '2/1', enabled: true, color: '#9c27b0' },
-            { value: 3, label: '3/1', enabled: true, color: '#e91e63' },
+            { value: 0.5, label: '1/2', enabled: true, color: '#3D9B8F' },
+            { value: 1, label: '1/1', enabled: true, color: '#3090FF' },
+            { value: 2, label: '2/1', enabled: true, color: '#A2A1CD' },
+            { value: 3, label: '3/1', enabled: true, color: '#C45B8A' },
             { value: 4, label: '4/1', enabled: true, color: '#f23645' },
             { value: 8, label: '8/1', enabled: true, color: '#b71c1c' }
         ];
@@ -4089,7 +4089,7 @@ class GannFanTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('gann-fan', points, style);
         this.requiredPoints = 2;
-        this.style.stroke = style.stroke || '#4caf50';
+        this.style.stroke = style.stroke || '#089981';
         this.style.strokeWidth = style.strokeWidth || 1;
         if (this.style.showZones === undefined) this.style.showZones = true;
         if (this.style.backgroundOpacity === undefined) this.style.backgroundOpacity = 0.12;
@@ -4115,7 +4115,7 @@ class GannFanTool extends BaseDrawing {
                         value: mult,
                         label: mappedLabel,
                         enabled: a && a.enabled !== false,
-                        color: (a && a.color) ? a.color : (this.style.stroke || '#4caf50')
+                        color: (a && a.color) ? a.color : (this.style.stroke || '#089981')
                     };
                 });
             } else {
@@ -4210,7 +4210,7 @@ class GannFanTool extends BaseDrawing {
                 return {
                     value: isFinite(v) ? v : NaN,
                     enabled: l && l.enabled !== false,
-                    color: (l && l.color) ? l.color : (style?.stroke || '#4caf50'),
+                    color: (l && l.color) ? l.color : (style?.stroke || '#089981'),
                     label: isFinite(v) ? GannFanTool.labelForValue(v) : '',
                     lineWidth: l?.lineWidth,
                     lineType: l?.lineType,
@@ -4508,12 +4508,12 @@ class TrendFibExtensionTool extends BaseDrawing {
         // Core 7 Fibonacci levels (0 and 1 fixed at top)
         const defaultLevels = [
             { value: 0, label: '0', color: '#787b86', enabled: true },
-            { value: 1, label: '1', color: '#2962ff', enabled: true },
+            { value: 1, label: '1', color: '#3090FF', enabled: true },
             { value: 0.236, label: '0.236', color: '#f23645', enabled: true },
-            { value: 0.382, label: '0.382', color: '#ff9800', enabled: true },
-            { value: 0.5, label: '0.5', color: '#ffeb3b', enabled: true },
-            { value: 0.618, label: '0.618', color: '#4caf50', enabled: true },
-            { value: 0.786, label: '0.786', color: '#00bcd4', enabled: true }
+            { value: 0.382, label: '0.382', color: '#D4893A', enabled: true },
+            { value: 0.5, label: '0.5', color: '#C4B454', enabled: true },
+            { value: 0.618, label: '0.618', color: '#089981', enabled: true },
+            { value: 0.786, label: '0.786', color: '#3D9B8F', enabled: true }
         ];
 
         this.levels = (Array.isArray(style.levels) && style.levels.length)

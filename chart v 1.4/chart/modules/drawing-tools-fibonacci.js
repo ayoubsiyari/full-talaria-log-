@@ -22,10 +22,10 @@ class FibonacciRetracementTool extends BaseDrawing {
             { value: 0, label: '0', color: style.color0 || '#787b86', visible: true },
             { value: 1, label: '1', color: style.color1 || '#787b86', visible: true },
             { value: 0.236, label: '0.236', color: style.color236 || '#f23645', visible: true },
-            { value: 0.382, label: '0.382', color: style.color382 || '#ff9800', visible: true },
-            { value: 0.5, label: '0.5', color: style.color50 || '#ffeb3b', visible: true },
-            { value: 0.618, label: '0.618', color: style.color618 || '#4caf50', visible: true },
-            { value: 0.786, label: '0.786', color: style.color786 || '#2196f3', visible: true }
+            { value: 0.382, label: '0.382', color: style.color382 || '#D4893A', visible: true },
+            { value: 0.5, label: '0.5', color: style.color50 || '#C4B454', visible: true },
+            { value: 0.618, label: '0.618', color: style.color618 || '#089981', visible: true },
+            { value: 0.786, label: '0.786', color: style.color786 || '#3090FF', visible: true }
         ];
 
         const providedLevels = Array.isArray(style.levels) ? style.levels : defaultLevels;
@@ -269,11 +269,11 @@ class FibonacciExtensionTool extends BaseDrawing {
         const defaultLevels = [
             { value: 0, label: '0', color: style.color0 || '#787b86', visible: true },
             { value: 1, label: '1', color: style.color1 || '#787b86', visible: true },
-            { value: 0.618, label: '0.618', color: style.color618 || '#4caf50', visible: true },
-            { value: 1.272, label: '1.272', color: style.color1272 || '#2196f3', visible: true },
-            { value: 1.618, label: '1.618', color: style.color1618 || '#9c27b0', visible: true },
-            { value: 2.618, label: '2.618', color: style.color2618 || '#e91e63', visible: true },
-            { value: 4.236, label: '4.236', color: style.color4236 || '#f44336', visible: true }
+            { value: 0.618, label: '0.618', color: style.color618 || '#089981', visible: true },
+            { value: 1.272, label: '1.272', color: style.color1272 || '#3090FF', visible: true },
+            { value: 1.618, label: '1.618', color: style.color1618 || '#A2A1CD', visible: true },
+            { value: 2.618, label: '2.618', color: style.color2618 || '#C45B8A', visible: true },
+            { value: 4.236, label: '4.236', color: style.color4236 || '#F23645', visible: true }
         ];
 
         const providedLevels = Array.isArray(style.levels) ? style.levels : defaultLevels;
@@ -439,7 +439,7 @@ class FibonacciExtensionTool extends BaseDrawing {
 
         // Draw main trend line
         const trendEnabled = this.style.trendLineEnabled !== false;
-        const trendColor = this.style.trendLineColor || this.style.stroke || '#9c27b0';
+        const trendColor = this.style.trendLineColor || this.style.stroke || '#A2A1CD';
         const trendDash = this.style.trendLineDasharray != null ? `${this.style.trendLineDasharray}` : '2,2';
         const baseTrendWidth = (this.style.trendLineWidth != null && !isNaN(parseInt(this.style.trendLineWidth))) ? parseInt(this.style.trendLineWidth) : 1;
         const scaledTrendWidth = Math.max(0.5, baseTrendWidth * scaleFactor);

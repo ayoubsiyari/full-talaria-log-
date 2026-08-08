@@ -151,7 +151,7 @@ class ImageTool extends BaseDrawing {
             .attr('width', borderWidth)
             .attr('height', borderHeight)
             .attr('fill', 'none')
-            .attr('stroke', '#2962ff')
+            .attr('stroke', '#3090FF')
             .attr('stroke-width', 2)
             .attr('stroke-dasharray', '4,2')
             .style('pointer-events', 'none')
@@ -216,12 +216,12 @@ class ImageTool extends BaseDrawing {
                 .style('align-items', 'center')
                 .style('justify-content', 'center')
                 .style('gap', '5px')
-                .style('background', 'rgba(41,98,255,0.15)')
-                .style('border', '1px solid rgba(41,98,255,0.5)')
+                .style('background', 'rgba(48, 144, 255,0.15)')
+                .style('border', '1px solid rgba(48, 144, 255,0.5)')
                 .style('border-radius', '4px')
                 .style('color', '#6b8fff')
                 .style('font-size', `${btnFontSize}px`)
-                .style('font-family', 'Roboto, sans-serif')
+                .style('font-family', '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif')
                 .style('cursor', 'pointer')
                 .style('user-select', 'none')
                 .style('box-sizing', 'border-box')
@@ -254,13 +254,13 @@ class ImageTool extends BaseDrawing {
                 }
             });
             btnNode.addEventListener('mouseenter', function() {
-                this.style.background = 'rgba(41,98,255,0.3)';
-                this.style.borderColor = 'rgba(41,98,255,0.8)';
+                this.style.background = 'rgba(48, 144, 255,0.3)';
+                this.style.borderColor = 'rgba(48, 144, 255,0.8)';
                 this.style.color = '#fff';
             });
             btnNode.addEventListener('mouseleave', function() {
-                this.style.background = 'rgba(41,98,255,0.15)';
-                this.style.borderColor = 'rgba(41,98,255,0.5)';
+                this.style.background = 'rgba(48, 144, 255,0.15)';
+                this.style.borderColor = 'rgba(48, 144, 255,0.5)';
                 this.style.color = '#6b8fff';
             });
         }
@@ -279,7 +279,7 @@ class ImageTool extends BaseDrawing {
 
     createBoxHandles(group, scales) {
         const handleFill = 'transparent';
-        const handleStroke = '#2962FF';
+        const handleStroke = '#3090FF';
         const handleStrokeWidth = 2;
         
         group.selectAll('.resize-handle').remove();

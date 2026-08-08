@@ -373,7 +373,7 @@ class BarsPatternTool extends BaseDrawing {
                             .attr('y', bodyTop)
                             .attr('width', bodyWidth)
                             .attr('height', bodyHeight)
-                            .attr('fill', isHollowUp ? 'none' : 'rgba(41, 98, 255, 0.22)')
+                            .attr('fill', isHollowUp ? 'none' : 'rgba(48, 144, 255, 0.22)')
                             .attr('stroke', stroke)
                             .attr('stroke-width', Math.max(1, Math.min(2, bodyWidth / 6)))
                             .attr('opacity', 0.95)
@@ -797,7 +797,7 @@ class CypherPatternTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('cypher-pattern', points, style);
         this.requiredPoints = 5;
-        this.style.stroke = style.stroke || '#9c27b0';
+        this.style.stroke = style.stroke || '#A2A1CD';
         this.style.strokeWidth = style.strokeWidth || 2;
         this.labels = ['X', 'A', 'B', 'C', 'D'];
     }
@@ -867,7 +867,7 @@ class HeadShouldersTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('head-shoulders', points, style);
         this.requiredPoints = 7;
-        this.style.stroke = style.stroke || '#00bfa5';
+        this.style.stroke = style.stroke || '#3D9B8F';
         this.style.strokeWidth = style.strokeWidth || 2;
         this.style.fill = style.fill || DRAWING_TOOL_DEFAULT_FILL;
         this.style.necklineDasharray = style.necklineDasharray || '2,6';
@@ -1392,7 +1392,7 @@ class ABCDPatternTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('abcd-pattern', points, style);
         this.requiredPoints = 4;
-        this.style.stroke = style.stroke || '#00bfa5';
+        this.style.stroke = style.stroke || '#3D9B8F';
         this.style.strokeWidth = style.strokeWidth || 2;
         this.style.guideDasharray = style.guideDasharray || '2,8';
         this.style.guideWidth = style.guideWidth || 1;
@@ -1600,7 +1600,7 @@ class TrianglePatternTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('triangle-pattern', points, style);
         this.requiredPoints = 4;
-        this.style.stroke = style.stroke || '#7a3ff2';
+        this.style.stroke = style.stroke || '#3090FF';
         this.style.strokeWidth = style.strokeWidth || 2;
         this.style.fill = style.fill || DRAWING_TOOL_DEFAULT_FILL;
         this.style.boundaryDasharray = style.boundaryDasharray || '1,6';
@@ -1879,7 +1879,7 @@ class ThreeDrivesTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('three-drives', points, style);
         this.requiredPoints = 7;
-        this.style.stroke = style.stroke || '#6f35d7';
+        this.style.stroke = style.stroke || '#2C537A';
         this.style.strokeWidth = style.strokeWidth || 2;
         this.style.guideDasharray = style.guideDasharray || '2,6';
         this.style.guideWidth = style.guideWidth || 2;
@@ -2138,7 +2138,7 @@ class ElliottImpulseTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('elliott-impulse', points, style);
         this.requiredPoints = 6;
-        this.style.stroke = style.stroke || '#2196f3';
+        this.style.stroke = style.stroke || '#3090FF';
         this.style.strokeWidth = style.strokeWidth || 2;
         patternSyncDefaultLabelColors(this.style);
         this.labels = ['0', '1', '2', '3', '4', '5'];
@@ -2200,7 +2200,7 @@ class ElliottCorrectionTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('elliott-correction', points, style);
         this.requiredPoints = 4;
-        this.style.stroke = style.stroke || '#ff5722';
+        this.style.stroke = style.stroke || '#E85D3A';
         this.style.strokeWidth = style.strokeWidth || 2;
         patternSyncDefaultLabelColors(this.style);
         this.labels = ['', 'A', 'B', 'C'];
@@ -2262,7 +2262,7 @@ class ElliottTriangleTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('elliott-triangle', points, style);
         this.requiredPoints = 6;
-        this.style.stroke = style.stroke || '#9c27b0';
+        this.style.stroke = style.stroke || '#A2A1CD';
         this.style.strokeWidth = style.strokeWidth || 2;
         patternSyncDefaultLabelColors(this.style);
         this.labels = ['', 'A', 'B', 'C', 'D', 'E'];
@@ -2324,7 +2324,7 @@ class ElliottDoubleComboTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('elliott-double-combo', points, style);
         this.requiredPoints = 4;
-        this.style.stroke = style.stroke || '#607d8b';
+        this.style.stroke = style.stroke || '#8C8C8C';
         this.style.strokeWidth = style.strokeWidth || 2;
         patternSyncDefaultLabelColors(this.style);
         this.labels = ['', 'W', 'X', 'Y'];
@@ -2386,7 +2386,7 @@ class ElliottTripleComboTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('elliott-triple-combo', points, style);
         this.requiredPoints = 6;
-        this.style.stroke = style.stroke || '#795548';
+        this.style.stroke = style.stroke || '#2C537A';
         this.style.strokeWidth = style.strokeWidth || 2;
         patternSyncDefaultLabelColors(this.style);
         this.labels = ['', 'W', 'X', 'Y', 'X', 'Z'];
@@ -2448,7 +2448,7 @@ class CyclicLinesTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('cyclic-lines', points, style);
         this.requiredPoints = 2;
-        this.style.stroke = style.stroke || '#00bcd4';
+        this.style.stroke = style.stroke || '#3D9B8F';
         this.style.strokeWidth = style.strokeWidth || 1;
     }
 
@@ -2516,7 +2516,7 @@ class TimeCyclesTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('time-cycles', points, style);
         this.requiredPoints = 3;
-        this.style.stroke = style.stroke || '#ff9800';
+        this.style.stroke = style.stroke || '#D4893A';
         this.style.strokeWidth = style.strokeWidth || 2;
     }
 
@@ -2573,7 +2573,7 @@ class SineLineTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('sine-line', points, style);
         this.requiredPoints = 2;
-        this.style.stroke = style.stroke || '#e91e63';
+        this.style.stroke = style.stroke || '#C45B8A';
         this.style.strokeWidth = style.strokeWidth || 2;
     }
 

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Drawing Tools Manager
  * Main coordinator for all drawing tools
  * Handles drawing lifecycle, event management, and persistence
@@ -3243,7 +3243,7 @@ class DrawingToolsManager {
 
     /** Blue placement crosshair color (TradingView-like) while a tool is armed on touch. */
     _touchPlacementCrosshairColor() {
-        return '#2962FF';
+        return '#3090FF';
     }
 
     _rememberPlacementCrosshair(event) {
@@ -11509,7 +11509,7 @@ class DrawingToolsManager {
                     selectAllOnFocus: false,
                     focusAtEnd: true,
                     fontSize: `${drawing.style.fontSize || 13}px`,
-                    fontFamily: drawing.style.fontFamily || 'Roboto, sans-serif',
+                    fontFamily: drawing.style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
                     fontWeight: drawing.style.fontWeight || 'normal',
                     fontStyle: drawing.style.fontStyle || 'normal',
                     color: drawing.style.textColor || '#FFFFFF',
@@ -11572,7 +11572,7 @@ class DrawingToolsManager {
                 selectAllOnFocus: false,
                 focusAtEnd: true,
                 fontSize: `${drawing.style.fontSize || 13}px`,
-                fontFamily: drawing.style.fontFamily || 'Roboto, sans-serif',
+                fontFamily: drawing.style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
                 fontWeight: drawing.style.fontWeight || 'normal',
                 fontStyle: drawing.style.fontStyle || 'normal',
                 color: drawing.style.textColor || '#FFFFFF',
@@ -14584,7 +14584,7 @@ class DrawingToolsManager {
             font-size: 13px;
             font-weight: 600;
             letter-spacing: 0.01em;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif;
             box-shadow:
                 0 4px 12px rgba(0, 0, 0, 0.3),
                 0 0 8px rgba(${accentRgb}, 0.5),
@@ -15231,7 +15231,7 @@ class DrawingToolsManager {
             this.rectSelectRect = this.svg.append('rect')
                 .attr('class', 'selection-rectangle')
                 .style('fill', 'rgba(33, 150, 243, 0.1)')
-                .style('stroke', '#2196F3')
+                .style('stroke', '#3090FF')
                 .style('stroke-width', '1')
                 .style('stroke-dasharray', '4,4')
                 .style('pointer-events', 'none');
@@ -17307,7 +17307,7 @@ class DrawingToolsManager {
             return {
                 textColor: '#FFFFFF',
                 fontSize: 12,
-                fontFamily: 'Roboto, sans-serif',
+                fontFamily: '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
                 fontWeight: 'normal',
                 fontStyle: 'normal',
                 textAlign: 'left',
@@ -17323,22 +17323,22 @@ class DrawingToolsManager {
         if (toolType === 'price-note') {
             const lineStroke = typeof DRAWING_TOOL_DEFAULT_STROKE !== 'undefined'
                 ? DRAWING_TOOL_DEFAULT_STROKE
-                : '#2962ff';
+                : '#3090FF';
             return {
                 textColor: '#FFFFFF',
                 fontSize: 12,
-                fontFamily: 'Roboto, sans-serif',
+                fontFamily: '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
                 fontWeight: 'normal',
                 fontStyle: 'normal',
                 stroke: lineStroke,
                 strokeWidth: 1,
-                fill: '#2962ff',
+                fill: '#3090FF',
                 borderColor: 'none',
             };
         }
 
         const textTypographyBase = {
-            fontFamily: 'Roboto, sans-serif',
+            fontFamily: '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
             fontWeight: 'normal',
             fontStyle: 'normal',
         };
@@ -17351,7 +17351,7 @@ class DrawingToolsManager {
                 ...textTypographyBase,
                 textColor: '#F23645',
                 fontSize: 14,
-                fontFamily: 'Arial, sans-serif',
+                fontFamily: '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
                 textAlign: 'left',
                 stroke: anchorStroke,
                 backgroundColor: '#FFFFFF',
@@ -17367,7 +17367,7 @@ class DrawingToolsManager {
                 textColor: '#FFFFFF',
                 fontSize: 14,
                 textAlign: 'center',
-                backgroundColor: '#2962FF',
+                backgroundColor: '#3090FF',
                 borderColor: 'transparent',
                 wrapText: false,
                 maxWidth: 280,
@@ -17393,7 +17393,7 @@ class DrawingToolsManager {
                 ...textTypographyBase,
                 textColor: '#FFFFFF',
                 fontSize: 12,
-                backgroundColor: 'rgba(41, 98, 255, 0.9)',
+                backgroundColor: 'rgba(48, 144, 255, 0.9)',
                 wrapText: false,
                 maxWidth: 200,
             };
@@ -17404,7 +17404,7 @@ class DrawingToolsManager {
                 ...textTypographyBase,
                 textColor: '#FFFFFF',
                 fontSize: 12,
-                backgroundColor: 'rgba(41, 98, 255, 0.9)',
+                backgroundColor: 'rgba(48, 144, 255, 0.9)',
                 borderColor: '#B2B5BE',
                 wrapText: false,
                 maxWidth: 200,
@@ -17414,7 +17414,7 @@ class DrawingToolsManager {
         if (toolType === 'pin') {
             const pinStroke = typeof DRAWING_TOOL_DEFAULT_STROKE !== 'undefined'
                 ? DRAWING_TOOL_DEFAULT_STROKE
-                : '#2962ff';
+                : '#3090FF';
             return {
                 ...textTypographyBase,
                 textColor: '#d1d4dc',
@@ -17454,21 +17454,21 @@ class DrawingToolsManager {
         if (toolType === 'price-label') {
             const lineStroke = typeof DRAWING_TOOL_DEFAULT_STROKE !== 'undefined'
                 ? DRAWING_TOOL_DEFAULT_STROKE
-                : '#2962ff';
+                : '#3090FF';
             return {
                 ...textTypographyBase,
                 textColor: '#FFFFFF',
                 fontSize: 12,
                 stroke: lineStroke,
                 strokeWidth: 1,
-                fill: '#2962ff',
+                fill: '#3090FF',
             };
         }
 
         if (toolType === 'price-label-2') {
             const lineStroke = typeof DRAWING_TOOL_DEFAULT_STROKE !== 'undefined'
                 ? DRAWING_TOOL_DEFAULT_STROKE
-                : '#2962ff';
+                : '#3090FF';
             return {
                 ...textTypographyBase,
                 textColor: '#FFFFFF',
@@ -17476,7 +17476,7 @@ class DrawingToolsManager {
                 fontWeight: 'bold',
                 stroke: lineStroke,
                 strokeWidth: 1,
-                fill: '#2962ff',
+                fill: '#3090FF',
             };
         }
 
@@ -17487,7 +17487,7 @@ class DrawingToolsManager {
             return {
                 textColor: '#FFFFFF',
                 fontSize: 14,
-                fontFamily: 'Roboto, sans-serif',
+                fontFamily: '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
                 fontWeight: 'normal',
                 fontStyle: 'normal',
                 textAlign: 'left',

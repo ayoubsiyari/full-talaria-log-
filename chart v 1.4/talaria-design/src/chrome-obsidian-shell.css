@@ -154,8 +154,16 @@
   box-shadow: none !important;
   filter: none !important;
 }
+/* Hover lives on the shell / caret halves — not a blanket paint over the split */
 [data-v9-rail] button:hover {
+  background: transparent !important;
+}
+[data-v9-rail] [data-rail-shell]:hover {
   background: var(--surface-raised) !important;
+}
+[data-v9-rail] [data-rail-shell][data-active="1"],
+[data-v9-rail] [data-rail-shell][data-active="1"]:hover {
+  background: var(--accent-quiet) !important;
 }
 
 /* ── Replay bar ── */
@@ -172,8 +180,12 @@
   filter: none !important;
   font-family: var(--font-ui) !important;
 }
-[data-v9-replaybar] button:hover {
+/* Let replay-v2 own transport hover (esp. play tone) — don't blanket-paint */
+[data-v9-replaybar]:not([data-replay-v2="1"]) button:hover {
   background: var(--surface-raised) !important;
+}
+[data-v9-replaybar][data-replay-v2="1"] button:hover {
+  background: transparent;
 }
 /* Speed track fill → flat accent */
 [data-v9-replaybar] [style*="border-radius:99"][style*="height:3"],

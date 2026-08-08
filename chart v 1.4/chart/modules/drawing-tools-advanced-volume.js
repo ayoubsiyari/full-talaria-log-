@@ -185,8 +185,8 @@ class GannBoxTool extends BaseDrawing {
         this.style.showTopLabels = this.style.showTopLabels !== undefined ? this.style.showTopLabels : true;
         this.style.showBottomLabels = this.style.showBottomLabels !== undefined ? this.style.showBottomLabels : true;
         if (this.style.levelsEnabled === undefined) this.style.levelsEnabled = true;
-        this.style.priceBackground = this.style.priceBackground || 'rgba(41, 98, 255, 0.1)';
-        this.style.timeBackground = this.style.timeBackground || 'rgba(41, 98, 255, 0.1)';
+        this.style.priceBackground = this.style.priceBackground || 'rgba(48, 144, 255, 0.1)';
+        this.style.timeBackground = this.style.timeBackground || 'rgba(48, 144, 255, 0.1)';
     }
 
     render(container, scales, renderOptsArg = {}) {
@@ -559,9 +559,9 @@ class AnchoredVWAPTool extends BaseDrawing {
         if (!Number.isFinite(Number(this.style.vwapBand3Multiplier))) this.style.vwapBand3Multiplier = 3;
 
         const bandStyleDefaults = [
-            { color: '#4caf50', background: 'rgba(76, 175, 80, 0.10)' },
-            { color: '#a59f00', background: 'rgba(165, 159, 0, 0.08)' },
-            { color: '#00bfa5', background: 'rgba(0, 191, 165, 0.08)' }
+            { color: '#089981', background: 'rgba(8, 153, 129, 0.10)' },
+            { color: '#C4B454', background: 'rgba(196, 180, 84, 0.08)' },
+            { color: '#3D9B8F', background: 'rgba(61, 155, 143, 0.08)' }
         ];
 
         bandStyleDefaults.forEach((bandDefault, index) => {
@@ -606,7 +606,7 @@ class AnchoredVWAPTool extends BaseDrawing {
 
         const anchorHandleRadius = 3;
         const anchorHitRadius = 12;
-        const anchorHandleStroke = '#2962FF';
+        const anchorHandleStroke = '#3090FF';
         const anchorHandleStrokeWidth = 2;
 
         if (scales.yScale && typeof scales.yScale.domain === 'function') {
@@ -955,7 +955,7 @@ class AnchoredVWAPTool extends BaseDrawing {
         // Anchor point: align with standard resize-handle style.
         const anchorHandleRadius = 3;
         const anchorHitRadius = 12;
-        const anchorHandleStroke = '#2962FF';
+        const anchorHandleStroke = '#3090FF';
         const anchorHandleStrokeWidth = 2;
 
         this.group.append('circle')
@@ -2232,7 +2232,7 @@ class VolumeProfileTool extends BaseDrawing {
             .attr('cy', y)
             .attr('r', 4)
             .attr('fill', 'transparent')
-            .attr('stroke', '#2962FF')
+            .attr('stroke', '#3090FF')
             .attr('stroke-width', 2)
             .attr('opacity', markerOpacity)
             .style('pointer-events', 'none');
@@ -2381,7 +2381,7 @@ class VolumeProfileTool extends BaseDrawing {
                 .attr('cy', handleY)
                 .attr('r', handleRadius)
                 .attr('fill', 'transparent')
-                .attr('stroke', '#2962FF')
+                .attr('stroke', '#3090FF')
                 .attr('stroke-width', 2)
                 .style('cursor', 'ew-resize')
                 .style('pointer-events', handleInteractive ? 'all' : 'none')

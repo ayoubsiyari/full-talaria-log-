@@ -317,7 +317,9 @@
   color: var(--text);
 }
 
-[data-goto-row-acts] [data-gotoact][data-pin="1"] {
+[data-goto-row-acts] [data-gotoact][data-pin="1"],
+[data-goto-row-acts] [data-gotoact]:hover[aria-label="Pin"],
+[data-goto-row-acts] [data-gotoact]:hover[aria-label="Unpin"] {
   color: var(--accent);
 }
 

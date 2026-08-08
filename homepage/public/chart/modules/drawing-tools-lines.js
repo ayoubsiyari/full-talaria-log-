@@ -16,7 +16,7 @@ function appendTextLabel(group, text, config = {}) {
         fill = '#ffffff',
         color,
         fontSize = 14,
-        fontFamily = 'Roboto, sans-serif',
+        fontFamily = '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
         fontWeight = 'normal',
         fontStyle = 'normal',
         baseline = 'middle',
@@ -135,7 +135,7 @@ function appendTextLabel(group, text, config = {}) {
 window.appendTextLabel = appendTextLabel;
 
 const DEFAULT_TEXT_STYLE = {
-    fontFamily: 'Roboto, sans-serif',
+    fontFamily: '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
     fontSize: 14,
     fontWeight: 'normal',
     fontStyle: 'normal',
@@ -1368,7 +1368,7 @@ class HorizontalLineTool extends BaseDrawing {
             .attr('cy', pos.cy)
             .attr('r', handleRadius)
             .attr('fill', 'transparent')
-            .attr('stroke', '#2962FF')
+            .attr('stroke', '#3090FF')
             .attr('stroke-width', handleStrokeWidth)
             .style('cursor', 'ns-resize')
             .style('pointer-events', 'all')
@@ -1432,7 +1432,7 @@ class HorizontalLineTool extends BaseDrawing {
         const tempText = labelGroup.append('text')
             .attr('x', labelX)
             .attr('y', y)
-            .attr('font-family', 'Roboto, sans-serif')
+            .attr('font-family', '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif')
             .attr('font-size', '12px')
             .attr('font-weight', '500')
             .text(formattedPrice)
@@ -1461,7 +1461,7 @@ class HorizontalLineTool extends BaseDrawing {
             .attr('y', y)
             .attr('text-anchor', 'middle')
             .attr('dominant-baseline', 'central')
-            .attr('font-family', 'Roboto, sans-serif')
+            .attr('font-family', '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif')
             .attr('font-size', '12px')
             .attr('font-weight', '500')
             .attr('fill', '#FFFFFF')
@@ -1769,7 +1769,7 @@ class VerticalLineTool extends BaseDrawing {
             .attr('cy', pos.cy)
             .attr('r', handleRadius)
             .attr('fill', 'transparent')
-            .attr('stroke', '#2962FF')
+            .attr('stroke', '#3090FF')
             .attr('stroke-width', handleStrokeWidth)
             .style('cursor', 'ew-resize')
             .style('pointer-events', 'all')
@@ -2570,7 +2570,7 @@ class HorizontalRayTool extends BaseDrawing {
             .attr('cy', cy)
             .attr('r', handleRadius)
             .attr('fill', 'transparent')
-            .attr('stroke', '#2962FF')
+            .attr('stroke', '#3090FF')
             .attr('stroke-width', handleStrokeWidth)
             .style('cursor', 'move')
             .style('pointer-events', 'all')
@@ -2644,7 +2644,7 @@ class HorizontalRayTool extends BaseDrawing {
         const tempText = labelGroup.append('text')
             .attr('x', labelX)
             .attr('y', y)
-            .attr('font-family', 'Roboto, sans-serif')
+            .attr('font-family', '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif')
             .attr('font-size', '12px')
             .attr('font-weight', '500')
             .text(formattedPrice)
@@ -2673,7 +2673,7 @@ class HorizontalRayTool extends BaseDrawing {
             .attr('y', y)
             .attr('text-anchor', 'middle')
             .attr('dominant-baseline', 'central')
-            .attr('font-family', 'Roboto, sans-serif')
+            .attr('font-family', '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif')
             .attr('font-size', '12px')
             .attr('font-weight', '500')
             .attr('fill', '#FFFFFF')

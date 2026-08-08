@@ -695,7 +695,7 @@ class DrawingSettingsPanel {
 
     flex-direction: column;
 
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    font-family: "Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif;
 
     font-size: 12px;
 
@@ -1155,7 +1155,7 @@ class DrawingSettingsPanel {
 
 .tv-description-input:focus {
 
-    border-color: var(--sp-accent, #2962ff);
+    border-color: var(--sp-accent, #3090FF);
 
 }
 
@@ -1519,7 +1519,7 @@ class DrawingSettingsPanel {
 
     outline: none;
 
-    border-color: var(--sp-accent, #2962ff);
+    border-color: var(--sp-accent, #3090FF);
 
 }
 
@@ -1739,7 +1739,7 @@ class DrawingSettingsPanel {
 
     outline: none;
 
-    border-color: var(--sp-accent, #2962ff);
+    border-color: var(--sp-accent, #3090FF);
 
 }
 
@@ -1801,7 +1801,7 @@ class DrawingSettingsPanel {
 
     outline: none;
 
-    border-color: var(--sp-accent, #2962ff) !important;
+    border-color: var(--sp-accent, #3090FF) !important;
 
     box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.18);
 
@@ -2039,7 +2039,7 @@ class DrawingSettingsPanel {
 
 .tv-text-input:focus {
 
-    border-color: var(--sp-accent, #2962ff);
+    border-color: var(--sp-accent, #3090FF);
 
 }
 
@@ -3429,7 +3429,7 @@ class DrawingSettingsPanel {
 
     cursor: default;
 
-    accent-color: var(--sp-accent, #2962ff);
+    accent-color: var(--sp-accent, #3090FF);
 
     flex-shrink: 0;
 
@@ -3521,7 +3521,7 @@ class DrawingSettingsPanel {
 
     appearance: none;
 
-    background: linear-gradient(to right, transparent, var(--sp-accent, #2962ff));
+    background: linear-gradient(to right, transparent, var(--sp-accent, #3090FF));
 
     border-radius: 2px;
 
@@ -3689,7 +3689,7 @@ class DrawingSettingsPanel {
 
 .number-input-wrapper:focus-within {
 
-    border-color: var(--sp-accent, #2962ff);
+    border-color: var(--sp-accent, #3090FF);
 
 }
 
@@ -3944,9 +3944,9 @@ body.light-mode .tv-tab-btn:hover {
 
 body.light-mode .tv-tab-btn.active {
 
-    background: rgba(41, 98, 255, 0.14);
+    background: rgba(48, 144, 255, 0.14);
 
-    border-color: rgba(41, 98, 255, 0.55);
+    border-color: rgba(48, 144, 255, 0.55);
 
     color: #000000;
 
@@ -4025,9 +4025,9 @@ body.light-mode .tv-checkbox {
 
 body.light-mode .tv-checkbox.checked {
 
-    background: linear-gradient(135deg, rgba(41, 98, 255, 0.75), rgba(41, 98, 255, 0.45));
+    background: linear-gradient(135deg, rgba(48, 144, 255, 0.75), rgba(48, 144, 255, 0.45));
 
-    border-color: rgba(41, 98, 255, 0.85);
+    border-color: rgba(48, 144, 255, 0.85);
 
 }
 
@@ -4063,13 +4063,13 @@ body.light-mode .tv-select:hover {
 
     background-position: right 8px center;
 
-    background-color: rgba(41, 98, 255, 0.10);
+    background-color: rgba(48, 144, 255, 0.10);
 
     background-size: 10px;
 
-    border-color: rgba(41, 98, 255, 0.55);
+    border-color: rgba(48, 144, 255, 0.55);
 
-    box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.12);
+    box-shadow: 0 0 0 2px rgba(48, 144, 255, 0.12);
 
 }
 
@@ -4105,11 +4105,11 @@ body.light-mode .tv-checkbox:hover {
 
 body.light-mode .tv-checkbox.checked:hover {
 
-    background: linear-gradient(135deg, rgba(41, 98, 255, 0.85), rgba(41, 98, 255, 0.55));
+    background: linear-gradient(135deg, rgba(48, 144, 255, 0.85), rgba(48, 144, 255, 0.55));
 
-    border-color: rgba(41, 98, 255, 0.85);
+    border-color: rgba(48, 144, 255, 0.85);
 
-    box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.16);
+    box-shadow: 0 0 0 2px rgba(48, 144, 255, 0.16);
 
 }
 
@@ -4141,9 +4141,9 @@ body.light-mode .tv-style-btn:hover {
 
 body.light-mode .tv-style-btn.active {
 
-    background: rgba(41, 98, 255, 0.14);
+    background: rgba(48, 144, 255, 0.14);
 
-    border-color: rgba(41, 98, 255, 0.55);
+    border-color: rgba(48, 144, 255, 0.55);
 
     color: #000000;
 
@@ -4211,9 +4211,9 @@ body.light-mode .tv-align-btn:hover {
 
 body.light-mode .tv-align-btn.active {
 
-    background: rgba(41, 98, 255, 0.14) !important;
+    background: rgba(48, 144, 255, 0.14) !important;
 
-    border: 1px solid rgba(41, 98, 255, 0.55) !important;
+    border: 1px solid rgba(48, 144, 255, 0.55) !important;
 
     color: #000000 !important;
 
@@ -4235,9 +4235,9 @@ body.light-mode .tv-align-btn.active svg {
 
 body.light-mode .tv-align-btn.active:hover {
 
-    background: rgba(41, 98, 255, 0.2) !important;
+    background: rgba(48, 144, 255, 0.2) !important;
 
-    box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.16);
+    box-shadow: 0 0 0 2px rgba(48, 144, 255, 0.16);
 
 }
 
@@ -4345,9 +4345,9 @@ body.light-mode .tv-ending-btn:hover {
 
 body.light-mode .tv-btn-apply {
 
-    background: linear-gradient(135deg, rgba(41, 98, 255, 0.75), rgba(41, 98, 255, 0.45));
+    background: linear-gradient(135deg, rgba(48, 144, 255, 0.75), rgba(48, 144, 255, 0.45));
 
-    border: 1px solid rgba(41, 98, 255, 0.85);
+    border: 1px solid rgba(48, 144, 255, 0.85);
 
     color: #fff;
 
@@ -4357,9 +4357,9 @@ body.light-mode .tv-btn-apply {
 
 body.light-mode .tv-btn-apply:hover {
 
-    background: linear-gradient(135deg, rgba(41, 98, 255, 0.85), rgba(41, 98, 255, 0.55));
+    background: linear-gradient(135deg, rgba(48, 144, 255, 0.85), rgba(48, 144, 255, 0.55));
 
-    box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.16);
+    box-shadow: 0 0 0 2px rgba(48, 144, 255, 0.16);
 
     color: #fff;
 
@@ -4369,9 +4369,9 @@ body.light-mode .tv-btn-apply:hover {
 
 body.light-mode .tv-ending-btn.active {
 
-    background: rgba(41, 98, 255, 0.14) !important;
+    background: rgba(48, 144, 255, 0.14) !important;
 
-    border-color: rgba(41, 98, 255, 0.55) !important;
+    border-color: rgba(48, 144, 255, 0.55) !important;
 
     color: #000000 !important;
 
@@ -4471,7 +4471,7 @@ body.light-mode .tv-ending-option svg path[fill] {
 
 body.light-mode .tv-ending-option:hover {
 
-    background: rgba(41, 98, 255, 0.1) !important;
+    background: rgba(48, 144, 255, 0.1) !important;
 
 }
 
@@ -4535,7 +4535,7 @@ body.light-mode .tv-info-option span {
 
 body.light-mode .tv-info-option:hover {
 
-    background: rgba(41, 98, 255, 0.1) !important;
+    background: rgba(48, 144, 255, 0.1) !important;
 
 }
 
@@ -4701,9 +4701,9 @@ body.light-mode .tv-prop-dropdown-btn {
 
 body.light-mode .tv-prop-dropdown-btn:hover {
 
-    background: rgba(41, 98, 255, 0.10);
-    border-color: rgba(41, 98, 255, 0.55);
-    box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.14);
+    background: rgba(48, 144, 255, 0.10);
+    border-color: rgba(48, 144, 255, 0.55);
+    box-shadow: 0 0 0 2px rgba(48, 144, 255, 0.14);
     color: #000000;
 
 }
@@ -4732,7 +4732,7 @@ body.light-mode .tv-prop-dropdown-option:hover {
 
 body.light-mode .tv-prop-dropdown-option.selected {
 
-    background: rgba(41, 98, 255, 0.14);
+    background: rgba(48, 144, 255, 0.14);
     color: #1e40af;
 
 }
@@ -4773,7 +4773,7 @@ body.light-mode .number-input-wrapper {
 
 body.light-mode .number-input-wrapper:focus-within {
 
-    border-color: var(--sp-accent, #2962ff);
+    border-color: var(--sp-accent, #3090FF);
 
 }
 
@@ -5001,7 +5001,7 @@ body.light-mode .tv-line-type-select:hover {
 
 .tv-side-tab-btn.active .front {
 
-    color: var(--sp-accent, #2962ff);
+    color: var(--sp-accent, #3090FF);
 
     background: rgba(var(--sp-accent-rgb), 0.12);
 
@@ -5041,9 +5041,9 @@ body.light-mode .tv-side-tab-btn:hover .front {
 
 body.light-mode .tv-side-tab-btn.active .front {
 
-    color: #2962ff;
+    color: #3090FF;
 
-    background: rgba(41, 98, 255, 0.08);
+    background: rgba(48, 144, 255, 0.08);
 
 }
 
@@ -5051,7 +5051,7 @@ body.light-mode .tv-side-tab-btn.active .front {
 
 body.light-mode .tv-side-tab-btn.active:hover .front {
 
-    background: rgba(41, 98, 255, 0.12);
+    background: rgba(48, 144, 255, 0.12);
 
 }
 
@@ -5361,9 +5361,9 @@ body.light-mode .tv-collapsible-tab-btn {
 
 body.light-mode .tv-collapsible-tab-btn:hover {
 
-    background: rgba(41, 98, 255, 0.10);
+    background: rgba(48, 144, 255, 0.10);
 
-    border-color: rgba(41, 98, 255, 0.6);
+    border-color: rgba(48, 144, 255, 0.6);
 
     color: #000000;
 
@@ -5373,8 +5373,8 @@ body.light-mode .tv-collapsible-tab-btn:hover {
 
 body.light-mode .tv-collapsible-tab-btn.active {
 
-    background: rgba(41, 98, 255, 0.16);
-    border-color: rgba(41, 98, 255, 0.65);
+    background: rgba(48, 144, 255, 0.16);
+    border-color: rgba(48, 144, 255, 0.65);
     color: #000000;
 
 }
@@ -5383,9 +5383,9 @@ body.light-mode .tv-collapsible-tab-btn.active {
 
 body.light-mode .tv-collapsible-tabs-top .tv-collapsible-tab-btn.active {
 
-    background: rgba(41, 98, 255, 0.16) !important;
+    background: rgba(48, 144, 255, 0.16) !important;
 
-    border-color: rgba(41, 98, 255, 0.65) !important;
+    border-color: rgba(48, 144, 255, 0.65) !important;
 
     color: #000000 !important;
 
@@ -6711,7 +6711,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             const middleLineEnabled = drawing.style.showMiddleLine || false;
 
-            const mlColor = drawing.style.middleLineColor || '#2962FF';
+            const mlColor = drawing.style.middleLineColor || '#3090FF';
 
             const mlType = drawing.style.middleLineDash || '';
 
@@ -6885,7 +6885,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             bgRow.className = 'tv-prop-row';
 
-            bgRow.innerHTML = '<span class="tv-prop-label">Background</span><div class="tv-prop-controls"><button class="tv-color-btn" data-prop="backgroundColor" style="background: ' + (drawing.style.fill || 'rgba(41, 98, 255, 0.2)') + ';"></button></div>';
+            bgRow.innerHTML = '<span class="tv-prop-label">Background</span><div class="tv-prop-controls"><button class="tv-color-btn" data-prop="backgroundColor" style="background: ' + (drawing.style.fill || 'rgba(48, 144, 255, 0.2)') + ';"></button></div>';
 
             if (drawing.type === 'rectangle' && rectangleBorderRow) {
 
@@ -6955,7 +6955,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 <div class="tv-prop-controls">
 
-                    <button class="tv-color-btn" data-prop="backgroundColor" style="background: ${drawing.style.fill || '#2962FF'};"></button>
+                    <button class="tv-color-btn" data-prop="backgroundColor" style="background: ${drawing.style.fill || '#3090FF'};"></button>
 
                 </div>
 
@@ -7371,7 +7371,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 <div class="tv-prop-controls" style="width: 180px; min-height: 34px; display: flex; align-items: center; justify-content: flex-start; gap: 8px;">
 
-                    <button class="tv-color-btn" data-prop="backgroundColor" style="background: ${drawing.style.fill || 'rgba(41, 98, 255, 0.2)'};"></button>
+                    <button class="tv-color-btn" data-prop="backgroundColor" style="background: ${drawing.style.fill || 'rgba(48, 144, 255, 0.2)'};"></button>
 
                 </div>
 
@@ -8078,9 +8078,9 @@ body.light-mode .template-save-dialog .dialog-title {
 
             { value: 0.5, enabled: true, color: '#4caf50' },
 
-            { value: 0.75, enabled: true, color: '#2962ff' },
+            { value: 0.75, enabled: true, color: '#3090FF' },
 
-            { value: 1, enabled: true, color: '#2962ff' }
+            { value: 1, enabled: true, color: '#3090FF' }
 
         ];
 
@@ -8092,7 +8092,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             { value: 0.5, enabled: true, color: '#4caf50' },
 
-            { value: 0.75, enabled: true, color: '#2962ff' }
+            { value: 0.75, enabled: true, color: '#3090FF' }
 
         ];
 
@@ -8106,7 +8106,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             { value: 0.75, enabled: true, color: '#4caf50' },
 
-            { value: 1, enabled: true, color: '#2962ff' }
+            { value: 1, enabled: true, color: '#3090FF' }
 
         ];
 
@@ -8776,7 +8776,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             { value: 0.5,   enabled: true, color: '#00bcd4', label: '1/2' },
 
-            { value: 1,     enabled: true, color: '#2962ff', label: '1/1' },
+            { value: 1,     enabled: true, color: '#3090FF', label: '1/1' },
 
             { value: 2,     enabled: true, color: '#9c27b0', label: '2/1' },
 
@@ -9662,7 +9662,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             { value: 0.75, label: '0.75', color: '#5f9ea0', enabled: false },
 
-            { value: 1, label: '1', color: '#2962ff', enabled: true },
+            { value: 1, label: '1', color: '#3090FF', enabled: true },
 
             { value: 1.5, label: '1.5', color: '#9370db', enabled: false },
 
@@ -9784,7 +9784,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             `;
 
-            input.onfocus = () => { input.style.borderColor = '#2962ff'; };
+            input.onfocus = () => { input.style.borderColor = '#3090FF'; };
 
             input.onblur = () => { input.style.borderColor = 'rgba(255,255,255,0.12)'; };
 
@@ -9911,11 +9911,11 @@ body.light-mode .template-save-dialog .dialog-title {
             { value: 0.5, label: '0.5', color: '#ffeb3b', enabled: true },
             { value: 0.618, label: '0.618', color: '#4caf50', enabled: true },
             { value: 0.786, label: '0.786', color: '#00bcd4', enabled: true },
-            { value: 1, label: '1', color: '#2962ff', enabled: true },
+            { value: 1, label: '1', color: '#3090FF', enabled: true },
             { value: 1.618, label: '1.618', color: '#e91e63', enabled: true },
-            { value: 2, label: '2', color: '#2962ff', enabled: true },
+            { value: 2, label: '2', color: '#3090FF', enabled: true },
             { value: 2.618, label: '2.618', color: '#e91e63', enabled: true },
-            { value: 3, label: '3', color: '#2962ff', enabled: true },
+            { value: 3, label: '3', color: '#3090FF', enabled: true },
             { value: 4.236, label: '4.236', color: '#f23645', enabled: true }
         ];
 
@@ -10000,7 +10000,7 @@ body.light-mode .template-save-dialog .dialog-title {
                     { value: 3, color: '#ffeb3b', enabled: true },
                     { value: 5, color: '#4caf50', enabled: true },
                     { value: 8, color: '#00bcd4', enabled: true },
-                    { value: 13, color: '#2962ff', enabled: true }
+                    { value: 13, color: '#3090FF', enabled: true }
 
                 ];
 
@@ -10010,7 +10010,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 return [
 
-                    { value: 1, color: '#2962ff', enabled: true, locked: true },
+                    { value: 1, color: '#3090FF', enabled: true, locked: true },
                     { value: 0.75, color: '#00bcd4', enabled: true },
                     { value: 0.618, color: '#4caf50', enabled: true },
                     { value: 0.5, color: '#ffeb3b', enabled: true },
@@ -12260,7 +12260,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
         // Default levels aligned with V9 (0/1 rails + inner levels; sorted by value)
-        const baseColor = (drawing.style && drawing.style.stroke) || '#2962ff';
+        const baseColor = (drawing.style && drawing.style.stroke) || '#3090FF';
 
             const defaultLevels = [
                 { value: 0, color: baseColor, enabled: true },
@@ -12385,7 +12385,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             `;
 
-            input.onfocus = () => { input.style.borderColor = '#2962ff'; };
+            input.onfocus = () => { input.style.borderColor = '#3090FF'; };
 
             input.onblur = () => { input.style.borderColor = 'rgba(255,255,255,0.12)'; };
 
@@ -12879,7 +12879,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         if (drawing.style.showBackground === undefined) drawing.style.showBackground = true;
 
-        if (!drawing.style.fill || drawing.style.fill === 'none') drawing.style.fill = 'rgba(41, 98, 255, 0.15)';
+        if (!drawing.style.fill || drawing.style.fill === 'none') drawing.style.fill = 'rgba(48, 144, 255, 0.15)';
 
         if (!drawing.style.textColor) drawing.style.textColor = '#ffffff';
 
@@ -13076,7 +13076,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         bgRow.controls.innerHTML = `
 
-            <button class="tv-color-btn" data-prop="backgroundColor" style="background: ${drawing.style.fill || 'rgba(41, 98, 255, 0.15)'};"></button>
+            <button class="tv-color-btn" data-prop="backgroundColor" style="background: ${drawing.style.fill || 'rgba(48, 144, 255, 0.15)'};"></button>
 
         `;
 
@@ -13430,7 +13430,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             <button class="tv-color-btn" data-prop="backgroundColor" style="background: ${drawing.style.fill || 'rgba(14, 59, 70, 0.22)'};"></button>
 
-            <input type="range" class="tv-slider" data-prop="backgroundOpacity" value="${zoneBackgroundOpacityPercent}" min="0" max="100" step="1" style="width: 92px; accent-color: #2962ff;">
+            <input type="range" class="tv-slider" data-prop="backgroundOpacity" value="${zoneBackgroundOpacityPercent}" min="0" max="100" step="1" style="width: 92px; accent-color: #3090FF;">
 
             <span class="tv-background-opacity-value" style="color: var(--sp-text,#d1d4dc); font-size: 12px; min-width: 38px; text-align: right;">${zoneBackgroundOpacityPercent}%</span>
 
@@ -14212,7 +14212,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                     min="0" max="100" step="5"
 
-                    style="width: 100px; accent-color: #2962ff;">
+                    style="width: 100px; accent-color: #3090FF;">
 
                 <span class="tv-transparency-value" style="color: var(--sp-text,#d1d4dc); font-size: 13px; min-width: 40px;">${Math.round((drawing.style.opacity || 1) * 100)}%</span>
 
@@ -14326,7 +14326,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                     min="10" max="100" step="5"
 
-                    style="width: 100px; accent-color: #2962ff;">
+                    style="width: 100px; accent-color: #3090FF;">
 
                 <span class="tv-opacity-value" style="color: var(--sp-text,#d1d4dc); font-size: 13px; min-width: 40px;">${Math.round((drawing.style.opacity || 1) * 100)}%</span>
 
@@ -14406,7 +14406,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                     <div class="tv-prop-controls" style="margin-left: auto;">
 
-                        <button class="tv-color-btn" data-prop="fill" style="background: ${drawing.style.fill || '#2962ff'};"></button>
+                        <button class="tv-color-btn" data-prop="fill" style="background: ${drawing.style.fill || '#3090FF'};"></button>
 
                     </div>
 
@@ -14474,7 +14474,7 @@ body.light-mode .template-save-dialog .dialog-title {
                     bgRow.innerHTML = `
                         <span class="tv-checkbox-label">Color</span>
                         <div class="tv-prop-controls" style="margin-left: auto;">
-                            <button class="tv-color-btn" data-prop="${bgProp}" style="background: ${bgColor || 'rgba(41, 98, 255, 0.15)'};"></button>
+                            <button class="tv-color-btn" data-prop="${bgProp}" style="background: ${bgColor || 'rgba(48, 144, 255, 0.15)'};"></button>
                         </div>
                     `;
                 } else {
@@ -14498,7 +14498,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                     <div class="tv-prop-controls" style="margin-left: auto;">
 
-                        <button class="tv-color-btn" data-prop="${bgProp}" style="background: ${bgColor || 'rgba(41, 98, 255, 0.15)'};"></button>
+                        <button class="tv-color-btn" data-prop="${bgProp}" style="background: ${bgColor || 'rgba(48, 144, 255, 0.15)'};"></button>
 
                     </div>
 
@@ -14667,7 +14667,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 <div class="tv-prop-controls" style="margin-left: auto;">
 
-                    <button class="tv-color-btn" data-prop="backgroundColor" style="background: ${drawing.style.backgroundColor || '#2962FF'};"></button>
+                    <button class="tv-color-btn" data-prop="backgroundColor" style="background: ${drawing.style.backgroundColor || '#3090FF'};"></button>
 
                 </div>
 
@@ -14693,7 +14693,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 <div class="tv-prop-controls" style="margin-left: auto;">
 
-                    <button class="tv-color-btn" data-prop="fill" style="background: ${drawing.style.fill || '#2962ff'};"></button>
+                    <button class="tv-color-btn" data-prop="fill" style="background: ${drawing.style.fill || '#3090FF'};"></button>
 
                 </div>
 
@@ -19406,7 +19406,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                         if (isChecked) {
 
-                            drawing.style.fill = drawing.style._savedFill || this.pendingChanges.backgroundColor || drawing.style.fill || 'rgba(41, 98, 255, 0.15)';
+                            drawing.style.fill = drawing.style._savedFill || this.pendingChanges.backgroundColor || drawing.style.fill || 'rgba(48, 144, 255, 0.15)';
 
                         } else {
 
@@ -19436,7 +19436,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                             if (isChecked) {
 
-                                drawing.style.backgroundColor = drawing.style._savedBackgroundColor || this.pendingChanges.backgroundColor || drawing.style.backgroundColor || 'rgba(41, 98, 255, 0.2)';
+                                drawing.style.backgroundColor = drawing.style._savedBackgroundColor || this.pendingChanges.backgroundColor || drawing.style.backgroundColor || 'rgba(48, 144, 255, 0.2)';
 
                             } else {
 
@@ -23684,7 +23684,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 } else {
 
-                    drawing.style.backgroundColor = this.pendingChanges.backgroundColor || drawing.style._savedBackgroundColor || drawing.style.backgroundColor || 'rgba(41, 98, 255, 0.2)';
+                    drawing.style.backgroundColor = this.pendingChanges.backgroundColor || drawing.style._savedBackgroundColor || drawing.style.backgroundColor || 'rgba(48, 144, 255, 0.2)';
 
                 }
 
@@ -23784,7 +23784,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 if (this.pendingChanges.showBackground) {
 
-                    drawing.style.fill = this.pendingChanges.backgroundColor || drawing.style._savedFill || drawing.style.fill || 'rgba(41, 98, 255, 0.15)';
+                    drawing.style.fill = this.pendingChanges.backgroundColor || drawing.style._savedFill || drawing.style.fill || 'rgba(48, 144, 255, 0.15)';
 
                 } else {
 
@@ -25333,9 +25333,9 @@ showSaveTemplateDialog(drawing, dropdown) {
 
             .template-save-dialog #template-save-btn {
 
-                background: linear-gradient(135deg, rgba(41, 98, 255, 0.75), rgba(41, 98, 255, 0.45)) !important;
+                background: linear-gradient(135deg, rgba(48, 144, 255, 0.75), rgba(48, 144, 255, 0.45)) !important;
 
-                border: 1px solid rgba(41, 98, 255, 0.85) !important;
+                border: 1px solid rgba(48, 144, 255, 0.85) !important;
 
                 color: #fff !important;
 
@@ -25343,9 +25343,9 @@ showSaveTemplateDialog(drawing, dropdown) {
 
             .template-save-dialog #template-save-btn:hover {
 
-                background: linear-gradient(135deg, rgba(41, 98, 255, 0.85), rgba(41, 98, 255, 0.55)) !important;
+                background: linear-gradient(135deg, rgba(48, 144, 255, 0.85), rgba(48, 144, 255, 0.55)) !important;
 
-                box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.16) !important;
+                box-shadow: 0 0 0 2px rgba(48, 144, 255, 0.16) !important;
 
             }
 
@@ -25397,9 +25397,9 @@ showSaveTemplateDialog(drawing, dropdown) {
 
                 padding: 6px 14px;
 
-                background: linear-gradient(135deg, rgba(41, 98, 255, 0.75), rgba(41, 98, 255, 0.45));
+                background: linear-gradient(135deg, rgba(48, 144, 255, 0.75), rgba(48, 144, 255, 0.45));
 
-                border: 1px solid rgba(41, 98, 255, 0.85);
+                border: 1px solid rgba(48, 144, 255, 0.85);
 
                 border-radius: 4px;
 
@@ -25877,7 +25877,7 @@ applyTemplate(drawing, templateId, modal) {
 
             background: #1e222d;
 
-            border: 1px solid #2962ff;
+            border: 1px solid #3090FF;
 
             border-radius: 4px;
 
@@ -26028,7 +26028,7 @@ applyTemplate(drawing, templateId, modal) {
 
         if (bgColorBtn) {
 
-            bgColorBtn.style.background = drawing.style.fill || '#2962FF';
+            bgColorBtn.style.background = drawing.style.fill || '#3090FF';
 
         }
 
@@ -26175,7 +26175,7 @@ applyTemplate(drawing, templateId, modal) {
 
             'font-weight:600',
 
-            'font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif',
+            'font-family:"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
 
             'color:#fff',
 
@@ -26549,7 +26549,7 @@ applyTemplate(drawing, templateId, modal) {
 
     color: var(--sp-text,#d1d4dc);
 
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    font-family: "Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif;
 
     font-size: 13px;
 
@@ -26619,7 +26619,7 @@ applyTemplate(drawing, templateId, modal) {
 
 .drawing-style-editor .settings-header .settings-close:hover {
 
-    background: rgba(41, 98, 255, 0.15);
+    background: rgba(48, 144, 255, 0.15);
 
     color: #ffffff;
 
@@ -28460,7 +28460,7 @@ applyTemplate(drawing, templateId, modal) {
 
             });
 
-            const initialBackground = drawing.style.backgroundColor || drawing.style.fill || 'rgba(41, 98, 255, 0.9)';
+            const initialBackground = drawing.style.backgroundColor || drawing.style.fill || 'rgba(48, 144, 255, 0.9)';
 
             this.addColorPicker(styleSection, 'Background Color', initialBackground, (color) => {
 
@@ -28476,7 +28476,7 @@ applyTemplate(drawing, templateId, modal) {
 
         else if (drawing.type === 'note') {
 
-            this.addColorPicker(styleSection, 'Background Color', drawing.style.backgroundColor || 'rgba(41, 98, 255, 0.95)', (color) => {
+            this.addColorPicker(styleSection, 'Background Color', drawing.style.backgroundColor || 'rgba(48, 144, 255, 0.95)', (color) => {
 
                 drawing.style.backgroundColor = color;
 
@@ -28538,7 +28538,7 @@ applyTemplate(drawing, templateId, modal) {
 
         else if (drawing.type === 'anchored-text') {
 
-            this.addColorPicker(styleSection, 'Background Color', drawing.style.backgroundColor || 'rgba(41, 98, 255, 0.9)', (color) => {
+            this.addColorPicker(styleSection, 'Background Color', drawing.style.backgroundColor || 'rgba(48, 144, 255, 0.9)', (color) => {
 
                 drawing.style.backgroundColor = color;
 
@@ -28580,7 +28580,7 @@ applyTemplate(drawing, templateId, modal) {
 
         else if (drawing.type === 'callout') {
 
-            this.addColorPicker(styleSection, 'Background Color', drawing.style.backgroundColor || 'rgba(41, 98, 255, 0.95)', (color) => {
+            this.addColorPicker(styleSection, 'Background Color', drawing.style.backgroundColor || 'rgba(48, 144, 255, 0.95)', (color) => {
 
                 drawing.style.backgroundColor = color;
 
@@ -28640,7 +28640,7 @@ applyTemplate(drawing, templateId, modal) {
 
         else if (drawing.type === 'price-label-2') {
 
-            this.addColorPicker(styleSection, 'Fill Color', drawing.style.fill || '#2962ff', (color) => {
+            this.addColorPicker(styleSection, 'Fill Color', drawing.style.fill || '#3090FF', (color) => {
 
                 drawing.style.fill = color;
 
@@ -29114,9 +29114,9 @@ applyTemplate(drawing, templateId, modal) {
 
 .drawing-style-editor .drawing-settings-tab-header .tab-button:hover { color: var(--sp-text,#d1d4dc); background: rgba(209, 212, 220, 0.08); }
 
-.drawing-style-editor .drawing-settings-tab-header .tab-button.active { color: #ffffff; background: linear-gradient(135deg, rgba(41,98,255,0.4), rgba(41,98,255,0.2)); box-shadow: 0 4px 10px rgba(41, 98, 255, 0.18); }
+.drawing-style-editor .drawing-settings-tab-header .tab-button.active { color: #ffffff; background: linear-gradient(135deg, rgba(48, 144, 255,0.4), rgba(48, 144, 255,0.2)); box-shadow: 0 4px 10px rgba(48, 144, 255, 0.18); }
 
-body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.active { color: #000000 !important; background: rgba(41,98,255,0.14) !important; box-shadow: none !important; }
+body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.active { color: #000000 !important; background: rgba(48, 144, 255,0.14) !important; box-shadow: none !important; }
 
 .drawing-style-editor .drawing-settings-tab-content .tab-pane { display: none; }
 
@@ -29244,7 +29244,7 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
         const templates = [
 
-            { name: 'TradingView Blue', stroke: '#787b86', fill: isShape ? 'rgba(41, 98, 255, 0.15)' : 'none', strokeWidth: 2 },
+            { name: 'TradingView Blue', stroke: '#787b86', fill: isShape ? 'rgba(48, 144, 255, 0.15)' : 'none', strokeWidth: 2 },
 
             { name: 'Classic Red', stroke: '#F23645', fill: isShape ? 'rgba(242, 54, 69, 0.15)' : 'none', strokeWidth: 2 },
 
@@ -29884,7 +29884,7 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
                 .style('padding', '8px 4px')
 
-                .style('background', initialValue === style.value ? 'rgba(41, 98, 255, 0.2)' : 'rgba(255,255,255,0.05)')
+                .style('background', initialValue === style.value ? 'rgba(48, 144, 255, 0.2)' : 'rgba(255,255,255,0.05)')
 
                 .style('border', initialValue === style.value ? '1px solid #787b86' : '1px solid rgba(255,255,255,0.1)')
 
@@ -29914,7 +29914,7 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
                     d3.select(this)
 
-                        .style('background', 'rgba(41, 98, 255, 0.2)')
+                        .style('background', 'rgba(48, 144, 255, 0.2)')
 
                         .style('border', '1px solid #787b86');
 
@@ -30050,7 +30050,7 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
                     .style('border', '1px solid #787b86')
 
-                    .style('box-shadow', '0 0 0 2px rgba(41, 98, 255, 0.18)');
+                    .style('box-shadow', '0 0 0 2px rgba(48, 144, 255, 0.18)');
 
             })
 
@@ -30094,9 +30094,9 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
                 .style('border-radius', '4px')
 
-                .style('background', 'rgba(41, 98, 255, 0.08)')
+                .style('background', 'rgba(48, 144, 255, 0.08)')
 
-                .style('border', '1px solid rgba(41, 98, 255, 0.25)')
+                .style('border', '1px solid rgba(48, 144, 255, 0.25)')
 
                 .text(suffix);
 
@@ -30635,7 +30635,7 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
         const targetValueText = createReadOnlyRow(infoRows, 'Take Profit', '#22c55e');
 
-        const rrValueText = createReadOnlyRow(infoRows, 'R:R Ratio', '#2962ff');
+        const rrValueText = createReadOnlyRow(infoRows, 'R:R Ratio', '#3090FF');
 
 
 
@@ -31487,7 +31487,7 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
                 { value: 8, enabled: true, color: '#00bcd4' },
 
-                { value: 13, enabled: true, color: '#2962ff' },
+                { value: 13, enabled: true, color: '#3090FF' },
 
                 { value: 21, enabled: true, color: '#9c27b0' },
 
@@ -31515,7 +31515,7 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
                 { value: 0.786, enabled: true, color: '#00bcd4' },
 
-                { value: 1, enabled: true, color: '#2962ff' },
+                { value: 1, enabled: true, color: '#3090FF' },
 
                 { value: 1.272, enabled: false, color: '#9c27b0' },
 
@@ -31653,7 +31653,7 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
                     // Simple color palette
 
-                    const colors = ['#787b86', '#f23645', '#ff9800', '#ffeb3b', '#4caf50', '#00bcd4', '#2962ff', '#9c27b0', '#e91e63'];
+                    const colors = ['#787b86', '#f23645', '#ff9800', '#ffeb3b', '#4caf50', '#00bcd4', '#3090FF', '#9c27b0', '#e91e63'];
 
                     const current = colors.indexOf(level.color);
 
@@ -31835,7 +31835,7 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
             { value: 0.75, label: '0.75', color: '#5f9ea0', enabled: false },
 
-            { value: 1, label: '1', color: '#2962ff', enabled: true },
+            { value: 1, label: '1', color: '#3090FF', enabled: true },
 
             { value: 1.5, label: '1.5', color: '#9370db', enabled: false },
 
@@ -32395,7 +32395,7 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
                 { value: 2, label: '1/2', enabled: true, color: '#00bcd4' },
 
-                { value: 1, label: '1/1', enabled: true, color: '#2962ff' },
+                { value: 1, label: '1/1', enabled: true, color: '#3090FF' },
 
                 { value: 0.5, label: '2/1', enabled: true, color: '#9c27b0' },
 
@@ -32759,7 +32759,7 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
             { value: 8, enabled: true, color: '#00bcd4' },
 
-            { value: 13, enabled: true, color: '#2962ff' },
+            { value: 13, enabled: true, color: '#3090FF' },
 
             { value: 21, enabled: true, color: '#9c27b0' },
 
@@ -34266,7 +34266,7 @@ class InlineTextEditor {
 
                 .style('background', 'transparent')
 
-                .style('border', opts.showBorder ? '1px solid #2962FF' : 'none')
+                .style('border', opts.showBorder ? '1px solid #3090FF' : 'none')
 
                 .style('padding', opts.showBorder ? '3px 5px' : '0')
 
@@ -34578,7 +34578,7 @@ class InlineTextEditor {
 
             .style('background', 'transparent')
 
-            .style('border', '1px solid #2962FF')
+            .style('border', '1px solid #3090FF')
 
             .style('backdrop-filter', 'none')
 
@@ -34634,9 +34634,9 @@ class InlineTextEditor {
 
                 d3.select(this)
 
-                    .style('border-color', 'rgba(41, 98, 255, 0.7)')
+                    .style('border-color', 'rgba(48, 144, 255, 0.7)')
 
-                    .style('box-shadow', '0 0 0 2px rgba(41, 98, 255, 0.15), 0 1px 8px rgba(0, 0, 0, 0.32)');
+                    .style('box-shadow', '0 0 0 2px rgba(48, 144, 255, 0.15), 0 1px 8px rgba(0, 0, 0, 0.32)');
 
             })
 
@@ -34945,7 +34945,7 @@ class DrawingContextMenu {
 
                 z-index: 100000;
 
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+                font-family: "Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif;
 
                 font-size: 13px;
 
@@ -35127,9 +35127,9 @@ class DrawingContextMenu {
 
             body.light-mode .tv-context-menu-item:hover {
 
-                background: rgba(41, 98, 255, 0.10);
+                background: rgba(48, 144, 255, 0.10);
 
-                color: #2962ff;
+                color: #3090FF;
 
             }
 

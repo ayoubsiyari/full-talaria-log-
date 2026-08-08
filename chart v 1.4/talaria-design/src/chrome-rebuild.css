@@ -259,11 +259,15 @@
   cursor: default;
   flex-shrink: 0;
 }
-[data-ind-v2="1"] [data-ind-pin]:hover,
 [data-ind-v2="1"] [data-ind-toggle]:hover {
   background: var(--surface-sunken) !important;
   border-color: var(--line) !important;
   color: var(--text) !important;
+}
+[data-ind-v2="1"] [data-ind-pin]:hover {
+  background: var(--accent-quiet) !important;
+  border-color: transparent !important;
+  color: var(--accent) !important;
 }
 [data-ind-v2="1"] [data-ind-pin][data-on="1"] {
   color: var(--accent) !important;
@@ -2834,9 +2838,9 @@
   cursor: default;
 }
 [data-tb-drop="tf"] [data-tf-pin]:hover:not(:disabled) {
-  border-color: var(--line) !important;
-  color: var(--text) !important;
-  background: var(--surface-raised) !important;
+  border-color: transparent !important;
+  color: var(--accent) !important;
+  background: var(--accent-quiet) !important;
 }
 [data-tb-drop="tf"] [data-tf-pin][data-on="1"] {
   color: var(--accent) !important;

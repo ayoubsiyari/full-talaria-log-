@@ -74,9 +74,9 @@ class ParallelChannelTool extends BaseDrawing {
         const baseColor = this.style.stroke;
         this.levels = [
             { value: 0, color: baseColor, enabled: true },
-            { value: 0.25, color: '#1e3a5f', enabled: false },
+            { value: 0.25, color: '#2C537A', enabled: false },
             { value: 0.5, color: baseColor, enabled: true, lineType: '5,5' },
-            { value: 0.75, color: '#1e3a5f', enabled: false },
+            { value: 0.75, color: '#2C537A', enabled: false },
             { value: 1, color: baseColor, enabled: true }
         ];
     }
@@ -95,7 +95,7 @@ class ParallelChannelTool extends BaseDrawing {
     ensureTextDefaults() {
         if (!this.style.textColor) this.style.textColor = this.style.stroke;
         if (!this.style.fontSize) this.style.fontSize = 14;
-        if (!this.style.fontFamily) this.style.fontFamily = 'Roboto, sans-serif';
+        if (!this.style.fontFamily) this.style.fontFamily = '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif';
         if (!this.style.fontWeight) this.style.fontWeight = 'normal';
         if (!this.style.fontStyle) this.style.fontStyle = 'normal';
         if (!this.style.textVAlign) this.style.textVAlign = 'middle';
@@ -477,7 +477,7 @@ class ParallelChannelTool extends BaseDrawing {
                 anchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || 14,
-                fontFamily: this.style.fontFamily || 'Roboto, sans-serif',
+                fontFamily: this.style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
                 fontWeight: this.style.fontWeight || 'normal',
                 fontStyle: this.style.fontStyle || 'normal'
             });
@@ -489,7 +489,7 @@ class ParallelChannelTool extends BaseDrawing {
         const handleRadius = 3;
         const hitRadius = 12;
         const handleFill = 'transparent';
-        const handleStroke = '#2962FF';
+        const handleStroke = '#3090FF';
         const handleStrokeWidth = 2;
         
         group.selectAll('.resize-handle').remove();
@@ -625,17 +625,17 @@ class RegressionTrendTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('regression-trend', points, style);
         this.requiredPoints = 2;
-        this.style.stroke = style.stroke || '#9c27b0';
+        this.style.stroke = style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.strokeWidth = style.strokeWidth || 2;
-        this.style.upperStroke = style.upperStroke || '#9c27b0';
+        this.style.upperStroke = style.upperStroke || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.upperStrokeWidth = style.upperStrokeWidth || 2;
         this.style.upperStrokeDasharray = style.upperStrokeDasharray || '0';
-        this.style.lowerStroke = style.lowerStroke || '#9c27b0';
+        this.style.lowerStroke = style.lowerStroke || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.lowerStrokeWidth = style.lowerStrokeWidth || 2;
         this.style.lowerStrokeDasharray = style.lowerStrokeDasharray || '0';
-        this.style.fill = style.fill || 'rgba(156, 39, 176, 0.1)';
-        this.style.upperFill = style.upperFill || 'rgba(156, 39, 176, 0.1)';
-        this.style.lowerFill = style.lowerFill || 'rgba(156, 39, 176, 0.1)';
+        this.style.fill = style.fill || 'rgba(140, 140, 140, 0.12)';
+        this.style.upperFill = style.upperFill || 'rgba(140, 140, 140, 0.12)';
+        this.style.lowerFill = style.lowerFill || 'rgba(140, 140, 140, 0.12)';
         this.style.strokeDasharray = style.strokeDasharray || '5,5';
         this.style.extendLeft = style.extendLeft !== undefined ? style.extendLeft : false;
         this.style.extendRight = style.extendRight !== undefined ? style.extendRight : false;
@@ -651,7 +651,7 @@ class RegressionTrendTool extends BaseDrawing {
     ensureTextDefaults() {
         if (!this.style.textColor) this.style.textColor = this.style.stroke;
         if (!this.style.fontSize) this.style.fontSize = 14;
-        if (!this.style.fontFamily) this.style.fontFamily = 'Roboto, sans-serif';
+        if (!this.style.fontFamily) this.style.fontFamily = '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif';
         if (!this.style.fontWeight) this.style.fontWeight = 'normal';
         if (!this.style.fontStyle) this.style.fontStyle = 'normal';
     }
@@ -1059,7 +1059,7 @@ class RegressionTrendTool extends BaseDrawing {
                 anchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || 14,
-                fontFamily: this.style.fontFamily || 'Roboto, sans-serif',
+                fontFamily: this.style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
                 fontWeight: this.style.fontWeight || 'normal',
                 fontStyle: this.style.fontStyle || 'normal'
             });
@@ -1196,7 +1196,7 @@ class RegressionTrendTool extends BaseDrawing {
         const handleRadius = 3;
         const hitRadius = 12;
         const handleFill = 'transparent';
-        const handleStroke = '#2962FF';
+        const handleStroke = '#3090FF';
         const handleStrokeWidth = 2;
         
         group.selectAll('.resize-handle').remove();
@@ -1296,9 +1296,9 @@ class FlatTopBottomTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('flat-top-bottom', points, style);
         this.requiredPoints = 3;
-        this.style.stroke = style.stroke || '#ff9800';
+        this.style.stroke = style.stroke || '#D4893A';
         this.style.strokeWidth = style.strokeWidth || 2;
-        this.style.fill = style.fill || 'rgba(255, 152, 0, 0.1)';
+        this.style.fill = style.fill || 'rgba(212, 137, 58, 0.12)';
         this.style.strokeDasharray = style.strokeDasharray || '0';
         this.style.extendLeft = style.extendLeft || false;
         this.style.extendRight = style.extendRight || false;
@@ -1309,7 +1309,7 @@ class FlatTopBottomTool extends BaseDrawing {
     ensureTextDefaults() {
         if (!this.style.textColor) this.style.textColor = this.style.stroke;
         if (!this.style.fontSize) this.style.fontSize = 14;
-        if (!this.style.fontFamily) this.style.fontFamily = 'Roboto, sans-serif';
+        if (!this.style.fontFamily) this.style.fontFamily = '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif';
         if (!this.style.fontWeight) this.style.fontWeight = 'normal';
         if (!this.style.fontStyle) this.style.fontStyle = 'normal';
     }
@@ -1633,7 +1633,7 @@ class FlatTopBottomTool extends BaseDrawing {
             [s[1].sx, s[1].sy, s[3].sx, s[3].sy]
         ];
 
-        const fill = this.style.handlePriceColor || this.style.stroke || '#ff9800';
+        const fill = this.style.handlePriceColor || this.style.stroke || '#D4893A';
         const fontSize = 11;
 
         this.virtualPoints.forEach((point, index) => {
@@ -1665,7 +1665,7 @@ class FlatTopBottomTool extends BaseDrawing {
                 .attr('fill', fill)
                 .attr('font-size', fontSize)
                 .attr('font-weight', '500')
-                .attr('font-family', '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif')
+                .attr('font-family', '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif')
                 .style('pointer-events', 'none')
                 .style('user-select', 'none')
                 .text(label);
@@ -1746,7 +1746,7 @@ class FlatTopBottomTool extends BaseDrawing {
                 anchor,
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || 14,
-                fontFamily: this.style.fontFamily || 'Roboto, sans-serif',
+                fontFamily: this.style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
                 fontWeight: this.style.fontWeight || 'normal',
                 fontStyle: this.style.fontStyle || 'normal',
                 yAnchor: 'middle',
@@ -1785,9 +1785,9 @@ class DisjointChannelTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('disjoint-channel', points, style);
         this.requiredPoints = 3;
-        this.style.stroke = style.stroke || '#00bcd4';
+        this.style.stroke = style.stroke || DRAWING_TOOL_ACCENT;
         this.style.strokeWidth = style.strokeWidth || 2;
-        this.style.fill = style.fill || 'rgba(0, 188, 212, 0.1)';
+        this.style.fill = style.fill || 'rgba(48, 144, 255, 0.12)';
         this.style.strokeDasharray = style.strokeDasharray || '0';
         this.style.extendLeft = style.extendLeft || false;
         this.style.extendRight = style.extendRight || false;
@@ -1798,7 +1798,7 @@ class DisjointChannelTool extends BaseDrawing {
     ensureTextDefaults() {
         if (!this.style.textColor) this.style.textColor = this.style.stroke;
         if (!this.style.fontSize) this.style.fontSize = 14;
-        if (!this.style.fontFamily) this.style.fontFamily = 'Roboto, sans-serif';
+        if (!this.style.fontFamily) this.style.fontFamily = '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif';
         if (!this.style.fontWeight) this.style.fontWeight = 'normal';
         if (!this.style.fontStyle) this.style.fontStyle = 'normal';
     }
@@ -2151,7 +2151,7 @@ class DisjointChannelTool extends BaseDrawing {
                 anchor,
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || 14,
-                fontFamily: this.style.fontFamily || 'Roboto, sans-serif',
+                fontFamily: this.style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
                 fontWeight: this.style.fontWeight || 'normal',
                 fontStyle: this.style.fontStyle || 'normal',
                 yAnchor: 'middle',

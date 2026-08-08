@@ -268,7 +268,7 @@ class ArrowMarkerTool extends BaseDrawing {
                 yAnchor: 'middle',
                 fill: this.style.textColor || '#FFFFFF',
                 fontSize: this.style.fontSize || 14,
-                fontFamily: this.style.fontFamily || 'Roboto, sans-serif',
+                fontFamily: this.style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
                 fontWeight: this.style.fontWeight || 'normal',
                 fontStyle: this.style.fontStyle || 'normal'
             });
@@ -437,7 +437,7 @@ class ArrowMarkUpTool extends BaseDrawing {
                 baseline: 'hanging',
                 fill: this.style.textColor || '#FFFFFF',
                 fontSize: this.style.fontSize || 14,
-                fontFamily: this.style.fontFamily || 'Roboto, sans-serif',
+                fontFamily: this.style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
                 fontWeight: this.style.fontWeight || 'normal',
                 fontStyle: this.style.fontStyle || 'normal'
             });
@@ -569,7 +569,7 @@ class ArrowMarkDownTool extends BaseDrawing {
                 baseline: 'middle',
                 fill: this.style.textColor || '#FFFFFF',
                 fontSize: this.style.fontSize || 14,
-                fontFamily: this.style.fontFamily || 'Roboto, sans-serif',
+                fontFamily: this.style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
                 fontWeight: this.style.fontWeight || 'normal',
                 fontStyle: this.style.fontStyle || 'normal'
             });
@@ -708,7 +708,7 @@ class CircleTool extends BaseDrawing {
 
         // Render middle line if enabled (horizontal only)
         if (this.style.showMiddleLine) {
-            const midLineColor = this.style.middleLineColor || '#2962FF';
+            const midLineColor = this.style.middleLineColor || '#3090FF';
             const midLineWidth = this.style.middleLineWidth || 1;
             const midLineDash = this.style.middleLineDash || '';
             
@@ -925,7 +925,7 @@ class RotatedRectangleTool extends BaseDrawing {
         // Middle line: parallel to the first edge, through the center (matches axis-aligned RectangleTool).
         if (this.style.showMiddleLine) {
             const scaleFactor = this.getZoomScaleFactor(scales);
-            const midLineColor = this.style.middleLineColor || '#2962FF';
+            const midLineColor = this.style.middleLineColor || '#3090FF';
             const midLineWidth = Math.max(0.5, (this.style.middleLineWidth || 1) * scaleFactor);
             const midLineDash = this.style.middleLineDash || '';
             const c = this.corners;
@@ -955,7 +955,7 @@ class RotatedRectangleTool extends BaseDrawing {
 
         const handleRadius = 3;
         const handleFill = 'transparent';
-        const handleStroke = '#2962FF';
+        const handleStroke = '#3090FF';
         const handleStrokeWidth = 2;
 
         group.selectAll('.resize-handle').remove();
@@ -1344,7 +1344,7 @@ class ArcTool extends BaseDrawing {
         this.handles = [];
         const handleRadius = 3;
         const handleFill = 'transparent';
-        const handleStroke = '#2962FF';
+        const handleStroke = '#3090FF';
         const handleStrokeWidth = 2;
         
         group.selectAll('.resize-handle').remove();
@@ -1821,7 +1821,7 @@ class CurveTool extends BaseDrawing {
         this.handles = []; // Reset handles array
         const handleRadius = 3;
         const handleFill = 'transparent';
-        const handleStroke = '#2962FF';
+        const handleStroke = '#3090FF';
         const handleStrokeWidth = 2;
         
         group.selectAll('.resize-handle').remove();
@@ -1884,7 +1884,7 @@ class CurveTool extends BaseDrawing {
             yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: this.style.fontSize || 14,
-            fontFamily: this.style.fontFamily || 'Roboto, sans-serif',
+            fontFamily: this.style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
             fontWeight: this.style.fontWeight || 'normal',
             fontStyle: this.style.fontStyle || 'normal'
         });
@@ -2198,7 +2198,7 @@ class DoubleCurveTool extends BaseDrawing {
         this.handles = [];
         const handleRadius = 3;
         const handleFill = 'transparent';
-        const handleStroke = '#2962FF';
+        const handleStroke = '#3090FF';
         const handleStrokeWidth = 2;
 
         group.selectAll('.resize-handle').remove();
@@ -2287,7 +2287,7 @@ class DoubleCurveTool extends BaseDrawing {
                 yAnchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || 14,
-                fontFamily: this.style.fontFamily || 'Roboto, sans-serif',
+                fontFamily: this.style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
                 fontWeight: this.style.fontWeight || 'normal',
                 fontStyle: this.style.fontStyle || 'normal'
             });

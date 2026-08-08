@@ -4,7 +4,7 @@
  */
 
 const RECTANGLE_TEXT_DEFAULTS = {
-    fontFamily: 'Roboto, sans-serif',
+    fontFamily: '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
     fontSize: 14,
     fontWeight: 'normal',
     fontStyle: 'normal',
@@ -699,7 +699,7 @@ class RectangleTool extends BaseDrawing {
         if (!shapeMiddleLineEnabled(this.style)) return;
 
         const midY = y + height / 2;
-        const midLineColor = this.style.middleLineColor || '#2962FF';
+        const midLineColor = this.style.middleLineColor || '#3090FF';
         const midLineWidth = Math.max(0.5, (this.style.middleLineWidth || 1) * scaleFactor);
         const midLineDash = this.style.middleLineDash || '';
         const lineOpacity = this.style.opacity !== undefined && this.style.opacity !== null ? this.style.opacity : 1;
@@ -915,7 +915,7 @@ class RectangleTool extends BaseDrawing {
      */
     createBoxHandles(group, scales, opts = {}) {
         const handleFill = 'transparent';
-        const handleStroke = '#2962FF';
+        const handleStroke = '#3090FF';
         const handleStrokeWidth = 1;
 
         group.selectAll('.resize-handle').remove();
@@ -1167,7 +1167,7 @@ class EllipseTool extends BaseDrawing {
             esm === true || esm === 1
             || (typeof esm === 'string' && /^(true|1|yes)$/i.test(String(esm).trim()));
         if (ellipseMiddleOn) {
-            const midLineColor = this.style.middleLineColor || '#2962FF';
+            const midLineColor = this.style.middleLineColor || '#3090FF';
             const midLineWidth = this.style.middleLineWidth || 1;
             const midLineDash = this.style.middleLineDash || '';
 
@@ -1241,7 +1241,7 @@ class EllipseTool extends BaseDrawing {
         const handleRadius = 3;
         const hitRadius = 14;
         const handleFill = 'transparent';
-        const handleStroke = '#2962FF';
+        const handleStroke = '#3090FF';
         const handleStrokeWidth = 1;
 
         group.selectAll('.resize-handle').remove();
@@ -1577,7 +1577,7 @@ class ArrowTool extends BaseDrawing {
     
     ensureTextDefaults() {
         const DEFAULT_TEXT_STYLE = {
-            fontFamily: 'Roboto, sans-serif',
+            fontFamily: '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
             fontSize: 14,
             fontWeight: 'normal',
             fontStyle: 'normal',

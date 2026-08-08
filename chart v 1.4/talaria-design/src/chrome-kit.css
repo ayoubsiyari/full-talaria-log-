@@ -41,14 +41,30 @@
 [data-tlbar] [data-v9-tl-btn],
 [data-pinnedbar] [data-pin-chip] {
   border-radius: var(--radius-control) !important;
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 /* Active chip: quiet fill, no glow underline */
 [data-tlbar] [data-v9-tl-btn][data-active="1"],
-[data-pinnedbar] [data-pin-chip][data-active="1"],
-[data-v9-rail] button[data-active="1"] {
+[data-pinnedbar] [data-pin-chip][data-active="1"] {
   background: var(--accent-quiet) !important;
   color: var(--accent) !important;
+}
+
+/* Pin bar must not clip tooltips / overflow like modal panels */
+[data-pinnedbar][data-pinbar-v2="1"] {
+  overflow: visible !important;
+}
+/* Rail active state is on the shell, not the inner split halves */
+[data-v9-rail] [data-rail-shell][data-active="1"] {
+  background: var(--accent-quiet) !important;
+}
+[data-v9-rail] button[data-rail-main][data-active="1"] {
+  color: var(--accent) !important;
+  background: transparent !important;
 }
 
 /* Kill legacy blue borders / gold accent strips on bars */
@@ -202,7 +218,7 @@
   right: 0;
   z-index: 12000;
   width: 232px;
-  padding: 6px 0 8px;
+  padding: 0 0 6px;
   box-sizing: border-box;
   background: var(--surface) !important;
   border: 1px solid var(--line) !important;
@@ -214,16 +230,20 @@
 }
 [data-tpl-menu] [data-tpl-head] {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
-  padding: 6px 14px 8px;
+  min-height: 40px;
+  padding: 10px 12px 8px;
+  box-sizing: border-box;
 }
 [data-tpl-menu] [data-tpl-head] strong {
+  display: block;
   font-size: 12px;
   font-weight: 700;
   color: var(--text);
   letter-spacing: 0.01em;
+  line-height: 1.2;
 }
 [data-tpl-menu] [data-tpl-head] em {
   font-size: 11px;
@@ -231,14 +251,36 @@
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--text-faint);
+  line-height: 1.2;
+  padding-top: 1px;
+}
+/* One row grammar — actions + saved templates share the same height */
+[data-tpl-menu] [data-menu-row] {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  max-height: 36px !important;
+  padding: 0 10px !important;
+  margin: 1px 6px !important;
+  border-radius: 6px !important;
+  box-sizing: border-box !important;
+}
+[data-tpl-menu] [data-menu-row] > span:not([data-tpl-ico]) {
+  font-size: 12px !important;
+  font-weight: 550 !important;
+  line-height: 1.2 !important;
+  white-space: nowrap;
 }
 [data-tpl-menu] [data-tpl-rule] {
   height: 1px;
   margin: 4px 10px;
   background: var(--line);
+  flex-shrink: 0;
 }
 [data-tpl-menu] [data-tpl-empty] {
-  padding: 14px 14px 12px;
+  padding: 12px;
   text-align: left;
 }
 [data-tpl-menu] [data-tpl-empty] strong {
@@ -260,29 +302,37 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 10px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 10px;
+  margin: 1px 6px;
+  box-sizing: border-box;
 }
 [data-tpl-menu] [data-tpl-save] input {
   flex: 1;
   min-width: 0;
-  height: 32px;
-  padding: 0 10px;
-  font-size: 12px;
+  height: 28px !important;
+  padding: 0 8px !important;
+  font-size: 12px !important;
+  border-radius: 6px !important;
 }
 [data-tpl-menu] [data-tpl-row-meta] {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  justify-content: center;
+  gap: 0;
   flex: 1;
   min-width: 0;
+  height: 100%;
 }
 [data-tpl-menu] [data-tpl-row-meta] strong {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 12px !important;
+  font-weight: 550 !important;
   color: inherit;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.2;
 }
 [data-tpl-menu] [data-tpl-row-meta] em {
   font-size: 10px;
@@ -291,13 +341,23 @@
   color: var(--text-faint);
 }
 [data-tpl-menu] [data-menu-row] [data-tpl-ico] {
-  width: 16px;
+  width: 18px;
+  height: 18px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   color: inherit;
-  opacity: 0.85;
+  opacity: 0.9;
+}
+[data-tpl-menu] [data-menu-row] > button[data-brand-icon],
+[data-tpl-menu] [data-tpl-save] > button[data-brand-icon] {
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  padding: 0 !important;
+  flex-shrink: 0;
+  border-radius: 6px !important;
 }
 
 /* Segment tabs inside windows */

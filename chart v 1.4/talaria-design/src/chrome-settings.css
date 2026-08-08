@@ -1,39 +1,32 @@
-/* Unified Obsidian settings windows — drawing tools + indicators (+ related).
-   Apply with data-sett-v3="1" on the floating shell. Flat, no chrome glow. */
+/* Unified Obsidian settings — drawing tools + indicators (+ VWAP/VP/AV/text).
+   Shell: data-sett-v3="1". Flat, no chrome glow. Easy scan: label left · controls right. */
 
 [data-sett-v3="1"] {
   font-family: var(--font-ui) !important;
   background: var(--surface) !important;
   border: 1px solid var(--line) !important;
   border-radius: 8px !important;
+  /* Radius clip only — never invent a short height that shears footer/controls */
   overflow: hidden !important;
   box-shadow: none !important;
   color: var(--text);
   display: flex !important;
   flex-direction: column !important;
-}
-
-[data-sett-v3="1"][data-tool-sett-v2="1"] {
-  width: 440px !important;
+  width: 448px !important;
   max-width: calc(100vw - 24px) !important;
-  max-height: min(680px, calc(100vh - 28px)) !important;
+  height: auto !important;
+  /* --v9-sett-max-h is set by the in-chart clamp so tall panels scroll instead of clipping */
+  max-height: min(700px, var(--v9-sett-max-h, calc(100vh - 96px))) !important;
+  box-sizing: border-box !important;
 }
 
 [data-sett-v3="1"][data-ind-sett="1"],
 [data-sett-v3="1"][data-v9-ind-sett="1"] {
-  max-height: min(720px, calc(100vh - 24px)) !important;
+  width: min(448px, calc(100vw - 24px)) !important;
+  max-height: min(740px, var(--v9-sett-max-h, calc(100vh - 96px))) !important;
 }
 
-[data-sett-v3="1"][data-chrome-win="txt-sett"],
-[data-sett-v3="1"][data-chrome-win="vwap-sett"],
-[data-sett-v3="1"][data-chrome-win="vp-sett"],
-[data-sett-v3="1"][data-chrome-win="av-sett"] {
-  width: 440px !important;
-  max-width: calc(100vw - 24px) !important;
-  max-height: min(680px, calc(100vh - 28px)) !important;
-}
-
-/* Header */
+/* ── Header ── */
 [data-sett-v3="1"] [data-win-header] {
   display: flex !important;
   align-items: center !important;
@@ -61,9 +54,25 @@
 [data-sett-v3="1"] [data-sett-titles] {
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 2px;
   min-width: 0;
-  flex: 1;
+  flex: 1 1 auto;
+  /* Drag chrome — not a text field */
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  cursor: move !important;
+  pointer-events: auto;
+}
+
+[data-sett-v3="1"] [data-sett-title-row] {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
 }
 
 [data-sett-v3="1"] [data-win-title],
@@ -73,6 +82,62 @@
   letter-spacing: -0.01em !important;
   color: var(--text) !important;
   line-height: 1.2 !important;
+  /* Shrink-wrap so empty header space stays a drag handle, not a rename target */
+  flex: 0 1 auto !important;
+  width: fit-content !important;
+  max-width: 100% !important;
+  cursor: move !important;
+  user-select: none !important;
+}
+
+[data-sett-v3="1"] [data-sett-titles] [data-sett-rename],
+[data-sett-v3="1"] [data-win-header] input[data-sett-rename] {
+  flex: 0 1 auto !important;
+  width: auto !important;
+  min-width: 60px !important;
+  max-width: min(220px, 100%) !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  color: var(--text) !important;
+  background: var(--surface-sunken) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 6px !important;
+  outline: none !important;
+  font-family: var(--font-ui) !important;
+  padding: 2px 8px !important;
+  cursor: text !important;
+  user-select: text !important;
+  box-sizing: border-box !important;
+}
+
+[data-sett-v3="1"] [data-sett-titles] [data-sett-rename]:focus {
+  border-color: var(--accent) !important;
+}
+
+[data-sett-v3="1"] [data-sett-rename-btn] {
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 24px !important;
+  border-radius: 6px !important;
+  flex-shrink: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: none !important;
+  background: transparent !important;
+  color: var(--text-faint) !important;
+  cursor: default !important;
+  padding: 0 !important;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+[data-sett-v3="1"] [data-sett-rename-btn]:hover {
+  background: var(--surface-raised) !important;
+  color: var(--text) !important;
+}
+
+[data-sett-v3="1"] [data-sett-rename-btn]:active {
+  transform: scale(0.94);
 }
 
 [data-sett-v3="1"] [data-sett-sub] {
@@ -88,22 +153,41 @@
   width: 32px !important;
   height: 32px !important;
   border-radius: 6px !important;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 
-/* Segmented tabs */
+[data-sett-v3="1"] [data-win-header] [data-brand-icon]:hover,
+[data-sett-v3="1"] [data-win-header] [data-tpl-trigger]:hover {
+  background: var(--surface-raised) !important;
+}
+
+[data-sett-v3="1"] [data-win-header] [data-brand-icon]:active,
+[data-sett-v3="1"] [data-win-header] [data-tpl-trigger]:active {
+  transform: scale(0.94);
+}
+
+/* ── Segmented tabs (sunken track) ──
+   Kill rebuild’s width:100% + border-bottom — that combo + horizontal margin
+   drew a stray line past the right edge of the pill. */
 [data-sett-v3="1"] [data-sett-nav],
 [data-sett-v3="1"] [data-tool-sett-nav] {
   display: flex !important;
   flex-direction: row !important;
   flex-wrap: nowrap !important;
   gap: 2px !important;
-  padding: 8px 12px !important;
-  margin: 0 !important;
+  padding: 4px !important;
+  margin: 10px 12px 8px !important;
+  width: auto !important;
+  max-width: none !important;
+  align-self: stretch !important;
+  box-sizing: border-box !important;
+  border: 1px solid var(--line) !important;
+  border-right: 1px solid var(--line) !important;
   border-bottom: 1px solid var(--line) !important;
-  border-right: none !important;
-  background: var(--surface) !important;
+  border-radius: 8px !important;
+  background: var(--surface-sunken) !important;
   flex-shrink: 0 !important;
-  overflow-x: auto;
+  overflow: hidden !important;
   scrollbar-width: none;
 }
 [data-sett-v3="1"] [data-sett-nav]::-webkit-scrollbar,
@@ -114,7 +198,7 @@
 [data-sett-v3="1"] [data-sett-nav] button,
 [data-sett-v3="1"] [data-tool-sett-nav] button {
   height: 30px !important;
-  padding: 0 12px !important;
+  padding: 0 10px !important;
   border: 1px solid transparent !important;
   border-radius: 6px !important;
   background: transparent !important;
@@ -124,10 +208,13 @@
   font-weight: 600 !important;
   text-align: center !important;
   cursor: default !important;
-  flex: 0 0 auto;
+  /* Equal-width segments — no dead strip on the right */
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
   white-space: nowrap;
   box-shadow: none !important;
   transform: none !important;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease !important;
 }
 
 [data-sett-v3="1"] [data-sett-nav] button:hover,
@@ -138,38 +225,45 @@
 
 [data-sett-v3="1"] [data-sett-nav] button[data-active="1"],
 [data-sett-v3="1"] [data-tool-sett-nav] button[data-active="1"] {
-  background: var(--surface-raised) !important;
+  background: var(--surface) !important;
   color: var(--text) !important;
   border-color: var(--line) !important;
 }
 
-/* Kill legacy sliding glow underline under indicator tabs */
 [data-sett-v3="1"] [data-sett-nav-glow],
 [data-sett-v3="1"] [data-ind-tab-glow] {
   display: none !important;
 }
 
-/* Body / pane */
+/* ── Body / pane ──
+   flex-basis:auto so auto-height shells size to content (0% basis was
+   collapsing the pane and letting overflow:hidden shear footer/controls). */
 [data-sett-v3="1"] [data-tool-sett-body],
 [data-sett-v3="1"] [data-sett-body] {
   display: flex !important;
   flex-direction: column !important;
-  flex: 1 !important;
+  flex: 1 1 auto !important;
   min-height: 0 !important;
+  min-width: 0 !important;
+  overflow: hidden !important; /* pane scrolls; body does not clip foot */
 }
 
 [data-sett-v3="1"] [data-tool-sett-pane],
 [data-sett-v3="1"] [data-sett-pane] {
-  flex: 1 !important;
+  flex: 1 1 auto !important;
   min-height: 0 !important;
+  min-width: 0 !important;
+  overflow-x: hidden !important;
   overflow-y: auto !important;
-  padding: 14px 16px 16px !important;
+  padding: 12px 16px 18px !important;
   overscroll-behavior: contain;
+  box-sizing: border-box !important;
 }
 
 /* Section titles */
-[data-sett-v3="1"] [data-sett-sec],
-[data-sett-v3="1"] [data-sett-col-lbl] {
+[data-sett-v3="1"] [data-sett-sec] {
+  display: block;
+  padding: 16px 0 8px;
   font-size: 10px !important;
   font-weight: 700 !important;
   letter-spacing: 0.06em !important;
@@ -177,43 +271,50 @@
   color: var(--text-faint) !important;
   font-family: var(--font-ui) !important;
 }
-
-[data-sett-v3="1"] [data-sett-sec] {
-  display: block;
-  padding: 14px 0 8px;
-}
 [data-sett-v3="1"] [data-sett-sec]:first-child {
-  padding-top: 2px;
+  padding-top: 4px;
 }
 
+/* Hide legacy column headers — controls speak for themselves */
 [data-sett-v3="1"] [data-sett-col-lbl] {
-  display: flex;
-  justify-content: center;
-  padding-bottom: 6px;
+  display: none !important;
 }
 
-/* Rows */
-[data-sett-v3="1"] [data-sett-row] {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 36px;
-  padding: 6px 0;
+/* ── Primary row: label | controls — one rhythm for every Style row ── */
+[data-sett-v3="1"] [data-sett-row],
+[data-sett-v3="1"] [data-sett-linegrid] {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  min-height: 40px !important;
+  padding: 4px 0 !important;
+  box-sizing: border-box;
 }
 
-[data-sett-v3="1"] [data-sett-row] > [data-sett-label] {
-  flex: 1;
-  min-width: 0;
-  font-size: 12px;
-  font-weight: 550;
-  color: var(--text-muted);
+[data-sett-v3="1"] [data-sett-row] > [data-sett-label],
+[data-sett-v3="1"] [data-sett-linegrid] > [data-sett-label] {
+  flex: 0 0 104px !important;
+  width: 104px !important;
+  min-width: 104px !important;
+  font-size: 12px !important;
+  font-weight: 550 !important;
+  color: var(--text-muted) !important;
+  line-height: 1.25 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px;
 }
 
-[data-sett-v3="1"] [data-sett-row] > [data-sett-acts] {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
+[data-sett-v3="1"] [data-sett-row] > [data-sett-acts],
+[data-sett-v3="1"] [data-sett-linegrid] > [data-sett-cluster],
+[data-sett-v3="1"] [data-sett-linegrid] > [data-sett-acts] {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  flex-wrap: wrap;
+  gap: 6px !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
   margin-left: auto;
 }
 
@@ -224,44 +325,93 @@
   border: none;
 }
 
-/* Line / style control grid */
-[data-sett-v3="1"] [data-sett-linegrid] {
-  display: grid;
-  align-items: center;
-  column-gap: 10px;
-  row-gap: 2px;
-  padding: 2px 0 4px;
+/* When linegrid still uses bare children (legacy), push controls right after label */
+[data-sett-v3="1"] [data-sett-linegrid] > span:first-child,
+[data-sett-v3="1"] [data-sett-linegrid] > div:first-child:has([data-indaction]),
+[data-sett-v3="1"] [data-sett-linegrid] > div:first-child:has(input) {
+  flex: 0 0 104px;
 }
 
 [data-sett-v3="1"] [data-sett-field] {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 4px;
+  gap: 0;
   min-width: 0;
 }
 
 [data-sett-v3="1"] [data-sett-field] > em {
-  font-style: normal;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-  text-align: center;
+  display: none; /* column micro-labels retired */
 }
 
-/* Dropdown triggers inside settings — quiet fill, no glow underline */
+/* Checkbox + label — same weight as plain labels; accent only on the box */
+[data-sett-v3="1"] [data-sett-chk] {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+[data-sett-v3="1"] [data-sett-chk] > span:last-child {
+  color: var(--text-muted) !important;
+  font-size: 12px !important;
+  font-weight: 550 !important;
+}
+[data-sett-v3="1"] [data-sett-chk]:hover > span:last-child {
+  color: var(--text) !important;
+}
+[data-sett-v3="1"] [data-sett-box] {
+  width: 14px !important;
+  height: 14px !important;
+  border-radius: 4px !important;
+  box-sizing: border-box !important;
+}
+
+/* Chip toggles (Extend / Labels) — match dd height */
+[data-sett-v3="1"] [data-sett-chip] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  min-width: 52px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 550;
+  cursor: default;
+  box-sizing: border-box;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+[data-sett-v3="1"] [data-sett-chip][data-on="1"] {
+  background: var(--accent-quiet);
+  border-color: color-mix(in oklab, var(--accent) 45%, var(--line));
+  color: var(--accent);
+}
+
+[data-sett-v3="1"] [data-sett-chip]:hover {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+[data-sett-v3="1"] [data-sett-chip][data-on="1"]:hover {
+  color: var(--accent);
+  background: var(--accent-quiet);
+}
+
+/* Dropdown triggers — same sunken grammar as brand fields */
 [data-sett-v3="1"] [data-sett-dd],
-[data-sett-v3="1"] [data-tl-style-drop] > div[style*="height:26"],
 [data-sett-v3="1"] [data-sett-dd-btn] {
-  height: 28px !important;
-  min-height: 28px;
+  height: 30px !important;
+  min-height: 30px !important;
+  min-width: 52px;
   padding: 0 8px !important;
   border-radius: 6px !important;
   border: 1px solid var(--line) !important;
   background: var(--surface-sunken) !important;
-  box-sizing: border-box;
+  box-sizing: border-box !important;
+  box-shadow: none !important;
   transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease !important;
 }
 
@@ -282,35 +432,90 @@
 [data-sett-v3="1"] [style*="box-shadow:0 0 6px"],
 [data-sett-v3="1"] [style*="box-shadow: 0 0 6px"],
 [data-sett-v3="1"] [style*="box-shadow:0 0 8px"],
-[data-sett-v3="1"] [style*="box-shadow: 0 0 8px"] {
+[data-sett-v3="1"] [style*="box-shadow: 0 0 8px"],
+[data-sett-v3="1"] [style*="boxShadow:`0 0 6px"],
+[data-sett-v3="1"] [style*="0 0 6px"] {
   box-shadow: none !important;
 }
 
 [data-sett-v3="1"] [data-sett-drop],
-[data-sett-v3="1"] [data-sett-drop-shell] {
+[data-sett-v3="1"] [data-sett-drop-shell],
+[data-ind-style-drop="1"][data-sett-drop],
+[data-ind-style-drop="1"],
+/* Portaled menus live on document.body — keep the same Obsidian face */
+body > [data-sett-drop][data-v9-chrome],
+body > [data-sett-drop-shell][data-v9-chrome] {
   background: var(--surface) !important;
   border: 1px solid var(--line) !important;
   border-radius: 8px !important;
   box-shadow: none !important;
+  font-family: var(--font-ui) !important;
+  padding: 4px 0 !important;
+}
+[data-sett-v3="1"] [data-sett-drop],
+[data-sett-v3="1"] [data-sett-drop-shell],
+[data-ind-style-drop="1"][data-sett-drop],
+[data-ind-style-drop="1"] {
   overflow: hidden;
-  font-family: var(--font-ui);
 }
 
 [data-sett-v3="1"] [data-sett-drop] > div:first-child[style*="height:2"],
-[data-sett-v3="1"] [data-sett-drop-shell] > div:first-child[style*="height:2"] {
+[data-sett-v3="1"] [data-sett-drop-shell] > div:first-child[style*="height:2"],
+[data-ind-style-drop="1"] > div:first-child[style*="height:2"] {
   display: none !important;
 }
 
-/* Color swatches */
+/* Selected option — quiet fill, no left accent tick */
+[data-sett-v3="1"] [data-sett-drop] [data-on="1"],
+[data-sett-v3="1"] [data-sett-drop-shell] [data-pick-on="1"],
+[data-ind-style-drop="1"] [data-pick-on="1"],
+body > [data-sett-drop][data-v9-chrome] [data-pick-on="1"],
+body > [data-sett-drop-shell][data-v9-chrome] [data-pick-on="1"] {
+  background: var(--accent-quiet) !important;
+  color: var(--accent) !important;
+}
+[data-ind-style-drop="1"] [style*="boxShadow"],
+[data-ind-style-drop="1"] [style*="box-shadow"],
+[data-ind-style-drop="1"] [style*="linear-gradient(180deg"] {
+  display: none !important;
+}
+
+/* Color swatches — 30px hits with breathing room between stacked rows */
 [data-sett-v3="1"] [data-v9-color-swatch] {
-  width: 26px !important;
-  height: 26px !important;
+  width: 30px !important;
+  height: 30px !important;
   border-radius: 6px !important;
   border: 1px solid var(--line) !important;
   box-sizing: border-box !important;
+  flex-shrink: 0;
+  box-shadow: none !important;
+  transition: border-color 0.12s ease, transform 0.1s ease;
+}
+[data-sett-v3="1"] [data-v9-color-swatch]:hover {
+  border-color: var(--line-strong, var(--line)) !important;
+}
+[data-sett-v3="1"] [data-v9-color-swatch]:active {
+  transform: scale(0.94);
+}
+/* Volume / VWAP style grids — never let 30px swatches kiss */
+[data-sett-v3="1"][data-chrome-win="vp-sett"] [data-sett-pane] > div[style*="grid"],
+[data-sett-v3="1"][data-chrome-win="av-sett"] [data-sett-pane] > div[style*="grid"],
+[data-sett-v3="1"][data-chrome-win="vwap-sett"] [data-sett-pane] > div[style*="grid"],
+[data-sett-v3="1"][data-chrome-win="vp-sett"] [data-sett-pane] > div[style*="display: flex"],
+[data-sett-v3="1"][data-chrome-win="av-sett"] [data-sett-pane] > div[style*="display: flex"] {
+  margin-top: 0 !important;
+}
+/* Fragment children of style tab: ensure consecutive swatch rows gap via padding on grids */
+[data-sett-v3="1"][data-chrome-win="vp-sett"] [data-sett-pane],
+[data-sett-v3="1"][data-chrome-win="av-sett"] [data-sett-pane],
+[data-sett-v3="1"][data-chrome-win="vwap-sett"] [data-sett-pane] {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-/* Inputs */
+/* Inputs — override legacy rgba fills.
+   Nested [data-sett-step] inputs are reset below (higher specificity). */
 [data-sett-v3="1"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
 [data-sett-v3="1"] select,
 [data-sett-v3="1"] textarea {
@@ -319,9 +524,33 @@
   background: var(--surface-sunken) !important;
   color: var(--text) !important;
   font-family: var(--font-ui) !important;
+  height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+  box-shadow: none !important;
+  box-sizing: border-box !important;
+}
+[data-sett-v3="1"] button[data-v9-ind-select-trigger],
+[data-sett-v3="1"] button[data-sett-dd] {
+  box-shadow: none !important;
 }
 
-/* Footer */
+[data-sett-v3="1"] textarea {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+}
+
+/* Visibility grid — cleaner */
+[data-sett-v3="1"] [data-sett-vis] {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 6px;
+  padding: 4px 0;
+}
+
+/* Footer — one grammar for drawings + indicators.
+   Extra bottom padding clears the shell’s 8px radius so CTAs are never sheared. */
 [data-sett-v3="1"] [data-win-foot],
 [data-sett-v3="1"] [data-ind-sett-footer],
 [data-sett-v3="1"] [data-sett-foot] {
@@ -329,20 +558,371 @@
   align-items: center !important;
   justify-content: flex-end !important;
   gap: 8px !important;
-  padding: 10px 14px !important;
+  padding: 12px 16px 14px !important;
   border-top: 1px solid var(--line) !important;
   background: var(--surface) !important;
+  flex: 0 0 auto !important;
   flex-shrink: 0 !important;
+  box-sizing: border-box !important;
+  overflow: visible !important;
+  min-height: 58px !important;
 }
 
 [data-sett-v3="1"] [data-win-foot] > button,
 [data-sett-v3="1"] [data-sett-foot] > button,
 [data-sett-v3="1"] [data-ind-sett-footer] > button,
 [data-sett-v3="1"] [data-ind-sett-footer] > div[role="button"] {
-  height: 32px !important;
-  min-width: 72px;
+  height: 34px !important;
+  min-height: 34px !important;
+  max-height: 34px !important;
+  min-width: 80px;
+  padding: 0 16px !important;
   border-radius: 6px !important;
   font-family: var(--font-ui) !important;
   font-size: 12px !important;
   font-weight: 650 !important;
+  cursor: default !important;
+  box-sizing: border-box !important;
+  flex-shrink: 0 !important;
+  overflow: visible !important;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease, transform 0.08s ease !important;
+}
+
+[data-sett-v3="1"] [data-win-foot] > button:active,
+[data-sett-v3="1"] [data-sett-foot] > button:active,
+[data-sett-v3="1"] [data-ind-sett-footer] > button:active {
+  transform: scale(0.97);
+}
+
+/* Rebuild width fight — settings.css wins */
+[data-tool-sett-v2="1"][data-sett-v3="1"] {
+  width: 448px !important;
+}
+
+/* Kill leftover accent underline / glow bars (any height) inside settings */
+[data-sett-v3="1"] [style*="linear-gradient(90deg,transparent"],
+[data-sett-v3="1"] [style*="linear-gradient(90deg, transparent"],
+[data-sett-v3="1"] [style*="linear-gradient(180deg,transparent"][style*="width:2"],
+[data-sett-v3="1"] [style*="linear-gradient(180deg, transparent"][style*="width:2"] {
+  display: none !important;
+}
+[data-sett-v3="1"] [style*="0 0 6px"],
+[data-sett-v3="1"] [style*="0 0 8px"] {
+  box-shadow: none !important;
+  filter: none !important;
+}
+
+/* B / I format toggles */
+[data-sett-v3="1"] [data-sett-fmt] {
+  width: 30px !important;
+  height: 30px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 6px !important;
+  border: 1px solid var(--line) !important;
+  background: var(--surface-sunken) !important;
+  color: var(--text-muted) !important;
+  font-family: var(--font-ui) !important;
+  font-size: 13px !important;
+  cursor: default !important;
+  box-sizing: border-box !important;
+  position: relative;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease !important;
+}
+[data-sett-v3="1"] [data-sett-fmt]:hover {
+  background: var(--surface-raised) !important;
+  color: var(--text) !important;
+}
+[data-sett-v3="1"] [data-sett-fmt][data-on="1"] {
+  background: var(--accent-quiet) !important;
+  border-color: color-mix(in oklab, var(--accent) 45%, var(--line)) !important;
+  color: var(--accent) !important;
+}
+
+/* Alignment icon group — quiet fill when on, no underline costume */
+[data-sett-v3="1"] [data-sett-align-group] {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  padding: 2px !important;
+  border-radius: 6px !important;
+  background: var(--surface-sunken) !important;
+  border: 1px solid var(--line) !important;
+}
+[data-sett-v3="1"] [data-sett-align] {
+  width: 28px !important;
+  height: 28px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 4px !important;
+  border: none !important;
+  background: transparent !important;
+  color: var(--text-muted) !important;
+  cursor: default !important;
+  position: relative;
+  box-sizing: border-box !important;
+  transition: background 0.12s ease, color 0.12s ease !important;
+}
+[data-sett-v3="1"] [data-sett-align]:hover {
+  color: var(--text) !important;
+  background: var(--surface-raised) !important;
+}
+[data-sett-v3="1"] [data-sett-align][data-on="1"] {
+  color: var(--accent) !important;
+  background: var(--accent-quiet) !important;
+}
+
+/* Coordinate / numeric steppers — one bordered shell; input never re-borders */
+[data-sett-v3="1"] [data-sett-step] {
+  display: inline-flex !important;
+  align-items: stretch !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  min-width: 72px !important;
+  flex: 1 1 auto !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 6px !important;
+  background: var(--surface-sunken) !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+[data-sett-v3="1"] [data-sett-step] input,
+[data-sett-v3="1"] [data-sett-step] input.tlr-nospinner,
+[data-sett-v3="1"] [data-tool-sett-pane] [data-sett-step] input.tlr-nospinner,
+[data-sett-v3="1"] [data-sett-pane] [data-sett-step] input.tlr-nospinner {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  width: auto !important;
+  height: 100% !important;
+  max-height: none !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 8px !important;
+  font-variant-numeric: tabular-nums !important;
+  font-size: 12px !important;
+  line-height: 1 !important;
+  color: var(--text) !important;
+  outline: none !important;
+  box-sizing: border-box !important;
+}
+[data-sett-v3="1"] [data-sett-step]:focus-within {
+  border-color: var(--accent) !important;
+}
+[data-sett-v3="1"] [data-sett-step-btns] {
+  display: flex !important;
+  flex-direction: column !important;
+  width: 22px !important;
+  min-width: 22px !important;
+  flex: 0 0 22px !important;
+  flex-shrink: 0 !important;
+  border-left: 1px solid var(--line) !important;
+  background: var(--surface) !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+[data-sett-v3="1"] [data-sett-step-btns] > button,
+[data-sett-v3="1"] [data-sett-step-btns] > div {
+  flex: 1 1 50% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  color: var(--text-faint) !important;
+  cursor: default !important;
+  font-size: 7px !important;
+  line-height: 1 !important;
+  min-height: 0 !important;
+  box-sizing: border-box !important;
+}
+[data-sett-v3="1"] [data-sett-step-btns] > button:hover,
+[data-sett-v3="1"] [data-sett-step-btns] > div:hover {
+  color: var(--text) !important;
+  background: var(--surface-raised) !important;
+}
+
+/* Compact chevrons on sett dropdowns */
+[data-sett-v3="1"] [data-sett-dd] svg,
+[data-sett-v3="1"] [data-sett-dd-btn] svg {
+  width: 7px !important;
+  height: 7px !important;
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+
+/* Content textarea block */
+[data-sett-v3="1"] [data-sett-content] {
+  padding: 0 0 8px;
+}
+[data-sett-v3="1"] [data-sett-content] textarea {
+  width: 100% !important;
+  min-height: 88px !important;
+  resize: vertical;
+}
+
+/* Indicator / volume grids: after hiding STYLE/WIDTH headers, tighten row rhythm */
+[data-sett-v3="1"] [data-sett-pane] > div[style*="grid-template-columns"],
+[data-sett-v3="1"] [data-tool-sett-pane] > div[style*="grid-template-columns"] {
+  row-gap: 2px;
+}
+
+/* Visibility timeframe grid — token colors */
+[data-sett-v3="1"] [data-sett-vis-grid] {
+  display: grid;
+  gap: 0 8px;
+  padding: 4px 0 8px;
+}
+[data-sett-v3="1"] [data-sett-vis-grid] [data-sett-vis-hdr] {
+  text-align: center;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  text-transform: uppercase;
+}
+
+/* Coordinates column headers (POINT 1 / PRICE / BAR) */
+[data-sett-v3="1"] [data-sett-coord-hdr] {
+  padding: 6px 8px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-align: center;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  font-family: var(--font-ui);
+}
+
+/* Visibility range slider — flat Obsidian (circle thumbs, quiet rail) */
+[data-sett-v3="1"] [data-sett-vis-range] {
+  --sett-vis-thumb: 12px;
+  position: relative;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  cursor: default;
+  min-width: 0;
+}
+[data-sett-v3="1"] [data-sett-vis-rail] {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 3px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--line) 90%, var(--surface));
+  overflow: hidden;
+  pointer-events: none;
+}
+[data-sett-v3="1"] [data-sett-vis-fill] {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--accent) 55%, transparent);
+  pointer-events: none;
+}
+[data-sett-v3="1"] [data-sett-vis-thumb] {
+  position: absolute;
+  top: 50%;
+  width: var(--sett-vis-thumb);
+  height: var(--sett-vis-thumb);
+  margin: 0;
+  transform: translate(-50%, -50%) scale(1);
+  border-radius: 50%;
+  background: var(--accent) !important;
+  border: 2px solid var(--surface) !important;
+  outline: 1px solid color-mix(in oklab, var(--accent) 45%, var(--line));
+  box-shadow: none !important;
+  box-sizing: border-box;
+  pointer-events: none;
+  z-index: 2;
+  transition: transform 0.1s ease, outline-color 0.1s ease;
+}
+[data-sett-v3="1"] [data-sett-vis-thumb][data-hot="1"] {
+  transform: translate(-50%, -50%) scale(1.14);
+  outline-color: var(--accent);
+}
+[data-sett-v3="1"] [data-sett-vis-hit] {
+  position: absolute;
+  top: calc(50% - 14px);
+  width: 28px;
+  height: 28px;
+  cursor: default;
+  z-index: 1;
+}
+[data-sett-v3="1"] [data-sett-vis-hit][data-full] {
+  inset: 0;
+  width: auto;
+  height: auto;
+  top: 0;
+  z-index: 0;
+}
+
+/* SETT-UNIFY-HARDEN */
+/* Alpha thumbs — always circular, no triangle costume */
+[data-sett-v3="1"] [data-sett-alpha-thumb] {
+  width: 12px !important;
+  height: 12px !important;
+  border-radius: 50% !important;
+  background: var(--accent) !important;
+  border: 2px solid var(--surface) !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/* Bare legacy steppers — step-shell inputs are overridden above with higher specificity */
+[data-sett-v3="1"] [data-tool-sett-pane] > input.tlr-nospinner,
+[data-sett-v3="1"] [data-sett-pane] > input.tlr-nospinner,
+[data-sett-v3="1"] [data-tool-sett-pane] div:not([data-sett-step]) > input.tlr-nospinner,
+[data-sett-v3="1"] [data-sett-pane] div:not([data-sett-step]) > input.tlr-nospinner {
+  height: 32px !important;
+  border-radius: 6px !important;
+  border: 1px solid var(--line) !important;
+  background: var(--surface-sunken) !important;
+  box-shadow: none !important;
+  color: var(--text) !important;
+  font-family: var(--font-ui) !important;
+  box-sizing: border-box !important;
+}
+
+/* Coordinates grid cells — keep steppers fully inside the pane */
+[data-sett-v3="1"] [data-sett-coord-cell] {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  padding: 6px 8px !important;
+  display: flex !important;
+  align-items: stretch !important;
+}
+[data-sett-v3="1"] [data-sett-coord-cell] [data-sett-step] {
+  width: 100% !important;
+}
+
+/* Kill leftover menu top accent hairlines inside any sett drop */
+[data-sett-v3="1"] [data-sett-drop] > div[style*="height: 2"],
+[data-sett-v3="1"] [data-sett-drop] > div[style*="height:2"],
+[data-sett-v3="1"] [data-sett-drop-shell] > div[style*="height: 2"],
+[data-sett-v3="1"] [data-sett-drop-shell] > div[style*="height:2"] {
+  display: none !important;
+}
+
+/* Indicator style grids — room for 30px swatches */
+[data-sett-v3="1"][data-ind-sett="1"] [data-sett-pane] > div[style*="grid"],
+[data-sett-v3="1"][data-v9-ind-sett="1"] [data-sett-pane] > div[style*="grid"] {
+  min-height: 40px;
+}
+
+/* Text muted labels that still use rgba purple */
+[data-sett-v3="1"] [style*="rgba(160,160,200,0.38)"] {
+  color: var(--text-faint) !important;
 }

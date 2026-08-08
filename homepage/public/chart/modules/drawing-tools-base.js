@@ -18,6 +18,11 @@ function generateUUID() {
 /** Shared default stroke/fill for all drawing tools (V9 toolbar + new placements). */
 const DRAWING_TOOL_DEFAULT_STROKE = '#8C8C8C';
 const DRAWING_TOOL_DEFAULT_FILL = 'rgba(140, 140, 140, 0.2)';
+/** Obsidian accent — selection handles, placement highlights (was TradingView #2962FF). */
+const DRAWING_TOOL_ACCENT = '#3090FF';
+const DRAWING_TOOL_ACCENT_FILL = 'rgba(48, 144, 255, 0.15)';
+const DRAWING_TEXT_UI_FONT_FAMILY = '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif';
+const DRAWING_TEXT_MONO_FONT_FAMILY = '"JetBrains Mono", ui-monospace, monospace';
 
 const ARABIC_SCRIPT_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
 const DRAWING_TEXT_ARABIC_FONT_FAMILY = '"Segoe UI", "Noto Sans Arabic", "Arial", sans-serif';
@@ -418,7 +423,7 @@ function resolveDrawingTextStyle(text, fontStyle, fontFamily) {
     if (hasArabic) {
         return {
             fontStyle: wantsItalic ? 'normal' : (fontStyle || 'normal'),
-            fontFamily: fontFamily && !/roboto/i.test(fontFamily)
+            fontFamily: fontFamily && !/roboto|helvetica now/i.test(fontFamily)
                 ? fontFamily
                 : DRAWING_TEXT_ARABIC_FONT_FAMILY,
             direction: 'rtl',
@@ -427,7 +432,7 @@ function resolveDrawingTextStyle(text, fontStyle, fontFamily) {
     }
     return {
         fontStyle: fontStyle || 'normal',
-        fontFamily: fontFamily || 'Roboto, sans-serif',
+        fontFamily: fontFamily || DRAWING_TEXT_UI_FONT_FAMILY,
         direction: null,
         italicSkew: 0
     };
@@ -471,7 +476,7 @@ function measureLineLabelTextWidth(group, text, options = {}) {
     if (!group || !label) return 0;
 
     const fontSize = Number(options.fontSize) || 14;
-    const fontFamily = options.fontFamily || 'Roboto, sans-serif';
+    const fontFamily = options.fontFamily || DRAWING_TEXT_UI_FONT_FAMILY;
     const fontWeight = options.fontWeight || 'normal';
     const fontStyle = options.fontStyle || 'normal';
     const anchor = options.anchor || 'middle';
@@ -1145,7 +1150,7 @@ class BaseDrawing {
 
         const handleRadius = 3;
         const handleFill = 'transparent';
-        const handleStroke = '#2962FF';
+        const handleStroke = DRAWING_TOOL_ACCENT;
         const handleStrokeWidth = 2;
         const startIndex = 0;
         const endIndex = this.points.length - 1;
@@ -2321,7 +2326,7 @@ class BaseDrawing {
         const handleRadius = 3;  // Visual handle size
         const hitRadius = 14;    // Larger hit area for easier clicking
         const handleFill = 'transparent';  // No background
-        const handleStroke = '#2962FF';  // Blue stroke
+        const handleStroke = DRAWING_TOOL_ACCENT;  // Obsidian accent
         const handleStrokeWidth = 2;  // Thinner border
         
         // Remove existing handles and handle groups
@@ -2575,7 +2580,7 @@ class BaseDrawing {
         this.axisHighlightGroup.attr('clip-path', `url(#${hlClipId})`);
         
         // Use the shape's color for time highlights (like TradingView)
-        const timeHighlightColor = this.style?.color || this.style?.lineColor || this.style?.stroke || '#2962ff';
+        const timeHighlightColor = this.style?.color || this.style?.lineColor || this.style?.stroke || DRAWING_TOOL_ACCENT;
         
         // Helper function to determine if color is light (needs dark text)
         const isLightColor = (color) => {
@@ -2841,7 +2846,7 @@ class BaseDrawing {
             const index = point.x;
             
             // Determine color based on point type for position tools
-            let priceColor = this.style?.color || this.style?.lineColor || this.style?.stroke || '#2962ff';
+            let priceColor = this.style?.color || this.style?.lineColor || this.style?.stroke || DRAWING_TOOL_ACCENT;
             if (this.type === 'long-position' || this.type === 'short-position') {
                 if (point._rrExtra === 'extraEntries') priceColor = '#2196f3';
                 else if (point._rrExtra === 'extraStops') priceColor = '#f44336';

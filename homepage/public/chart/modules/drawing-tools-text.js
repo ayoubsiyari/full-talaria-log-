@@ -115,7 +115,7 @@ function normalizeDrawingTextFontWeight(fontWeight) {
 function buildDrawingTextCanvasFont(text, fontSize, fontFamily, fontWeight, fontStyle) {
     const resolved = typeof resolveDrawingTextStyle === 'function'
         ? resolveDrawingTextStyle(text, fontStyle, fontFamily)
-        : { fontStyle: fontStyle || 'normal', fontFamily: fontFamily || 'Roboto, sans-serif' };
+        : { fontStyle: fontStyle || 'normal', fontFamily: fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif' };
     const weight = normalizeDrawingTextFontWeight(fontWeight);
     return `${resolved.fontStyle} ${weight} ${fontSize}px ${resolved.fontFamily}`;
 }
@@ -148,7 +148,7 @@ function applyDrawingTextElementPresentation(textEl, opts = {}) {
     const {
         text = '',
         fontStyle = 'normal',
-        fontFamily = 'Roboto, sans-serif',
+        fontFamily = '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
         fontWeight = 'normal',
         x = 0,
         y = 0,
@@ -158,7 +158,7 @@ function applyDrawingTextElementPresentation(textEl, opts = {}) {
         ? resolveDrawingTextStyle(text, fontStyle, fontFamily)
         : {
             fontStyle: fontStyle || 'normal',
-            fontFamily: fontFamily || 'Roboto, sans-serif',
+            fontFamily: fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
             direction: null,
             italicSkew: 0,
         };
@@ -315,7 +315,7 @@ function resolveInlineEditorTypographyFromDrawing(drawing, textOverride = null) 
         ? resolveDrawingTextStyle(sampleText, style.fontStyle, style.fontFamily)
         : {
             fontStyle: style.fontStyle || 'normal',
-            fontFamily: style.fontFamily || 'Roboto, sans-serif',
+            fontFamily: style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
             direction: null,
             italicSkew: 0,
         };
@@ -635,7 +635,7 @@ function syncBoxedInlineText(textElement, opts) {
         lineHeight,
         text = '',
         fontStyle = 'normal',
-        fontFamily = 'Roboto, sans-serif',
+        fontFamily = '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
         fontWeight = 'normal',
         rows = [],
     } = opts;
@@ -672,7 +672,7 @@ function syncCenteredInlineText(textElement, opts) {
         lineHeight,
         text = '',
         fontStyle = 'normal',
-        fontFamily = 'Roboto, sans-serif',
+        fontFamily = '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
         fontWeight = 'normal',
         lines = [],
     } = opts;
@@ -1130,7 +1130,7 @@ class TextTool extends BaseDrawing {
         this.requiredPoints = 1;
         this.text = text;
         this.style.fontSize = style.fontSize || 14;
-        this.style.fontFamily = style.fontFamily || 'Roboto, sans-serif';
+        this.style.fontFamily = style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif';
         this.style.textColor = style.textColor || '#FFFFFF';
         this.style.fontWeight = style.fontWeight || 'normal';
         this.style.fontStyle = style.fontStyle || 'normal';
@@ -1445,7 +1445,7 @@ class TextTool extends BaseDrawing {
             .attr('width', bbox.width)
             .attr('height', bbox.height)
             .attr('fill', 'transparent')
-            .attr('stroke', this.selected && !hasBorder ? '#2962FF' : 'none')
+            .attr('stroke', this.selected && !hasBorder ? '#3090FF' : 'none')
             .attr('stroke-width', this.selected && !hasBorder ? 1 : 0)
             .attr('stroke-dasharray', this.selected && !hasBorder ? '4,3' : 'none')
             .attr('rx', 4)
@@ -1672,7 +1672,7 @@ class TextTool extends BaseDrawing {
         const handleRadius = 3;  // Visual handle size
         const hitRadius = 12;    // Larger hit area for easier clicking
         const handleFill = 'transparent';
-        const handleStroke = '#2962FF';
+        const handleStroke = '#3090FF';
         const handleStrokeWidth = 2;
         
         // Remove existing handles
@@ -1851,9 +1851,9 @@ class NoteBoxTool extends BaseDrawing {
         this.requiredPoints = 1;
         this.text = text;
         this.style.fontSize = style.fontSize || 12;
-        this.style.fontFamily = style.fontFamily || 'Roboto, sans-serif';
+        this.style.fontFamily = style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif';
         this.style.textColor = style.textColor || '#FFFFFF';
-        this.style.backgroundColor = style.backgroundColor || 'rgba(41, 98, 255, 0.9)';
+        this.style.backgroundColor = style.backgroundColor || 'rgba(48, 144, 255, 0.9)';
         this.style.padding = style.padding || 8;
         this.style.borderRadius = style.borderRadius || 4;
         this.style.maxWidth = style.maxWidth || 200;
@@ -1886,7 +1886,7 @@ class NoteBoxTool extends BaseDrawing {
         const innerMaxW = Math.max(20, maxBubbleWidth - padding * 2);
 
         const _nbCtx = getDrawingTextMeasureContext();
-        _nbCtx.font = buildDrawingTextCanvasFont(this.text, scaledFontSize, this.style.fontFamily || 'Roboto, sans-serif', this.style.fontWeight, this.style.fontStyle);
+        _nbCtx.font = buildDrawingTextCanvasFont(this.text, scaledFontSize, this.style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif', this.style.fontWeight, this.style.fontStyle);
         const measureWidth = (str) => {
             try { return _nbCtx.measureText(str || '').width || ((str || '').length * scaledFontSize * 0.6); }
             catch (e) { return (str || '').length * scaledFontSize * 0.6; }
@@ -1901,7 +1901,7 @@ class NoteBoxTool extends BaseDrawing {
                 noteboxDisplay.text,
                 innerMaxW,
                 scaledFontSize,
-                this.style.fontFamily || 'Roboto, sans-serif',
+                this.style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
                 this.style.fontWeight || 'normal',
                 this.style.fontStyle || 'normal'
             )
@@ -2186,7 +2186,7 @@ class NoteBoxTool extends BaseDrawing {
     createTextHandles(group, bbox) {
         const handleRadius = 2.5;
         const handleFill = 'transparent';
-        const handleStroke = '#2962FF';
+        const handleStroke = '#3090FF';
         const handleStrokeWidth = 2;
         
         // Remove existing handles
@@ -2306,9 +2306,9 @@ class AnchoredTextTool extends BaseDrawing {
         this.requiredPoints = 1;
         this.text = text;
         this.style.fontSize = style.fontSize || 12;
-        this.style.fontFamily = style.fontFamily || 'Roboto, sans-serif';
+        this.style.fontFamily = style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif';
         this.style.textColor = style.textColor || '#FFFFFF';
-        this.style.backgroundColor = style.backgroundColor || 'rgba(41, 98, 255, 0.9)';
+        this.style.backgroundColor = style.backgroundColor || 'rgba(48, 144, 255, 0.9)';
         this.style.borderColor = style.borderColor || '#B2B5BE';
         this.style.anchorLength = style.anchorLength || 30;
         this.style.fontWeight = style.fontWeight || 'normal';
@@ -2352,7 +2352,7 @@ class AnchoredTextTool extends BaseDrawing {
         const anchoredDisplay = resolveTextToolDisplay(this.text);
 
         const _atCtx = getDrawingTextMeasureContext();
-        _atCtx.font = buildDrawingTextCanvasFont(this.text, scaledFontSize, this.style.fontFamily || 'Roboto, sans-serif', this.style.fontWeight, this.style.fontStyle);
+        _atCtx.font = buildDrawingTextCanvasFont(this.text, scaledFontSize, this.style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif', this.style.fontWeight, this.style.fontStyle);
         const measureWidth = (str) => {
             try { return _atCtx.measureText(str || '').width || ((str || '').length * scaledFontSize * 0.6); }
             catch (e) { return (str || '').length * scaledFontSize * 0.6; }
@@ -2367,7 +2367,7 @@ class AnchoredTextTool extends BaseDrawing {
                 anchoredDisplay.text,
                 innerMaxW,
                 scaledFontSize,
-                this.style.fontFamily || 'Roboto, sans-serif',
+                this.style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
                 this.style.fontWeight || 'normal',
                 this.style.fontStyle || 'normal'
             )
@@ -2670,7 +2670,7 @@ class NoteTool extends BaseDrawing {
         this.style.fill = style.fill || style.backgroundColor || 'rgba(50, 50, 50, 0.9)';
         this.style.textColor = style.textColor || '#FFFFFF';
         this.style.fontSize = style.fontSize || 12;
-        this.style.fontFamily = style.fontFamily || 'Roboto, sans-serif';
+        this.style.fontFamily = style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif';
         this.style.fontWeight = style.fontWeight || 'normal';
         this.style.fontStyle = style.fontStyle || 'normal';
         if (this.style.wrapText === undefined) this.style.wrapText = !!style.wrapText;
@@ -2734,7 +2734,7 @@ class NoteTool extends BaseDrawing {
 
         // Helper: measure single-line text width via canvas (reliable, no DOM dependency)
         const _nCtx = getDrawingTextMeasureContext();
-        _nCtx.font = buildDrawingTextCanvasFont(this.text, scaledFontSize, this.style.fontFamily || 'Arial, sans-serif', this.style.fontWeight, this.style.fontStyle);
+        _nCtx.font = buildDrawingTextCanvasFont(this.text, scaledFontSize, this.style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif', this.style.fontWeight, this.style.fontStyle);
         const measureWidth = (str) => {
             try { return _nCtx.measureText(str || '').width || ((str || '').length * scaledFontSize * 0.6); }
             catch(e) { return (str || '').length * scaledFontSize * 0.6; }
@@ -2747,7 +2747,7 @@ class NoteTool extends BaseDrawing {
                 noteDisplay.text,
                 innerMaxW,
                 scaledFontSize,
-                this.style.fontFamily || 'Arial, sans-serif',
+                this.style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif',
                 this.style.fontWeight || 'normal',
                 this.style.fontStyle || 'normal'
             )
@@ -2919,7 +2919,7 @@ class NoteTool extends BaseDrawing {
                 .style('min-height', bbox.height + 'px')
                 .style('z-index', '10000')
                 .style('background', self.style.fill || 'rgba(50, 50, 50, 0.95)')
-                .style('border', '2px solid #2962ff')
+                .style('border', '2px solid #3090FF')
                 .style('border-radius', '4px')
                 .style('padding', '4px 6px')
                 .style('box-sizing', 'border-box');
@@ -2934,7 +2934,7 @@ class NoteTool extends BaseDrawing {
                 .style('outline', 'none')
                 .style('color', self.style.textColor || '#ffffff')
                 .style('font-size', (self.style.fontSize || 12) + 'px')
-                .style('font-family', self.style.fontFamily || 'Roboto, sans-serif')
+                .style('font-family', self.style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif')
                 .style('padding', '0')
                 .style('margin', '0');
             
@@ -3154,11 +3154,11 @@ class PriceNoteTool extends BaseDrawing {
         this.text = text;
         this.style.stroke = style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.strokeWidth = style.strokeWidth || 1;
-        this.style.fill = style.fill || '#2962ff';
+        this.style.fill = style.fill || '#3090FF';
         this.style.borderColor = style.borderColor || 'none';
         this.style.textColor = style.textColor || '#FFFFFF';
         this.style.fontSize = style.fontSize || 12;
-        this.style.fontFamily = style.fontFamily || 'Roboto, sans-serif';
+        this.style.fontFamily = style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif';
         this.style.fontWeight = style.fontWeight || 'normal';
         this.style.fontStyle = style.fontStyle || 'normal';
     }
@@ -3194,7 +3194,7 @@ class PriceNoteTool extends BaseDrawing {
 
         const lineStroke = (this.style.stroke && this.style.stroke !== 'none')
             ? this.style.stroke
-            : (typeof DRAWING_TOOL_DEFAULT_STROKE !== 'undefined' ? DRAWING_TOOL_DEFAULT_STROKE : '#2962ff');
+            : (typeof DRAWING_TOOL_DEFAULT_STROKE !== 'undefined' ? DRAWING_TOOL_DEFAULT_STROKE : '#3090FF');
         const noteLineEl = this.group.append('line')
             .attr('class', 'note-line')
             .attr('x1', x1)
@@ -3218,7 +3218,7 @@ class PriceNoteTool extends BaseDrawing {
 
         const padding = 6;
         const _nCtx = getDrawingTextMeasureContext();
-        _nCtx.font = buildDrawingTextCanvasFont(this.text, scaledFontSize, this.style.fontFamily || 'Roboto, sans-serif', this.style.fontWeight, this.style.fontStyle);
+        _nCtx.font = buildDrawingTextCanvasFont(this.text, scaledFontSize, this.style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif', this.style.fontWeight, this.style.fontStyle);
         let textWidth = 60;
         try {
             textWidth = _nCtx.measureText(priceText || '').width || ((priceText || '').length * scaledFontSize * 0.6);
@@ -3248,7 +3248,7 @@ class PriceNoteTool extends BaseDrawing {
 
         const boxFill = (this.style.fill && this.style.fill !== 'none')
             ? this.style.fill
-            : '#2962ff';
+            : '#3090FF';
         const brd = this.style.borderColor;
         const hasLabelBorder = brd && brd !== 'none' && brd !== 'transparent';
         const boxStroke = hasLabelBorder ? brd : 'none';
@@ -3319,13 +3319,13 @@ class PinTool extends BaseDrawing {
         super('pin', points, style);
         this.requiredPoints = 1;
         this.text = text || '';
-        this.style.fill = style.fill || '#2962ff';
+        this.style.fill = style.fill || '#3090FF';
         this.style.stroke = style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.backgroundColor = style.backgroundColor || '#363a45';
         this.style.borderColor = style.borderColor || '#555';
         this.style.textColor = style.textColor || '#d1d4dc';
         this.style.fontSize = style.fontSize || 14;
-        this.style.fontFamily = style.fontFamily || '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        this.style.fontFamily = style.fontFamily || '-apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif';
         this.style.fontWeight = style.fontWeight || 'normal';
         this.style.fontStyle = style.fontStyle || 'normal';
         if (this.style.wrapText === undefined) this.style.wrapText = !!style.wrapText;
@@ -3943,7 +3943,7 @@ class CalloutTool extends BaseDrawing {
         this.style.borderColor = style.borderColor || '#B2B5BE';
         this.style.textColor = style.textColor || '#F23645';
         this.style.fontSize = style.fontSize || 14;
-        this.style.fontFamily = style.fontFamily || 'Arial, sans-serif';
+        this.style.fontFamily = style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif';
         this.style.fontWeight = style.fontWeight || 'normal';
         this.style.fontStyle = style.fontStyle || 'normal';
         this.style.wrapText = !!style.wrapText;
@@ -3981,7 +3981,7 @@ class CalloutTool extends BaseDrawing {
 
         // Helper: measure single line width via canvas (reliable, no DOM dependency)
         const _cFontSize = scaledFontSize;
-        const _cFontFamily = this.style.fontFamily || 'Arial, sans-serif';
+        const _cFontFamily = this.style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif';
         const _cFontWeight = this.style.fontWeight || 'normal';
         const _cFontStyle = this.style.fontStyle || 'normal';
         const calloutDisplay = resolveTextToolDisplay(this.text);
@@ -4307,7 +4307,7 @@ class CommentTool extends BaseDrawing {
         super('comment', points, style);
         this.requiredPoints = 1;
         this.text = text || '';
-        this.style.backgroundColor = style.backgroundColor || '#2962FF';
+        this.style.backgroundColor = style.backgroundColor || '#3090FF';
         this.style.borderColor = style.borderColor || 'transparent';
         this.style.textColor = style.textColor || '#FFFFFF';
         this.style.fontSize = style.fontSize || 14;
@@ -4344,7 +4344,7 @@ class CommentTool extends BaseDrawing {
         
         // Canvas-based measurement (reliable, no DOM dependency)
         const _cFontSize = scaledFontSize;
-        const _cFontFamily = this.style.fontFamily || 'Arial, sans-serif';
+        const _cFontFamily = this.style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif';
         const _cFontWeight = this.style.fontWeight || 'normal';
         const _cFontStyle = this.style.fontStyle || 'normal';
         const commentDisplay = resolveTextToolDisplay(this.text);
@@ -4731,10 +4731,10 @@ class PriceLabelTool extends BaseDrawing {
         this.text = text;
         this.style.stroke = style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.strokeWidth = style.strokeWidth || 1;
-        this.style.fill = style.fill || '#2962ff';
+        this.style.fill = style.fill || '#3090FF';
         this.style.textColor = style.textColor || '#FFFFFF';
         this.style.fontSize = style.fontSize || 12;
-        this.style.fontFamily = style.fontFamily || 'Roboto, sans-serif';
+        this.style.fontFamily = style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif';
         this.style.fontWeight = style.fontWeight || 'normal';
         this.style.fontStyle = style.fontStyle || 'normal';
     }
@@ -4880,10 +4880,10 @@ class PriceLabel2Tool extends BaseDrawing {
         this.text = text;
         this.style.stroke = style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.strokeWidth = style.strokeWidth || 1;
-        this.style.fill = style.fill || '#2962ff';
+        this.style.fill = style.fill || '#3090FF';
         this.style.textColor = style.textColor || '#FFFFFF';
         this.style.fontSize = style.fontSize || 14;
-        this.style.fontFamily = style.fontFamily || 'Roboto, sans-serif';
+        this.style.fontFamily = style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif';
         this.style.fontWeight = style.fontWeight || 'bold';
         this.style.fontStyle = style.fontStyle || 'normal';
     }
@@ -5050,7 +5050,7 @@ class Signpost2Tool extends BaseDrawing {
         this.style.fill = style.fill || '#2e3238';
         this.style.textColor = style.textColor || '#d1d4dc';
         this.style.fontSize = style.fontSize || 13;
-        this.style.fontFamily = style.fontFamily || 'Roboto, sans-serif';
+        this.style.fontFamily = style.fontFamily || '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif';
         this.style.fontWeight = style.fontWeight || 'normal';
         this.style.fontStyle = style.fontStyle || 'normal';
         this.style.lineLength = style.lineLength || 100;

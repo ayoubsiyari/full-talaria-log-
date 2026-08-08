@@ -16,7 +16,7 @@ class EmojiStickerTool extends BaseDrawing {
     }
 
     static defaultFontFamily() {
-        return "'Roboto', 'Segoe UI Emoji', 'Noto Color Emoji', 'Twemoji Mozilla', sans-serif";
+        return '"Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif, "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", sans-serif';
     }
 
     static resolveOptions(options = {}) {
@@ -118,7 +118,7 @@ class EmojiStickerTool extends BaseDrawing {
             .attr('width', boxSize)
             .attr('height', boxSize)
             .attr('fill', 'none')
-            .attr('stroke', '#2962ff')
+            .attr('stroke', '#3090FF')
             .attr('stroke-width', 1)
             .attr('stroke-dasharray', '4,2')
             .style('pointer-events', 'none')
@@ -220,7 +220,7 @@ class EmojiStickerTool extends BaseDrawing {
         const handleRadius = 3;
         const hitRadius = 14;
         const handleFill = 'transparent';
-        const handleStroke = '#2962FF';
+        const handleStroke = '#3090FF';
         const handleStrokeWidth = 2;
 
         group.selectAll('.resize-handle').remove();
