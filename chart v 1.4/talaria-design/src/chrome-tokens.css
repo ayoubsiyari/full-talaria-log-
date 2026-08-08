@@ -757,3 +757,99 @@ body.light-mode {
   background: var(--bg, #e4e6f0);
   color-scheme: light;
 }
+
+/* ── Chrome adapt — phone / tablet / desktop ──
+ * data-chrome-adapt is set from matchMedia (≤640 phone · ≤1024 tablet).
+ * Chart stays full width; order / tools / right panels overlay. */
+[data-chrome-adapt="phone"],
+[data-chrome-adapt="tablet"] {
+  --icon-hit: 44px;
+}
+
+[data-chrome-adapt="phone"] [data-brand-icon="1"],
+[data-chrome-adapt="tablet"] [data-brand-icon="1"] {
+  width: var(--icon-hit);
+  height: var(--icon-hit);
+}
+
+[data-chrome-adapt="phone"] [data-v9-topbar],
+[data-chrome-adapt="tablet"] [data-v9-topbar] {
+  min-height: 44px;
+  padding-left: max(8px, env(safe-area-inset-left, 0px));
+  padding-right: max(8px, env(safe-area-inset-right, 0px));
+}
+
+[data-chrome-adapt="phone"] [data-v9-topbar] [data-tb-label="chartType"],
+[data-chrome-adapt="phone"] [data-v9-topbar] [data-tb-label="indicators"],
+[data-chrome-adapt="phone"] [data-v9-topbar] [data-tb-label="placeOrder"] {
+  display: none !important;
+}
+
+[data-chrome-adapt="phone"] [data-v9-topbar] [data-tb-item="placeOrder"] {
+  padding: 0 12px !important;
+  min-width: 44px;
+  height: 36px;
+}
+
+[data-chrome-adapt="phone"] [data-v9-topbar] [data-tb-util="screenshot"],
+[data-chrome-adapt="phone"] [data-v9-topbar] [data-tb-util="news"],
+[data-chrome-adapt="phone"] [data-v9-topbar] [data-tb-util="layers"] {
+  display: none !important;
+}
+
+[data-chrome-adapt="phone"] [data-v9-replaybar],
+[data-chrome-adapt="tablet"] [data-v9-replaybar] {
+  padding-left: max(8px, env(safe-area-inset-left, 0px));
+  padding-right: max(8px, env(safe-area-inset-right, 0px));
+}
+
+[data-chrome-adapt="phone"] [data-v9-order][data-adapt-sheet="1"],
+[data-chrome-adapt="tablet"] [data-v9-order][data-adapt-drawer="1"] {
+  box-shadow: none !important;
+  filter: none !important;
+}
+
+[data-chrome-adapt="phone"] [data-v9-order][data-adapt-sheet="1"] [data-order-levels],
+[data-chrome-adapt="phone"] [data-v9-order][data-adapt-sheet="1"] [data-order-body] {
+  overscroll-behavior: contain;
+}
+
+[data-chrome-adapt-scrim="1"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Phone/tablet floating windows — size to viewport; keep existing center placement */
+[data-chrome-adapt="phone"] [data-ind-v2="1"],
+[data-chrome-adapt="tablet"] [data-ind-v2="1"],
+[data-chrome-adapt="phone"] [data-sett-v2="1"],
+[data-chrome-adapt="tablet"] [data-sett-v2="1"],
+[data-chrome-adapt="phone"] [data-tool-sett-v2="1"],
+[data-chrome-adapt="tablet"] [data-tool-sett-v2="1"],
+[data-chrome-adapt="phone"] [data-sett-v3="1"],
+[data-chrome-adapt="tablet"] [data-sett-v3="1"],
+[data-chrome-adapt="phone"] [data-faq-v2="1"],
+[data-chrome-adapt="tablet"] [data-faq-v2="1"],
+[data-chrome-adapt="phone"] [data-prof-v2="1"],
+[data-chrome-adapt="tablet"] [data-prof-v2="1"] {
+  width: min(var(--adapt-win-w, 100%), calc(100dvw - 16px)) !important;
+  max-width: calc(100dvw - 16px) !important;
+  min-width: 0 !important;
+  max-height: calc(100dvh - 16px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
+  min-height: 0 !important;
+}
+
+[data-chrome-adapt="phone"] [data-ind-v2="1"] [data-ind-v2-body],
+[data-chrome-adapt="phone"] [data-sett-v2="1"] [data-sett-v2-body] {
+  flex-direction: column !important;
+}
+[data-chrome-adapt="phone"] [data-ind-v2="1"] [data-ind-v2-nav],
+[data-chrome-adapt="phone"] [data-sett-v2="1"] [data-sett-v2-nav] {
+  width: 100% !important;
+  max-height: 140px !important;
+  flex-direction: row !important;
+  flex-wrap: wrap !important;
+  border-right: none !important;
+  border-bottom: 1px solid var(--line) !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+}

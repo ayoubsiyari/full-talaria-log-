@@ -3,8 +3,8 @@
 
 /* ═══════════ INDICATORS (Obsidian — Settings / Profile grammar) ═══════════ */
 [data-ind-v2="1"] {
-  min-width: 560px !important;
-  min-height: 440px !important;
+  min-width: min(560px, calc(100vw - 32px)) !important;
+  min-height: min(440px, calc(100vh - 32px)) !important;
   max-width: min(920px, calc(100vw - 32px)) !important;
   max-height: min(820px, calc(100vh - 32px)) !important;
   display: flex !important;
@@ -339,7 +339,8 @@
 
 /* ═══════════ TOOL SETTINGS (left nav + content) ═══════════ */
 [data-tool-sett-v2="1"] {
-  width: 480px !important;
+  width: min(480px, calc(100vw - 24px)) !important;
+  max-width: calc(100vw - 24px) !important;
   max-height: min(720px, calc(100vh - 32px)) !important;
   border-radius: 8px !important;
   overflow: hidden !important;
@@ -498,7 +499,7 @@
 
 /* ═══════════ CHART SETTINGS (left nav + panes) ═══════════ */
 [data-sett-v2="1"] {
-  min-width: 560px !important;
+  min-width: min(560px, calc(100vw - 32px)) !important;
   min-height: 440px !important;
   max-width: min(920px, calc(100vw - 32px)) !important;
   max-height: min(820px, calc(100vh - 32px)) !important;

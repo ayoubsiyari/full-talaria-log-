@@ -15,7 +15,7 @@
   color: var(--text);
   display: flex !important;
   flex-direction: column !important;
-  width: 448px !important;
+  width: min(448px, calc(100vw - 24px)) !important;
   max-width: calc(100vw - 24px) !important;
   height: auto !important;
   /* --v9-sett-max-h is set by the in-chart clamp so tall panels scroll instead of clipping */

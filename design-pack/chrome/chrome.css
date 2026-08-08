@@ -1,0 +1,611 @@
+/**
+ * Talaria chrome shell — frame / toolbar / rail / replay strip only.
+ * Depends on tokens.css (--talaria-*). No chart library. No per-frame style writes.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+.talaria-shell {
+  --_font: var(--talaria-font-ui);
+  width: 100%;
+  height: 100%;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--talaria-bg);
+  color: var(--talaria-text);
+  font-family: var(--_font);
+  font-size: var(--talaria-size-base);
+  font-weight: 500;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+}
+
+.talaria-shell button {
+  font: inherit;
+  color: inherit;
+  cursor: default;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.talaria-shell button:focus-visible {
+  outline: 2px solid var(--talaria-focus-ring);
+  outline-offset: 2px;
+}
+
+.talaria-icon {
+  width: var(--talaria-icon-glyph);
+  height: var(--talaria-icon-glyph);
+  display: block;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+/* ── SK-03 Top toolbar ── */
+.talaria-topbar {
+  height: var(--talaria-topbar-h);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 8px;
+  background: var(--talaria-surface);
+  border-bottom: 1px solid var(--talaria-line);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.talaria-topbar__logo {
+  width: 40px;
+  height: 36px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: var(--talaria-radius-control);
+  color: var(--talaria-text-muted);
+}
+.talaria-topbar__logo:hover {
+  color: var(--talaria-text);
+  background: var(--talaria-surface-raised);
+}
+.talaria-topbar__logo-mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  background: var(--talaria-brand-black);
+  color: var(--talaria-brand-white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.talaria-topbar__mid {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.talaria-topbar__mid::-webkit-scrollbar {
+  display: none;
+}
+
+.talaria-topbar__cluster {
+  display: flex;
+  align-items: center;
+  gap: var(--talaria-gap-intra);
+  height: 100%;
+  flex: 0 0 auto;
+  padding: 0 4px;
+}
+
+.talaria-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--talaria-line);
+  flex-shrink: 0;
+  margin: 0 2px;
+}
+
+.talaria-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--talaria-radius-control);
+  background: transparent;
+  color: var(--talaria-text-muted);
+  font-size: var(--talaria-size-base);
+  font-weight: 650;
+  white-space: nowrap;
+  transition: background var(--talaria-motion), color var(--talaria-motion), border-color var(--talaria-motion);
+}
+.talaria-chip:hover:not(:disabled) {
+  color: var(--talaria-text);
+  background: var(--talaria-surface-raised);
+}
+.talaria-chip[aria-pressed="true"],
+.talaria-chip[data-active="1"] {
+  color: var(--talaria-accent);
+  background: var(--talaria-accent-quiet);
+}
+.talaria-chip:disabled {
+  opacity: 0.4;
+  color: var(--talaria-text-faint);
+}
+
+.talaria-tf {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.talaria-tf__btn {
+  min-width: 36px;
+  height: 28px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--talaria-radius-control);
+  background: transparent;
+  color: var(--talaria-text-muted);
+  font-size: var(--talaria-size-md);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  transition: background var(--talaria-motion), color var(--talaria-motion);
+}
+.talaria-tf__btn:hover:not(:disabled) {
+  color: var(--talaria-text);
+  background: var(--talaria-surface-raised);
+}
+.talaria-tf__btn[aria-pressed="true"] {
+  color: var(--talaria-accent);
+  background: var(--talaria-accent-quiet);
+}
+.talaria-tf__btn:disabled {
+  opacity: 0.35;
+}
+
+.talaria-topbar__right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  padding-left: 8px;
+  max-width: 48%;
+  min-width: 0;
+}
+
+.talaria-icon-btn {
+  width: var(--talaria-icon-hit);
+  height: var(--talaria-icon-hit);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--talaria-radius-control);
+  background: transparent;
+  color: var(--talaria-text-muted);
+  transition: background var(--talaria-motion), color var(--talaria-motion);
+}
+.talaria-icon-btn:hover:not(:disabled) {
+  background: var(--talaria-surface-raised);
+  color: var(--talaria-text);
+}
+.talaria-icon-btn[aria-pressed="true"],
+.talaria-icon-btn[data-active="1"] {
+  background: var(--talaria-accent-quiet);
+  color: var(--talaria-accent);
+}
+.talaria-icon-btn:disabled {
+  opacity: 0.35;
+}
+
+.talaria-cta {
+  height: 32px;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: none;
+  border-radius: var(--talaria-radius-cta);
+  background: var(--talaria-cta-bg);
+  color: var(--talaria-cta-fg);
+  font-size: var(--talaria-size-md);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  transition: background var(--talaria-motion), opacity var(--talaria-motion);
+}
+.talaria-cta:hover:not(:disabled) {
+  background: var(--talaria-cta-hover);
+}
+.talaria-cta:disabled {
+  opacity: 0.45;
+}
+.talaria-cta .talaria-icon {
+  color: inherit;
+}
+
+/* ── SK-02 / SK-04 Body: rail + chart host + optional order slot ── */
+.talaria-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.talaria-rail {
+  width: var(--talaria-rail-w);
+  flex-shrink: 0;
+  z-index: var(--talaria-z-rail);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  padding-top: 4px;
+  background: var(--talaria-surface);
+  border-right: 1px solid var(--talaria-line);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+}
+
+.talaria-rail__group {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.talaria-rail__sep {
+  width: calc(100% - 20px);
+  height: 1px;
+  margin: 12px 10px;
+  background: var(--talaria-line);
+  flex-shrink: 0;
+}
+
+.talaria-rail__btn {
+  width: var(--talaria-icon-hit);
+  height: var(--talaria-icon-hit);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--talaria-radius-control);
+  background: transparent;
+  color: var(--talaria-text-muted);
+  transition: background var(--talaria-motion), color var(--talaria-motion);
+}
+.talaria-rail__btn:hover:not(:disabled) {
+  background: var(--talaria-surface-raised);
+  color: var(--talaria-text);
+}
+.talaria-rail__btn[aria-pressed="true"] {
+  background: var(--talaria-accent-quiet);
+  color: var(--talaria-accent);
+}
+.talaria-rail__btn:disabled {
+  opacity: 0.35;
+}
+
+.talaria-rail__foot {
+  margin-top: auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 0 10px;
+  border-top: 1px solid var(--talaria-line);
+  position: sticky;
+  bottom: 0;
+  background: var(--talaria-surface);
+}
+
+/* Chart viewport host — engine owns the canvas; pack only provides the hole */
+.talaria-chart-host {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+}
+
+.talaria-chart-stage {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  /* Placeholder paint only — replace with your canvas root. No live gradients in product canvas. */
+  background-color: #000;
+  background-image:
+    linear-gradient(to right, transparent 0, transparent calc(100% - 1px), rgba(255, 255, 255, 0.06) calc(100% - 1px)),
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 47px,
+      rgba(255, 255, 255, 0.04) 47px,
+      rgba(255, 255, 255, 0.04) 48px
+    );
+}
+
+.talaria-chart-stage__empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: var(--talaria-size-md);
+  pointer-events: none;
+  text-align: center;
+  padding: 24px;
+}
+.talaria-chart-stage__empty strong {
+  color: rgba(255, 255, 255, 0.72);
+  font-weight: 650;
+  font-size: var(--talaria-size-base);
+}
+
+/* Order slot: snap open/closed (no layout-property animation — pack hard rule). */
+.talaria-order-slot {
+  width: 0;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: var(--talaria-surface);
+  border-left: 1px solid var(--talaria-line);
+}
+.talaria-shell[data-order-open="1"] .talaria-order-slot {
+  width: var(--talaria-order-rail-w);
+}
+.talaria-order-slot__inner {
+  width: var(--talaria-order-rail-w);
+  height: 100%;
+  padding: var(--talaria-pad-panel);
+  color: var(--talaria-text-muted);
+  font-size: var(--talaria-size-md);
+}
+.talaria-order-slot__inner strong {
+  display: block;
+  color: var(--talaria-text);
+  font-size: var(--talaria-size-lg);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+/* ── SK-04 Bottom: replay + trades strip ── */
+.talaria-replaybar {
+  height: var(--talaria-replaybar-h);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  background: var(--talaria-surface);
+  border-top: 1px solid var(--talaria-line);
+  min-width: 0;
+}
+
+.talaria-replaybar__date {
+  font-family: var(--talaria-font-mono);
+  font-size: var(--talaria-size-sm);
+  color: var(--talaria-text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 148px;
+}
+
+.talaria-replaybar__controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.talaria-replaybar__controls::-webkit-scrollbar {
+  display: none;
+}
+
+.talaria-speed {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--talaria-text-faint);
+  font-size: var(--talaria-size-sm);
+  font-weight: 600;
+}
+.talaria-speed__track {
+  width: 72px;
+  height: 4px;
+  border-radius: var(--talaria-radius-pill);
+  background: var(--talaria-surface-sunken);
+  border: 1px solid var(--talaria-line);
+  position: relative;
+}
+.talaria-speed__fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 40%;
+  border-radius: inherit;
+  background: var(--talaria-accent);
+  pointer-events: none;
+}
+
+.talaria-metrics {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.talaria-metrics__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.talaria-metrics__item span:first-child {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--talaria-text-faint);
+}
+.talaria-metrics__item span:last-child {
+  font-family: var(--talaria-font-mono);
+  font-size: var(--talaria-size-sm);
+  font-weight: 600;
+  color: var(--talaria-text);
+}
+.talaria-metrics__item[data-tone="up"] span:last-child {
+  color: var(--talaria-up);
+}
+.talaria-metrics__item[data-tone="down"] span:last-child {
+  color: var(--talaria-down);
+}
+
+.talaria-trades {
+  flex-shrink: 0;
+  background: var(--talaria-surface);
+  border-top: 1px solid var(--talaria-line);
+  min-height: var(--talaria-tabstrip-h);
+}
+
+.talaria-trades__tabs {
+  height: var(--talaria-tabstrip-h);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.talaria-trades__tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.talaria-tab {
+  height: 100%;
+  padding: 0 10px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--talaria-text-muted);
+  font-size: var(--talaria-size-md);
+  font-weight: 600;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color var(--talaria-motion), border-color var(--talaria-motion);
+}
+.talaria-tab:hover:not(:disabled) {
+  color: var(--talaria-text);
+}
+.talaria-tab[aria-selected="true"] {
+  color: var(--talaria-accent);
+  border-bottom-color: var(--talaria-accent);
+}
+.talaria-tab em {
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--talaria-radius-pill);
+  background: var(--talaria-accent-quiet);
+  color: var(--talaria-accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+.talaria-tab:disabled {
+  opacity: 0.35;
+}
+
+.talaria-trades__empty {
+  padding: 20px 12px 24px;
+  text-align: center;
+  color: var(--talaria-text-faint);
+  font-size: var(--talaria-size-md);
+}
+.talaria-trades__empty strong {
+  display: block;
+  color: var(--talaria-text-muted);
+  font-weight: 650;
+  margin-bottom: 4px;
+}
+
+/* Theme switcher (demo) — apply once, not per frame */
+.talaria-theme-select {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--talaria-line);
+  border-radius: var(--talaria-radius-control);
+  background: var(--talaria-surface-sunken);
+  color: var(--talaria-text-muted);
+  font-size: var(--talaria-size-sm);
+  font-weight: 600;
+}
+
+@media (max-width: 820px) {
+  .talaria-chip__label--hide-narrow,
+  .talaria-cta__label {
+    display: none;
+  }
+  .talaria-cta {
+    padding: 0 12px;
+    min-width: 36px;
+  }
+  .talaria-metrics__item[data-hide="eq"] {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .talaria-rail {
+    display: none;
+  }
+  .talaria-shell[data-order-open="1"] .talaria-order-slot {
+    width: 0;
+  }
+  .talaria-topbar__right .talaria-icon-btn[data-util="news"],
+  .talaria-topbar__right .talaria-icon-btn[data-util="layers"],
+  .talaria-topbar__right .talaria-icon-btn[data-util="screenshot"] {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .talaria-shell,
+  .talaria-shell * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

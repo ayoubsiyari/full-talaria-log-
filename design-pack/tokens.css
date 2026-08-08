@@ -1,0 +1,149 @@
+/**
+ * Talaria Obsidian — static chrome tokens (Plan 4 Phase 1 design pack).
+ * Prefix: --talaria-*
+ *
+ * HARD RULE: set these once at theme apply (data-talaria-theme on the shell root).
+ * FORBIDDEN: writing any --talaria-* var every frame (crosshair, price, hover coords).
+ * Dynamic geometry belongs in JS/canvas FrameValues — never on shared CSS ancestors.
+ */
+
+:root,
+[data-talaria-theme="dark"] {
+  --talaria-brand-black: #000000;
+  --talaria-brand-white: #ffffff;
+  --talaria-brand-blue: #3090ff;
+  --talaria-brand-blue-deep: #232cf4;
+  --talaria-brand-slate: #2c537a;
+  --talaria-brand-lilac: #a2a1cd;
+  --talaria-brand-mist: #ebe9fe;
+
+  --talaria-bg: #000000;
+  --talaria-surface: #0a0a0b;
+  --talaria-surface-raised: #141416;
+  --talaria-surface-sunken: #050505;
+
+  --talaria-line: color-mix(in oklab, var(--talaria-brand-lilac) 22%, transparent);
+  --talaria-line-strong: color-mix(in oklab, var(--talaria-brand-lilac) 42%, transparent);
+
+  --talaria-text: #f4f4f5;
+  --talaria-text-muted: color-mix(in oklab, #f4f4f5 64%, var(--talaria-brand-lilac));
+  --talaria-text-faint: color-mix(in oklab, #f4f4f5 40%, var(--talaria-brand-lilac));
+
+  --talaria-accent: var(--talaria-brand-blue);
+  --talaria-accent-hover: #4aa0ff;
+  --talaria-accent-deep: var(--talaria-brand-blue-deep);
+  --talaria-accent-quiet: color-mix(in oklab, var(--talaria-brand-blue) 16%, transparent);
+
+  --talaria-up: oklch(0.72 0.14 155);
+  --talaria-down: oklch(0.63 0.18 25);
+  --talaria-warn: oklch(0.78 0.14 85);
+
+  --talaria-cta-bg: var(--talaria-brand-white);
+  --talaria-cta-fg: var(--talaria-brand-black);
+  --talaria-cta-hover: var(--talaria-brand-mist);
+
+  --talaria-overlay: color-mix(in oklab, #000 55%, transparent);
+  --talaria-focus-ring: var(--talaria-accent);
+  color-scheme: dark;
+}
+
+[data-talaria-theme="light"] {
+  --talaria-bg: #e4e6f0;
+  --talaria-surface: #eceef6;
+  --talaria-surface-raised: #f3f4f9;
+  --talaria-surface-sunken: #dde0ec;
+
+  --talaria-line: color-mix(in oklab, var(--talaria-brand-slate) 22%, transparent);
+  --talaria-line-strong: color-mix(in oklab, var(--talaria-brand-slate) 40%, transparent);
+
+  --talaria-text: #12141a;
+  --talaria-text-muted: color-mix(in oklab, #12141a 58%, var(--talaria-brand-slate));
+  --talaria-text-faint: color-mix(in oklab, #12141a 40%, var(--talaria-brand-slate));
+
+  --talaria-accent: #1f6fd4;
+  --talaria-accent-hover: #2a7de8;
+  --talaria-accent-quiet: color-mix(in oklab, #3090ff 12%, transparent);
+
+  --talaria-up: oklch(0.48 0.12 155);
+  --talaria-down: oklch(0.50 0.16 25);
+  --talaria-warn: oklch(0.55 0.12 85);
+
+  --talaria-cta-bg: var(--talaria-brand-black);
+  --talaria-cta-fg: var(--talaria-brand-white);
+  --talaria-cta-hover: #22242a;
+
+  --talaria-overlay: color-mix(in oklab, #12141a 32%, transparent);
+  color-scheme: light;
+}
+
+[data-talaria-theme="light-soft"] {
+  --talaria-bg: #dde0e6;
+  --talaria-surface: #e6e8ed;
+  --talaria-surface-raised: #eef0f3;
+  --talaria-surface-sunken: #d2d5dc;
+
+  --talaria-line: color-mix(in oklab, #2c537a 20%, transparent);
+  --talaria-line-strong: color-mix(in oklab, #2c537a 36%, transparent);
+
+  --talaria-text: #12141a;
+  --talaria-text-muted: color-mix(in oklab, #12141a 56%, #2c537a);
+  --talaria-text-faint: color-mix(in oklab, #12141a 38%, #2c537a);
+
+  --talaria-accent: #1f6fd4;
+  --talaria-accent-hover: #2a7de8;
+  --talaria-accent-quiet: color-mix(in oklab, #3090ff 11%, transparent);
+
+  --talaria-up: oklch(0.48 0.12 155);
+  --talaria-down: oklch(0.50 0.16 25);
+  --talaria-warn: oklch(0.55 0.12 85);
+
+  --talaria-cta-bg: var(--talaria-brand-black);
+  --talaria-cta-fg: var(--talaria-brand-white);
+  --talaria-cta-hover: #22242a;
+
+  --talaria-overlay: color-mix(in oklab, #12141a 28%, transparent);
+  color-scheme: light;
+}
+
+:root {
+  --talaria-font-ui: "Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --talaria-font-display: "Blauer Nue", "Exo 2", "Helvetica Neue", sans-serif;
+  --talaria-font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --talaria-size-xs: 10px;
+  --talaria-size-sm: 11px;
+  --talaria-size-md: 12px;
+  --talaria-size-base: 13px;
+  --talaria-size-lg: 14px;
+
+  --talaria-topbar-h: 48px;
+  --talaria-rail-w: 48px;
+  --talaria-replaybar-h: 48px;
+  --talaria-tabstrip-h: 36px;
+  --talaria-order-rail-w: 320px;
+  --talaria-icon-glyph: 18px;
+  --talaria-icon-hit: 36px;
+
+  --talaria-radius-control: 6px;
+  --talaria-radius-panel: 8px;
+  --talaria-radius-cta: 6px;
+  --talaria-radius-pill: 999px;
+
+  --talaria-gap-intra: 4px;
+  --talaria-gap-inter: 12px;
+  --talaria-pad-panel: 14px;
+
+  --talaria-motion: 140ms ease-out;
+  --talaria-motion-menu: 160ms ease-out;
+
+  --talaria-z-rail: 30;
+  --talaria-z-drop: 9000;
+  --talaria-z-modal: 9002;
+  --talaria-z-tip: 99999;
+}
+
+@media (max-width: 1024px) {
+  :root {
+    --talaria-icon-hit: 44px;
+  }
+}

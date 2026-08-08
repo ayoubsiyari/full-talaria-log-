@@ -143,6 +143,26 @@ export function resolveChromeThemeAttr(colorMode, presetId) {
   return chromePresetById(presetId).lightTheme;
 }
 
+/**
+ * Viewport adapt tier for chart chrome (not per-device UA).
+ * phone ≤640 · tablet ≤1024 · desktop >1024
+ */
+export function resolveChromeAdaptAttr(width) {
+  const w =
+    Number.isFinite(width) && width > 0
+      ? width
+      : typeof window !== "undefined"
+        ? window.innerWidth
+        : 1280;
+  if (w <= 640) return "phone";
+  if (w <= 1024) return "tablet";
+  return "desktop";
+}
+
+export function isChromeAdaptNarrow(adapt) {
+  return adapt === "phone" || adapt === "tablet";
+}
+
 const LS_THEME = "talaria_v9_chrome_theme";
 const LS_PRESET = "talaria_v9_chrome_preset";
 

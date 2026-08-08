@@ -913,6 +913,14 @@ const ICONS = {
       )}
     </Svg>
   ),
+  /** Phone tools toggle — three-line menu. */
+  menu: (s, cl) => (
+    <Svg s={s} cl={cl}>
+      <L x1="5" y1="7" x2="19" y2="7" />
+      <L x1="5" y1="12" x2="19" y2="12" />
+      <L x1="5" y1="17" x2="19" y2="17" />
+    </Svg>
+  ),
   chat: (s, cl) => (
     <Svg s={s} cl={cl}>
       <P d="M5 5 H19 V14 H11 L6 18 V14 H5 Z" />

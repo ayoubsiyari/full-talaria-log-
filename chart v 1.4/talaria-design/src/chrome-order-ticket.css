@@ -1926,6 +1926,16 @@
   width: 180px !important;
 }
 
+/* Adapt — phone sheet / tablet drawer keep ticket scrollable inside overlay */
+[data-chrome-adapt="phone"] [data-order-v4="1"][data-adapt-sheet="1"],
+[data-chrome-adapt="tablet"] [data-order-v4="1"][data-adapt-drawer="1"] {
+  max-width: 100vw !important;
+}
+[data-chrome-adapt="phone"] [data-order-v4="1"][data-adapt-sheet="1"] [data-order-foot],
+[data-chrome-adapt="tablet"] [data-order-v4="1"][data-adapt-drawer="1"] [data-order-foot] {
+  padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+}
+
 /* Light — quieter level / journal washes (mist paper already carries tone) */
 [data-chrome-theme="light"] [data-order-v4="1"],
 [data-chrome-theme="light-soft"] [data-order-v4="1"],

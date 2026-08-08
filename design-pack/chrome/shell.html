@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en" data-talaria-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Talaria design pack — chrome shell</title>
+  <link rel="stylesheet" href="../tokens.css" />
+  <link rel="stylesheet" href="./chrome.css" />
+</head>
+<body style="margin:0;background:#000">
+  <!-- Inline sprite once; icons use <use href="#icon-…"> -->
+  <div hidden aria-hidden="true">
+    <!-- sprite injected at runtime from ../icons/sprite.svg for file:// safety -->
+  </div>
+
+  <div class="talaria-shell" id="talaria-shell" data-talaria-theme="dark" data-order-open="0">
+    <!-- SK-03 Top toolbar -->
+    <header class="talaria-topbar" data-sk="SK-03" role="banner">
+      <button type="button" class="talaria-topbar__logo" aria-label="Talaria menu" data-action="menu">
+        <span class="talaria-topbar__logo-mark" aria-hidden="true">T</span>
+      </button>
+
+      <div class="talaria-topbar__mid">
+        <div class="talaria-topbar__cluster">
+          <div class="talaria-divider" aria-hidden="true"></div>
+          <button type="button" class="talaria-chip" data-action="symbol" aria-haspopup="listbox" aria-expanded="false">
+            <span>EUR/JPY</span>
+            <svg class="talaria-icon" width="10" height="10"><use href="#icon-chevron"/></svg>
+          </button>
+          <div class="talaria-divider" aria-hidden="true"></div>
+          <button type="button" class="talaria-chip" data-action="chartType" aria-pressed="false">
+            <svg class="talaria-icon"><use href="#icon-candle"/></svg>
+            <span class="talaria-chip__label--hide-narrow">Candles</span>
+            <svg class="talaria-icon" width="10" height="10"><use href="#icon-chevron"/></svg>
+          </button>
+          <div class="talaria-divider" aria-hidden="true"></div>
+          <button type="button" class="talaria-chip" data-action="indicators" aria-pressed="false">
+            <svg class="talaria-icon"><use href="#icon-indicator"/></svg>
+            <span class="talaria-chip__label--hide-narrow">Indicators</span>
+          </button>
+          <div class="talaria-divider" aria-hidden="true"></div>
+          <div class="talaria-tf" role="toolbar" aria-label="Timeframes">
+            <button type="button" class="talaria-tf__btn" data-tf="1m" aria-pressed="true">1m</button>
+            <button type="button" class="talaria-tf__btn" data-tf="5m" aria-pressed="false">5m</button>
+            <button type="button" class="talaria-tf__btn" data-tf="15m" aria-pressed="false">15m</button>
+            <button type="button" class="talaria-tf__btn" data-tf="1h" aria-pressed="false">1h</button>
+            <button type="button" class="talaria-tf__btn" data-tf="4h" aria-pressed="false">4h</button>
+            <button type="button" class="talaria-tf__btn" data-tf="1d" aria-pressed="false">1d</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="talaria-topbar__right">
+        <button type="button" class="talaria-icon-btn" data-action="cloud" aria-label="Cloud sync">
+          <svg class="talaria-icon"><use href="#icon-cloud"/></svg>
+        </button>
+        <button type="button" class="talaria-icon-btn" data-action="support" aria-label="Support">
+          <svg class="talaria-icon"><use href="#icon-chat"/></svg>
+        </button>
+        <button type="button" class="talaria-cta" data-action="placeOrder" aria-label="Place Order">
+          <svg class="talaria-icon"><use href="#icon-plus"/></svg>
+          <span class="talaria-cta__label">Place Order</span>
+        </button>
+        <button type="button" class="talaria-icon-btn" data-util="layout" data-action="layout" aria-label="Layouts">
+          <svg class="talaria-icon"><use href="#icon-layout"/></svg>
+        </button>
+        <button type="button" class="talaria-icon-btn" data-util="layers" data-action="layers" aria-label="Objects">
+          <svg class="talaria-icon"><use href="#icon-layers"/></svg>
+        </button>
+        <button type="button" class="talaria-icon-btn" data-util="news" data-action="news" aria-label="News">
+          <svg class="talaria-icon"><use href="#icon-news"/></svg>
+        </button>
+        <button type="button" class="talaria-icon-btn" data-util="screenshot" data-action="screenshot" aria-label="Screenshot">
+          <svg class="talaria-icon"><use href="#icon-screenshot"/></svg>
+        </button>
+        <button type="button" class="talaria-icon-btn" data-action="expand" aria-label="Fullscreen">
+          <svg class="talaria-icon"><use href="#icon-expand"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="talaria-body">
+      <!-- SK-04 Left tool rail -->
+      <nav class="talaria-rail" data-sk="SK-04" aria-label="Drawing tools">
+        <div class="talaria-rail__group">
+          <button type="button" class="talaria-rail__btn" data-tool="crosshair" aria-label="Cursor" aria-pressed="true">
+            <svg class="talaria-icon"><use href="#icon-crosshair"/></svg>
+          </button>
+        </div>
+        <div class="talaria-rail__sep" aria-hidden="true"></div>
+        <div class="talaria-rail__group">
+          <button type="button" class="talaria-rail__btn" data-tool="trendline" aria-label="Trend line" aria-pressed="false">
+            <svg class="talaria-icon"><use href="#icon-trendline"/></svg>
+          </button>
+          <button type="button" class="talaria-rail__btn" data-tool="hline" aria-label="Horizontal line" aria-pressed="false">
+            <svg class="talaria-icon"><use href="#icon-hline"/></svg>
+          </button>
+          <button type="button" class="talaria-rail__btn" data-tool="fib" aria-label="Fibonacci" aria-pressed="false">
+            <svg class="talaria-icon"><use href="#icon-fib"/></svg>
+          </button>
+          <button type="button" class="talaria-rail__btn" data-tool="text" aria-label="Text" aria-pressed="false">
+            <svg class="talaria-icon"><use href="#icon-text"/></svg>
+          </button>
+          <button type="button" class="talaria-rail__btn" data-tool="ruler" aria-label="Measure" aria-pressed="false">
+            <svg class="talaria-icon"><use href="#icon-ruler"/></svg>
+          </button>
+        </div>
+        <div class="talaria-rail__sep" aria-hidden="true"></div>
+        <div class="talaria-rail__group">
+          <button type="button" class="talaria-rail__btn" data-tool="magnet" aria-label="Magnet" aria-pressed="false">
+            <svg class="talaria-icon"><use href="#icon-magnet"/></svg>
+          </button>
+          <button type="button" class="talaria-rail__btn" data-tool="trash" aria-label="Delete" aria-pressed="false">
+            <svg class="talaria-icon"><use href="#icon-trash"/></svg>
+          </button>
+        </div>
+        <div class="talaria-rail__foot">
+          <label class="visually-hidden" for="theme-select">Theme</label>
+          <select id="theme-select" class="talaria-theme-select" aria-label="Theme" title="Theme">
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+            <option value="light-soft">Soft</option>
+          </select>
+        </div>
+      </nav>
+
+      <!-- SK-02 Chart frame host -->
+      <main class="talaria-chart-host" data-sk="SK-02">
+        <div class="talaria-chart-stage" id="chart-stage" data-slot="chart-canvas">
+          <div class="talaria-chart-stage__empty" data-state="empty">
+            <strong>Chart viewport</strong>
+            <span>Mount your canvas here. This pack does not include a chart engine.</span>
+          </div>
+        </div>
+
+        <!-- SK-04 Replay bar -->
+        <div class="talaria-replaybar" data-sk="SK-04" role="group" aria-label="Replay">
+          <div class="talaria-replaybar__date">Sat 08 Aug '26 · 22:00Z</div>
+          <div class="talaria-replaybar__controls">
+            <button type="button" class="talaria-icon-btn" data-action="play" aria-label="Play" aria-pressed="false">
+              <svg class="talaria-icon"><use href="#icon-play"/></svg>
+            </button>
+            <div class="talaria-speed" aria-label="Speed 10x">
+              <span>10x</span>
+              <div class="talaria-speed__track" aria-hidden="true"><div class="talaria-speed__fill"></div></div>
+            </div>
+          </div>
+          <div class="talaria-metrics">
+            <div class="talaria-metrics__item" data-metric="bal"><span>Balance</span><span>10,000.00</span></div>
+            <div class="talaria-metrics__item" data-metric="eq" data-hide="eq"><span>Equity</span><span>10,000.00</span></div>
+            <div class="talaria-metrics__item" data-metric="pnl" data-tone="up"><span>P&amp;L</span><span>+0.00</span></div>
+          </div>
+          <button type="button" class="talaria-icon-btn" data-action="export" aria-label="Export">
+            <svg class="talaria-icon"><use href="#icon-export"/></svg>
+          </button>
+        </div>
+
+        <!-- Trades tab strip -->
+        <div class="talaria-trades" data-sk="SK-04">
+          <div class="talaria-trades__tabs" role="tablist" aria-label="Trades">
+            <button type="button" class="talaria-tab" role="tab" aria-selected="true" data-tab="all">All <em>0</em></button>
+            <button type="button" class="talaria-tab" role="tab" aria-selected="false" data-tab="pending">Pending <em>0</em></button>
+            <button type="button" class="talaria-tab" role="tab" aria-selected="false" data-tab="open">Open <em>0</em></button>
+            <button type="button" class="talaria-tab" role="tab" aria-selected="false" data-tab="history">History <em>0</em></button>
+            <button type="button" class="talaria-tab" role="tab" aria-selected="false" data-tab="analytics">Analytics</button>
+          </div>
+          <div class="talaria-trades__empty" data-state="empty" hidden>
+            <strong>No trades here</strong>
+            <span>Place an order to populate this list.</span>
+          </div>
+        </div>
+      </main>
+
+      <!-- Order rail slot (chrome chrome only — no order math) -->
+      <aside class="talaria-order-slot" data-sk="SK-03" aria-label="Order panel slot">
+        <div class="talaria-order-slot__inner">
+          <strong>Order</strong>
+          Slot only. Wire your ticket UI here. This pack does not compute size, risk, or fills.
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <style>
+    .visually-hidden {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+    }
+  </style>
+
+  <script type="module">
+    /**
+     * Demo glue only — theme apply once; delegated clicks; every listener removed on dispose.
+     * Does NOT touch chart engine state. Hover stays CSS-only.
+     */
+    const shell = document.getElementById("talaria-shell");
+    const html = document.documentElement;
+
+    async function injectSprite() {
+      const res = await fetch("../icons/sprite.svg");
+      const text = await res.text();
+      const wrap = document.createElement("div");
+      wrap.hidden = true;
+      wrap.setAttribute("aria-hidden", "true");
+      wrap.innerHTML = text;
+      document.body.prepend(wrap);
+    }
+
+    function applyTheme(theme) {
+      // STATIC apply — once per user action, never in rAF / mousemove.
+      html.setAttribute("data-talaria-theme", theme);
+      shell.setAttribute("data-talaria-theme", theme);
+    }
+
+    function onShellClick(e) {
+      const t = e.target.closest("[data-action], [data-tf], [data-tool], [data-tab]");
+      if (!t || !shell.contains(t)) return;
+
+      if (t.matches("[data-tf]")) {
+        shell.querySelectorAll("[data-tf]").forEach((b) => b.setAttribute("aria-pressed", "false"));
+        t.setAttribute("aria-pressed", "true");
+        shell.dispatchEvent(new CustomEvent("talaria:tf", { detail: { tf: t.dataset.tf }, bubbles: true }));
+        return;
+      }
+
+      if (t.matches("[data-tool]")) {
+        shell.querySelectorAll("[data-tool]").forEach((b) => b.setAttribute("aria-pressed", "false"));
+        t.setAttribute("aria-pressed", "true");
+        shell.dispatchEvent(new CustomEvent("talaria:tool", { detail: { tool: t.dataset.tool }, bubbles: true }));
+        return;
+      }
+
+      if (t.matches("[data-tab]")) {
+        shell.querySelectorAll("[data-tab]").forEach((b) => b.setAttribute("aria-selected", "false"));
+        t.setAttribute("aria-selected", "true");
+        return;
+      }
+
+      if (t.dataset.action === "placeOrder") {
+        const open = shell.getAttribute("data-order-open") === "1" ? "0" : "1";
+        shell.setAttribute("data-order-open", open);
+        t.setAttribute("aria-pressed", open === "1" ? "true" : "false");
+        return;
+      }
+
+      if (t.dataset.action === "play") {
+        const on = t.getAttribute("aria-pressed") === "true";
+        t.setAttribute("aria-pressed", on ? "false" : "true");
+        t.setAttribute("aria-label", on ? "Play" : "Pause");
+        const use = t.querySelector("use");
+        if (use) use.setAttribute("href", on ? "#icon-play" : "#icon-pause");
+      }
+    }
+
+    const themeSelect = document.getElementById("theme-select");
+    function onThemeChange() {
+      applyTheme(themeSelect.value);
+    }
+
+    let disposed = false;
+    function dispose() {
+      if (disposed) return;
+      disposed = true;
+      shell.removeEventListener("click", onShellClick);
+      themeSelect.removeEventListener("change", onThemeChange);
+    }
+
+    await injectSprite();
+    shell.addEventListener("click", onShellClick);
+    themeSelect.addEventListener("change", onThemeChange);
+    window.__talariaDesignPackDispose = dispose;
+  </script>
+</body>
+</html>

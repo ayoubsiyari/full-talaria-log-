@@ -55,6 +55,8 @@ import {
   chromeToolClusters,
   chromePresetById,
   resolveChromeThemeAttr,
+  resolveChromeAdaptAttr,
+  isChromeAdaptNarrow,
   readStoredChromeColorMode,
   readStoredChromePresetId,
   persistChromeColorMode,
@@ -15969,6 +15971,11 @@ const TalariaV8bLive = () => {
   const [chromePresetId, setChromePresetId] = useState(() => readStoredChromePresetId());
   const chromePreset = chromePresetById(chromePresetId);
   const chromeThemeAttr = resolveChromeThemeAttr(chromeColorMode, chromePresetId);
+  const [chromeAdapt, setChromeAdapt] = useState(() =>
+    typeof window !== "undefined" ? resolveChromeAdaptAttr(window.innerWidth) : "desktop"
+  );
+  const adaptNarrow = isChromeAdaptNarrow(chromeAdapt);
+  const [railOpen, setRailOpen] = useState(false);
   const orderRailW = chromePresetId === 2 ? 360 : 320;
   const [opSymOpen, setOpSymOpen] = useState(false);
   const [opSymSearch, setOpSymSearch] = useState("");
@@ -18137,9 +18144,13 @@ const TalariaV8bLive = () => {
   const clampIndSize = (w, h) => {
     const vpW = typeof window !== "undefined" ? window.innerWidth : 1200;
     const vpH = typeof window !== "undefined" ? window.innerHeight : 900;
+    const maxW = Math.min(IND_WIN_MAX_W, Math.max(240, vpW - 16));
+    const maxH = Math.min(IND_WIN_MAX_H, Math.max(240, vpH - 16));
+    const minW = Math.min(IND_WIN_MIN_W, maxW);
+    const minH = Math.min(IND_WIN_MIN_H, maxH);
     return {
-      w: Math.max(IND_WIN_MIN_W, Math.min(w, Math.min(IND_WIN_MAX_W, vpW - 32))),
-      h: Math.max(IND_WIN_MIN_H, Math.min(h, Math.min(IND_WIN_MAX_H, vpH - 32))),
+      w: Math.max(minW, Math.min(w, maxW)),
+      h: Math.max(minH, Math.min(h, maxH)),
     };
   };
   const beginIndResize = (e, axes) => {
@@ -18185,9 +18196,13 @@ const TalariaV8bLive = () => {
   const clampSettingsSize = (w, h) => {
     const vpW = typeof window !== "undefined" ? window.innerWidth : 1200;
     const vpH = typeof window !== "undefined" ? window.innerHeight : 900;
+    const maxW = Math.min(SETT_WIN_MAX_W, Math.max(240, vpW - 16));
+    const maxH = Math.min(SETT_WIN_MAX_H, Math.max(240, vpH - 16));
+    const minW = Math.min(SETT_WIN_MIN_W, maxW);
+    const minH = Math.min(SETT_WIN_MIN_H, maxH);
     return {
-      w: Math.max(SETT_WIN_MIN_W, Math.min(w, Math.min(SETT_WIN_MAX_W, vpW - 32))),
-      h: Math.max(SETT_WIN_MIN_H, Math.min(h, Math.min(SETT_WIN_MAX_H, vpH - 32))),
+      w: Math.max(minW, Math.min(w, maxW)),
+      h: Math.max(minH, Math.min(h, maxH)),
     };
   };
   const beginSettingsResize = (e, axes) => {
@@ -18933,16 +18948,43 @@ const TalariaV8bLive = () => {
     if (app) {
       app.setAttribute("data-chrome-theme", chromeThemeAttr);
       app.setAttribute("data-chrome-preset", String(chromePresetId));
+      app.setAttribute("data-chrome-adapt", chromeAdapt);
     }
     document.documentElement.setAttribute("data-chrome-theme", chromeThemeAttr);
     document.documentElement.setAttribute("data-chrome-preset", String(chromePresetId));
-  }, [chromeColorMode, chromePresetId, chromeThemeAttr]);
+    document.documentElement.setAttribute("data-chrome-adapt", chromeAdapt);
+  }, [chromeColorMode, chromePresetId, chromeThemeAttr, chromeAdapt]);
 
-  // Preset 3 = floating ticket; others dock (user can still detach manually).
+  // Live adapt tier from viewport (orientation / DevTools device width).
   useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const sync = () => setChromeAdapt(resolveChromeAdaptAttr(window.innerWidth));
+    sync();
+    const mqPhone = window.matchMedia("(max-width: 640px)");
+    const mqTablet = window.matchMedia("(max-width: 1024px)");
+    mqPhone.addEventListener("change", sync);
+    mqTablet.addEventListener("change", sync);
+    window.addEventListener("resize", sync);
+    return () => {
+      mqPhone.removeEventListener("change", sync);
+      mqTablet.removeEventListener("change", sync);
+      window.removeEventListener("resize", sync);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (chromeAdapt !== "phone") setRailOpen(false);
+  }, [chromeAdapt]);
+
+  // Phone/tablet: order is always overlay (never permanent dock). Desktop follows preset.
+  useEffect(() => {
+    if (adaptNarrow) {
+      setPanelDetached(true);
+      return;
+    }
     const wantFloat = chromePreset.orderMode === "float";
     setPanelDetached((prev) => (prev === wantFloat ? prev : wantFloat));
-  }, [chromePreset.orderMode]);
+  }, [adaptNarrow, chromePreset.orderMode]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -19236,7 +19278,7 @@ const TalariaV8bLive = () => {
     if (typeof window !== "undefined") {
       // One RR visual by default (SVG). React overlay is opt-in only.
       if (window.__V9_RR_REACT_CHROME__ == null) window.__V9_RR_REACT_CHROME__ = false;
-      window.__TALARIA_V9_UI_REV__ = "20260808-vis-range-v71";
+      window.__TALARIA_V9_UI_REV__ = "20260808-chrome-adapt-v72";
     }
   }, []);
 
@@ -19896,7 +19938,8 @@ const TalariaV8bLive = () => {
 
   // Push both floating bars out of the right panel the instant it opens
   useEffect(() => {
-    const panelW = (rightPanel || orderPanelOpen) ? orderRailW : 0;
+    // Narrow adapt uses overlays — chart keeps full width; do not shove bars.
+    const panelW = adaptNarrow ? 0 : ((rightPanel || orderPanelOpen) ? orderRailW : 0);
     if (tlBarRef.current) {
       const barW = tlBarRef.current.getBoundingClientRect().width / Z;
       const barH = tlBarRef.current.getBoundingClientRect().height / Z;
@@ -19909,7 +19952,7 @@ const TalariaV8bLive = () => {
       const { maxX } = v9FloatingUiDragBounds(Z, barW, barH, panelW);
       setPinnedBarPos(p => ({ ...p, x: Math.min(p.x, maxX) }));
     }
-  }, [rightPanel, orderPanelOpen, orderRailW]);
+  }, [rightPanel, orderPanelOpen, orderRailW, adaptNarrow]);
 
   // Shrink/expand chart when the right rail opens/closes so strokes/labels
   // are not laid out under it. useLayoutEffect + sync bump kills the 1-frame
@@ -28735,7 +28778,7 @@ const TalariaV8bLive = () => {
   const isMcIframeEmbed = v9IsMultichartIframeEmbed();
 
   return (
-    <div data-v9-app="1" data-chrome-theme={chromeThemeAttr} data-chrome-preset={String(chromePresetId)} style={{ width: "100%", height: isMcIframeEmbed ? "100%" : "100dvh", boxSizing: "border-box", paddingLeft: isMcIframeEmbed ? 0 : 1, background: "var(--bg)", fontFamily: F, color: "var(--text)", display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", animation: isFullscreen ? "tlrFullscreenIn 0.3s ease forwards" : undefined }}
+    <div data-v9-app="1" data-chrome-theme={chromeThemeAttr} data-chrome-preset={String(chromePresetId)} data-chrome-adapt={chromeAdapt} style={{ width: "100%", height: isMcIframeEmbed ? "100%" : "100dvh", boxSizing: "border-box", paddingLeft: isMcIframeEmbed ? 0 : 1, background: "var(--bg)", fontFamily: F, color: "var(--text)", display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", animation: isFullscreen ? "tlrFullscreenIn 0.3s ease forwards" : undefined, paddingTop: "env(safe-area-inset-top, 0px)", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
       onContextMenu={v9BlockBrowserContextMenu}
       onClick={(e) => {
         // Never run closeAll on bubbled clicks from children — it ran after every button/dropdown
@@ -39474,6 +39517,34 @@ const TalariaV8bLive = () => {
         );
       })(), document.body)}
       <div data-v9-chrome="1" data-v9-topbar="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{ height: 44, flexShrink: 0, minWidth: 0, background: "var(--surface)", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", padding: "0 8px", gap: 0, overflow: "hidden", position: "relative" }}>
+        {chromeAdapt === "phone" && (
+          <button
+            type="button"
+            data-brand-icon="1"
+            data-tb-rail-toggle="1"
+            aria-label={railOpen ? "Close drawing tools" : "Open drawing tools"}
+            aria-pressed={railOpen}
+            onClick={(e) => {
+              e.stopPropagation();
+              setRailOpen((v) => !v);
+            }}
+            style={{
+              width: 44,
+              height: 44,
+              flex: "0 0 auto",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              border: "none",
+              borderRadius: 6,
+              background: railOpen ? "var(--accent-quiet)" : "transparent",
+              color: railOpen ? "var(--accent)" : "var(--text-muted)",
+              cursor: "default",
+            }}
+          >
+            <ChromeIcon n="menu" s={18} cl="currentColor" />
+          </button>
+        )}
         {/* Logo — always pinned left, never scrolled away */}
         {(()=>{ const logoActive = logoMenu || settingsOpen || profileOpen || faqOpen; return (
         <div data-tb-zone="logo" role="button" aria-label="Talaria menu" aria-expanded={!!logoMenu} onClick={(e) => { e.stopPropagation(); const was=logoMenu; if(was){closePopup(setLogoMenu,"logoMenu");}else{openChromeSurface("logo");} }}
@@ -39795,7 +39866,7 @@ const TalariaV8bLive = () => {
         </div>
         <div style={{ width: 12, flexShrink: 0 }} aria-hidden="true"/>
         {/* Place Order — flat white / black (no gradient) */}
-        <button type="button" data-brand-btn="primary" data-tb-item="placeOrder" aria-label="Place Order" onClick={(e) => { e.stopPropagation(); setRightPanel(null); setOrderPanelOpen(prev => !prev); }}
+        <button type="button" data-brand-btn="primary" data-tb-item="placeOrder" aria-label="Place Order" onClick={(e) => { e.stopPropagation(); setRightPanel(null); setRailOpen(false); setOrderPanelOpen(prev => !prev); }}
           onMouseEnter={() => setHov("place-order")} onMouseLeave={() => setHov(null)}
           style={{
             height: 32, padding: "0 16px", flexShrink: 0,
@@ -40151,7 +40222,60 @@ const TalariaV8bLive = () => {
         )}
       </div>
       <div style={{ flex: 1, display: "flex", overflow: "hidden", minWidth: 0 }} onContextMenu={v9BlockBrowserContextMenu}>
-        <div data-v9-chrome="1" data-v9-rail="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} onContextMenu={v9BlockBrowserContextMenu} style={{ width: "var(--rail-w)", flexShrink: 0, boxSizing: "border-box", background: "var(--surface)", borderRight: "1px solid var(--line)", display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 4, paddingLeft:0, paddingRight: 0, overflowY: "auto", overflowX: "hidden", gap: 0 }}>
+        <div
+          data-v9-chrome="1"
+          data-v9-rail="1"
+          data-rail-open={chromeAdapt === "phone" && railOpen ? "1" : undefined}
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={v9BlockBrowserContextMenu}
+          style={
+            chromeAdapt === "phone"
+              ? {
+                  position: "fixed",
+                  top: 0,
+                  left: 0,
+                  bottom: 0,
+                  width: "var(--rail-w)",
+                  marginRight: "calc(-1 * var(--rail-w))",
+                  flexShrink: 0,
+                  boxSizing: "border-box",
+                  background: "var(--surface)",
+                  borderRight: "1px solid var(--line)",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  paddingTop: "max(4px, env(safe-area-inset-top, 0px))",
+                  paddingBottom: "env(safe-area-inset-bottom, 0px)",
+                  paddingLeft: 0,
+                  paddingRight: 0,
+                  overflowY: "auto",
+                  overflowX: "hidden",
+                  gap: 0,
+                  zIndex: 10035,
+                  transform: railOpen ? "translateX(0)" : "translateX(-110%)",
+                  transition: "transform var(--motion)",
+                  pointerEvents: railOpen ? "auto" : "none",
+                }
+              : {
+                  width: "var(--rail-w)",
+                  flexShrink: 0,
+                  boxSizing: "border-box",
+                  background: "var(--surface)",
+                  borderRight: "1px solid var(--line)",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  paddingTop: 4,
+                  paddingLeft: 0,
+                  paddingRight: 0,
+                  overflowY: "auto",
+                  overflowX: "hidden",
+                  gap: 0,
+                }
+          }
+        >
           {toolGroups.map((group, gi) => (
             <div key={gi} style={{ width: "100%", display: "flex", flexDirection: "column", gap: 4 }}>
               {gi > 0 && <div style={{ height: 1, margin: "12px 10px", background: "var(--line)", flexShrink: 0 }} aria-hidden="true"/>}
@@ -41109,7 +41233,17 @@ const TalariaV8bLive = () => {
                 </div>
               </div>
               <div style={{width:1,height:20,background:"var(--line)",flexShrink:0}} aria-hidden="true"/>
-              <button type="button" data-rp-panel-tog="" data-active={btmOpen?"1":undefined} aria-label={btmOpen ? "Collapse trade panel" : "Expand trade panel"} aria-expanded={btmOpen} onClick={()=>setBtmOpen(o=>!o)} onMouseEnter={()=>setHov("btm-tog")} onMouseLeave={()=>setHov(null)}
+              <button type="button" data-rp-panel-tog="" data-active={btmOpen?"1":undefined} aria-label={btmOpen ? "Collapse trade panel" : "Expand trade panel"} aria-expanded={btmOpen} onClick={()=>{
+                setBtmOpen((o) => {
+                  const next = !o;
+                  if (next && chromeAdapt === "phone") {
+                    setBtmHeight((h) => Math.min(h, Math.round(Math.max(160, window.innerHeight * 0.32))));
+                  } else if (next && chromeAdapt === "tablet") {
+                    setBtmHeight((h) => Math.min(h, Math.round(Math.max(180, window.innerHeight * 0.28))));
+                  }
+                  return next;
+                });
+              }} onMouseEnter={()=>setHov("btm-tog")} onMouseLeave={()=>setHov(null)}
                 style={{cursor:"default",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",flexShrink:0,
                   background:btmOpen?"var(--accent-quiet)":hov==="btm-tog"?"var(--surface-raised)":"transparent",
                   border:"none", borderRadius:6,
@@ -41805,7 +41939,7 @@ const TalariaV8bLive = () => {
             </div>
           </div>
         </div>
-        <div data-v9-chrome="1" data-v9-order-rail="1" data-sdrop="1" onPointerDown={(e)=>e.stopPropagation()} onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()} style={{ width: (rightPanel || (orderPanelOpen && !panelDetached)) ? orderRailW : 0, flexShrink: 0, position: "relative", zIndex: 30, overflow: "hidden", transition: "width var(--motion)" }}>
+        <div data-v9-chrome="1" data-v9-order-rail="1" data-sdrop="1" data-adapt-overlay={adaptNarrow && (rightPanel || (orderPanelOpen && !panelDetached)) ? "1" : undefined} onPointerDown={(e)=>e.stopPropagation()} onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()} style={{ width: adaptNarrow ? 0 : ((rightPanel || (orderPanelOpen && !panelDetached)) ? orderRailW : 0), flexShrink: 0, position: "relative", zIndex: 30, overflow: adaptNarrow ? "visible" : "hidden", transition: adaptNarrow ? "none" : "width var(--motion)" }}>
         {rightPanel ? (()=>{
           // Phase 7.2.3: lyLines + syncItems are now lifted to module
           // scope (LAYOUT_LY_LINES / LAYOUT_SYNC_ITEMS) so the topbar
@@ -41818,7 +41952,28 @@ const TalariaV8bLive = () => {
             `${layoutPanels.n} panel${layoutPanels.n === 1 ? "" : "s"}` +
             (syncOnCount ? ` · ${syncOnCount} synced` : " · sync off");
           return (
-        <div key={rightPanel} data-brand-panel="1" data-layout-v2={rightPanel==="layout"?"1":undefined} data-objects-panel={rightPanel==="layers"?"1":undefined} data-news-panel={rightPanel==="news"?"1":undefined} style={{ width: "100%", height: "100%", background: "var(--surface)", borderLeft: "1px solid var(--line)", borderRadius: 0, display: "flex", flexDirection: "column", fontFamily: F, animation:"tlrPanelIn 0.18s ease" }}>
+        <div key={rightPanel} data-brand-panel="1" data-layout-v2={rightPanel==="layout"?"1":undefined} data-objects-panel={rightPanel==="layers"?"1":undefined} data-news-panel={rightPanel==="news"?"1":undefined} style={adaptNarrow
+          ? {
+              position: "fixed",
+              top: 0,
+              right: 0,
+              bottom: 0,
+              left: chromeAdapt === "phone" ? 0 : "auto",
+              width: chromeAdapt === "phone" ? "100%" : Math.min(orderRailW, typeof window !== "undefined" ? window.innerWidth : orderRailW),
+              maxWidth: "100vw",
+              height: "100%",
+              background: "var(--surface)",
+              borderLeft: chromeAdapt === "phone" ? "none" : "1px solid var(--line)",
+              borderRadius: 0,
+              display: "flex",
+              flexDirection: "column",
+              fontFamily: F,
+              animation: "tlrPanelIn 0.18s ease",
+              zIndex: 10040,
+              paddingTop: "env(safe-area-inset-top, 0px)",
+              paddingBottom: "env(safe-area-inset-bottom, 0px)",
+            }
+          : { width: "100%", height: "100%", background: "var(--surface)", borderLeft: "1px solid var(--line)", borderRadius: 0, display: "flex", flexDirection: "column", fontFamily: F, animation:"tlrPanelIn 0.18s ease" }}>
           <div data-win-header="" style={{ cursor: "default", display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderBottom: "1px solid var(--line)", flexShrink: 0, background: "var(--surface)" }}>
             <div data-win-icon="" style={{ width: 32, height: 32, borderRadius: 6, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "var(--accent-quiet)", flexShrink: 0 }}>
               <I n={rightPanel==="layout"?"layout":rightPanel==="layers"?"layers":"news"} s={16} cl="var(--accent)"/>
@@ -42540,14 +42695,60 @@ const TalariaV8bLive = () => {
         </div>
           );
         })() : orderPanelOpen ? (
-        <div ref={panelRef} data-v9-order="1" data-order-v2="1" data-order-v4="1" data-order-rev="7" data-side={buySell} data-panel-mode={panelMode} data-order-mode={panelDetached ? "float" : "dock"} key={panelDetached?"order-float":"order-dock"} style={panelDetached
-          ? { position:"fixed", top:detachPos.y, left:detachPos.x, width:detachSize.w, height:detachSize.h, background:"var(--bg)", border:"1px solid var(--line-strong)", borderRadius:16, display:"flex", flexDirection:"column", overflow:"hidden", fontFamily:F, zIndex:10050, animation:"tlrPanelInFade 0.18s ease forwards" }
-          : { width:"100%", background:"var(--bg)", borderLeft:"1px solid var(--line-strong)", display:"flex", flexDirection:"column", height:"100%", animation:"tlrPanelIn 0.18s ease forwards", overflow:"hidden", fontFamily:F }
+        <div ref={panelRef} data-v9-order="1" data-order-v2="1" data-order-v4="1" data-order-rev="7" data-side={buySell} data-panel-mode={panelMode} data-order-mode={panelDetached || adaptNarrow ? "float" : "dock"} data-adapt-sheet={chromeAdapt === "phone" ? "1" : undefined} data-adapt-drawer={chromeAdapt === "tablet" ? "1" : undefined} key={panelDetached || adaptNarrow ? "order-float" : "order-dock"} style={
+          chromeAdapt === "phone"
+            ? {
+                position: "fixed",
+                left: 0,
+                right: 0,
+                bottom: 0,
+                top: "auto",
+                width: "100%",
+                height: "min(92dvh, 720px)",
+                maxHeight: "calc(100dvh - env(safe-area-inset-top, 0px) - 52px)",
+                background: "var(--bg)",
+                border: "1px solid var(--line-strong)",
+                borderBottom: "none",
+                borderRadius: "16px 16px 0 0",
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden",
+                fontFamily: F,
+                zIndex: 10050,
+                paddingBottom: "env(safe-area-inset-bottom, 0px)",
+                animation: "tlrPanelInFade 0.18s ease forwards",
+              }
+            : chromeAdapt === "tablet"
+            ? {
+                position: "fixed",
+                top: 0,
+                right: 0,
+                bottom: 0,
+                left: "auto",
+                width: Math.min(orderRailW, typeof window !== "undefined" ? window.innerWidth : orderRailW),
+                maxWidth: "100vw",
+                height: "100%",
+                background: "var(--bg)",
+                border: "none",
+                borderLeft: "1px solid var(--line-strong)",
+                borderRadius: 0,
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden",
+                fontFamily: F,
+                zIndex: 10050,
+                paddingTop: "env(safe-area-inset-top, 0px)",
+                paddingBottom: "env(safe-area-inset-bottom, 0px)",
+                animation: "tlrPanelInFade 0.18s ease forwards",
+              }
+            : panelDetached
+            ? { position:"fixed", top:detachPos.y, left:detachPos.x, width:detachSize.w, height:detachSize.h, background:"var(--bg)", border:"1px solid var(--line-strong)", borderRadius:16, display:"flex", flexDirection:"column", overflow:"hidden", fontFamily:F, zIndex:10050, animation:"tlrPanelInFade 0.18s ease forwards" }
+            : { width:"100%", background:"var(--bg)", borderLeft:"1px solid var(--line-strong)", display:"flex", flexDirection:"column", height:"100%", animation:"tlrPanelIn 0.18s ease forwards", overflow:"hidden", fontFamily:F }
         }>
 
           {/* 1 — Header */}
           <div data-win-header=""
-            onPointerDown={panelDetached ? (e) => {
+            onPointerDown={panelDetached && !adaptNarrow ? (e) => {
               if (e.button !== 0) return;
               if (e.target.closest("[data-nodrag]")) return;
               e.preventDefault();
@@ -42600,7 +42801,7 @@ const TalariaV8bLive = () => {
               window.addEventListener("pointerup", onUp);
               window.addEventListener("pointercancel", onUp);
             } : undefined}
-            style={{ cursor:panelDetached?"move":"default", touchAction: panelDetached ? "none" : undefined }}>
+            style={{ cursor: panelDetached && !adaptNarrow ? "move" : "default", touchAction: panelDetached && !adaptNarrow ? "none" : undefined }}>
             <div data-win-icon=""><I n="longPos" s={16} cl="var(--accent)"/></div>
             <span data-win-title="" style={{ flex: "0 1 auto" }}>Order</span>
             <div style={{ flex:1 }}/>
@@ -45158,8 +45359,8 @@ const TalariaV8bLive = () => {
           </div>{/* end exec strip */}
 
 
-          {/* Resize handles — only when detached */}
-          {panelDetached && <>
+          {/* Resize handles — only when detached (desktop float; not phone sheet / tablet drawer) */}
+          {panelDetached && !adaptNarrow && <>
             <div onMouseDown={e=>{
               beginChromeWinResize(e, {
                 axes: { w: true },
@@ -45382,10 +45583,12 @@ const TalariaV8bLive = () => {
         <div data-v9-chrome="1" data-order-drop="menu" data-sdrop="1" role="menu" aria-label="Order panel options"
           onClick={e=>e.stopPropagation()}
           style={{ position:"fixed", top:opDotsPos.top, left:opDotsPos.left, zIndex:10060, width:168, background:"var(--surface)", border:"1px solid var(--line)", borderRadius:8, boxShadow:"none", padding:"4px 0", fontFamily:F }}>
+          {!adaptNarrow && (
           <div data-menu-row="" role="menuitem"
             onClick={()=>{ setPanelDetached(v=>{ if(!v){ const pw=detachSize.w,ph=detachSize.h; const mid=v9ClampFloatingWindowPos(Math.round((window.innerWidth-pw)/2),Math.round((window.innerHeight-ph)/2),pw,ph,Z||1,0); setDetachPos(mid); } return !v; }); setOpDotsOpen(false); }}>
             <span>{panelDetached?"Attach panel":"Detach panel"}</span>
           </div>
+          )}
           {sessionAdvancedAllowed && (
             <div data-menu-row="" role="menuitem" data-active={panelMode==="basic"?"1":undefined}
               onClick={()=>{
@@ -46606,6 +46809,27 @@ const TalariaV8bLive = () => {
         >
           {tipData.label}
         </div>
+      )}
+
+      {typeof document !== "undefined" && adaptNarrow && (railOpen || orderPanelOpen || rightPanel) && createPortal(
+        <div
+          data-chrome-adapt-scrim="1"
+          aria-hidden="true"
+          onClick={(e) => {
+            e.stopPropagation();
+            setRailOpen(false);
+            if (orderPanelOpen) setOrderPanelOpen(false);
+            if (rightPanel) setRightPanel(null);
+          }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 10020,
+            background: "var(--overlay)",
+            cursor: "default",
+          }}
+        />,
+        document.body
       )}
 
       {viewingScreenshot&&(
