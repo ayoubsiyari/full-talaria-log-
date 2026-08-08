@@ -13,6 +13,6 @@
     "dukascopy-node": "1.46.3"
   },
   "devDependencies": {
-    "terser": "^5.37.0"
+    "terser": "^5.49.1"
   }
 }
